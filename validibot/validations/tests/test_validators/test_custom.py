@@ -103,10 +103,10 @@ def test_custom_validator_backend_not_available():
     assert result.stats["implementation_status"] == "Backend not available"
 
 
-def test_extract_output_signals_from_dict():
-    """extract_output_signals extracts signals from outputs.signals dict.
+def test_extract_output_values_from_dict():
+    """extract_output_values extracts output_values from outputs.output_values dict.
 
-    extract_output_signals is now an instance method (the May 2026 review
+    extract_output_values is now an instance method (the May 2026 review
     converted it from classmethod so EnergyPlus could reach run_context for
     catalog scoping). Custom doesn't need run_context, but we still need
     an instance to invoke the method consistently with the new contract.
@@ -115,19 +115,19 @@ def test_extract_output_signals_from_dict():
 
     envelope = SimpleNamespace(
         outputs=SimpleNamespace(
-            signals={"temperature": 21.5, "humidity": 60},
+            output_values={"temperature": 21.5, "humidity": 60},
         ),
     )
 
-    result = CustomValidator().extract_output_signals(envelope)
+    result = CustomValidator().extract_output_values(envelope)
 
     assert result == {"temperature": 21.5, "humidity": 60}
 
 
-def test_extract_output_signals_returns_none_without_outputs():
-    """extract_output_signals returns None when envelope has no outputs."""
+def test_extract_output_values_returns_none_without_outputs():
+    """extract_output_values returns None when envelope has no outputs."""
     envelope = MagicMock(spec=[])  # no attributes
 
-    result = CustomValidator().extract_output_signals(envelope)
+    result = CustomValidator().extract_output_values(envelope)
 
     assert result is None

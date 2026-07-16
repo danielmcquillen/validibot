@@ -9,12 +9,12 @@ config = ValidatorConfig(
     slug="basic-validator",
     name="Basic Validator",
     short_description=(
-        "The simplest validator. Allows workflow author to add signals "
-        "and assertions directly without a validator catalog."
+        "The simplest validator. Lets workflow authors map workflow signals "
+        "and add assertions without a validator-specific step I/O catalog."
     ),
     description=(
-        "The simplest validator. Allows workflow author to add signals"
-        " and assertions directly without a validator catalog."
+        "The simplest validator. Lets workflow authors map workflow signals"
+        " and add assertions without a validator-specific step I/O catalog."
     ),
     validation_type=ValidationType.BASIC,
     validator_class=("validibot.validations.validators.basic.validator.BasicValidator"),

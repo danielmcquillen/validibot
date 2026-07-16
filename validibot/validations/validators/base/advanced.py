@@ -24,11 +24,11 @@ All advanced validators follow the same lifecycle:
 6. For sync backends: process output envelope immediately
 7. (On callback) Download and parse the output envelope
 8. Extract issues from envelope messages
-9. Extract output signals via ``extract_output_signals()``
-10. Evaluate output-stage assertions against those signals
-11. Return final ValidationResult with signals populated
+9. Extract step outputs via ``extract_output_values()``
+10. Evaluate output-stage assertions against those values
+11. Return the final ``ValidationResult`` with step outputs populated
 
-Subclasses implement ``extract_output_signals()`` to handle their
+Subclasses implement ``extract_output_values()`` to handle their
 validator-specific envelope structure and may override
 ``preprocess_submission()`` for domain-specific input transformation.
 The base class handles the shared orchestration, response conversion,
@@ -75,17 +75,17 @@ class AdvancedValidator(BaseValidator):
     - Validating that run_context is properly set
     - Getting the execution backend and building the request
     - Converting ExecutionResponse to ValidationResult
-    - Processing output envelopes (extracting messages and signals)
+    - Processing output envelopes (extracting messages and step outputs)
     - Evaluating output-stage assertions
 
     Subclasses must implement:
 
-    - ``extract_output_signals()`` — extract domain-specific signals from
+    - ``extract_output_values()`` — extract domain-specific step outputs from
       the output envelope for assertion evaluation
 
     The ``validate()`` and ``post_execute_validate()`` methods implement the
     template. Subclasses should not need to override them unless they require
-    custom envelope processing beyond signal extraction.
+    custom envelope processing beyond step output extraction.
     """
 
     @property
@@ -95,13 +95,14 @@ class AdvancedValidator(BaseValidator):
         ...
 
     @abstractmethod
-    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
+    def extract_output_values(self, output_envelope: Any) -> dict[str, Any] | None:
         """
-        Extract assertion signals from the validator-specific output envelope.
+        Extract step outputs from the validator-specific output envelope.
 
         Each advanced validator type produces outputs in its own Pydantic envelope
-        structure (defined in validibot_shared). This method extracts the signals
-        that can be referenced in output-stage assertions.
+        structure (defined in validibot_shared). This method extracts the
+        declared output values referenced through ``o.*`` in output-stage
+        assertions.
 
         Declared as an instance method (not ``@classmethod``) so subclasses
         like EnergyPlus can reach ``self.run_context.step.validator`` to
@@ -115,12 +116,12 @@ class AdvancedValidator(BaseValidator):
                 (e.g., EnergyPlusOutputEnvelope, FMUOutputEnvelope).
 
         Returns:
-            Dict mapping catalog slugs to values for CEL evaluation, or None if
-            no signals can be extracted.
+            Dict mapping output contract keys to values for CEL evaluation, or
+            None if no step outputs can be extracted.
         """
         ...
 
-    # NOTE: ``extract_input_signals(payload)`` lives on ``BaseValidator``
+    # NOTE: ``extract_input_values(payload)`` lives on ``BaseValidator``
     # with a default of None. Advanced validators that parse an arcane
     # format (EnergyPlus IDF, future IFC, gbXML, etc.) override it to
     # expose parsed facts in the ``i.*`` namespace. Called after
@@ -269,7 +270,7 @@ class AdvancedValidator(BaseValidator):
         # ── INPUT-STAGE GATE (per ADR-2026-05-22) ───────────────────
         # Per the ADR's headline promise, advanced validators evaluate
         # input-stage assertions *before* dispatching the container. The
-        # parser hook (extract_input_signals) runs against the resolved
+        # parser hook (extract_input_values) runs against the resolved
         # submission, populates the i.* namespace, and input-stage
         # assertions get a chance to gate dispatch.
         #
@@ -329,7 +330,7 @@ class AdvancedValidator(BaseValidator):
         """Evaluate input-stage assertions and persist canonical step inputs.
 
         Per ADR-2026-05-22:
-          1. Call ``extract_input_signals()`` against the (resolved)
+          1. Call ``extract_input_values()`` against the (resolved)
              submission to produce the contract-keyed step input dict.
           2. Expose that dict on ``RunContext`` so the processor persists it
              to ``ValidationStepRun.input_values`` for downstream steps and
@@ -343,7 +344,7 @@ class AdvancedValidator(BaseValidator):
         evaluation produced anything actionable. Returns a
         ``ValidationResult`` containing the input-stage findings and
         stats when there is at least one input-stage issue or extracted
-        signal. The caller decides whether to short-circuit on blocking
+        step input. The caller decides whether to short-circuit on blocking
         failures.
         """
         from validibot.validations.validators.base.base import ValidationResult
@@ -356,9 +357,9 @@ class AdvancedValidator(BaseValidator):
         payload = self._resolve_input_stage_payload(submission)
 
         # Run the parser hook. Default returns None; advanced validators
-        # that parse arcane formats override extract_input_signals.
+        # that parse arcane formats override extract_input_values.
         try:
-            parsed_inputs = self.extract_input_signals(payload)
+            parsed_inputs = self.extract_input_values(payload)
         except Exception:
             # Parser failures are reported as findings via the normal
             # error path elsewhere; here we treat them as "no parsed
@@ -373,7 +374,7 @@ class AdvancedValidator(BaseValidator):
         #    variables). Always wins on key collision because the
         #    binding is the author's explicit declaration of where the
         #    value comes from.
-        # 2. Parser-extracted facts from ``extract_input_signals()`` —
+        # 2. Parser-extracted facts from ``extract_input_values()`` —
         #    implicit facts the validator can derive from the payload
         #    (EnergyPlus IDF parser facts). Fills in keys not already
         #    set by bindings.
@@ -429,7 +430,7 @@ class AdvancedValidator(BaseValidator):
         #
         # Enrich the payload with namespaced values (i.* contract
         # keys from parser facts + bindings, plus s.* workflow
-        # signals) so BASIC assertions targeting i.<name> /
+        # output_values) so BASIC assertions targeting i.<name> /
         # s.<name> resolve via the bare contract_key at the top
         # level. CEL evaluation reads from its own namespaced
         # context and ignores this payload, so the enrichment is a
@@ -523,7 +524,7 @@ class AdvancedValidator(BaseValidator):
         step_run.save(update_fields=["input_values"])
 
     def _resolve_input_stage_payload(self, submission: Submission) -> Any:
-        """Return the payload to pass to extract_input_signals().
+        """Return the payload to pass to extract_input_values().
 
         Uses ``submission.get_content()`` to read the payload from
         either the inline ``content`` field OR the ``input_file``
@@ -566,9 +567,9 @@ class AdvancedValidator(BaseValidator):
         This method:
 
         1. Extracts issues from envelope messages
-        2. Extracts signals via ``extract_output_signals()``
-        3. Evaluates output-stage assertions using those signals
-        4. Returns ValidationResult with signals field populated
+        2. Extracts step outputs via ``extract_output_values()``
+        3. Evaluates output-stage assertions using those values
+        4. Returns ``ValidationResult`` with its output-value field populated
 
         Args:
             output_envelope: The typed Pydantic envelope from the validator
@@ -577,18 +578,18 @@ class AdvancedValidator(BaseValidator):
 
         Returns:
             ValidationResult with output-stage issues, assertion_stats,
-            and signals populated.
+            and step outputs populated.
         """
         self.run_context = run_context
 
         issues = self._extract_issues_from_envelope(output_envelope)
 
-        # Extract signals from envelope for downstream steps and assertions
-        signals = self.extract_output_signals(output_envelope) or {}
+        # Extract step outputs from the envelope for downstream steps and assertions.
+        output_values = self.extract_output_values(output_envelope) or {}
         logger.debug(
-            "post_execute_validate: extracted %d signals: %s",
-            len(signals),
-            list(signals.keys()),
+            "post_execute_validate: extracted %d step outputs: %s",
+            len(output_values),
+            list(output_values.keys()),
         )
 
         # Evaluate output-stage assertions if we have context
@@ -605,10 +606,10 @@ class AdvancedValidator(BaseValidator):
 
             if validator and ruleset:
                 # Build assertion payload: merge submission input data with
-                # output signals so output-stage assertions can reference
+                # step outputs so output-stage assertions can reference
                 # both. For example, an FMU assertion like
                 # ``Q_cooling_actual < Q_cooling_max * 0.85`` compares an
-                # output signal against a user-provided input value.
+                # step output against a user-provided input value.
                 #
                 # On name collision, the input keeps the bare name and the
                 # output is available via the ``output.`` prefix — matching
@@ -619,21 +620,21 @@ class AdvancedValidator(BaseValidator):
                 # available.
                 resolved_inputs = self._get_resolved_inputs(run_context)
                 assertion_payload = self._build_assertion_payload(
-                    signals,
+                    output_values,
                     run_context,
                     resolved_inputs=resolved_inputs,
                 )
-                # Additionally enrich with workflow signals so BASIC
+                # Additionally enrich with workflow output_values so BASIC
                 # assertions targeting s.<name> resolve via the bare
                 # name. ``_build_assertion_payload`` already merges
-                # resolved_inputs and signals; this adds workflow_signals
+                # resolved inputs and step outputs; this adds workflow output_values
                 # for BASIC compatibility (CEL reads them from its own
                 # context regardless). Output stage so the helper skips
                 # re-running StepInputBinding resolution.
                 assertion_payload = self._enrich_basic_payload(
                     assertion_payload,
                     stage="output",
-                    output_signals=None,
+                    output_values=None,
                 )
 
                 assertion_result = self.evaluate_assertions_for_stage(
@@ -676,7 +677,7 @@ class AdvancedValidator(BaseValidator):
                 total=assertion_total,
                 failures=assertion_failures,
             ),
-            signals=signals,
+            output_values=output_values,
             stats=stats,
         )
 
@@ -732,7 +733,7 @@ class AdvancedValidator(BaseValidator):
 
     @staticmethod
     def _build_assertion_payload(
-        signals: dict[str, Any],
+        output_values: dict[str, Any],
         run_context: RunContext | None,
         resolved_inputs: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -741,7 +742,7 @@ class AdvancedValidator(BaseValidator):
 
         Output-stage assertions often compare validator outputs against user
         inputs (e.g., ``Q_cooling_actual <= Q_cooling_max``).  The output
-        signals alone don't contain the input values, so we merge in the
+        step outputs alone don't contain the input values, so we merge in the
         resolved input values.
 
         When ``resolved_inputs`` is provided (from ``step_run.output``),
@@ -775,7 +776,7 @@ class AdvancedValidator(BaseValidator):
 
         This is a no-op when neither resolved_inputs nor parseable JSON
         submission content is available (e.g., EnergyPlus IDF files) —
-        only the output signals are returned.
+        only the step outputs are returned.
         """
         # When resolved_inputs are available, use them directly instead
         # of parsing the raw submission JSON.  This is the preferred path
@@ -783,7 +784,7 @@ class AdvancedValidator(BaseValidator):
         if resolved_inputs:
             merged = dict(resolved_inputs)
             output_ns: dict[str, object] = {}
-            for key, value in signals.items():
+            for key, value in output_values.items():
                 if key not in merged:
                     merged[key] = value
                 output_ns[key] = value
@@ -794,16 +795,16 @@ class AdvancedValidator(BaseValidator):
         # Fallback: parse raw submission JSON (for legacy steps without
         # StepInputBinding rows or when resolved_inputs aren't available).
         if not run_context or not run_context.validation_run:
-            return dict(signals)
+            return dict(output_values)
 
         submission = getattr(run_context.validation_run, "submission", None)
         if not submission:
-            return dict(signals)
+            return dict(output_values)
 
         try:
             content = submission.get_content()
             if not content:
-                return dict(signals)
+                return dict(output_values)
             parsed = json.loads(content)
             if isinstance(parsed, dict):
                 # Start with submission inputs (bare names).
@@ -811,12 +812,12 @@ class AdvancedValidator(BaseValidator):
                 # Build a nested ``output`` namespace so that
                 # ``output.T_room`` works in both CEL (member access)
                 # and basic assertions (dot-path navigation).  All
-                # output signals are always available under the
+                # step outputs are always available under the
                 # namespace; on collision the input keeps the bare
                 # name and the output is only reachable via
                 # ``output.<name>``.
                 output_ns = {}
-                for key, value in signals.items():
+                for key, value in output_values.items():
                     if key not in merged:
                         # No collision — bare name resolves to output.
                         merged[key] = value
@@ -827,11 +828,11 @@ class AdvancedValidator(BaseValidator):
         except (json.JSONDecodeError, TypeError, Exception):
             logger.debug(
                 "Could not parse submission content as JSON for assertion "
-                "payload merging (run=%s); using output signals only.",
+                "payload merging (run=%s); using step outputs only.",
                 getattr(run_context.validation_run, "id", "?"),
             )
 
-        return dict(signals)
+        return dict(output_values)
 
     @staticmethod
     def _extract_issues_from_envelope(envelope: Any) -> list[ValidationIssue]:

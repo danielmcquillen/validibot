@@ -12,20 +12,20 @@
   </p>
   <ul class="mb-2 ps-3">
     <li>
-      <code class="target-signal-name">s.price</code> &gt; 0
+      <code class="cel-reference">s.price</code> &gt; 0
     </li>
     <li>
-      <code class="target-signal-name">p.thermostat[3].setpoint</code> &lt; 78
+      <code class="cel-reference">p.thermostat[3].setpoint</code> &lt; 78
     </li>
     <li>
-      <code class="target-signal-name">submission.metadata.deliverable</code> == "handover"
+      <code class="cel-reference">submission.metadata.deliverable</code> == "handover"
     </li>
   </ul>
   <p class="mb-1">
     <strong>{% trans 'Namespace prefixes:' %}</strong> {% trans 'Use' %} <code>p.</code> {% trans 'for payload (raw submission data),' %} <code>s.</code> {% trans 'for signals (author-defined named values), and' %} <code>submission.</code> {% trans 'for submission metadata and server facts (e.g.' %} <code>submission.uploaded_at</code>{% trans ').' %}
   </p>
   <p class="mb-1">
-    <strong>{% trans 'XML tip:' %}</strong> {% trans 'Numeric values need casting:' %} <code>double(<span class="target-signal-name">s.price</span>) &gt; 0</code>
+    <strong>{% trans 'XML tip:' %}</strong> {% trans 'Numeric values need casting:' %} <code>double(<span class="cel-reference">s.price</span>) &gt; 0</code>
   </p>
   <p class="mb-1">
     <strong>{% trans 'XML attributes:' %}</strong> {% trans 'Use the @ prefix with bracket notation:' %} <code>m["@Conductivity"]</code>

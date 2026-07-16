@@ -24,7 +24,7 @@ wiring; the input table didn't.
 An alert bar warns when required inputs have no source path mapped.
 
 Context:
-  unified_signals.input_signals  - list of step input dicts
+  step_io_context.input_values  - list of step input dicts
   step                           - the WorkflowStep
   workflow                       - the parent Workflow
   can_manage_workflow            - whether the current user can edit
@@ -33,8 +33,8 @@ Context:
      hx-get="{% url 'workflows:workflow_step_inputs_partial' workflow.pk step.pk %}"
      hx-trigger="signals-changed from:body"
      hx-swap="outerHTML">
-  {% if unified_signals.input_signals %}
-    {% if unified_signals.has_unmapped_required %}
+  {% if step_io_context.input_values %}
+    {% if step_io_context.has_unmapped_required %}
       <div class="alert alert-warning small mb-2">
         <i class="bi bi-exclamation-triangle me-1"></i>
         {% trans "Some required step inputs have no source path. Map each required input to a payload path or signal before running the workflow." %}
@@ -76,27 +76,27 @@ Context:
           </tr>
         </thead>
         <tbody>
-          {% for signal in unified_signals.input_signals %}
-            <tr {% if signal.required and not signal.source_data_path %}
+          {% for input in step_io_context.input_values %}
+            <tr {% if input.required and not input.source_data_path %}
                   class="table-warning"
                 {% endif %}>
               <td>
-                <code class="small">i.{{ signal.slug }}</code>
-                {% if signal.signal_definition and signal.signal_definition.source_kind == "internal" %}
+                <code class="small">i.{{ input.slug }}</code>
+                {% if input.io_definition and input.io_definition.source_kind == "internal" %}
                   <i class="bi bi-lock-fill text-muted small ms-1"
                      data-bs-toggle="tooltip"
                      data-bs-placement="top"
                      title="{% trans 'Internal — data source managed by the validator' %}"></i>
                 {% endif %}
-                {% if signal.label and signal.label != signal.slug %}
+                {% if input.label and input.label != input.slug %}
                   <br />
-                  <span class="text-muted small">{{ signal.label }}</span>
+                  <span class="text-muted small">{{ input.label }}</span>
                 {% endif %}
               </td>
               <td>
-                {% if signal.source_data_path %}
-                  <code class="small text-muted" style="word-break: break-all;">{{ signal.source_data_path }}</code>
-                {% elif signal.validator_managed %}
+                {% if input.source_data_path %}
+                  <code class="small text-muted" style="word-break: break-all;">{{ input.source_data_path }}</code>
+                {% elif input.validator_managed %}
                   {% comment %}
                    Parser-extracted facts (and other source_kind=INTERNAL
                    inputs) don't need an author-supplied source path —
@@ -110,18 +110,18 @@ Context:
                 {% endif %}
               </td>
               <td>
-                {% if signal.default_value %}
+                {% if input.default_value %}
                   <span class="d-inline-block text-truncate small"
                         style="max-width: 10rem"
                         data-bs-toggle="tooltip"
                         data-bs-placement="top"
-                        title="{{ signal.default_value }}">{{ signal.default_value }}</span>
+                        title="{{ input.default_value }}">{{ input.default_value }}</span>
                 {% else %}
                   <span class="text-muted">--</span>
                 {% endif %}
               </td>
               <td class="text-center">
-                {% if signal.required %}
+                {% if input.required %}
                   <i class="bi bi-check-lg text-success"></i>
                 {% else %}
                   <span class="text-muted">--</span>
@@ -135,14 +135,14 @@ Context:
               {# (step-owned rows) or to a WorkflowStepIOPromotion       #}
               {# overlay row (validator-owned catalog rows).             #}
               <td>
-                {% if signal.signal_definition and can_manage_workflow %}
-                  {% if signal.signal_name %}
+                {% if input.io_definition and can_manage_workflow %}
+                  {% if input.signal_name %}
                     <div class="d-flex align-items-center gap-2">
                       <span class="badge bg-primary-subtle text-primary">
-                        s.{{ signal.signal_name }}
+                        s.{{ input.signal_name }}
                       </span>
                       <form class="d-inline"
-                            hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk signal.signal_definition.pk %}"
+                            hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk input.io_definition.pk %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-swap="none"
                             hx-disabled-elt="find button">
@@ -156,7 +156,7 @@ Context:
                     </div>
                   {% else %}
                     <form class="d-inline"
-                          hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk signal.signal_definition.pk %}"
+                          hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk input.io_definition.pk %}"
                           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                           hx-swap="none"
                           hx-disabled-elt="find button">
@@ -175,26 +175,26 @@ Context:
                       </div>
                     </form>
                   {% endif %}
-                {% elif signal.signal_name %}
+                {% elif input.signal_name %}
                   <span class="badge bg-primary-subtle text-primary">
-                    s.{{ signal.signal_name }}
+                    s.{{ input.signal_name }}
                   </span>
                 {% else %}
                   <span class="text-muted">—</span>
                 {% endif %}
               </td>
               <td class="text-end text-nowrap">
-                {% if signal.signal_definition and not signal.validator_managed %}
+                {% if input.io_definition and not input.validator_managed %}
                   {# Author-editable inputs (FMU model variables, EnergyPlus
                    template variables) get auto-link + edit affordances.
                    Validator-managed inputs (parser-extracted facts, other
                    source_kind=INTERNAL entries) skip these — they have
                    no payload binding to edit, so the controls would
                    either no-op or confuse the author. Per ADR-2026-05-22b. #}
-                  {% if not signal.source_data_path %}
+                  {% if not input.source_data_path %}
                     <button type="button"
                             class="btn btn-sm btn-outline-primary me-1"
-                            hx-post="{% org_url 'workflows:workflow_step_signal_auto_link' workflow.pk step.pk signal.signal_definition.pk %}"
+                            hx-post="{% org_url 'workflows:workflow_step_io_auto_link' workflow.pk step.pk input.io_definition.pk %}"
                             hx-swap="none"
                             title="{% trans 'Auto-link to workflow signal' %}">
                       <i class="bi bi-link-45deg"></i>
@@ -203,19 +203,19 @@ Context:
                   <button type="button"
                           class="btn btn-sm btn-outline-secondary"
                           data-bs-toggle="modal"
-                          data-bs-target="#signalEditModal"
-                          hx-get="{% org_url 'workflows:workflow_step_signal_edit' workflow.pk step.pk signal.signal_definition.pk %}"
-                          hx-target="#signal-edit-modal-content"
+                          data-bs-target="#stepIOEditModal"
+                          hx-get="{% org_url 'workflows:workflow_step_io_edit' workflow.pk step.pk input.io_definition.pk %}"
+                          hx-target="#step-io-edit-modal-content"
                           hx-trigger="click"
                           title="{% trans 'Edit step input' %}">
                     <i class="bi bi-pencil"></i>
                   </button>
-                {% elif signal.source == "template" and signal.variable_index is not None %}
+                {% elif input.source == "template" and input.variable_index is not None %}
                   <button type="button"
                           class="btn btn-sm btn-outline-secondary"
                           data-bs-toggle="modal"
                           data-bs-target="#templateVariableEditModal"
-                          hx-get="{% org_url 'workflows:workflow_step_template_variable_edit' workflow.pk step.pk signal.variable_index %}"
+                          hx-get="{% org_url 'workflows:workflow_step_template_variable_edit' workflow.pk step.pk input.variable_index %}"
                           hx-target="#template-variable-edit-modal-content"
                           hx-trigger="click"
                           title="{% trans 'Edit variable' %}">

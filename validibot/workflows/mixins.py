@@ -39,12 +39,12 @@ def _is_parser_managed(sig) -> bool:
     """Return True when a StepIODefinition is parser-managed.
 
     Parser-managed rows have their value populated by the validator
-    itself (via ``extract_input_signals()`` or another internal source)
+    itself (via ``extract_input_values()`` or another internal source)
     rather than by an author-configured ``StepInputBinding``. Such rows
     are unreachable from BASIC assertions because BASIC walks a dotted
     payload path; they're only valid CEL targets via ``i.<contract_key>``.
 
-    The flag is consistent with ``views_helpers.build_step_signals_view``
+    The flag is consistent with ``views_helpers.build_step_outputs_view``
     which uses the same heuristic to decide whether the UI should
     surface binding / "needs path" affordances.
     """
@@ -358,19 +358,19 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         cache_key = f"_catalog_choice_cache_{stage or 'all'}"
         if hasattr(self, cache_key):
             return getattr(self, cache_key)
-        from validibot.validations.constants import SignalDirection
+        from validibot.validations.constants import StepIODirection
         from validibot.validations.models import StepIODefinition
         from validibot.workflows.models import WorkflowSignalMapping
 
         validator = self.step.validator
         choices: list[tuple[str, str]] = []
-        signal_defs: list = []
+        io_definitions: list = []
         include_outputs = stage != "input"  # input-stage excludes this step's o.*
         include_inputs = True  # i.* available at both stages
 
         # ── This validator's catalog-declared step inputs and outputs ──
         # Step inputs (direction=INPUT) populate i.* via the validator's
-        # extract_input_signals() parser hook or via resolved bindings.
+        # extract_input_values() parser hook or via resolved bindings.
         # Step outputs (direction=OUTPUT) populate o.* after the
         # validator's process runs.
         #
@@ -383,41 +383,63 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         # (rejected by RulesetAssertionForm.clean). See the May 2026
         # review's P2 finding.
         if validator:
-            signal_defs = list(
-                validator.signal_definitions.order_by("order", "contract_key")
+            io_definitions = list(
+                validator.step_io_definitions.order_by("order", "contract_key")
             )
-            for sig in signal_defs:
-                if sig.direction == SignalDirection.OUTPUT and include_outputs:
+            for io_definition in io_definitions:
+                if (
+                    io_definition.direction == StepIODirection.OUTPUT
+                    and include_outputs
+                ):
                     choices.append(
                         (
-                            f"o.{sig.contract_key}",
-                            f"{sig.label or sig.contract_key} · {_('Step output')}",
+                            f"o.{io_definition.contract_key}",
+                            f"{io_definition.label or io_definition.contract_key}"
+                            f" · {_('Step output')}",
                         ),
                     )
-                elif sig.direction == SignalDirection.INPUT and include_inputs:
-                    base_label = f"{sig.label or sig.contract_key} · {_('Step input')}"
-                    if _is_parser_managed(sig):
+                elif (
+                    io_definition.direction == StepIODirection.INPUT and include_inputs
+                ):
+                    base_label = (
+                        f"{io_definition.label or io_definition.contract_key}"
+                        f" · {_('Step input')}"
+                    )
+                    if _is_parser_managed(io_definition):
                         base_label = f"{base_label} ({_('CEL only')})"
-                    choices.append((f"i.{sig.contract_key}", base_label))
+                    choices.append((f"i.{io_definition.contract_key}", base_label))
 
         # ── Step-owned catalog entries (e.g. FMU probe results, template scans) ──
-        step_sigs = list(self.step.signal_definitions.order_by("order", "contract_key"))
-        seen = {(sig.contract_key, sig.direction) for sig in signal_defs}
-        for sig in step_sigs:
-            if (sig.contract_key, sig.direction) in seen:
+        step_io_definitions = list(
+            self.step.step_io_definitions.order_by("order", "contract_key")
+        )
+        seen = {
+            (io_definition.contract_key, io_definition.direction)
+            for io_definition in io_definitions
+        }
+        for io_definition in step_io_definitions:
+            definition_key = (io_definition.contract_key, io_definition.direction)
+            if definition_key in seen:
                 continue
-            seen.add((sig.contract_key, sig.direction))
-            display_name = sig.label or sig.native_name or sig.contract_key
-            if sig.direction == SignalDirection.OUTPUT and include_outputs:
+            seen.add(definition_key)
+            display_name = (
+                io_definition.label
+                or io_definition.native_name
+                or io_definition.contract_key
+            )
+            if io_definition.direction == StepIODirection.OUTPUT and include_outputs:
                 choices.append(
-                    (f"o.{sig.contract_key}", f"{display_name} · {_('Step output')}"),
+                    (
+                        f"o.{io_definition.contract_key}",
+                        f"{display_name} · {_('Step output')}",
+                    ),
                 )
-            elif sig.direction == SignalDirection.INPUT and include_inputs:
+            elif io_definition.direction == StepIODirection.INPUT and include_inputs:
                 base_label = f"{display_name} · {_('Step input')}"
-                if _is_parser_managed(sig):
+                if _is_parser_managed(io_definition):
                     base_label = f"{base_label} ({_('CEL only')})"
-                choices.append((f"i.{sig.contract_key}", base_label))
-            signal_defs.append(sig)
+                choices.append((f"i.{io_definition.contract_key}", base_label))
+            io_definitions.append(io_definition)
 
         # Tabular dataset metadata is runtime-produced rather than backed by
         # StepIODefinition rows. Use the same canonical inventory as the
@@ -500,7 +522,7 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
             workflow_step__order__lt=self.step.order,
         ).values_list(
             "promoted_signal_name",
-            "signal_definition__direction",
+            "io_definition__direction",
         )
 
         for signal_name, direction in list(promoted_step_owned) + list(
@@ -510,7 +532,7 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
                 seen_signal_names.add(signal_name)
                 source_label = (
                     _("Promoted step input")
-                    if direction == SignalDirection.INPUT
+                    if direction == StepIODirection.INPUT
                     else _("Promoted step output")
                 )
                 choices.append(
@@ -545,7 +567,7 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
             ],
         )
 
-        self._catalog_entries_cache = signal_defs
+        self._catalog_entries_cache = io_definitions
         setattr(self, cache_key, choices)
         self._workflow_signal_names_cache = seen_signal_names
         return choices
@@ -709,22 +731,22 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             request=self.request,
             kwargs={"pk": workflow.pk},
         )
-        # Build signal/param display data for completed runs.
-        from validibot.validations.services.signal_display import (
+        # Build step-output and parameter display data for completed runs.
+        from validibot.validations.services.step_output_display import (
             build_display_step_outputs,
         )
-        from validibot.validations.services.signal_display import (
+        from validibot.validations.services.step_output_display import (
             build_template_params_display,
         )
 
-        step_signals: dict[int, list] = {}
+        step_outputs: dict[int, list] = {}
         step_params: dict[int, list] = {}
         step_template_warnings: dict[int, list] = {}
         if not run_in_progress:
             for sr in step_runs:
-                signals = build_display_step_outputs(sr)
-                if signals:
-                    step_signals[sr.pk] = signals
+                display_outputs = build_display_step_outputs(sr)
+                if display_outputs:
+                    step_outputs[sr.pk] = display_outputs
                 params = build_template_params_display(sr)
                 if params:
                     step_params[sr.pk] = params
@@ -732,9 +754,9 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
                 if warnings:
                     step_template_warnings[sr.pk] = warnings
 
-        # Flatten all signals across steps for the "Workflow Outputs" summary.
-        all_signals = [
-            signal for signals in step_signals.values() for signal in signals
+        # Flatten all displayed values for the "Workflow Outputs" summary.
+        all_step_outputs = [
+            output for outputs in step_outputs.values() for output in outputs
         ]
 
         credential_context = {
@@ -768,9 +790,9 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "cancel_url": cancel_url,
             "launch_url": launch_url,
             "previous_runs_url": previous_runs_url,
-            "step_signals": step_signals,
-            "has_signals": bool(step_signals),
-            "all_signals": all_signals,
+            "step_outputs": step_outputs,
+            "has_step_outputs": bool(step_outputs),
+            "all_step_outputs": all_step_outputs,
             "step_params": step_params,
             "step_template_warnings": step_template_warnings,
             "artifact_items": artifact_items,

@@ -31,7 +31,7 @@ Each `RulesetAssertion` row stores:
 
 - `assertion_type` — coarse mode (`basic` vs. `cel_expr`).
 - `operator` — normalized comparison operator (only meaningful for `basic` assertions).
-- `target_signal_definition` / `target_data_path` — FK to a signal definition or a JSON-style path when the
+- `target_io_definition` / `target_data_path` — FK to a step I/O definition or a JSON-style path when the
   validator allows free-form bindings.
 - `severity` — maps to the normalized Finding severity (`error`, `warning`, `info`).
 - `when_expression` — optional CEL guard that determines whether the assertion runs.
@@ -86,7 +86,7 @@ prefixes — including `submission.*` — are **not available inside a SPARQL
 query**: it can see only the RDF triples in its target graph, and the
 submission envelope is not injected into that graph. To gate a SHACL workflow
 on submission metadata, use a **CEL** assertion (it can read `submission.*`
-alongside `o.*` output signals), not a SPARQL assertion.
+alongside `o.*` step outputs), not a SPARQL assertion.
 
 **Partial enforcement today.** Per ADR-2026-05-22's reconciliation
 notes, ``get_catalog_choices()`` accepts a ``stage`` parameter and
@@ -103,15 +103,11 @@ Bare names (without a prefix) are only accepted when the validator's
 Under the hood, targets are stored in one of two ways — never both,
 enforced by the `ck_ruleset_assertion_target_oneof` database constraint:
 
-1. **Declared step input/output definition** (`target_signal_definition`
-   FK on the `StepIODefinition` model, renamed from `SignalDefinition`
-   per ADR-2026-05-22b — internal)
+1. **Declared step input/output definition** (`target_io_definition`
+   FK on the `StepIODefinition` model)
    — used when the target resolves to a known step input
    (`i.<contract_key>`) or step output (`o.<contract_key>`). Provides
-   type-appropriate operators and compile-time validation. The FK name
-   is intentionally left at its legacy `target_signal_definition` value
-   to keep the database column and migrations stable; only the model
-   class was renamed.
+   type-appropriate operators and compile-time validation.
 
 2. **Data path** (`target_data_path` string) — used for `s.<name>`,
    `p.<path>`, and custom bare-name targets. The full prefixed value is
@@ -121,7 +117,7 @@ The `resolved_run_stage` property on `RulesetAssertion` determines
 whether an assertion fires at the input stage (before the validator
 runs) or the output stage (after). Targets with `s.`, `p.`, or `i.`
 prefixes can be used at either stage; `o.` targets and output-direction
-signal definitions are output-stage only.
+step I/O definitions are output-stage only.
 
 BASIC validators always use custom data paths because they have no provider
 catalog. CEL assertions store the raw expression in `rhs["expr"]` and reuse
@@ -149,7 +145,7 @@ workflow authors cannot accidentally skip.
 4. Assertions inherit the validator's helper allowlist, catalog metadata, and provider behavior.
 
 Validators cannot be deleted while rulesets reference them. Catalog edits (for example renaming a
-signal) require updating the validator, which in turn triggers validation for every ruleset so slugs
+step output) require updating the validator, which in turn triggers validation for every ruleset so slugs
 stay synchronized.
 
 ## CEL spec compliance

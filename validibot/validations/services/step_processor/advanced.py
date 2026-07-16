@@ -271,10 +271,10 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         Called by both sync execution and async callback paths.
         """
         # Call validator.post_execute_validate() - this:
-        # 1. Extracts signals from envelope (for assertion evaluation)
-        # 2. Evaluates output-stage assertions using those signals
+        # 1. Extracts step output values from the envelope
+        # 2. Evaluates output-stage assertions using those values
         # 3. Extracts issues from envelope messages
-        # 4. Returns ValidationResult with signals field populated
+        # 4. Returns ValidationResult with output_values populated
         post_result = validator_instance.post_execute_validate(
             output_envelope,
             run_context,
@@ -353,7 +353,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         severity_counts = existing_severity_counts + output_counts
 
         # Store canonical values for downstream steps.
-        self.store_output_values(post_result.signals or {})
+        self.store_output_values(post_result.output_values or {})
 
         # Calculate total assertion counts (input + output stages)
         input_stats = self._get_stored_assertion_stats()

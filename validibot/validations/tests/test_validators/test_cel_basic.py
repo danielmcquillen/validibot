@@ -1,15 +1,14 @@
 """Tests for CEL expression evaluation in the BasicValidator.
 
-Covers input-signal, output-signal, derived-signal, and literal CEL
-expressions, including helper functions (size, matches, startsWith),
-when-guard skipping, invalid-expression error reporting, dotted-slug
-resolution, and missing-signal null handling.
+Covers payload, validator-output, nested-value, and literal CEL expressions,
+including helper functions (size, matches, startsWith), when-guard skipping,
+invalid-expression error reporting, dotted-key resolution, and missing-value
+handling.
 
-CEL expressions reference signals via the ``s`` (signals) namespace
-(e.g. ``p.price < 10``).  Raw payload data that is not backed by a
-signal definition would use the ``p`` (payload) namespace instead.
-The ``output`` and ``steps`` namespaces are available for validator
-outputs and upstream step outputs respectively.
+These BasicValidator tests primarily exercise raw submission data through the
+``p`` (payload) namespace (for example, ``p.price < 10``). Author-named
+workflow signals use ``s.*``; validator outputs and upstream step outputs use
+``output`` and ``steps`` respectively.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from django.test import TestCase
-from django.test import override_settings
 
 from validibot.actions.protocols import RunContext
 from validibot.projects.tests.factories import ProjectFactory
@@ -31,7 +29,6 @@ from validibot.validations.constants import AssertionType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
-from validibot.validations.tests.factories import DerivationFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
@@ -39,7 +36,6 @@ from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.basic import BasicValidator
 
 
-@override_settings(ENABLE_DERIVED_SIGNALS=True)
 class CelBasicValidatorTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -49,13 +45,13 @@ class CelBasicValidatorTests(TestCase):
             is_system=False,
             org=cls.org,
         )
-        # Signal definitions spanning input/output/derived
-        cls.input_signal = StepIODefinitionFactory(
+        # Step I/O definitions spanning input/output/derived
+        cls.input_definition = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="price",
             direction="input",
         )
-        cls.output_signal = StepIODefinitionFactory(
+        cls.output_definition = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="result.total",
             direction="output",
@@ -65,16 +61,12 @@ class CelBasicValidatorTests(TestCase):
             contract_key="result.status",
             direction="output",
         )
-        cls.derived_signal = DerivationFactory(
-            validator=cls.validator,
-            contract_key="metrics.avg",
-        )
         cls.required_entry = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="required_value",
             direction="input",
         )
-        cls.list_signal = StepIODefinitionFactory(
+        cls.list_definition = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="items",
             direction="input",
@@ -91,7 +83,7 @@ class CelBasicValidatorTests(TestCase):
         submission.save(update_fields=["content"])
         return submission
 
-    def test_true_expression_on_input_signal(self):
+    def test_true_expression_on_payload_value(self):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
@@ -121,7 +113,7 @@ class CelBasicValidatorTests(TestCase):
         self.assertTrue(result.passed)
         self.assertEqual(len(result.issues), 0)
 
-    def test_false_expression_on_input_signal(self):
+    def test_false_expression_on_payload_value(self):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
@@ -256,8 +248,8 @@ class CelBasicValidatorTests(TestCase):
         """Accessing a missing payload key via ``p.missing_key`` produces
         a CEL evaluation error (field not found).  Under the namespaced
         design, there is no implicit None injection for missing keys —
-        the author must either define a signal with ``on_missing=null``
-        or guard with ``has(p.missing_key)``.
+        the author must guard with ``has(p.missing_key)`` when absence is
+        permitted.
         """
         RulesetAssertionFactory(
             ruleset=self.ruleset,
@@ -296,12 +288,12 @@ class CelBasicValidatorTests(TestCase):
         self.assertEqual(len(result.issues), 0)
 
     def test_output_stage_assertion(self):
-        output_sig = self.output_signal
+        output_definition = self.output_definition
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_signal_definition=output_sig,
+            target_io_definition=output_definition,
             target_data_path="",
             rhs={"expr": "output.result.total == 5"},
         )
@@ -317,12 +309,12 @@ class CelBasicValidatorTests(TestCase):
         self.assertEqual(len(result.issues), 0)
 
     def test_startswith_helper_on_output(self):
-        status_sig = self.output_status
+        status_definition = self.output_status
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_signal_definition=status_sig,
+            target_io_definition=status_definition,
             target_data_path="",
             rhs={"expr": 'output.result.status.startsWith("OK")'},
         )

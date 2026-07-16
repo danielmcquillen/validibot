@@ -259,7 +259,7 @@ class TestValidatorClassResolution:
 class TestStepEditorCards:
     """Verify step editor card specs on validator configs.
 
-    Template variable editing is handled by the unified signals card
+    Template variable editing is handled by the unified Inputs/Outputs card
     rather than custom step_editor_cards. No validators currently
     declare custom cards, but the extension point remains available
     for future use.
@@ -268,7 +268,7 @@ class TestStepEditorCards:
     def test_energyplus_has_no_step_editor_cards(self):
         """EnergyPlus no longer declares custom step editor cards.
 
-        Template variable editing moved to the unified signals card's
+        Template variable editing moved to the unified Inputs/Outputs card's
         per-variable edit modal.
         """
         cfg = get_config(ValidationType.ENERGYPLUS)

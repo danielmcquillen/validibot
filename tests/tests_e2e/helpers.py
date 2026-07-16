@@ -188,31 +188,31 @@ def submit_and_poll(
 # ---------------------------------------------------------------------------
 
 
-def get_output_signals(result: dict) -> dict[str, float | str | None]:
-    """Extract output signals from the first step as a slug→value mapping.
+def get_output_values(result: dict) -> dict[str, float | str | None]:
+    """Extract output values from the first step as a slug→value mapping.
 
-    Returns an empty dict if no steps or signals are present.
+    Returns an empty dict if no steps or output values are present.
     """
     steps = result.get("data", {}).get("steps", [])
     if not steps:
         return {}
 
-    signals = {}
-    for sig in steps[0].get("output_signals", []):
-        slug = sig.get("slug", "")
-        value = sig.get("value")
+    output_values = {}
+    for output in steps[0].get("output_values", []):
+        slug = output.get("slug", "")
+        value = output.get("value")
         if slug:
-            signals[slug] = value
-    return signals
+            output_values[slug] = value
+    return output_values
 
 
-def get_output_signal(result: dict, slug: str) -> float | None:
-    """Extract a single output signal value by slug.
+def get_output_value(result: dict, slug: str) -> float | None:
+    """Extract a single output value by slug.
 
-    Returns None if the signal is not found.
+    Returns None if the output is not found.
     """
-    signals = get_output_signals(result)
-    return signals.get(slug)
+    output_values = get_output_values(result)
+    return output_values.get(slug)
 
 
 def get_step_issues(

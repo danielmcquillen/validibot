@@ -32,8 +32,8 @@ Design rules encoded here (each is an ADR decision):
   are excluded.
 * **Import-stable sort + target.** Constants and signal mappings sort by
   ``name`` (never ``position`` — cosmetic — or ``pk`` — unstable across
-  export/import). Assertion targets normalize to the signal ``contract_key`` or
-  the free-form path, never the ``target_signal_definition_id`` pk.
+  export/import). Assertion targets normalize to the I/O ``contract_key`` or
+  the free-form path, never the ``target_io_definition_id`` pk.
 * **Constants store exact values.** A ``NUMBER`` constant's decimal string
   (``"0.40"``) is hashed verbatim, preserving attested precision.
 
@@ -225,12 +225,12 @@ def _project_assertion(assertion: RulesetAssertion) -> dict[str, Any]:
 
     Consumes the same allowlist that governs edit-after-runs immutability, so
     the semantic/cosmetic boundary is defined once. The target is normalized to
-    the signal ``contract_key`` or the free-form path — never the
-    ``target_signal_definition_id`` pk, which is unstable across export/import.
+    the I/O-definition ``contract_key`` or the free-form path — never the
+    ``target_io_definition_id`` pk, which is unstable across export/import.
     """
     entry: dict[str, Any] = {}
     for field in assertion.IMMUTABLE_ASSERTION_FIELDS:
-        if field == "target_signal_definition_id":
+        if field == "target_io_definition_id":
             # Normalize the target to a stable, import-safe identifier.
             entry["target_field"] = _normalized_target(assertion)
         elif field == "target_data_path":
@@ -242,6 +242,6 @@ def _project_assertion(assertion: RulesetAssertion) -> dict[str, Any]:
 
 def _normalized_target(assertion: RulesetAssertion) -> str:
     """Resolve an assertion's target to a stable key (contract_key or path)."""
-    if assertion.target_signal_definition_id and assertion.target_signal_definition:
-        return assertion.target_signal_definition.contract_key
+    if assertion.target_io_definition_id and assertion.target_io_definition:
+        return assertion.target_io_definition.contract_key
     return assertion.target_data_path or ""

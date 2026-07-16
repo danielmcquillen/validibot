@@ -2,7 +2,7 @@
 
 This is the deserialize half of the ``.vaf`` round-trip. It mirrors the
 create-order and FK-rebinding rules of ``WorkflowVersioningService.clone`` —
-rulesets before steps, signals before assertions — but its source is a portable
+rulesets before steps, I/O definitions before assertions — but its source is a portable
 definition dict rather than live rows, and it rebinds ownership to the importing
 user instead of copying it.
 
@@ -234,7 +234,7 @@ def _import_step(
     warnings: list[str],
     components: dict[str, int],
 ) -> None:
-    """Create one step and its full validator body (ruleset, signals, etc.)."""
+    """Create one step and its full validator body (ruleset, step I/O, etc.)."""
     from validibot.workflows.models import WorkflowStep
 
     if data.get("kind") == "action":
@@ -272,20 +272,20 @@ def _import_step(
     step.save()
     components["steps"] = components.get("steps", 0) + 1
 
-    # Step-owned signals must exist before assertions/bindings can target them.
-    signal_index = _import_signal_definitions(
-        step, data.get("signal_definitions") or []
+    # Step-owned I/O definitions must exist before assertions/bindings target them.
+    io_definition_index = _import_step_io_definitions(
+        step, data.get("step_io_definitions") or []
     )
-    resolver = _make_signal_resolver(step, validator, signal_index)
+    resolver = _make_io_definition_resolver(step, validator, io_definition_index)
 
     if ruleset is not None:
         made = serializer.create_assertions(
-            ruleset, ruleset_body, signal_resolver=resolver
+            ruleset, ruleset_body, io_definition_resolver=resolver
         )
         serializer.validate_imported_ruleset(ruleset, ruleset_body)
         components["assertions"] = components.get("assertions", 0) + made
 
-    _import_signal_bindings(step, data.get("signal_bindings") or [], resolver)
+    _import_input_bindings(step, data.get("input_bindings") or [], resolver)
     _import_derivations(step, data.get("derivations") or [])
     _import_io_promotions(step, data.get("io_promotions") or [], resolver)
     _import_resources(
@@ -355,41 +355,41 @@ def _resolve_validator(
     return fallback
 
 
-# ─────────────────────────────────────────────────── step signals ──
+# ───────────────────────────────────────────── step I/O definitions ──
 
 
-def _import_signal_definitions(
+def _import_step_io_definitions(
     step: WorkflowStep,
     rows: list[dict[str, Any]],
 ) -> dict[tuple[str, str], StepIODefinition]:
-    """Create step-owned signal definitions; index them by (contract_key, dir)."""
+    """Create step-owned I/O definitions indexed by contract key and direction."""
     from validibot.validations.models import StepIODefinition
 
     index: dict[tuple[str, str], StepIODefinition] = {}
     for row in rows:
-        signal = StepIODefinition(workflow_step=step, validator=None)
-        for field_name in schema.SIGNAL_DEFINITION_FIELDS:
+        io_definition = StepIODefinition(workflow_step=step, validator=None)
+        for field_name in schema.STEP_IO_DEFINITION_FIELDS:
             if field_name in row:
-                setattr(signal, field_name, row[field_name])
-        for json_field in schema.SIGNAL_DEFINITION_JSON_DICT_FIELDS:
-            setattr(signal, json_field, deepcopy(row.get(json_field) or {}))
-        for json_field in schema.SIGNAL_DEFINITION_JSON_LIST_FIELDS:
-            setattr(signal, json_field, deepcopy(row.get(json_field) or []))
-        signal.full_clean()
-        signal.save()
-        index[(signal.contract_key, signal.direction)] = signal
+                setattr(io_definition, field_name, row[field_name])
+        for json_field in schema.STEP_IO_DEFINITION_JSON_DICT_FIELDS:
+            setattr(io_definition, json_field, deepcopy(row.get(json_field) or {}))
+        for json_field in schema.STEP_IO_DEFINITION_JSON_LIST_FIELDS:
+            setattr(io_definition, json_field, deepcopy(row.get(json_field) or []))
+        io_definition.full_clean()
+        io_definition.save()
+        index[(io_definition.contract_key, io_definition.direction)] = io_definition
     return index
 
 
-def _make_signal_resolver(
+def _make_io_definition_resolver(
     step: WorkflowStep,
     validator: Validator,
-    step_signals: dict[tuple[str, str], StepIODefinition],
+    step_outputs: dict[tuple[str, str], StepIODefinition],
 ):
-    """Return a resolver mapping a serialized signal ref to a live row (or None).
+    """Return a resolver mapping a serialized io_definition ref to a live row (or None).
 
-    Step-owned refs resolve within this step's freshly created signals;
-    validator-owned refs resolve via the resolved validator's catalog signals.
+    Step-owned refs resolve within this step's freshly created I/O definitions;
+    validator-owned refs resolve via the resolved validator's I/O catalog.
     """
 
     def resolve(ref: dict[str, Any]) -> StepIODefinition | None:
@@ -397,8 +397,8 @@ def _make_signal_resolver(
             return None
         key = (ref.get("contract_key"), ref.get("direction"))
         if ref.get("owner") == "step":
-            return step_signals.get(key)
-        return validator.signal_definitions.filter(
+            return step_outputs.get(key)
+        return validator.step_io_definitions.filter(
             contract_key=ref.get("contract_key"),
             direction=ref.get("direction"),
         ).first()
@@ -406,21 +406,21 @@ def _make_signal_resolver(
     return resolve
 
 
-def _import_signal_bindings(step, rows, resolver) -> None:
-    """Create step input bindings, re-binding each to its signal definition."""
+def _import_input_bindings(step, rows, resolver) -> None:
+    """Create step input bindings, re-binding each to its io_definition definition."""
     from validibot.validations.models import StepInputBinding
 
     for row in rows:
-        signal = resolver(row.get("signal_ref"))
-        if signal is None:
+        io_definition = resolver(row.get("io_definition_ref"))
+        if io_definition is None:
             continue  # nothing to bind to (warned elsewhere if validator-owned)
         binding = StepInputBinding(
             workflow_step=step,
-            signal_definition=signal,
+            io_definition=io_definition,
             default_value=deepcopy(row.get("default_value")),
             **{
                 f: row.get(f)
-                for f in schema.SIGNAL_BINDING_FIELDS
+                for f in schema.INPUT_BINDING_FIELDS
                 if row.get(f) is not None
             },
         )
@@ -446,16 +446,16 @@ def _import_derivations(step, rows) -> None:
 
 
 def _import_io_promotions(step, rows, resolver) -> None:
-    """Create signal->s.* promotion overlays for validator-owned signals."""
+    """Create I/O-definition-to-s.* overlays for validator-owned value ports."""
     from validibot.validations.models import WorkflowStepIOPromotion
 
     for row in rows:
-        signal = resolver(row.get("signal_ref"))
-        if signal is None:
+        io_definition = resolver(row.get("io_definition_ref"))
+        if io_definition is None:
             continue
         WorkflowStepIOPromotion.objects.create(
             workflow_step=step,
-            signal_definition=signal,
+            io_definition=io_definition,
             promoted_signal_name=row.get("promoted_signal_name") or "",
         )
 

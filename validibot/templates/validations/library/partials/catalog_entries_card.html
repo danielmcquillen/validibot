@@ -14,9 +14,9 @@
   </div>
   <div class="card-body">
     {% if not inputs and not outputs %}
-      {# Hide the card entirely when no signals exist #}
+      {# Hide the card entirely when no step I/O definitions exist. #}
       <p class="text-muted mb-0">
-        {% trans "No signals registered yet." %}
+        {% trans "No step inputs or outputs registered yet." %}
       </p>
     {% elif flat_mode %}
       {% with prefix=catalog_tab_prefix|default:'catalog' %}
@@ -43,7 +43,7 @@
           <input type="search"
                  class="form-control form-control-sm"
                  id="{{ prefix }}-flat-filter"
-                 placeholder="{% trans 'Filter by signal name' %}"
+                 placeholder="{% trans 'Filter by contract key' %}"
                  data-sv-catalog-filter
                  data-sv-catalog-filter-target="#{{ prefix }}-flat-panel" />
         </div>
@@ -53,7 +53,7 @@
               <thead>
                 <tr>
                   <th class="text-muted small" data-sortable="true">
-                    {% trans "Signal Name" %}
+                    {% trans "Contract Key" %}
                   </th>
                   <th class="text-muted small" data-sortable="true">
                     {% trans "Direction" %}
@@ -87,7 +87,7 @@
                       <button type="button"
                               class="btn btn-sm btn-outline-secondary"
                               data-bs-toggle="modal"
-                              data-bs-target="#modal-signal-detail-{{ entry.id }}"
+                              data-bs-target="#modal-step-io-detail-{{ entry.id }}"
                               title="{% trans 'View details' %}">
                         <i class="bi bi-info-circle"></i>
                       </button>
@@ -121,7 +121,7 @@
                       <button type="button"
                               class="btn btn-sm btn-outline-secondary"
                               data-bs-toggle="modal"
-                              data-bs-target="#modal-signal-detail-{{ entry.id }}"
+                              data-bs-target="#modal-step-io-detail-{{ entry.id }}"
                               title="{% trans 'View details' %}">
                         <i class="bi bi-info-circle"></i>
                       </button>
@@ -136,7 +136,7 @@
                                    3
                                  {% endif %}"
                         class="text-muted small">
-                      {% trans "No signals registered yet." %}
+                      {% trans "No step inputs or outputs registered yet." %}
                     </td>
                   </tr>
                 {% endif %}
@@ -189,7 +189,7 @@
             <input type="search"
                    class="form-control form-control-sm"
                    id="{{ catalog_tab_prefix|default:'catalog' }}-input-filter"
-                   placeholder="{% trans 'Filter by signal name' %}"
+                   placeholder="{% trans 'Filter by contract key' %}"
                    data-sv-catalog-filter
                    data-sv-catalog-filter-target="#{{ catalog_tab_prefix|default:'catalog' }}-input-panel" />
           </div>
@@ -217,7 +217,7 @@
             <input type="search"
                    class="form-control form-control-sm"
                    id="{{ catalog_tab_prefix|default:'catalog' }}-output-filter"
-                   placeholder="{% trans 'Filter by signal name' %}"
+                   placeholder="{% trans 'Filter by contract key' %}"
                    data-sv-catalog-filter
                    data-sv-catalog-filter-target="#{{ catalog_tab_prefix|default:'catalog' }}-output-panel" />
           </div>
@@ -237,7 +237,7 @@
       {% include 'validations/library/partials/catalog_entry_list.html' with entries=inputs %}
     {% else %}
       <p class="text-muted mb-0">
-        {% trans "No signals registered yet." %}
+        {% trans "No step inputs or outputs registered yet." %}
       </p>
     {% endif %}
   </div>

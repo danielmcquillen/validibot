@@ -134,15 +134,15 @@ class ValidatorFactory(DjangoModelFactory):
 class StepIODefinitionFactory(DjangoModelFactory):
     """Factory for the unified StepIODefinition model.
 
-    Creates signal definitions with sensible defaults. Typically owned
-    by a validator (library signals) — set workflow_step instead for
-    step-level signals.
+    Creates step I/O definitions with sensible defaults. Typically owned
+    by a validator (library contract) — set workflow_step instead for
+    step-specific definitions.
     """
 
     class Meta:
         model = "validations.StepIODefinition"
 
-    contract_key = factory.Sequence(lambda n: f"signal_{n}")
+    contract_key = factory.Sequence(lambda n: f"io_value_{n}")
     native_name = factory.LazyAttribute(lambda o: o.contract_key)
     direction = "input"
     data_type = "number"
@@ -154,7 +154,7 @@ class StepIODefinitionFactory(DjangoModelFactory):
 
 
 class StepInputBindingFactory(DjangoModelFactory):
-    """Factory for per-step signal bindings.
+    """Factory for per-step input bindings.
 
     Links a StepIODefinition to a WorkflowStep with binding configuration
     (source_data_path, default_value, is_required).
@@ -166,7 +166,7 @@ class StepInputBindingFactory(DjangoModelFactory):
     workflow_step = factory.SubFactory(
         "validibot.workflows.tests.factories.WorkflowStepFactory",
     )
-    signal_definition = factory.SubFactory(StepIODefinitionFactory)
+    io_definition = factory.SubFactory(StepIODefinitionFactory)
     source_scope = "submission_payload"
     source_data_path = ""
     is_required = True
@@ -179,7 +179,7 @@ class DerivationFactory(DjangoModelFactory):
         model = "validations.Derivation"
 
     contract_key = factory.Sequence(lambda n: f"derived_{n}")
-    expression = "signal_a + signal_b"
+    expression = "value_a + value_b"
     data_type = "number"
     validator = factory.SubFactory(ValidatorFactory)
     order = factory.Sequence(lambda n: n)

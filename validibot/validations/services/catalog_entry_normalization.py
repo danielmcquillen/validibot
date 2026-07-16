@@ -8,14 +8,14 @@ concerns:
 - provider-native runtime metadata (for example an EnergyPlus metric key)
 - submission-source defaults (for example ``submission.metadata`` path)
 
-The unified signal model stores those concerns separately:
+The unified step I/O model stores those concerns separately:
 
 - ``StepIODefinition.provider_binding`` holds provider-facing runtime hints
 - ``StepInputBinding`` holds per-step submission sourcing defaults
 
 These helpers translate the legacy mixed mapping into those two
-representations so the database stays aligned with the unified
-signal model without forcing every validator config to change at
+representations so the database stays aligned with the step I/O
+model without forcing every validator config to change at
 once.
 """
 
@@ -118,7 +118,7 @@ def build_provider_binding_from_mapping(
         # Per ADR-2026-05-22, parser-extracted step inputs declare
         # {"source": "parser", "key": "<contract_key>"} in their
         # binding_config. These values are populated at runtime by the
-        # validator's extract_input_signals() hook — no payload path or
+        # validator's extract_input_values() hook — no payload path or
         # runtime metadata is involved at all, so the provider_binding
         # stored on StepIODefinition is empty.
         return {}

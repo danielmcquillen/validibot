@@ -32,10 +32,10 @@ In scope (this module):
 - :class:`WorkflowStepResource` rows (both catalog references and
   step-owned files)
 - Step-level rulesets and their assertions
-- Step-owned signal definitions, bindings, and derivations
+- Step-owned I/O definitions, input bindings, and derivations
 - :class:`WorkflowPublicInfo` (the public-facing info page)
 - :class:`WorkflowRoleAccess` (per-role permission grants)
-- :class:`WorkflowSignalMapping` (cross-step signal flow)
+- :class:`WorkflowSignalMapping` (workflow-level named values)
 
 Out of scope (deferred to later Phase 3 sessions):
 
@@ -336,8 +336,8 @@ class WorkflowVersioningService:
             workflow.steps.select_related("ruleset")
             .prefetch_related(
                 "step_resources",
-                "signal_definitions",
-                "signal_bindings",
+                "step_io_definitions",
+                "input_bindings",
                 "derivations",
                 # io_promotions is the related_name for
                 # WorkflowStepIOPromotion. We prefetch it here so the
@@ -354,11 +354,11 @@ class WorkflowVersioningService:
         step_resource_map = {
             step.pk: list(step.step_resources.all()) for step in original_steps
         }
-        step_signal_map = {
-            step.pk: list(step.signal_definitions.all()) for step in original_steps
+        step_io_definition_map = {
+            step.pk: list(step.step_io_definitions.all()) for step in original_steps
         }
         step_binding_map = {
-            step.pk: list(step.signal_bindings.all()) for step in original_steps
+            step.pk: list(step.input_bindings.all()) for step in original_steps
         }
         step_derivation_map = {
             step.pk: list(step.derivations.all()) for step in original_steps
@@ -396,39 +396,41 @@ class WorkflowVersioningService:
             for old_pk, new_step in zip(old_pks, original_steps, strict=True)
         }
 
-        signal_clone_map: dict[int, StepIODefinition] = {}
-        signal_count = 0
+        io_definition_clone_map: dict[int, StepIODefinition] = {}
+        io_definition_count = 0
         binding_count = 0
         derivation_count = 0
         for old_pk, new_step in step_clone_map.items():
-            for old_signal in step_signal_map.get(old_pk, []):
-                old_signal_pk = old_signal.pk
-                old_signal.pk = None
-                old_signal.workflow_step = new_step
-                old_signal.validator = None
-                old_signal.provider_binding = deepcopy(old_signal.provider_binding)
-                old_signal.metadata = deepcopy(old_signal.metadata)
-                old_signal.accepted_data_formats = deepcopy(
-                    old_signal.accepted_data_formats
+            for old_io_definition in step_io_definition_map.get(old_pk, []):
+                old_io_definition_pk = old_io_definition.pk
+                old_io_definition.pk = None
+                old_io_definition.workflow_step = new_step
+                old_io_definition.validator = None
+                old_io_definition.provider_binding = deepcopy(
+                    old_io_definition.provider_binding
                 )
-                old_signal.accepted_media_types = deepcopy(
-                    old_signal.accepted_media_types
+                old_io_definition.metadata = deepcopy(old_io_definition.metadata)
+                old_io_definition.accepted_data_formats = deepcopy(
+                    old_io_definition.accepted_data_formats
                 )
-                old_signal.allowed_source_scopes = deepcopy(
-                    old_signal.allowed_source_scopes
+                old_io_definition.accepted_media_types = deepcopy(
+                    old_io_definition.accepted_media_types
                 )
-                old_signal.save()
-                signal_clone_map[old_signal_pk] = old_signal
-                signal_count += 1
+                old_io_definition.allowed_source_scopes = deepcopy(
+                    old_io_definition.allowed_source_scopes
+                )
+                old_io_definition.save()
+                io_definition_clone_map[old_io_definition_pk] = old_io_definition
+                io_definition_count += 1
 
             for old_binding in step_binding_map.get(old_pk, []):
-                signal_definition = signal_clone_map.get(
-                    old_binding.signal_definition_id,
-                    old_binding.signal_definition,
+                io_definition = io_definition_clone_map.get(
+                    old_binding.io_definition_id,
+                    old_binding.io_definition,
                 )
                 old_binding.pk = None
                 old_binding.workflow_step = new_step
-                old_binding.signal_definition = signal_definition
+                old_binding.io_definition = io_definition
                 old_binding.default_value = deepcopy(old_binding.default_value)
                 old_binding.save()
                 binding_count += 1
@@ -444,13 +446,13 @@ class WorkflowVersioningService:
         # Clone WorkflowStepIOPromotion overlays (per May 2026 P1 review).
         # The overlay carries workflow-scoped promoted names for validator-
         # owned StepIODefinition rows (catalog entries shared across
-        # workflows). Two cases for resolving the cloned signal_definition:
+        # workflows). Two cases for resolving the cloned io_definition:
         #
         # 1. The overlay points at a STEP-OWNED row that we just cloned —
-        #    use signal_clone_map to redirect to the new row.
+        #    use io_definition_clone_map to redirect to the new row.
         # 2. The overlay points at a VALIDATOR-OWNED row (catalog entry) —
         #    the original row is shared across workflows, so the clone
-        #    keeps the same signal_definition FK. signal_clone_map.get()
+        #    keeps the same io_definition FK. io_definition_clone_map.get()
         #    falls back to the original row in this case.
         #
         # Without this clone, the new workflow version would silently
@@ -459,13 +461,13 @@ class WorkflowVersioningService:
         promotion_count = 0
         for old_pk, new_step in step_clone_map.items():
             for old_promotion in step_promotion_map.get(old_pk, []):
-                cloned_signal_def = signal_clone_map.get(
-                    old_promotion.signal_definition_id,
-                    old_promotion.signal_definition,
+                cloned_io_definition = io_definition_clone_map.get(
+                    old_promotion.io_definition_id,
+                    old_promotion.io_definition,
                 )
                 WorkflowStepIOPromotion.objects.create(
                     workflow_step=new_step,
-                    signal_definition=cloned_signal_def,
+                    io_definition=cloned_io_definition,
                     promoted_signal_name=old_promotion.promoted_signal_name,
                 )
                 promotion_count += 1
@@ -477,16 +479,16 @@ class WorkflowVersioningService:
                 ruleset_id=source_ruleset_id,
             ).order_by("order", "pk")
             for assertion in source_assertions:
-                target_signal = signal_clone_map.get(
-                    assertion.target_signal_definition_id,
-                    assertion.target_signal_definition,
+                target_io_definition = io_definition_clone_map.get(
+                    assertion.target_io_definition_id,
+                    assertion.target_io_definition,
                 )
                 RulesetAssertion.objects.create(
                     ruleset=cloned_ruleset,
                     order=assertion.order,
                     assertion_type=assertion.assertion_type,
                     operator=assertion.operator,
-                    target_signal_definition=target_signal,
+                    target_io_definition=target_io_definition,
                     target_data_path=assertion.target_data_path,
                     severity=assertion.severity,
                     when_expression=assertion.when_expression,
@@ -501,8 +503,8 @@ class WorkflowVersioningService:
                 assertion_count += 1
         components_copied["rulesets"] = len(ruleset_clone_map)
         components_copied["assertions"] = assertion_count
-        components_copied["signal_definitions"] = signal_count
-        components_copied["signal_bindings"] = binding_count
+        components_copied["step_io_definitions"] = io_definition_count
+        components_copied["input_bindings"] = binding_count
         components_copied["derivations"] = derivation_count
 
         step_resource_count = 0

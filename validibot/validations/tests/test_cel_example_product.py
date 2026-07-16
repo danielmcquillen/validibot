@@ -32,7 +32,7 @@ class TestExampleProductWithCEL(TestCase):
             validation_type=ValidationType.BASIC,
             is_system=False,
         )
-        # Signal definitions needed for CEL context resolution.
+        # Step I/O definitions needed for CEL context resolution.
         cls.price_entry = StepIODefinitionFactory(
             validator=cls.validator,
             contract_key="price",
@@ -65,11 +65,11 @@ class TestExampleProductWithCEL(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            # Set target_signal_definition to an input signal so the assertion
+            # Set target_io_definition to an step input so the assertion
             # runs in input stage (resolved_run_stage defaults to OUTPUT
-            # when target_signal_definition is None).
-            target_signal_definition=self.price_entry,
-            # Required: must be empty when signal definition is set
+            # when target_io_definition is None).
+            target_io_definition=self.price_entry,
+            # Required: must be empty when step I/O definition is set
             target_data_path="",
             rhs={"expr": self.expression},
             message_template=self.message_template,
@@ -103,7 +103,7 @@ class TestExampleProductWithCEL(TestCase):
         """Accessing a signal that doesn't exist in the s namespace
         produces a CEL evaluation error. The s namespace is only
         populated by workflow-level signal mappings and promoted
-        outputs, not by validator input signal definitions.
+        outputs, not by validator step input definitions.
         """
         validator = ValidatorFactory(
             validation_type=ValidationType.BASIC,

@@ -5,7 +5,7 @@ ADR but were not previously exercised at the integration level:
 
 1. **Promoted output injection** (``_inject_promotions`` in base.py):
    When a ``StepIODefinition`` with ``direction=OUTPUT`` has a non-empty
-   ``signal_name``, that output's value should appear in the ``s.*`` CEL
+   ``promoted_signal_name``, that output's value should appear in the ``s.*`` CEL
    namespace for downstream steps.
 
 2. **Fail-fast on_missing=error** (``_resolve_workflow_signals`` in
@@ -31,7 +31,7 @@ from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
@@ -108,14 +108,14 @@ class TestPromotedOutputInjection(TestCase):
             step_key="energy_step",
         )
 
-        # Create a promoted output signal definition.
+        # Create a promoted output value definition.
         # StepIODefinition has a XOR constraint: set either validator OR
         # workflow_step, not both.  For step-level promotion, use
         # workflow_step only.
         StepIODefinition.objects.create(
             workflow_step=step1,
             contract_key="site_eui",
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
             promoted_signal_name="eui",
         )
 
@@ -150,7 +150,7 @@ class TestPromotedOutputInjection(TestCase):
         )
 
         # Fake step 1's validator to return the promoted output
-        step1_signals = {"site_eui": 87.5}
+        step1_output_values = {"site_eui": 87.5}
 
         class FakeValidator:
             """Stub validator that produces a known output value."""
@@ -160,7 +160,7 @@ class TestPromotedOutputInjection(TestCase):
                     passed=True,
                     issues=[],
                     assertion_stats=AssertionStats(),
-                    signals=step1_signals,
+                    output_values=step1_output_values,
                     stats={},
                 )
 

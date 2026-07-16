@@ -36,9 +36,9 @@ from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import SignalDirection
-from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOOriginKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import StepInputBinding
@@ -80,8 +80,8 @@ def create_energyplus_file_ports(validator: Validator) -> None:
         contract_key="primary_model",
         native_name="primary_model",
         label="Model file",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         envelope_channel=EnvelopeChannel.INPUT_FILES,
@@ -98,8 +98,8 @@ def create_energyplus_file_ports(validator: Validator) -> None:
         contract_key="weather_file",
         native_name="weather_file",
         label="Weather file",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         envelope_channel=EnvelopeChannel.RESOURCE_FILES,
@@ -406,13 +406,12 @@ def test_fmu_validator_enabled_for_json_workflow(client):
     )
 
 
-def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
-    """The inline display-signal toggle should update only the current step.
+def test_toggle_step_output_display_round_trips_step_owned_outputs(client):
+    """The inline step-output toggle should update only the current step.
 
     Step-owned outputs have ``validator=None``, so the view must not
-    accidentally include output signals from other steps when it expands
-    the implicit "show all" state into an explicit ``display_step_outputs``
-    list.
+    accidentally include output values from other steps when it expands
+    the step's explicit ``display_step_outputs`` allowlist.
     """
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
@@ -452,20 +451,20 @@ def test_toggle_display_signal_view_round_trips_step_owned_outputs(client):
         args=[workflow.pk, step.pk, "t_room"],
     )
 
-    hide_response = client.post(url, HTTP_HX_REQUEST="true")
-
-    assert hide_response.status_code == HTTPStatus.OK
-    step.refresh_from_db()
-    assert set(step.display_settings["display_step_outputs"]) == {"q_cool"}
-    assert "foreign_output" not in step.display_settings["display_step_outputs"]
-    assert "Hidden from results" in hide_response.content.decode()
-
     show_response = client.post(url, HTTP_HX_REQUEST="true")
 
     assert show_response.status_code == HTTPStatus.OK
     step.refresh_from_db()
-    assert step.display_settings["display_step_outputs"] == []
+    assert set(step.display_settings["display_step_outputs"]) == {"t_room"}
+    assert "foreign_output" not in step.display_settings["display_step_outputs"]
     assert "Shown in results" in show_response.content.decode()
+
+    hide_response = client.post(url, HTTP_HX_REQUEST="true")
+
+    assert hide_response.status_code == HTTPStatus.OK
+    step.refresh_from_db()
+    assert step.display_settings["display_step_outputs"] == []
+    assert "Hidden from results" in hide_response.content.decode()
 
 
 def test_create_view_creates_json_schema_step(client):
@@ -882,10 +881,10 @@ def test_energyplus_file_source_picker_saves_default_bindings(client):
     assert response.status_code == HTTPStatus.FOUND
     step = workflow.steps.get()
     bindings = {
-        binding.signal_definition.contract_key: binding
+        binding.io_definition.contract_key: binding
         for binding in StepInputBinding.objects.filter(
             workflow_step=step
-        ).select_related("signal_definition")
+        ).select_related("io_definition")
     }
     assert bindings["primary_model"].source_scope == BindingSourceScope.SUBMISSION_FILE
     assert bindings["primary_model"].source_data_path == "primary-model"
@@ -912,8 +911,8 @@ def test_energyplus_file_source_picker_saves_upstream_artifact_binding(client):
         contract_key="generated_model",
         native_name="generated_model",
         label="Generated model",
-        direction=SignalDirection.OUTPUT,
-        origin_kind=SignalOriginKind.CATALOG,
+        direction=StepIODirection.OUTPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
@@ -948,7 +947,7 @@ def test_energyplus_file_source_picker_saves_upstream_artifact_binding(client):
     step = workflow.steps.exclude(pk=upstream_step.pk).get()
     binding = StepInputBinding.objects.get(
         workflow_step=step,
-        signal_definition__contract_key="primary_model",
+        io_definition__contract_key="primary_model",
     )
     assert binding.source_scope == BindingSourceScope.UPSTREAM_ARTIFACT
     assert binding.source_data_path == f"{upstream_step.step_key}.generated_model"
@@ -983,8 +982,8 @@ def test_step_detail_lists_generated_files_separately_from_outputs(client):
         contract_key="generated_model",
         native_name="generated_model",
         label="Generated model",
-        direction=SignalDirection.OUTPUT,
-        origin_kind=SignalOriginKind.CATALOG,
+        direction=StepIODirection.OUTPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
@@ -1926,7 +1925,7 @@ class _TabPaneParser(HTMLParser):
 
 # ── Step detail: three-section layout for processor validators ────────
 # Validators with has_processor=True always show the input assertions /
-# process divider / output assertions layout, even when no signal
+# process divider / output assertions layout, even when no step I/O
 # definitions exist yet.  The Inputs and Outputs card in the right
 # column also always shows both tabs.
 
@@ -1947,10 +1946,10 @@ def _make_processor_step(client):
     return workflow, step
 
 
-def test_processor_step_shows_signal_stages_layout(client):
+def test_processor_step_shows_io_stages_layout(client):
     """A step with a processor validator must render the three-section
     assertions layout (input assertions / process divider / output
-    assertions) even when no signal definitions exist.
+    assertions) even when no step I/O definitions exist.
 
     This ensures the user always sees the structural slots for input
     and output assertions on processor-based validators like FMU and
@@ -2051,8 +2050,8 @@ def test_processor_step_shows_both_io_tabs(client):
 
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
-    assert "signals-input-tab" in html
-    assert "signals-output-tab" in html
+    assert "step-io-input-tab" in html
+    assert "step-io-output-tab" in html
     assert "Step Inputs" in html
     assert "Step Outputs" in html
     assert "Inputs and Outputs" in html
@@ -2060,7 +2059,7 @@ def test_processor_step_shows_both_io_tabs(client):
 
 def test_non_processor_step_hides_empty_io_card(client):
     """A step without a processor (e.g. Basic validator) should not
-    render the Inputs and Outputs card when there are no signals.
+    render the Inputs and Outputs card when there are no I/O definitions.
 
     This avoids showing an empty, confusing card for simple validators
     that don't have a processor stage.
@@ -2088,8 +2087,8 @@ def test_non_processor_step_hides_empty_io_card(client):
     html = response.content.decode()
     # No process chip for basic validators
     assert "validator-process-chip" not in html
-    # No IO tabs when there are no signals and no processor
-    assert "signals-input-tab" not in html
+    # No I/O tabs when there are no definitions and no processor
+    assert "step-io-input-tab" not in html
 
 
 # ── Step detail: visible operation item for inline validators ─────────
@@ -2305,13 +2304,13 @@ def test_tabular_step_shows_validation_operation_before_assertions(client):
     assert "Columns" in operation_html
     assert "Required columns" in operation_html
     assert "Tabular configuration" not in html
-    assert "signals-input-tab" in html
-    assert "signals-output-tab" in html
+    assert "step-io-input-tab" in html
+    assert "step-io-output-tab" in html
     assert "Inputs and Outputs" in html
     assert "Available Data" in html
     assert "Edit Signals" in html
-    input_panel_start = html.index('id="signals-input-panel"')
-    input_panel_end = html.index('id="signals-output-panel"')
+    input_panel_start = html.index('id="step-io-input-panel"')
+    input_panel_end = html.index('id="step-io-output-panel"')
     input_panel_html = html[input_panel_start:input_panel_end]
     for contract_key, label in TABULAR_DATASET_INPUTS:
         assert f"i.{contract_key}" in input_panel_html

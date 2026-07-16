@@ -18,9 +18,9 @@ validibot_shared.fmu.envelopes) containing:
 
 - outputs.output_values: Dict keyed by catalog slug with simulation outputs
   - Each key is a catalog entry slug (e.g., "indoor_temp_c")
-  - Values are the simulation outputs for that signal
+  - Values are the simulation outputs for that step output
 
-These output values are extracted via ``extract_output_signals()`` for use in
+These output values are extracted via ``extract_output_values()`` for use in
 output-stage assertions (e.g., "indoor_temp_c < 26").
 
 ## Parser Facts (Phase 6, ADR-2026-05-22b)
@@ -94,9 +94,9 @@ class FMUValidator(AdvancedValidator):
 
     Overrides:
 
-    - ``extract_output_signals()`` — extracts per-variable output values
+    - ``extract_output_values()`` — extracts per-variable output values
       for output-stage assertions.
-    - ``extract_input_signals()`` — exposes FMU model metadata (parsed
+    - ``extract_input_values()`` — exposes FMU model metadata (parsed
       from ``modelDescription.xml`` at upload/probe time) in the ``i.*``
       namespace for input-stage assertions, gating dispatch before
       compute is spent. Works for both library FMU validators and
@@ -110,7 +110,7 @@ class FMUValidator(AdvancedValidator):
     def validator_display_name(self) -> str:
         return "FMU"
 
-    def extract_input_signals(self, payload: Any) -> dict[str, Any] | None:
+    def extract_input_values(self, payload: Any) -> dict[str, Any] | None:
         """Expose FMU model metadata as input-stage parser facts.
 
         Resolves the stamped introspection dict from two sources in
@@ -146,7 +146,7 @@ class FMUValidator(AdvancedValidator):
         base signature originally being ``@classmethod``) so it can
         reach ``self.run_context`` for the per-step/per-validator
         metadata lookup. All existing callers invoke this via
-        ``self.extract_input_signals(payload)`` so the conversion is
+        ``self.extract_input_values(payload)`` so the conversion is
         backwards-compatible.
         """
         metadata = self._resolve_introspection_metadata()
@@ -154,7 +154,7 @@ class FMUValidator(AdvancedValidator):
             return None
         # Filter to the declared catalog keys so extras can't leak
         # into i.*. Preserves the "catalog is the contract" rule that
-        # extract_output_signals also enforces on EnergyPlus outputs.
+        # extract_output_values also enforces on EnergyPlus outputs.
         # Lazy import — see module-level NOTE above.
         from validibot.validations.services.fmu import PARSER_FACT_KEYS
 
@@ -203,7 +203,7 @@ class FMUValidator(AdvancedValidator):
             return None
         return dict(metadata)  # defensive copy
 
-    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
+    def extract_output_values(self, output_envelope: Any) -> dict[str, Any] | None:
         """
         Extract output values from an FMU output envelope.
 
@@ -239,6 +239,6 @@ class FMUValidator(AdvancedValidator):
             if isinstance(output_values, dict):
                 return output_values
         except Exception:
-            logger.debug("Could not extract assertion signals from FMU envelope")
+            logger.debug("Could not extract step output values from FMU envelope")
 
         return None

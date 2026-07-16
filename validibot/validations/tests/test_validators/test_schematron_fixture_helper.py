@@ -4,7 +4,7 @@ Runs the illustrative subset pack (``tests/assets/schematron/``) through
 ``lxml.isoschematron`` — the XSLT-1.0 **fixture-generating helper**, never a
 production runtime — and parses the produced SVRL with ``svrl.py``. This
 proves the two halves agree end-to-end: the engine's real SVRL output maps to
-the findings/severities/signals the parser contract promises.
+the findings, severities, and output values the parser contract promises.
 
 Deliberately does NOT instantiate ``SchematronValidator``: the validator is
 an ``AdvancedValidator`` that dispatches to a container and must never run an

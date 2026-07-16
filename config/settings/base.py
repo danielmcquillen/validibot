@@ -130,9 +130,6 @@ WSGI_APPLICATION = "config.wsgi.application"
 # ASGI_APPLICATION = "config.asgi.application"
 
 GITHUB_APP_ENABLED = env.bool("GITHUB_APP_ENABLED", False)
-# NOTE: ENABLE_DERIVED_SIGNALS is defined once, under the "# FEATURES"
-# section below — it was previously declared twice (ADR 04-23
-# §hyg.duplicate_setting).
 
 # APPS
 # ------------------------------------------------------------------------------
@@ -1208,9 +1205,6 @@ TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS = env.list(
     default=[],
 )
 
-
-# FEATURES
-ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)
 
 # OIDC PROVIDER (MCP OAuth)
 # ------------------------------------------------------------------------------

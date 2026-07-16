@@ -170,51 +170,51 @@ Here are some examples of CEL expressions. The example names are highlighted in 
 
 ### Core operators
 
-- **Equality/inequality**: <code><span class="target-signal-name">s.a</span></code> `==` <code><span class="target-signal-name">s.b</span></code>, <code><span class="target-signal-name">s.a</span></code> `!=` <code><span class="target-signal-name">s.b</span></code>
-- **Comparisons**: <code><span class="target-signal-name">p.price</span></code> ` > 0`, <code><span class="target-signal-name">p.score</span></code> `>= 90`, <code><span class="target-signal-name">p.cost</span></code> `< 1000`
-- **Boolean checks**: <code><span class="target-signal-name">p.flag_active</span> == true</code>, <code><span class="target-signal-name">p.is_valid</span> != false</code>
+- **Equality/inequality**: <code><span class="cel-reference">s.a</span></code> `==` <code><span class="cel-reference">s.b</span></code>, <code><span class="cel-reference">s.a</span></code> `!=` <code><span class="cel-reference">s.b</span></code>
+- **Comparisons**: <code><span class="cel-reference">p.price</span></code> ` > 0`, <code><span class="cel-reference">p.score</span></code> `>= 90`, <code><span class="cel-reference">p.cost</span></code> `< 1000`
+- **Boolean checks**: <code><span class="cel-reference">p.flag_active</span> == true</code>, <code><span class="cel-reference">p.is_valid</span> != false</code>
 - **Logical**: `cond1 && cond2`, `cond1 || cond2`, `!cond`
-- **Membership**: <code><span class="target-signal-name">p.country</span></code> `in ['US', 'CA']`, <code><span class="target-signal-name">p.role</span></code> `not in ['guest']`
-- **Null/empty checks**: <code><span class="target-signal-name">p.some_field</span></code> ` == null`, `size(`<code><span class="target-signal-name">p.some_items</span></code>`) == 0`
-- **String contains/starts/ends**: <code><span class="target-signal-name">p.my_text</span></code>`.contains('error')`, <code><span class="target-signal-name">p.my_text</span></code>`.startsWith('ID-')`, <code><span class="target-signal-name">p.my_text</span></code>`.endsWith('.json')`
-- **Regex**: <code><span class="target-signal-name">p.my_text</span></code>`.matches('^ID-[0-9]+$')`
-- **Length**: `size(` <code><span class="target-signal-name">p.my_text</span></code>`) <= 140`, `size(` <code><span class="target-signal-name">p.my_text</span></code>`) > 0`
-- **Numeric tolerance**: `abs(` <code><span class="target-signal-name">s.my_measured_value</span></code>`-` <code><span class="target-signal-name">s.my_actual_value</span></code>`) < 0.01`
+- **Membership**: <code><span class="cel-reference">p.country</span></code> `in ['US', 'CA']`, <code><span class="cel-reference">p.role</span></code> `not in ['guest']`
+- **Null/empty checks**: <code><span class="cel-reference">p.some_field</span></code> ` == null`, `size(`<code><span class="cel-reference">p.some_items</span></code>`) == 0`
+- **String contains/starts/ends**: <code><span class="cel-reference">p.my_text</span></code>`.contains('error')`, <code><span class="cel-reference">p.my_text</span></code>`.startsWith('ID-')`, <code><span class="cel-reference">p.my_text</span></code>`.endsWith('.json')`
+- **Regex**: <code><span class="cel-reference">p.my_text</span></code>`.matches('^ID-[0-9]+$')`
+- **Length**: `size(` <code><span class="cel-reference">p.my_text</span></code>`) <= 140`, `size(` <code><span class="cel-reference">p.my_text</span></code>`) > 0`
+- **Numeric tolerance**: `abs(` <code><span class="cel-reference">s.my_measured_value</span></code>`-` <code><span class="cel-reference">s.my_actual_value</span></code>`) < 0.01`
 
 ### Collections
 
-- **Any/All**: <code><span class="target-signal-name">p.my_items</span></code>`.exists(i, i.status == 'ok')`, <code><span class="target-signal-name">p.my_items</span></code>`.all(i, i.score >= 80)`
-- **Contains element**: `['value_A', 'value_B'].exists(f, f == ` <code><span class="target-signal-name">p.my_value</span></code>`)`
+- **Any/All**: <code><span class="cel-reference">p.my_items</span></code>`.exists(i, i.status == 'ok')`, <code><span class="cel-reference">p.my_items</span></code>`.all(i, i.score >= 80)`
+- **Contains element**: `['value_A', 'value_B'].exists(f, f == ` <code><span class="cel-reference">p.my_value</span></code>`)`
 - **Subset/superset**: `expected.all(e, e in provided)`
 
 ### Dates and numbers
 
-- **Comparing timestamps**: <code><span class="target-signal-name">p.my_time_value</span></code> `< timestamp('2024-12-31T23:59:59Z')`
-- **Between**: <code><span class="target-signal-name">p.my_value</span></code> `> 10 && ` <code><span class="target-signal-name">p.my_value</span></code> `< 20`
+- **Comparing timestamps**: <code><span class="cel-reference">p.my_time_value</span></code> `< timestamp('2024-12-31T23:59:59Z')`
+- **Between**: <code><span class="cel-reference">p.my_value</span></code> `> 10 && ` <code><span class="cel-reference">p.my_value</span></code> `< 20`
 
 ### Examples by namespace
 
-- **Payload check**: <code><span class="target-signal-name">p.price</span></code> ` > 0`
-- **Signal check**: <code><span class="target-signal-name">s.target_eui</span></code> ` <= 60`
-- **Constant threshold**: <code><span class="target-signal-name">p.energy_price</span></code> ` <= ` <code><span class="target-signal-name">c.energy_price</span></code>
-- **Input-stage check (before validator runs)**: <code><span class="target-signal-name">i.zone_count</span></code> ` >= 4 && ` <code><span class="target-signal-name">i.idf_version</span></code> `.startsWith("25.")`
-- **Output-stage check (after validator runs)**: <code><span class="target-signal-name">o.site_eui_kwh_m2</span></code> ` <= ` <code><span class="target-signal-name">s.target_eui</span></code>
-- **Compare input to output**: `abs(` <code><span class="target-signal-name">i.expected_floor_area</span></code> ` - ` <code><span class="target-signal-name">o.floor_area_m2</span></code>`) < 5.0`
-- **Cross-step reference**: <code><span class="target-signal-name">steps.preflight.output.warning_count</span></code> ` < 10`
+- **Payload check**: <code><span class="cel-reference">p.price</span></code> ` > 0`
+- **Signal check**: <code><span class="cel-reference">s.target_eui</span></code> ` <= 60`
+- **Constant threshold**: <code><span class="cel-reference">p.energy_price</span></code> ` <= ` <code><span class="cel-reference">c.energy_price</span></code>
+- **Input-stage check (before validator runs)**: <code><span class="cel-reference">i.zone_count</span></code> ` >= 4 && ` <code><span class="cel-reference">i.idf_version</span></code> `.startsWith("25.")`
+- **Output-stage check (after validator runs)**: <code><span class="cel-reference">o.site_eui_kwh_m2</span></code> ` <= ` <code><span class="cel-reference">s.target_eui</span></code>
+- **Compare input to output**: `abs(` <code><span class="cel-reference">i.expected_floor_area</span></code> ` - ` <code><span class="cel-reference">o.floor_area_m2</span></code>`) < 5.0`
+- **Cross-step reference**: <code><span class="cel-reference">steps.preflight.output.warning_count</span></code> ` < 10`
 
 ### Working with XML data
 
 When your submission is XML, all element text values arrive in CEL as **strings** — even when they look numeric in the document. This is standard XML behaviour (XML has no native number type). To compare numerically, wrap the value with `double()` or `int()`:
 
-- **Numeric comparison**: `double(`<code><span class="target-signal-name">p.price</span></code>`) > 0` rather than <code><span class="target-signal-name">p.price</span></code> `> 0`
-- **Integer check**: `int(`<code><span class="target-signal-name">p.count</span></code>`) >= 1`
-- **Collection with cast**: <code><span class="target-signal-name">p.items</span></code>`.all(i, double(i.value) > 0.0)`
-- **String comparisons work directly**: <code><span class="target-signal-name">p.status</span></code> `== "active"` (no cast needed)
+- **Numeric comparison**: `double(`<code><span class="cel-reference">p.price</span></code>`) > 0` rather than <code><span class="cel-reference">p.price</span></code> `> 0`
+- **Integer check**: `int(`<code><span class="cel-reference">p.count</span></code>`) >= 1`
+- **Collection with cast**: <code><span class="cel-reference">p.items</span></code>`.all(i, double(i.value) > 0.0)`
+- **String comparisons work directly**: <code><span class="cel-reference">p.status</span></code> `== "active"` (no cast needed)
 
 **XML attributes** (like `<Material Conductivity="160.0">`) become `@`-prefixed keys in the data — `@Conductivity`, not `Conductivity`. Use bracket notation to access them:
 
-- **Access an attribute**: <code><span class="target-signal-name">p.Materials</span>.Material.all(m, double(m["@Conductivity"]) > 0.0)</code>
-- **String attribute**: <code><span class="target-signal-name">p.Materials</span>.Material.all(m, m["@Name"] != "")</code>
+- **Access an attribute**: <code><span class="cel-reference">p.Materials</span>.Material.all(m, double(m["@Conductivity"]) > 0.0)</code>
+- **String attribute**: <code><span class="cel-reference">p.Materials</span>.Material.all(m, m["@Name"] != "")</code>
 
 This is because XML distinguishes between child elements (`<Conductivity>160</Conductivity>`) and attributes (`Conductivity="160"`). The `@` prefix preserves that distinction so your expressions are unambiguous.
 

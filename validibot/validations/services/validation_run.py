@@ -17,7 +17,7 @@ Architecture:
     StepOrchestrator (step_orchestrator.py)
         ├── execute_workflow_steps()   — worker-side: iterate steps
         ├── execute_workflow_step()    — dispatch single step to handler
-        └── (step lifecycle, result recording, signal extraction)
+        └── (step lifecycle, result recording, output extraction)
 
     SummaryBuilder (summary_builder.py)
         ├── build_run_summary_record() — build summaries from DB findings

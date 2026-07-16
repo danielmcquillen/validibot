@@ -205,7 +205,7 @@ def evaluate_column_assertions(
     assertions: list[ColumnAssertion],
     *,
     signals: dict[str, Any] | None = None,
-    input_signals: dict[str, Any] | None = None,
+    input_values: dict[str, Any] | None = None,
     now: datetime | None = None,
     wall_clock_budget_s: float = _DEFAULT_WALL_CLOCK_BUDGET_S,
 ) -> list[NativeFinding]:
@@ -242,7 +242,7 @@ def evaluate_column_assertions(
     context = {
         "col": col_context,
         "s": celpy.json_to_cel(signals or {}),
-        "i": celpy.json_to_cel(input_signals or {}),
+        "i": celpy.json_to_cel(input_values or {}),
     }
     findings: list[NativeFinding] = []
     for assertion in assertions:

@@ -141,11 +141,11 @@ class BasicAssertionEvaluator:
     def _assertion_path(self, assertion: RulesetAssertion) -> str:
         """Get the target path for an assertion.
 
-        Checks target_signal_definition first, then falls back to
+        Checks target_io_definition first, then falls back to
         target_data_path (custom free-form targets).
         """
-        if assertion.target_signal_definition_id:
-            return assertion.target_signal_definition.contract_key
+        if assertion.target_io_definition_id:
+            return assertion.target_io_definition.contract_key
         return assertion.target_data_path
 
     def _resolve_path(self, data: Any, path: str | None) -> tuple[Any, bool]:
@@ -658,8 +658,8 @@ class BasicAssertionEvaluator:
     ) -> None:
         """Add a target alias to the context based on the assertion target."""
         alias = ""
-        if assertion.target_signal_definition_id:
-            alias = assertion.target_signal_definition.contract_key or ""
+        if assertion.target_io_definition_id:
+            alias = assertion.target_io_definition.contract_key or ""
         elif assertion.target_data_path:
             alias = assertion.target_data_path
         alias = alias.strip()

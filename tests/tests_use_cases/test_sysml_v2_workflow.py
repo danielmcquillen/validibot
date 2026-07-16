@@ -305,7 +305,7 @@ class SysmlV2RadiatorWorkflowTests(TestCase):
 
         The 'many fails' asset has four domain violations: negative emissivity,
         negative mass, one-ended interface, and a dangling requirement reference.
-        Signal bindings use JSONPath filter expressions to resolve values from
+        Step input bindings use JSONPath filter expressions to resolve values from
         the nested SysML v2 structure, so no 'undefined name' or timeout errors
         should appear.
         """

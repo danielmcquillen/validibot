@@ -5,7 +5,7 @@ execution happen in the isolated container backend (covered by
 ``validibot-validator-backends``). What this suite guards is the Django half:
 
 1. SHACL routes through the advanced (container) processor at all.
-2. ``extract_output_signals`` surfaces exactly the catalog ``o.*`` keys.
+2. ``extract_output_values`` surfaces exactly the catalog ``o.*`` keys.
 3. ``post_execute_validate`` rebuilds findings from the container's structured
    ``outputs.findings`` (preserving SHACL ``meta`` and SPARQL-ASK
    ``assertion_id``), determines pass/fail from the envelope status, and surfaces
@@ -35,9 +35,9 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.shacl.validator import SHACLValidator
 
-# Catalog signal keys the SHACL ValidatorConfig declares. extract_output_signals
+# Catalog output keys the SHACL ValidatorConfig declares. extract_output_values
 # must return exactly these (the "catalog is the contract" rule).
-CATALOG_SIGNAL_KEYS = {
+CATALOG_OUTPUT_KEYS = {
     "parse_ok",
     "parse_serialization",
     "triple_count",
@@ -113,13 +113,13 @@ def test_shacl_is_an_advanced_validation_type():
     assert ValidationType.SHACL in ADVANCED_VALIDATION_TYPES
 
 
-# ── extract_output_signals ───────────────────────────────────────────────────
+# ── extract_output_values ───────────────────────────────────────────────────
 
 
-def test_extract_output_signals_returns_catalog_keys_only():
-    """Signals are exactly the catalog keys — no leakage of report/hash fields.
+def test_extract_output_values_returns_catalog_keys_only():
+    """Output values are exactly the catalog keys — no leakage of report/hash fields.
 
-    Django's CEL/Basic output assertions evaluate against these signals; leaking
+    Django's CEL/Basic output assertions evaluate against these output_values; leaking
     non-catalog fields (the serialized report, hashes) into ``o.*`` would break
     the "catalog is the contract" invariant the other advanced validators hold.
     """
@@ -127,16 +127,16 @@ def test_extract_output_signals_returns_catalog_keys_only():
         status=ValidationStatus.SUCCESS,
         outputs=_outputs(triple_count=SAMPLE_TRIPLE_COUNT, has_s223_namespace=True),
     )
-    signals = SHACLValidator().extract_output_signals(envelope)
+    output_values = SHACLValidator().extract_output_values(envelope)
 
-    assert set(signals) == CATALOG_SIGNAL_KEYS
-    assert signals["triple_count"] == SAMPLE_TRIPLE_COUNT
-    assert signals["has_s223_namespace"] is True
-    assert "results_graph_turtle" not in signals
+    assert set(output_values) == CATALOG_OUTPUT_KEYS
+    assert output_values["triple_count"] == SAMPLE_TRIPLE_COUNT
+    assert output_values["has_s223_namespace"] is True
+    assert "results_graph_turtle" not in output_values
 
 
-def test_extract_output_signals_none_when_no_outputs():
-    """A runtime-failure envelope (outputs=None) yields no signals, not a crash."""
+def test_extract_output_values_none_when_no_outputs():
+    """A runtime-failure envelope with no outputs yields no values, not a crash."""
     envelope = SHACLOutputEnvelope(
         run_id="run-1",
         validator={"id": "v1", "type": ValidatorType.SHACL, "version": "2"},
@@ -144,7 +144,7 @@ def test_extract_output_signals_none_when_no_outputs():
         timing={},
         outputs=None,
     )
-    assert SHACLValidator().extract_output_signals(envelope) is None
+    assert SHACLValidator().extract_output_values(envelope) is None
 
 
 # ── post_execute_validate (no run_context: container-only path) ───────────────
@@ -332,7 +332,7 @@ class TestMixedAssertionPartition:
             severity=Severity.ERROR,
             rhs={"target_graph": "data", "query": "ASK { ?s ?p ?o }"},
         )
-        # A Basic assertion against an output signal — runs in Django, output stage.
+        # A Basic assertion against an output value — runs in Django, output stage.
         RulesetAssertionFactory(
             ruleset=ruleset,
             assertion_type=AssertionType.BASIC,
@@ -372,7 +372,7 @@ class TestMixedAssertionPartition:
         """submission.* resolves for a real SHACL validator on a NON-JSON (.ttl).
 
         This is the ADR-2026-06-03b headline requirement: the envelope namespace
-        must carry a per-submission gate value precisely where ``s.*``/``p.*``
+        must carry a per-submission gate value where raw JSON payload access
         cannot — an RDF Turtle submission that is not JSON. We use an
         OUTPUT-stage CEL assertion (it reads ``o.*`` so it runs in
         ``post_execute_validate``) that ALSO reads ``submission.metadata``,

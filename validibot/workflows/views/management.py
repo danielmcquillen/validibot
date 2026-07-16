@@ -679,7 +679,7 @@ class WorkflowJsonView(WorkflowObjectMixin, TemplateView):
         return get_object_or_404(
             Workflow.objects.prefetch_related(
                 "steps__validator",
-                "steps__ruleset__assertions__target_signal_definition",
+                "steps__ruleset__assertions__target_io_definition",
             ),
             pk=self.kwargs["pk"],
         )

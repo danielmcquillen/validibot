@@ -8,7 +8,7 @@ so a regression points at exactly one thing. It runs them through
 production runtime (the container's Saxon path is layer C, in
 ``validibot-validator-backends``) — and parses the resulting SVRL with the
 canonical shared parser. What it guards is the contract every layer shares:
-the SVRL a real engine emits maps to the findings, severities and signals
+the SVRL a real engine emits maps to the findings, severities, and output values
 ``parse_svrl`` promises.
 
 Deliberately does NOT instantiate ``SchematronValidator``: that class is an
@@ -457,7 +457,7 @@ def test_no_matching_context_is_a_false_green_that_fired_rule_count_catches():
     The schema binds ``x`` to one namespace but the document uses another, so
     ``/x:root/x:widget`` matches nothing: zero findings AND ``passed`` True.
     Only ``fired_rule_count == 0`` distinguishes this false green from a real
-    pass — which is exactly why the signal exists and why gates should check it.
+    pass — which is exactly why this output exists and why gates should check it.
     """
     summary = _run(
         f"<schema {_SCH}>"

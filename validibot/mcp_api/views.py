@@ -191,8 +191,8 @@ def _prefetch_workflow_detail_relations(
     """Attach the relations needed by ``WorkflowFullSerializer``."""
 
     return queryset.select_related("org").prefetch_related(
-        "steps__validator__default_ruleset__assertions__target_signal_definition",
-        "steps__ruleset__assertions__target_signal_definition",
+        "steps__validator__default_ruleset__assertions__target_io_definition",
+        "steps__ruleset__assertions__target_io_definition",
     )
 
 

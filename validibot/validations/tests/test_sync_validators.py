@@ -21,8 +21,8 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import DefaultSourceStrategy
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
-from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.models import Derivation
@@ -81,13 +81,13 @@ class SyncValidatorsCommandTests(TestCase):
         )
         self.assertTrue(validator.config_provider)
 
-    def test_command_creates_signal_definitions(self):
-        """Test that signal definitions are created for validators."""
+    def test_command_creates_step_io_definitions(self):
+        """Test that step I/O definitions are created for validators."""
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
 
-        # Should have both input and output signal definitions
+        # Should have both input and output value definitions
         input_sigs = StepIODefinition.objects.filter(
             validator=validator,
             direction="input",
@@ -97,11 +97,11 @@ class SyncValidatorsCommandTests(TestCase):
             direction="output",
         )
 
-        self.assertTrue(input_sigs.exists(), "Should have input signal definitions")
-        self.assertTrue(output_sigs.exists(), "Should have output signal definitions")
+        self.assertTrue(input_sigs.exists(), "Should have step input definitions")
+        self.assertTrue(output_sigs.exists(), "Should have output value definitions")
 
-    def test_command_creates_specific_output_signals(self):
-        """Test that specific output signal definitions are created.
+    def test_command_creates_specific_output_values(self):
+        """Test that specific output value definitions are created.
 
         Per ADR-2026-05-22 (validator revision 2 and later):
             - zone_count was removed from outputs (parsed-from-IDF facts
@@ -113,32 +113,32 @@ class SyncValidatorsCommandTests(TestCase):
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
 
-        # Check for specific output signals
-        expected_signals = [
+        # Check for specific output values
+        expected_outputs = [
             "site_electricity_kwh",
             "site_eui_kwh_m2",
             "unmet_heating_hours",
             "simulated_conditioned_area_m2",
         ]
 
-        for key in expected_signals:
+        for key in expected_outputs:
             self.assertTrue(
                 StepIODefinition.objects.filter(
                     validator=validator,
                     contract_key=key,
                 ).exists(),
-                f"Signal {key} should exist",
+                f"Output definition {key} should exist",
             )
 
     def test_command_normalizes_energyplus_input_provider_binding(self):
         """EnergyPlus parser-extracted step inputs should not persist
         submission-source selectors in StepIODefinition.provider_binding.
 
-        The unified signal model stores submission sourcing on
+        The unified step I/O model stores submission sourcing on
         StepInputBinding, so sync_validators must strip legacy
         ``source``/``path`` keys from provider_binding. For
         parser-extracted facts (per ADR-2026-05-22, validator revision 2+), the
-        value is populated by EnergyPlusValidator.extract_input_signals()
+        value is populated by EnergyPlusValidator.extract_input_values()
         and no payload-path binding is involved at all.
 
         We test against ``idf_version`` here — one of the three POC
@@ -150,29 +150,29 @@ class SyncValidatorsCommandTests(TestCase):
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
-        signal = StepIODefinition.objects.get(
+        io_definition = StepIODefinition.objects.get(
             validator=validator,
             contract_key="idf_version",
             direction="input",
         )
 
-        self.assertEqual(signal.provider_binding, {})
+        self.assertEqual(io_definition.provider_binding, {})
 
     def test_command_normalizes_energyplus_output_provider_binding(self):
         """EnergyPlus output provider binding should store the canonical
-        ``metric_key`` field used by the unified signal model.
+        ``metric_key`` field used by the unified step I/O model.
         """
         self.call_command()
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
-        signal = StepIODefinition.objects.get(
+        io_definition = StepIODefinition.objects.get(
             validator=validator,
             contract_key="site_eui_kwh_m2",
             direction="output",
         )
 
         self.assertEqual(
-            signal.provider_binding,
+            io_definition.provider_binding,
             {"metric_key": "site_eui_kwh_m2"},
         )
 
@@ -442,10 +442,10 @@ class SyncValidatorsCommandTests(TestCase):
                 f"{slug} should support assertions",
             )
 
-    def test_command_creates_shacl_output_signals(self):
-        """SHACL output signals should be synced for the step editor.
+    def test_command_creates_shacl_output_values(self):
+        """SHACL output values should be synced for the step editor.
 
-        The SHACL validator is inline, but it still emits output signals
+        The SHACL validator is inline, but it still emits output values
         such as ``shacl_violation_count``. The step editor and assertion
         form need those StepIODefinition rows to show default targets.
         """
@@ -466,7 +466,7 @@ class SyncValidatorsCommandTests(TestCase):
                     contract_key=key,
                     direction="output",
                 ).exists(),
-                f"SHACL signal {key} should exist",
+                f"SHACL output definition {key} should exist",
             )
 
     def test_command_reports_creation_counts(self):
@@ -476,20 +476,20 @@ class SyncValidatorsCommandTests(TestCase):
         # Should report validators created
         self.assertIn("validators created", out.lower())
 
-        # Should report signals synced
-        self.assertIn("signals synced", out.lower())
+        # Should report step I/O definitions synced
+        self.assertIn("step i/o definitions synced", out.lower())
 
     # ── source_kind and is_path_editable ────────────────────────────
     # These tests verify that the sync command correctly persists the
     # new source metadata fields from CatalogEntrySpec to StepIODefinition.
 
-    def test_energyplus_value_input_signals_are_internal_and_not_editable(self):
+    def test_energyplus_value_input_values_are_internal_and_not_editable(self):
         """EnergyPlus parser value inputs should be INTERNAL + non-editable.
 
         Parser-derived facts such as ``idf_version`` are computed internally
         after the model file is resolved. Artifact ports are separate input
         definitions that describe file dependencies, so this assertion filters
-        to value-carried input signals only.
+        to value-carried step inputs only.
         """
         self.call_command()
 
@@ -501,20 +501,21 @@ class SyncValidatorsCommandTests(TestCase):
         )
 
         self.assertTrue(input_sigs.exists())
-        for sig in input_sigs:
+        for io_definition in input_sigs:
             self.assertEqual(
-                sig.source_kind,
-                SignalSourceKind.INTERNAL,
-                f"EnergyPlus input signal {sig.contract_key} should be INTERNAL",
+                io_definition.source_kind,
+                StepIOSourceKind.INTERNAL,
+                "EnergyPlus step input "
+                f"{io_definition.contract_key} should be INTERNAL",
             )
             self.assertFalse(
-                sig.is_path_editable,
-                f"EnergyPlus input signal {sig.contract_key}"
+                io_definition.is_path_editable,
+                f"EnergyPlus step input {io_definition.contract_key}"
                 " should not be path-editable",
             )
 
-    def test_energyplus_output_signals_are_internal_and_not_editable(self):
-        """EnergyPlus output signals should be INTERNAL + non-editable.
+    def test_energyplus_output_values_are_internal_and_not_editable(self):
+        """EnergyPlus output values should be INTERNAL + non-editable.
 
         Output values come from simulation metrics extracted internally
         by the validator — the author has no control over the extraction.
@@ -528,20 +529,21 @@ class SyncValidatorsCommandTests(TestCase):
         )
 
         self.assertTrue(output_sigs.exists())
-        for sig in output_sigs:
+        for io_definition in output_sigs:
             self.assertEqual(
-                sig.source_kind,
-                SignalSourceKind.INTERNAL,
-                f"EnergyPlus output signal {sig.contract_key} should be INTERNAL",
+                io_definition.source_kind,
+                StepIOSourceKind.INTERNAL,
+                "EnergyPlus output value "
+                f"{io_definition.contract_key} should be INTERNAL",
             )
             self.assertFalse(
-                sig.is_path_editable,
-                f"EnergyPlus output signal {sig.contract_key}"
+                io_definition.is_path_editable,
+                f"EnergyPlus output value {io_definition.contract_key}"
                 " should not be path-editable",
             )
 
-    def test_therm_output_signals_are_internal_and_not_editable(self):
-        """THERM output signals should be INTERNAL + non-editable.
+    def test_therm_output_values_are_internal_and_not_editable(self):
+        """THERM output values should be INTERNAL + non-editable.
 
         THERM extracts values directly from the THMX/THMZ XML — the
         author has no control over the extraction paths.
@@ -555,15 +557,16 @@ class SyncValidatorsCommandTests(TestCase):
         )
 
         self.assertTrue(output_sigs.exists())
-        for sig in output_sigs:
+        for io_definition in output_sigs:
             self.assertEqual(
-                sig.source_kind,
-                SignalSourceKind.INTERNAL,
-                f"THERM output signal {sig.contract_key} should be INTERNAL",
+                io_definition.source_kind,
+                StepIOSourceKind.INTERNAL,
+                f"THERM output value {io_definition.contract_key} should be INTERNAL",
             )
             self.assertFalse(
-                sig.is_path_editable,
-                f"THERM output signal {sig.contract_key} should not be path-editable",
+                io_definition.is_path_editable,
+                "THERM output value "
+                f"{io_definition.contract_key} should not be path-editable",
             )
 
 
@@ -698,20 +701,20 @@ class DiscoverConfigsTests(TestCase):
             )
 
     def test_energyplus_has_catalog_entries(self):
-        """EnergyPlus config has input/output signals and derivations."""
+        """EnergyPlus config has input/output values and derivations."""
         configs = discover_configs()
         ep_config = next(c for c in configs if c.slug == "energyplus-idf-validator")
 
         self.assertGreater(len(ep_config.catalog_entries), 0)
 
         entry_types = {e.entry_type for e in ep_config.catalog_entries}
-        self.assertIn("signal", entry_types)
+        self.assertIn("io_definition", entry_types)
         self.assertIn("derivation", entry_types)
 
     def test_fmu_static_catalog_carries_file_port_and_parser_facts(self):
         """FMU config holds the model file port and parser-fact INPUT entries.
 
-        Per-variable signals (the actual FMU inputs/outputs) are still
+        Per-variable I/O definitions are still
         created dynamically per FMU upload via
         ``services/fmu._persist_variables``. The static catalog entries on
         the system FMU validator are the ``fmu_model`` artifact input port

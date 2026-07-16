@@ -17,7 +17,7 @@ Django-settings dependency. They are consumed by
 :mod:`validibot.validations.validators.shacl.launch` (envelope construction) and
 ``workflows.views_helpers`` (which imports :data:`FILE_SEPARATOR`).
 
-The historical engine — parse/run/SPARQL/signal-extraction and the killable
+The historical engine — parse/run/SPARQL/output-value extraction and the killable
 subprocess workers — was removed when SHACL became an advanced (container)
 validator. See ADR-2026-05-18 and the cross-repo isolation plan; the engine code
 now lives, security checks and all, behind the container boundary.

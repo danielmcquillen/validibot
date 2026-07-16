@@ -9,7 +9,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from validibot.validations.constants import BindingSourceScope
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
 
 PRIMARY_SUBMISSION_PORT_KEYS = frozenset(
@@ -60,43 +60,46 @@ def submitted_file_port_requirements(
         StepInputBinding.objects.filter(
             workflow_step__workflow=workflow,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
-            signal_definition__direction=SignalDirection.INPUT,
-            signal_definition__io_medium=StepIOMedium.ARTIFACT,
+            io_definition__direction=StepIODirection.INPUT,
+            io_definition__io_medium=StepIOMedium.ARTIFACT,
         )
-        .select_related("workflow_step", "signal_definition")
-        .order_by("workflow_step__order", "signal_definition__order", "pk")
+        .select_related("workflow_step", "io_definition")
+        .order_by("workflow_step__order", "io_definition__order", "pk")
     )
 
     requirements: list[SubmittedFilePortRequirement] = []
     for binding in queryset:
-        signal = binding.signal_definition
-        if not include_primary and signal.contract_key in PRIMARY_SUBMISSION_PORT_KEYS:
+        io_definition = binding.io_definition
+        if (
+            not include_primary
+            and io_definition.contract_key in PRIMARY_SUBMISSION_PORT_KEYS
+        ):
             continue
 
         step = binding.workflow_step
-        label = signal.label or _humanize_port_key(signal.contract_key)
+        label = io_definition.label or _humanize_port_key(io_definition.contract_key)
         field_name = submitted_file_port_field_name(
             workflow_step_id=step.pk,
-            port_key=signal.contract_key,
+            port_key=io_definition.contract_key,
         )
         requirements.append(
             SubmittedFilePortRequirement(
                 field_name=field_name,
                 workflow_step_id=str(step.pk),
                 workflow_step_name=step.name or step.step_number_display,
-                port_key=signal.contract_key,
+                port_key=io_definition.contract_key,
                 label=str(label),
-                required=bool(binding.is_required or signal.min_items > 0),
-                accepted_extensions=_accepted_extensions(signal),
+                required=bool(binding.is_required or io_definition.min_items > 0),
+                accepted_extensions=_accepted_extensions(io_definition),
             )
         )
     return requirements
 
 
-def _accepted_extensions(signal) -> tuple[str, ...]:
+def _accepted_extensions(io_definition) -> tuple[str, ...]:
     """Return lowercase extensions declared on the artifact port metadata."""
 
-    metadata = signal.metadata or {}
+    metadata = io_definition.metadata or {}
     extensions = metadata.get("accepted_extensions") or []
     normalized = []
     for ext in extensions:

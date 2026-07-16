@@ -151,14 +151,14 @@ def _build_artifact_input_lineage_records(
     traces = (
         ResolvedInputTrace.objects.filter(
             step_run__validation_run=run,
-            signal_definition__io_medium=StepIOMedium.ARTIFACT,
+            io_definition__io_medium=StepIOMedium.ARTIFACT,
         )
         .select_related(
-            "signal_definition",
+            "io_definition",
             "step_run",
             "step_run__workflow_step",
         )
-        .order_by("step_run__step_order", "signal_contract_key", "pk")
+        .order_by("step_run__step_order", "input_contract_key", "pk")
     )
 
     for trace in traces:
@@ -208,8 +208,8 @@ def _artifact_input_binding_from_trace(
 
     step_run = trace.step_run
     step = step_run.workflow_step
-    port = trace.signal_definition
-    target_port_key = trace.signal_contract_key or getattr(port, "contract_key", "")
+    port = trace.io_definition
+    target_port_key = trace.input_contract_key or getattr(port, "contract_key", "")
     source_scope = trace.source_scope_used or ""
     source_data = _source_details(
         run=run,

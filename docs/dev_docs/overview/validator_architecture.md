@@ -171,8 +171,8 @@ defines:
 - cardinality, such as exactly one (`1..1`), optional singleton (`0..1`), or a
   future bounded collection;
 - accepted data formats and media types;
-- allowed sources, such as submitted file, workflow resource, upstream
-  artifact, or signal containing an artifact reference;
+- allowed sources, such as submitted file, workflow resource, or upstream
+  artifact;
 - default binding behavior for the common case.
 
 For example, EnergyPlus should be modeled as two ports:
@@ -498,7 +498,7 @@ config = ValidatorConfig(
         CatalogEntrySpec(
             slug="result-metric",
             label="Result Metric",
-            entry_type="signal",
+            entry_type="io_definition",
             run_stage="output",
             data_type="number",
         ),
@@ -556,25 +556,25 @@ and assembles the `ValidationResult`.
 
 Do not override `post_execute_validate()` unless the validator has a genuinely
 different output-processing lifecycle. The base implementation extracts issues
-from the output envelope, calls `extract_output_signals()`, evaluates output
+from the output envelope, calls `extract_output_values()`, evaluates output
 assertions, and returns the final result.
 
 | Hook | Required | Purpose |
 |--------|----------|---------|
 | `validator_display_name` | Yes | Human-readable name for error messages. |
 | `preprocess_submission()` | No | Transform the submission before backend dispatch. |
-| `extract_input_signals()` | No | Extract input-stage facts for `i.*` assertions before dispatch. |
-| `extract_output_signals()` | Yes | Extract output-stage facts for `o.*` assertions after the backend returns. |
+| `extract_input_values()` | No | Extract input-stage facts for `i.*` assertions before dispatch. |
+| `extract_output_values()` | Yes | Extract output-stage facts for `o.*` assertions after the backend returns. |
 | `get_cel_helpers()` | No | Customize the CEL helper allowlist for this validator. Treat this as security-sensitive. |
 
-`extract_input_signals()` runs after preprocessing, so template-mode
+`extract_input_values()` runs after preprocessing, so template-mode
 submissions are parsed as the resolved payload that the backend will actually
-receive. `extract_output_signals()` runs after the output envelope is parsed
+receive. `extract_output_values()` runs after the output envelope is parsed
 with the `output_envelope_class` declared in `ValidatorConfig`.
 
 Simple in-process validators use the same pattern with a different set of
 hooks: `validate_file_type()`, `parse_content()`, `run_domain_checks()`, and
-optional `extract_signals()`. Those are documented in
+optional `extract_output_values()`. Those are documented in
 `validibot/validations/validators/base/simple.py`.
 
 ## Container Lifecycle

@@ -6,7 +6,7 @@ All simple validators follow the same lifecycle:
 1. Check file type compatibility
 2. Parse submission content into a domain object
 3. Run domain-specific structural and semantic checks
-4. Extract signals for downstream assertion evaluation
+4. Extract step outputs for downstream assertion evaluation
 5. Evaluate input-stage and output-stage assertions
 6. Return a complete ValidationResult
 
@@ -15,7 +15,7 @@ handles assertion evaluation (5) and result assembly (6).
 
 Simple validators complete entirely within a single validate() call.
 They do not require run_context for container orchestration, though
-they receive it for cross-step signal access.
+they receive it for cross-step value access.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ class SimpleValidator(BaseValidator):
     - ``validate_file_type()`` - check file compatibility
     - ``parse_content()`` - parse submission into a domain object
     - ``run_domain_checks()`` - structural and semantic validation
-    - ``extract_signals()`` - extract key-value signals for assertions
+    - ``extract_output_values()`` - extract key-value step outputs for assertions
 
     The concrete ``validate()`` method calls these hooks in sequence,
     handles errors, evaluates assertions, and assembles the final
@@ -102,19 +102,19 @@ class SimpleValidator(BaseValidator):
         """
         ...
 
-    def extract_signals(
+    def extract_output_values(
         self,
         parsed: Any,
     ) -> dict[str, Any]:
         """
-        Extract signals from the parsed object for assertion evaluation.
+        Extract step outputs from the parsed object for assertion evaluation.
 
-        Signals are key-value pairs that become:
+        The returned key-value pairs become:
 
         1. The payload for this step's assertion evaluation (input and
            output stages)
-        2. Available to downstream workflow steps via cross-step signal
-           access (steps.<step_id>.signals.<slug>)
+        2. Available to downstream workflow steps as
+           ``steps.<step_key>.output.<contract_key>``.
 
         Default implementation returns an empty dict. Override when your
         validator extracts structured data that assertions or downstream
@@ -166,8 +166,8 @@ class SimpleValidator(BaseValidator):
         domain_issues = self.run_domain_checks(parsed)
         issues.extend(domain_issues)
 
-        # 4. Extract signals
-        signals = self.extract_signals(parsed)
+        # 4. Extract step outputs.
+        output_values = self.extract_output_values(parsed)
 
         # 5. Evaluate assertions (input and output stages).
         # The payload passed to evaluators is enriched with
@@ -179,11 +179,11 @@ class SimpleValidator(BaseValidator):
         total_assertions = 0
         total_failures = 0
         for stage in ("input", "output"):
-            output_signals = signals if stage == "output" else None
+            stage_output_values = output_values if stage == "output" else None
             enriched_payload = self._enrich_basic_payload(
-                signals,
+                stage_output_values,
                 stage=stage,
-                output_signals=output_signals,
+                output_values=stage_output_values,
             )
             result = self.evaluate_assertions_for_stage(
                 validator=validator,
@@ -204,5 +204,5 @@ class SimpleValidator(BaseValidator):
                 total=total_assertions,
                 failures=total_failures,
             ),
-            signals=signals if signals else None,
+            output_values=output_values if output_values else None,
         )

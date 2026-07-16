@@ -1,5 +1,5 @@
 """
-Management command to sync system validators and their signal definitions.
+Management command to sync system validators and their step I/O definitions.
 
 Usage:
     python manage.py sync_validators
@@ -11,7 +11,7 @@ FMU, THERM) — declare their metadata via ``ValidatorConfig``. This command
 discovers all configs and ensures the corresponding ``Validator``,
 ``StepIODefinition``, and ``Derivation`` rows exist in the database.
 
-The signal definitions are required for the step editor UI to show separate
+The step I/O definitions are required for the step editor UI to show separate
 "Input Assertions" and "Output Assertions" sections.
 
 ADR-2026-04-27 Phase 3, Session B (tasks 7–9): the command keys validator
@@ -28,7 +28,7 @@ from django.core.management.base import BaseCommand
 from django.core.management.base import CommandError
 from django.db import transaction
 
-from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import StepIOOriginKind
 from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.models import Derivation
 from validibot.validations.models import StepIODefinition
@@ -43,7 +43,8 @@ from validibot.workflows.models import WorkflowStep
 
 class Command(BaseCommand):
     help = (
-        "Sync system validators and their signal definitions from config declarations."
+        "Sync system validators and their step I/O definitions from config "
+        "declarations."
     )
 
     def add_arguments(self, parser):
@@ -77,7 +78,7 @@ class Command(BaseCommand):
         total_validators_created = 0
         total_validators_updated = 0
         total_validators_missing = 0
-        total_signals_synced = 0
+        total_io_definitions_synced = 0
         total_derivations_synced = 0
 
         for cfg in configs:
@@ -187,9 +188,9 @@ class Command(BaseCommand):
                     else:
                         self.stdout.write(f"  Updated validator: {validator}")
 
-                # Sync signal definitions and derivations from the
+                # Sync step I/O definitions and derivations from the
                 # validator config's catalog_entries spec.
-                seen_signal_keys: set[tuple[str, str]] = set()
+                seen_io_definition_keys: set[tuple[str, str]] = set()
                 seen_derivation_keys: set[str] = set()
 
                 for entry in cfg.catalog_entries:
@@ -212,7 +213,7 @@ class Command(BaseCommand):
                         )
                         seen_derivation_keys.add(entry_slug)
                         total_derivations_synced += 1
-                    elif entry_type == "signal":
+                    elif entry_type == "io_definition":
                         provider_binding = build_provider_binding_from_mapping(
                             entry.binding_config,
                         )
@@ -243,7 +244,7 @@ class Command(BaseCommand):
                                 "max_items": entry.max_items,
                                 "order": entry.order,
                                 "unit": (entry.metadata or {}).get("units", ""),
-                                "origin_kind": SignalOriginKind.CATALOG,
+                                "origin_kind": StepIOOriginKind.CATALOG,
                                 "source_kind": entry.source_kind,
                                 "is_path_editable": entry.is_path_editable,
                                 "provider_binding": provider_binding,
@@ -258,19 +259,19 @@ class Command(BaseCommand):
                                 "on_missing": entry.on_missing,
                             },
                         )
-                        seen_signal_keys.add((entry_slug, entry.run_stage))
-                        total_signals_synced += 1
+                        seen_io_definition_keys.add((entry_slug, entry.run_stage))
+                        total_io_definitions_synced += 1
 
-                # Prune signals/derivations that are no longer declared
+                # Prune step I/O definitions/derivations that are no longer declared
                 # in the config (e.g., renamed or removed entries). Only
-                # prune CATALOG-origin signals — step-owned signals
+                # prune CATALOG-origin step I/O definitions — step-owned definitions
                 # (FMU, template) are managed separately.
                 if cfg.catalog_entries:
                     pruned_sigs = StepIODefinition.objects.filter(
                         validator=validator,
-                        origin_kind=SignalOriginKind.CATALOG,
+                        origin_kind=StepIOOriginKind.CATALOG,
                     )
-                    for key, direction in seen_signal_keys:
+                    for key, direction in seen_io_definition_keys:
                         pruned_sigs = pruned_sigs.exclude(
                             contract_key=key,
                             direction=direction,
@@ -279,7 +280,7 @@ class Command(BaseCommand):
                     if pruned_count:
                         pruned_sigs.delete()
                         self.stdout.write(
-                            f"  Pruned {pruned_count} stale signal(s)",
+                            f"  Pruned {pruned_count} stale step I/O definition(s)",
                         )
 
                     pruned_derivs = Derivation.objects.filter(
@@ -293,14 +294,15 @@ class Command(BaseCommand):
                         )
 
                     self.stdout.write(
-                        f"  Signals: {total_signals_synced} synced, "
+                        "  Step I/O definitions: "
+                        f"{total_io_definitions_synced} synced, "
                         f"derivations: {total_derivations_synced} synced",
                     )
 
-                # NOTE: We do NOT call ensure_step_signal_bindings() here for
+                # NOTE: We do NOT call ensure_step_input_bindings() here for
                 # existing steps using this validator. This command runs on
                 # startup/deploy and iterating all steps would be expensive.
-                # Instead, ensure_step_signal_bindings() handles binding
+                # Instead, ensure_step_input_bindings() handles binding
                 # creation at step creation/update time (in save_workflow_step).
                 # For backfilling existing steps, use a one-off data migration.
 
@@ -352,7 +354,7 @@ class Command(BaseCommand):
                 f"{total_validators_created} validators created, "
                 f"{total_validators_updated} updated, "
                 f"{total_validators_missing} missing. "
-                f"{total_signals_synced} signals synced, "
+                f"{total_io_definitions_synced} step I/O definitions synced, "
                 f"{total_derivations_synced} derivations synced."
             ),
         )

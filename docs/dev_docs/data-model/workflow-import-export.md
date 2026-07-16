@@ -20,7 +20,7 @@ The decision record is
 ## Why a format at all
 
 A workflow is a graph, not a row: a sequence of steps, each with a validator
-reference, a ruleset and its assertions, signal definitions and bindings,
+reference, a ruleset and its assertions, step I/O definitions and input bindings,
 derivations, resources, plus workflow-level signal mappings and a public-info
 page. To hand that to another org or instance you need a self-contained snapshot
 that carries the *shape* — never database IDs, never the owning org/user. Those
@@ -60,7 +60,7 @@ actually hash to its name so a tampered archive can't smuggle mismatched bytes.
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 2,
   "workflow": {
     "name": "Darwin Core Occurrence QA",
     "slug": "darwin-core-occurrence-qa",
@@ -90,8 +90,8 @@ actually hash to its name so a tampered archive can't smuggle mismatched bytes.
         "metadata": {},
         "assertions": [ { "assertion_type": "cel_expr", "rhs": {"expr": "..."}, "options": {"tabular_stage": "row"}, "...": "..." } ]
       },
-      "signal_definitions": [],
-      "signal_bindings": [],
+      "step_io_definitions": [],
+      "input_bindings": [],
       "derivations": [],
       "io_promotions": [],
       "resources": []
@@ -101,7 +101,7 @@ actually hash to its name so a tampered archive can't smuggle mismatched bytes.
 ```
 
 The exact field sets are enumerated once in `workflows/services/io/schema.py`
-(`WORKFLOW_SCALAR_FIELDS`, `STEP_SCALAR_FIELDS`, `SIGNAL_DEFINITION_FIELDS`, …) so
+(`WORKFLOW_SCALAR_FIELDS`, `STEP_SCALAR_FIELDS`, `STEP_IO_DEFINITION_FIELDS`, …) so
 the exporter and importer can never disagree about which fields make up the
 definition.
 
@@ -112,7 +112,7 @@ knows how to serialize and deserialize its own description" means.
 
 - **The generic exporter/importer** (`workflows/services/io/exporter.py`,
   `importer.py`) own the parts that are the same for every workflow: the workflow
-  contract fields, steps, step-owned signals/bindings/derivations/promotions,
+  contract fields, steps, step-owned I/O definitions/input bindings/derivations/promotions,
   resources, public info, and signal mappings.
 - **A per-validator `StepSerializer`** owns the part that is validator-specific:
   the step's *ruleset body* (rules + metadata + assertions). It lives in
@@ -136,14 +136,14 @@ provenance into the manifest.
 
 `import_definition(definition, files=..., org=..., user=...)` runs inside one
 `transaction.atomic()` and mirrors the cloner's create-order exactly, because
-**assertions can target step-owned signals that don't exist until their step is
+**assertions can target step-owned I/O definitions that don't exist until their step is
 created**. Per step:
 
 1. create the ruleset *row* (no assertions yet),
 2. create the step (referencing the ruleset and the resolved validator),
-3. create step-owned signal definitions,
-4. build a per-step signal resolver,
-5. create the assertions (re-binding any signal targets), then run the
+3. create step-owned I/O definitions,
+4. build a per-step I/O-definition resolver,
+5. create the assertions (re-binding any step-I/O targets), then run the
    validator's `validate_imported_ruleset(...)` hook,
 6. create bindings, derivations, and io-promotions,
 7. restore resources (bundled files; warn on un-matchable catalog refs).
@@ -192,7 +192,7 @@ non-fatal issues surfaced on the results page:
 ## Full-fidelity coverage and what's deferred
 
 Import/export covers the same graph the cloner copies: workflow contract fields,
-steps, rulesets + assertions, step-owned signal definitions, signal bindings,
+steps, rulesets + assertions, step-owned I/O definitions, input bindings,
 derivations, io-promotions, step resources (catalog refs + bundled files), public
 info, and signal mappings.
 

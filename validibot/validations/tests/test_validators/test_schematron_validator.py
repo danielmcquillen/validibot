@@ -6,7 +6,7 @@ in the isolated container backend (layer C, covered in
 fed with **canned output envelopes** — no engine ever runs here:
 
 1. Schematron routes through the advanced (container) processor at all.
-2. ``extract_output_signals`` surfaces exactly the catalog ``o.*`` keys, and
+2. ``extract_output_values`` surfaces exactly the catalog ``o.*`` keys, and
    nulls the rule counts on an engine failure so a CEL gate can never read
    fake zeros (D9).
 3. ``post_execute_validate`` rebuilds findings with the D10 contract —
@@ -15,7 +15,7 @@ fed with **canned output envelopes** — no engine ever runs here:
    engine failures to the single reserved ``schematron.*`` finding with
    ``meta.infra_error`` (D9): "we couldn't run the check" must never render
    as "your document failed the rules".
-4. The signal surface actually feeds CEL: an ``o.error_count == 0`` output
+4. The output-value surface feeds CEL: an ``o.error_count == 0`` output
    assertion passes/fails with the envelope (ADR test-plan item 4).
 
 Skips as a module when validibot-shared < 0.12.0 (the inline-rules
@@ -55,9 +55,9 @@ if "schematron_sha256" not in SchematronOutputs.model_fields:
         allow_module_level=True,
     )
 
-# Catalog signal keys the Schematron ValidatorConfig declares.
-# extract_output_signals must return exactly these ("catalog is the contract").
-CATALOG_SIGNAL_KEYS = {
+# Catalog output keys the Schematron ValidatorConfig declares.
+# extract_output_values must return exactly these ("catalog is the contract").
+CATALOG_OUTPUT_KEYS = {
     "passed",
     "error_count",
     "warning_count",
@@ -178,32 +178,32 @@ def test_schematron_is_an_advanced_validation_type():
     assert ValidationType.SCHEMATRON in ADVANCED_VALIDATION_TYPES
 
 
-# ── extract_output_signals ───────────────────────────────────────────────────
+# ── extract_output_values ───────────────────────────────────────────────────
 
 
-def test_extract_output_signals_returns_catalog_keys_only():
-    """Signals are exactly the catalog keys — no envelope-field leakage.
+def test_extract_output_values_returns_catalog_keys_only():
+    """Output values are exactly the catalog keys — no envelope-field leakage.
 
     ``info_count``/``execution_seconds``/``schematron_sha256`` are outputs
-    but NOT catalog signals; leaking them into ``o.*`` would break the
+    but NOT catalog output_values; leaking them into ``o.*`` would break the
     "catalog is the contract" invariant every advanced validator holds.
     """
     envelope = _envelope(status=ValidationStatus.SUCCESS, outputs=_outputs())
-    signals = SchematronValidator().extract_output_signals(envelope)
+    output_values = SchematronValidator().extract_output_values(envelope)
 
-    assert set(signals) == CATALOG_SIGNAL_KEYS
-    assert signals["passed"] is True
-    assert signals["error_count"] == 0
-    assert signals["engine"] == "SaxonC-HE 12.9"
+    assert set(output_values) == CATALOG_OUTPUT_KEYS
+    assert output_values["passed"] is True
+    assert output_values["error_count"] == 0
+    assert output_values["engine"] == "SaxonC-HE 12.9"
 
 
-def test_extract_output_signals_none_when_no_outputs():
-    """A crash-level envelope (outputs=None) yields no signals, not a crash."""
+def test_extract_output_values_none_when_no_outputs():
+    """A crash-level envelope (outputs=None) yields no output_values, not a crash."""
     envelope = _envelope(status=ValidationStatus.FAILED_RUNTIME, outputs=None)
-    assert SchematronValidator().extract_output_signals(envelope) is None
+    assert SchematronValidator().extract_output_values(envelope) is None
 
 
-def test_engine_failure_nulls_rule_signals_instead_of_fake_zeros():
+def test_engine_failure_nulls_rule_outputs_instead_of_fake_zeros():
     """On engine failure the counts are None (unknown) and the map is empty.
 
     This is the D9 guard for CEL: with fake zeros, a gate like
@@ -214,13 +214,13 @@ def test_engine_failure_nulls_rule_signals_instead_of_fake_zeros():
         status=ValidationStatus.FAILED_RUNTIME,
         outputs=_outputs(engine_status="error", engine_message="Saxon crashed"),
     )
-    signals = SchematronValidator().extract_output_signals(envelope)
+    output_values = SchematronValidator().extract_output_values(envelope)
 
-    assert signals["passed"] is None
-    assert signals["error_count"] is None
-    assert signals["warning_count"] is None
-    assert signals["fired_rule_count"] is None
-    assert signals["finding_rule_ids_by_severity"] == {}
+    assert output_values["passed"] is None
+    assert output_values["error_count"] is None
+    assert output_values["warning_count"] is None
+    assert output_values["fired_rule_count"] is None
+    assert output_values["finding_rule_ids_by_severity"] == {}
 
 
 # ── post_execute_validate: the D10 findings contract ─────────────────────────
@@ -327,7 +327,7 @@ def test_engine_failures_produce_one_reserved_infra_finding(
     assert finding.code == expected_code
     assert finding.severity == Severity.ERROR
     assert finding.meta["infra_error"] is True
-    assert result.signals["finding_rule_ids_by_severity"] == {}
+    assert result.output_values["finding_rule_ids_by_severity"] == {}
 
 
 def test_runtime_failure_without_outputs_preserves_envelope_messages():
@@ -449,7 +449,7 @@ def test_xslt1_query_binding_flows_through_to_provenance_stats():
     result = SchematronValidator().post_execute_validate(envelope, run_context=None)
 
     assert result.stats["query_binding"] == "xslt1"
-    assert result.signals["query_binding"] == "xslt1"
+    assert result.output_values["query_binding"] == "xslt1"
 
 
 # ── Deep-link URL safety + launch-time failure code preservation ─────────────
@@ -515,11 +515,11 @@ def test_launch_time_infra_code_survives_to_the_result():
     assert issue.meta.get("infra_error") is True
 
 
-# ── Signals → CEL + the D10 deep link (DB-backed) ────────────────────────────
+# ── Output values → CEL + the D10 deep link (DB-backed) ────────────────────────────
 
 
 @pytest.mark.django_db
-class TestSignalsFeedCelAssertions:
+class TestOutputValuesFeedCelAssertions:
     """Prove the ``o.*`` surface drives real CEL output-stage assertions.
 
     A warnings-tolerant gate (``o.error_count == 0``) is the flagship D1

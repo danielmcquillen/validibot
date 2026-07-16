@@ -45,10 +45,10 @@ from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import SignalDirection
-from validibot.validations.constants import SignalOriginKind
-from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOOriginKind
+from validibot.validations.constants import StepIOSourceKind
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
@@ -581,7 +581,7 @@ class RulesetAssertion(TimeStampedModel):
     Targeting:
 
     Every assertion targets either a ``StepIODefinition`` (a known,
-    typed signal published by the validator) *or* a free-form
+    typed step input or output declared by the validator) *or* a free-form
     ``target_data_path`` - never both, enforced by the
     ``ck_ruleset_assertion_target_oneof`` check constraint.  The target
     also determines the ``resolved_run_stage`` (input vs output) that
@@ -623,13 +623,15 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Structured operator used for BASIC assertions."),
     )
 
-    target_signal_definition = models.ForeignKey(
+    target_io_definition = models.ForeignKey(
         "validations.StepIODefinition",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
         related_name="ruleset_assertions",
-        help_text=_("Reference to a signal definition when targeting a known signal."),
+        help_text=_(
+            "Reference to a step I/O definition when targeting a known input or output."
+        ),
     )
 
     # A TextField, not a bounded CharField, on purpose. Besides custom
@@ -734,11 +736,11 @@ class RulesetAssertion(TimeStampedModel):
                 name="ck_ruleset_assertion_target_oneof",
                 condition=(
                     Q(
-                        target_signal_definition__isnull=False,
+                        target_io_definition__isnull=False,
                         target_data_path="",
                     )
                     | Q(
-                        target_signal_definition__isnull=True,
+                        target_io_definition__isnull=True,
                     )
                 ),
             ),
@@ -749,8 +751,8 @@ class RulesetAssertion(TimeStampedModel):
         ]
 
     def __str__(self):
-        if self.target_signal_definition_id and self.target_signal_definition:
-            target = self.target_signal_definition.contract_key
+        if self.target_io_definition_id and self.target_io_definition:
+            target = self.target_io_definition.contract_key
         else:
             target = self.target_data_path
         return f"{self.ruleset_id}:{self.operator}:{target or '?'}"
@@ -763,7 +765,7 @@ class RulesetAssertion(TimeStampedModel):
         evaluate before the validator's main process runs. The
         classification rules:
 
-        - **Signal-definition target** → direction (INPUT or OUTPUT)
+        - **Step-I/O-definition target** → direction (INPUT or OUTPUT)
         - **Path target starting with ``p.``, ``payload.``, ``s.``,
           ``signal.``, ``i.``, ``input.``** → INPUT
         - **``submission.*`` (basic target or CEL expression)** → INPUT,
@@ -784,8 +786,8 @@ class RulesetAssertion(TimeStampedModel):
           backwards-compatible classification of CEL assertions that
           use only ``s.*`` or ``p.*`` references without target paths)
         """
-        if self.target_signal_definition_id and self.target_signal_definition:
-            return CatalogRunStage(self.target_signal_definition.direction)
+        if self.target_io_definition_id and self.target_io_definition:
+            return CatalogRunStage(self.target_io_definition.direction)
         path = (self.target_data_path or "").strip()
         # Input-stage prefixes: p./payload. (raw payload),
         # s./signal. (workflow vocab), and i./input. (this step's
@@ -849,13 +851,13 @@ class RulesetAssertion(TimeStampedModel):
         # form/mutation service AND VAF import.
         self.notes = sanitize_plain_text(self.notes)
 
-        signal_set = bool(self.target_signal_definition_id)
+        io_target_set = bool(self.target_io_definition_id)
         path_set = bool((self.target_data_path or "").strip())
-        if signal_set and path_set:
+        if io_target_set and path_set:
             raise ValidationError(
                 {
                     "target_data_path": _(
-                        "Provide either a signal target or a custom path"
+                        "Provide either a step input/output target or a custom path"
                         " (but not both)."
                     )
                 },
@@ -897,7 +899,7 @@ class RulesetAssertion(TimeStampedModel):
     IMMUTABLE_ASSERTION_FIELDS = (
         "assertion_type",
         "operator",
-        "target_signal_definition_id",
+        "target_io_definition_id",
         "target_data_path",
         "rhs",
         "options",
@@ -971,15 +973,18 @@ class RulesetAssertion(TimeStampedModel):
             description = (rhs.get("description") or "").strip()
             expression = (rhs.get("expr") or "").strip()
             return description or expression or self.target_data_path
-        if self.target_signal_definition_id and self.target_signal_definition:
-            sig = self.target_signal_definition
+        if self.target_io_definition_id and self.target_io_definition:
+            io_definition = self.target_io_definition
             # Per ADR-2026-05-22: INPUT-direction targets live in i.*,
             # OUTPUT-direction in o.*. The previous "s." for INPUT was
             # always wrong — step inputs were never in the s.* namespace
             # (which is reserved for workflow vocabulary). See ADR-2026-05-22b
             # for the full terminology decision.
-            prefix = "o." if sig.direction == SignalDirection.OUTPUT else "i."
-            return f"{sig.label or sig.contract_key} ({prefix}{sig.contract_key})"
+            prefix = "o." if io_definition.direction == StepIODirection.OUTPUT else "i."
+            return (
+                f"{io_definition.label or io_definition.contract_key} "
+                f"({prefix}{io_definition.contract_key})"
+            )
         return self.target_data_path
 
     @property
@@ -1323,7 +1328,7 @@ class Validator(TimeStampedModel):
         blank=True,
         default="",
         help_text=_(
-            "The name of the process that generates output signals from input signals.",
+            "The name of the process that generates step outputs from step inputs.",
         ),
     )
 
@@ -1331,7 +1336,7 @@ class Validator(TimeStampedModel):
         default=False,
         help_text=_(
             "True when the validator includes an intermediate "
-            "processor that produces output signals."
+            "processor that produces step outputs."
         ),
     )
     supports_assertions = models.BooleanField(
@@ -1411,7 +1416,7 @@ class Validator(TimeStampedModel):
     allow_custom_assertion_targets = models.BooleanField(
         default=False,
         help_text=_(
-            "Allow assertions against data paths not declared as signals.",
+            "Allow assertions against data paths not declared by step I/O definitions.",
         ),
     )
 
@@ -1779,10 +1784,10 @@ class Validator(TimeStampedModel):
         return labels
 
 
-# ── Unified Signal Model ────────────────────────────────────────────
+# ── Unified Step I/O Model ──────────────────────────────────────────
 #
-# These four models implement the unified signal architecture: a
-# single relational model for signal metadata supporting contract
+# These four models implement the unified step I/O architecture: a
+# relational model for I/O metadata supporting contract
 # definition, per-step binding, computed derivations, and runtime
 # audit tracing.
 # ─────────────────────────────────────────────────────────────────────
@@ -1793,24 +1798,18 @@ class StepIODefinition(TimeStampedModel):
 
     Per ADR-2026-05-22b, "step input" and "step output" are the precise
     terms for step-local catalog entries (whose values live in the
-    ``i.*`` and ``o.*`` CEL namespaces respectively). This model was
-    formerly named ``SignalDefinition``; the rename in PR 3 aligned
-    the code with the vocabulary used in user-facing UI and docs.
-
-    The legacy database table name (``validations_signaldefinition``)
-    is preserved via ``Meta.db_table`` so the rename is purely a
-    Python-symbol change — no schema-rename migration required.
+    ``i.*`` and ``o.*`` CEL namespaces respectively). The model name
+    aligns the Python and database schema vocabulary with the terms
+    used in the UI and documentation.
 
     A StepIODefinition declares that a validator or workflow step expects
     (input) or produces (output) a named data point with a specific type.
     It is the "what" — the contract — not the "where" (that is the binding).
 
-    This model unifies signal metadata that was previously scattered across
-    three legacy storage formats (ValidatorCatalogEntry, FMU config
-    JSON, template config JSON) into a single relational table. Every
-    feature that touches
-    signals — the signals UI, CEL context building, FMU envelope assembly,
-    assertion evaluation — works against this one model.
+    This model unifies step I/O metadata that was previously scattered
+    across ValidatorCatalogEntry rows, FMU config JSON, and template config
+    JSON. The step I/O UI, CEL context building, validator envelope assembly,
+    and assertion evaluation all use this model as the canonical contract.
 
     Key concepts:
 
@@ -1823,33 +1822,34 @@ class StepIODefinition(TimeStampedModel):
     the native_name is what the provider uses. They may be identical for
     simple cases.
 
-    **Ownership (XOR constraint):** Each signal is owned by exactly one of:
-    - A ``Validator`` — shared signal definitions that apply to every step
-      using that validator (library validators).
-    - A ``WorkflowStep`` — per-step signal definitions for step-level FMU
-      uploads, template scans, or author-customized signals.
+    **Ownership (XOR constraint):** Each step I/O definition is owned by
+    exactly one of:
 
-    **source_kind:** Declares how the signal's value is obtained.
+    - A ``Validator`` — shared input/output definitions that apply to every
+      step using that validator (library validators).
+    - A ``WorkflowStep`` — definitions specific to a step-level FMU upload,
+      template scan, or author customization.
+
+    **source_kind:** Declares how the step input/output value is obtained.
     ``PAYLOAD_PATH`` means the value comes from a known path in the
     submission payload or metadata (the author may or may not be able
     to change the path — see ``is_path_editable``). ``INTERNAL`` means
     the validator has its own mechanism for extracting or computing the
     value (e.g., EnergyPlus parsing simulation metrics, FMU reading
     output variables). This distinction is surfaced in the UI so
-    workflow authors know which signals they can configure.
+    workflow authors know which step inputs they can bind to data sources.
 
     **is_path_editable:** Controls whether the workflow author can edit
-    the source data path for this signal's ``StepInputBinding``. When
-    ``False``, the source path field in the signal edit modal is
-    disabled. Typically ``False`` for signals where the validator
-    controls the extraction path internally (all EnergyPlus and THERM
-    signals, FMU output signals).
+    the source data path for this input's ``StepInputBinding``. When
+    ``False``, the source path field in the step input editor is disabled.
+    This is typically ``False`` when the validator controls extraction
+    internally, including EnergyPlus and THERM definitions and FMU outputs.
 
     **provider_binding:** A JSON column holding validator-type-specific
     properties that the resolution layer needs but that are not part of the
-    generic signal contract. For FMU signals this includes ``causality``,
-    ``value_reference``, and ``variability``. For EnergyPlus template
-    signals this includes ``variable_type``, ``min``, ``max``, and
+    generic step I/O contract. For FMU definitions this includes
+    ``causality``, ``value_reference``, and ``variability``. For EnergyPlus
+    template inputs this includes ``variable_type``, ``min``, ``max``, and
     ``choices``. Typed access is provided by Pydantic accessor models.
     """
 
@@ -1865,7 +1865,7 @@ class StepIODefinition(TimeStampedModel):
         blank=True,
         default="",
         help_text=(
-            "The provider's original name for this signal, preserved "
+            "The provider's original name for this step input or output, preserved "
             "verbatim (e.g., an FMU variable name or template placeholder)."
         ),
     )
@@ -1873,23 +1873,23 @@ class StepIODefinition(TimeStampedModel):
         max_length=255,
         blank=True,
         default="",
-        help_text="Human-readable display label for the signal.",
+        help_text="Human-readable display label for this step input or output.",
     )
     description = models.TextField(
         blank=True,
         default="",
-        help_text="Detailed description of what this signal represents.",
+        help_text="Detailed description of this step input or output.",
     )
     direction = models.CharField(
         max_length=10,
-        choices=SignalDirection.choices,
-        help_text="Whether this signal is consumed (input) or produced (output).",
+        choices=StepIODirection.choices,
+        help_text="Whether this definition is consumed (input) or produced (output).",
     )
     data_type = models.CharField(
         max_length=20,
         choices=CatalogValueType.choices,
         default=CatalogValueType.NUMBER,
-        help_text="The data type of the signal value.",
+        help_text="The data type of the step input or output value.",
     )
     io_medium = models.CharField(
         max_length=20,
@@ -1975,19 +1975,19 @@ class StepIODefinition(TimeStampedModel):
     )
     origin_kind = models.CharField(
         max_length=20,
-        choices=SignalOriginKind.choices,
+        choices=StepIOOriginKind.choices,
         help_text=(
-            "How this signal definition was created: "
+            "How this step I/O definition was created: "
             "from a validator config declaration, "
             "an FMU probe, or a template scan."
         ),
     )
     source_kind = models.CharField(
         max_length=20,
-        choices=SignalSourceKind.choices,
-        default=SignalSourceKind.PAYLOAD_PATH,
+        choices=StepIOSourceKind.choices,
+        default=StepIOSourceKind.PAYLOAD_PATH,
         help_text=(
-            "How the signal's value is obtained: from a known data path "
+            "How this step input/output value is obtained: from a known data path "
             "in the submission payload (PAYLOAD_PATH) or via the "
             "validator's own internal extraction mechanism (INTERNAL)."
         ),
@@ -1996,40 +1996,39 @@ class StepIODefinition(TimeStampedModel):
         default=True,
         help_text=(
             "Whether the workflow author can edit the source data path "
-            "for this signal's step binding. False for signals where "
-            "the validator controls the extraction path internally."
+            "for this step input's binding. False when the validator "
+            "controls the extraction path internally."
         ),
     )
     validator = models.ForeignKey(
         "Validator",
         on_delete=models.CASCADE,
-        related_name="signal_definitions",
+        related_name="step_io_definitions",
         null=True,
         blank=True,
         help_text=(
-            "The validator that owns this signal (for library validators). "
+            "The validator that owns this step I/O definition. "
             "Mutually exclusive with workflow_step."
         ),
     )
     workflow_step = models.ForeignKey(
         "workflows.WorkflowStep",
         on_delete=models.CASCADE,
-        related_name="signal_definitions",
+        related_name="step_io_definitions",
         null=True,
         blank=True,
         help_text=(
-            "The workflow step that owns this signal (for step-level FMUs, "
-            "templates, or author-customized signals). "
+            "The workflow step that owns this step I/O definition. "
             "Mutually exclusive with validator."
         ),
     )
     order = models.PositiveIntegerField(
         default=0,
-        help_text="Display ordering within the owner's signal list.",
+        help_text="Display ordering within the owner's step I/O list.",
     )
     is_hidden = models.BooleanField(
         default=False,
-        help_text="If True, this signal is hidden from the default signals UI.",
+        help_text="If True, this definition is hidden from the default step I/O UI.",
     )
     unit = models.CharField(
         max_length=50,
@@ -2089,12 +2088,6 @@ class StepIODefinition(TimeStampedModel):
     )
 
     class Meta:
-        # Preserve the legacy table name from when the model was called
-        # SignalDefinition (Phase 2 rename → StepIODefinition).
-        # Keeping the table name unchanged means the Python class rename
-        # was a zero-migration change; only the RenameField migration
-        # for signal_name → promoted_signal_name was unavoidable.
-        db_table = "validations_signaldefinition"
         constraints = [
             # Exactly one of validator or workflow_step must be set.
             models.CheckConstraint(
@@ -2102,19 +2095,28 @@ class StepIODefinition(TimeStampedModel):
                     Q(validator__isnull=False, workflow_step__isnull=True)
                     | Q(validator__isnull=True, workflow_step__isnull=False)
                 ),
-                name="ck_sigdef_one_owner",
+                name="ck_step_io_definition_one_owner",
             ),
             # Unique (validator, contract_key, direction) for validator-owned.
             models.UniqueConstraint(
                 fields=["validator", "contract_key", "direction"],
                 condition=Q(validator__isnull=False),
-                name="uq_sigdef_validator_key_dir",
+                name="uq_step_io_definition_validator_key_dir",
             ),
             # Unique (workflow_step, contract_key, direction) for step-owned.
             models.UniqueConstraint(
                 fields=["workflow_step", "contract_key", "direction"],
                 condition=Q(workflow_step__isnull=False),
-                name="uq_sigdef_step_key_dir",
+                name="uq_step_io_definition_step_key_dir",
+            ),
+            # Only small CEL/JSON values can enter the workflow signal
+            # namespace. Artifacts remain storage-backed references exposed
+            # through the artifact namespace.
+            models.CheckConstraint(
+                condition=(
+                    Q(io_medium=StepIOMedium.VALUE) | Q(promoted_signal_name="")
+                ),
+                name="ck_step_io_promotion_value_only",
             ),
         ]
         ordering = ["order", "pk"]
@@ -2124,30 +2126,30 @@ class StepIODefinition(TimeStampedModel):
     @property
     def fmu_metadata(self):
         """Typed access to FMU-specific UI/presentation metadata."""
-        from validibot.validations.signal_metadata.metadata import FMUSignalMetadata
+        from validibot.validations.step_io_metadata.metadata import FMUStepIOMetadata
 
-        return FMUSignalMetadata(**(self.metadata or {}))
+        return FMUStepIOMetadata(**(self.metadata or {}))
 
     @property
     def fmu_binding(self):
         """Typed access to FMU-specific provider binding."""
-        from validibot.validations.signal_metadata.metadata import FMUProviderBinding
+        from validibot.validations.step_io_metadata.metadata import FMUProviderBinding
 
         return FMUProviderBinding(**(self.provider_binding or {}))
 
     @property
     def template_metadata(self):
         """Typed access to template-specific UI/presentation metadata."""
-        from validibot.validations.signal_metadata.metadata import (
-            TemplateSignalMetadata,
+        from validibot.validations.step_io_metadata.metadata import (
+            TemplateStepIOMetadata,
         )
 
-        return TemplateSignalMetadata(**(self.metadata or {}))
+        return TemplateStepIOMetadata(**(self.metadata or {}))
 
     @property
     def energyplus_binding(self):
         """Typed access to EnergyPlus-specific provider binding."""
-        from validibot.validations.signal_metadata.metadata import (
+        from validibot.validations.step_io_metadata.metadata import (
             EnergyPlusProviderBinding,
         )
 
@@ -2157,6 +2159,15 @@ class StepIODefinition(TimeStampedModel):
         """Validate value-vs-artifact port metadata when model validation runs."""
         super().clean()
         if self.io_medium == StepIOMedium.ARTIFACT:
+            if self.promoted_signal_name:
+                raise ValidationError(
+                    {
+                        "promoted_signal_name": _(
+                            "Artifacts cannot be promoted to workflow signals. "
+                            "Only CEL/JSON values can enter the signal namespace."
+                        ),
+                    },
+                )
             if self.data_type != CatalogValueType.ARTIFACT_REF:
                 raise ValidationError(
                     {
@@ -2188,12 +2199,9 @@ class StepInputBinding(TimeStampedModel):
     concrete location in the submission payload, submission metadata,
     a workflow signal, an upstream step's output, or a system value.
 
-    Per ADR-2026-05-22b, this model was formerly named
-    ``StepSignalBinding``; the rename in PR 3 reflects the fact that
-    bindings only ever apply to step INPUTS (outputs are produced by
-    the validator, not bound to anything). The legacy database table
-    name (``validations_stepsignalbinding``) is preserved via
-    ``Meta.db_table`` so no schema-rename migration is needed.
+    Per ADR-2026-05-22b, the name reflects that bindings only ever
+    apply to step inputs; outputs are produced by the validator and
+    are not bound to a data source.
 
     This separation allows the same step input definition (e.g.,
     ``panel_area``) to be wired differently in different workflow
@@ -2216,13 +2224,13 @@ class StepInputBinding(TimeStampedModel):
     workflow_step = models.ForeignKey(
         "workflows.WorkflowStep",
         on_delete=models.CASCADE,
-        related_name="signal_bindings",
+        related_name="input_bindings",
         help_text="The workflow step this binding belongs to.",
     )
-    signal_definition = models.ForeignKey(
+    io_definition = models.ForeignKey(
         StepIODefinition,
         on_delete=models.CASCADE,
-        related_name="bindings",
+        related_name="input_bindings",
         help_text="The step input definition this binding wires up.",
     )
     source_scope = models.CharField(
@@ -2264,21 +2272,16 @@ class StepInputBinding(TimeStampedModel):
     )
 
     class Meta:
-        # Preserve the legacy table name from when this model was called
-        # StepInputBinding. Renaming the Python class without renaming
-        # the database table makes this purely a code-level rename — no
-        # schema migration required for the class rename.
-        db_table = "validations_stepsignalbinding"
         constraints = [
             models.UniqueConstraint(
-                fields=["workflow_step", "signal_definition"],
-                name="uq_binding_step_signal",
+                fields=["workflow_step", "io_definition"],
+                name="uq_step_input_binding_definition",
             ),
         ]
 
     def __str__(self):
         return (
-            f"{self.workflow_step}:{self.signal_definition.contract_key} "
+            f"{self.workflow_step}:{self.io_definition.contract_key} "
             f"← {self.source_scope}:{self.source_data_path}"
         )
 
@@ -2301,25 +2304,17 @@ class WorkflowStepIOPromotion(TimeStampedModel):
     - **Step-owned** ``StepIODefinition`` rows: the in-row
       ``promoted_signal_name`` field holds the name. There is one
       owner, so no scope ambiguity — and ``WorkflowStepIOPromotion``
-      rows pointing at a step-owned ``signal_definition`` are
+      rows pointing at a step-owned ``io_definition`` are
       **forbidden** by ``clean()``. Without that prohibition, runtime
       would inject the same value under two ``s.*`` aliases (one from
       the in-row scan, one from the overlay scan).
     - **Validator-owned** ``StepIODefinition`` rows: the overlay
       carries the name, keyed on ``(workflow_step,
-      signal_definition)``.
+      io_definition)``.
 
-    Author-facing terminology stays the same ("Copy to Signal", "step
-    output", "promoted to s.…"). The split is purely an implementation
-    detail that solves the workflow-scope problem without renaming
-    fields or breaking step-owned promotions that already work.
-
-    Added in response to the May 2026 code review's P1 finding —
-    before this model existed, Copy-to-Signal on EnergyPlus catalog
-    rows 404'd because ``WorkflowStepPromoteStepIOView`` required the
-    ``StepIODefinition`` to have a non-null ``workflow_step`` FK. The
-    "validator-owned only" invariant was added in a follow-up review
-    after the runtime "two truths" risk was identified.
+    The author-facing operation is "Copy to Signal": it promotes a
+    CEL/JSON value into the workflow's ``s.*`` signal namespace. Artifact
+    ports cannot be promoted.
     """
 
     workflow_step = models.ForeignKey(
@@ -2332,7 +2327,7 @@ class WorkflowStepIOPromotion(TimeStampedModel):
             "is workflow-scoped, not validator-scoped."
         ),
     )
-    signal_definition = models.ForeignKey(
+    io_definition = models.ForeignKey(
         StepIODefinition,
         on_delete=models.CASCADE,
         related_name="step_promotions",
@@ -2354,12 +2349,12 @@ class WorkflowStepIOPromotion(TimeStampedModel):
 
     class Meta:
         constraints = [
-            # Only one overlay per (step, signal_definition) — the
+            # Only one overlay per (step, io_definition) — the
             # author can't promote the same catalog row twice within
             # the same step under different names.
             models.UniqueConstraint(
-                fields=["workflow_step", "signal_definition"],
-                name="uq_iopromotion_step_signal",
+                fields=["workflow_step", "io_definition"],
+                name="uq_step_io_promotion_definition",
             ),
             # Only one overlay per (step, promoted_signal_name) — two
             # different catalog rows can't both promote to the same
@@ -2374,14 +2369,14 @@ class WorkflowStepIOPromotion(TimeStampedModel):
             # shape (two overlays on the same step).
             models.UniqueConstraint(
                 fields=["workflow_step", "promoted_signal_name"],
-                name="uq_iopromotion_step_name",
+                name="uq_step_io_promotion_name",
             ),
         ]
 
     def clean(self):
         """Enforce overlay invariants.
 
-        Two invariants protect ``s.*`` injection from inconsistency:
+        Three invariants protect ``s.*`` injection from inconsistency:
 
         1. **Validator-owned only.** Step-owned StepIODefinitions
            must use their in-row ``promoted_signal_name`` field
@@ -2389,7 +2384,7 @@ class WorkflowStepIOPromotion(TimeStampedModel):
            overlay), so a step-owned row with both would be injected
            twice — potentially under different aliases.
 
-        2. **Same-validator scope.** The signal_definition's
+        2. **Same-validator scope.** The io_definition's
            ``validator`` FK must match the workflow_step's
            ``validator`` FK. Otherwise an overlay could attach an
            EnergyPlus catalog row to an unrelated FMU step, with
@@ -2399,7 +2394,11 @@ class WorkflowStepIOPromotion(TimeStampedModel):
            for HTTP writes; mirroring it here protects service-
            layer and migration writes too.
 
-        Both rules are application-level (via ``clean()`` +
+        3. **Value ports only.** A workflow signal is a CEL/JSON value.
+           Artifact ports remain storage-backed references and cannot be
+           promoted into ``s.*``.
+
+        All three rules are application-level (via ``clean()`` +
         ``full_clean()`` from ``save()``) to match how the rest of
         the contract layer enforces XOR ownership on
         ``StepIODefinition``. Direct SQL writes can still bypass
@@ -2407,16 +2406,16 @@ class WorkflowStepIOPromotion(TimeStampedModel):
         callers from drifting.
         """
         super().clean()
-        if not self.signal_definition_id:
+        if not self.io_definition_id:
             return
 
         from django.core.exceptions import ValidationError
 
         # Invariant 1: validator-owned only.
-        if self.signal_definition.workflow_step_id is not None:
+        if self.io_definition.workflow_step_id is not None:
             raise ValidationError(
                 {
-                    "signal_definition": (
+                    "io_definition": (
                         "WorkflowStepIOPromotion can only overlay "
                         "validator-owned StepIODefinitions. Step-owned "
                         "rows must use their in-row "
@@ -2426,17 +2425,28 @@ class WorkflowStepIOPromotion(TimeStampedModel):
                 },
             )
 
-        # Invariant 2: same-validator scope. The signal_definition
+        # Invariant 3: artifacts are never workflow signals.
+        if self.io_definition.io_medium != StepIOMedium.VALUE:
+            raise ValidationError(
+                {
+                    "io_definition": (
+                        "Only value ports can be promoted to workflow signals. "
+                        "Artifact ports remain in the artifact namespace."
+                    ),
+                },
+            )
+
+        # Invariant 2: same-validator scope. The io_definition
         # must belong to the same validator the workflow_step is
         # bound to. Without this, the promote view's existing check
         # is the only thing keeping cross-validator overlays out;
         # service-layer writes could create them silently.
         #
-        # Per Invariant 1 above, ``sig_validator_id`` is guaranteed
+        # Per Invariant 1 above, ``io_validator_id`` is guaranteed
         # non-null at this point: the StepIODefinition XOR
         # constraint requires exactly one of ``validator`` /
         # ``workflow_step`` to be set, and Invariant 1 rejects any
-        # ``signal_definition`` whose ``workflow_step`` IS set.
+        # ``io_definition`` whose ``workflow_step`` IS set.
         #
         # The remaining risk is ``step_validator_id is None`` —
         # which would be a BASIC/ruleset step that doesn't bind to
@@ -2447,12 +2457,12 @@ class WorkflowStepIOPromotion(TimeStampedModel):
         # silently allowing the overlay to be written and quietly
         # never fire at runtime.
         step_validator_id = getattr(self.workflow_step, "validator_id", None)
-        sig_validator_id = self.signal_definition.validator_id
-        if step_validator_id is None or step_validator_id != sig_validator_id:
+        io_validator_id = self.io_definition.validator_id
+        if step_validator_id is None or step_validator_id != io_validator_id:
             raise ValidationError(
                 {
-                    "signal_definition": (
-                        "WorkflowStepIOPromotion.signal_definition "
+                    "io_definition": (
+                        "WorkflowStepIOPromotion.io_definition "
                         "must belong to the same validator as the "
                         "workflow_step (and the step must have a "
                         "validator). Attaching a catalog row from "
@@ -2474,19 +2484,18 @@ class WorkflowStepIOPromotion(TimeStampedModel):
 
     def __str__(self):
         return (
-            f"{self.workflow_step}:{self.signal_definition.contract_key} "
+            f"{self.workflow_step}:{self.io_definition.contract_key} "
             f"→ s.{self.promoted_signal_name}"
         )
 
 
 class Derivation(TimeStampedModel):
-    """A computed value defined by a CEL expression over signals.
+    """A computed value defined by a CEL expression over step values.
 
     Derivations are named, typed values that are computed from input
-    signals and other derivations using CEL (Common Expression Language)
-    expressions. They represent a distinct concept from signals: signals
-    are data points that flow in or out of a validator; derivations are
-    intermediate computed values used in assertions and reporting.
+    values and other derivations using CEL (Common Expression Language)
+    expressions. They are intermediate computed values used in assertions
+    and reporting, not workflow signals in the ``s.*`` namespace.
 
     Like ``StepIODefinition``, each derivation is owned by exactly one of
     a ``Validator`` (shared across all steps using that validator) or a
@@ -2494,7 +2503,7 @@ class Derivation(TimeStampedModel):
     constraint applies.
 
     The ``expression`` field contains a CEL expression that can reference
-    signal contract_keys and other derivation contract_keys by name.
+    step I/O contract keys and other derivation contract keys by name.
     The ``data_type`` is limited to scalar types (number, string, boolean)
     since derivations produce single computed values, not complex objects
     or timeseries.
@@ -2510,7 +2519,7 @@ class Derivation(TimeStampedModel):
     expression = models.TextField(
         help_text=(
             "CEL expression that computes this derivation's value. Can "
-            "reference signal contract_keys and other derivation keys."
+            "reference step I/O contract keys and other derivation keys."
         ),
     )
     description = models.TextField(
@@ -2610,21 +2619,21 @@ class Derivation(TimeStampedModel):
 
 
 class ResolvedInputTrace(TimeStampedModel):
-    """Runtime audit record of how an input signal was resolved.
+    """Runtime audit record of how a step input was resolved.
 
-    Each time the resolution engine processes a step run's input signals,
-    it creates one ``ResolvedInputTrace`` per input signal. This provides
+    Each time the resolution engine processes a step run's inputs,
+    it creates one ``ResolvedInputTrace`` per step input. This provides
     a complete audit trail of:
 
-    - Which signal was being resolved (``signal_definition`` FK and
-      denormalized ``signal_contract_key``).
+    - Which step input was being resolved (``io_definition`` FK and
+      denormalized ``input_contract_key``).
     - Which source scope and data path were used to find the value.
     - Whether resolution succeeded (``resolved``), fell back to a default
       (``used_default``), or failed (``error_message``).
     - A snapshot of the resolved value for debugging and reproducibility.
 
-    The ``signal_contract_key`` is denormalized from the signal definition
-    so that traces remain meaningful even if the signal definition is later
+    The ``input_contract_key`` is denormalized from the step I/O definition
+    so that traces remain meaningful even if the definition is later
     deleted (the FK is SET_NULL). This supports long-term auditability
     without preventing schema evolution.
 
@@ -2638,19 +2647,19 @@ class ResolvedInputTrace(TimeStampedModel):
         related_name="input_traces",
         help_text="The step run this trace belongs to.",
     )
-    signal_definition = models.ForeignKey(
+    io_definition = models.ForeignKey(
         StepIODefinition,
         on_delete=models.SET_NULL,
         null=True,
         help_text=(
-            "The signal definition that was being resolved. SET_NULL on "
+            "The step I/O definition that was being resolved. SET_NULL on "
             "delete so traces survive schema evolution."
         ),
     )
-    signal_contract_key = models.CharField(
+    input_contract_key = models.CharField(
         max_length=255,
         help_text=(
-            "Denormalized contract_key from the signal definition, "
+            "Denormalized contract_key from the step I/O definition, "
             "preserved for auditability if the definition is deleted."
         ),
     )
@@ -2676,7 +2685,7 @@ class ResolvedInputTrace(TimeStampedModel):
         ),
     )
     resolved = models.BooleanField(
-        help_text="Whether the resolution engine found a value for this signal.",
+        help_text="Whether the resolution engine found a value for this step input.",
     )
     used_default = models.BooleanField(
         default=False,
@@ -2697,14 +2706,14 @@ class ResolvedInputTrace(TimeStampedModel):
         blank=True,
         default="",
         help_text=(
-            "Error message if resolution failed (e.g., required signal "
+            "Error message if resolution failed (e.g., required step input "
             "not found and no default configured)."
         ),
     )
 
     def __str__(self):
         status = "resolved" if self.resolved else "FAILED"
-        return f"{self.signal_contract_key} → {status}"
+        return f"{self.input_contract_key} → {status}"
 
 
 class CustomValidator(TimeStampedModel):
@@ -4016,7 +4025,7 @@ class ValidatorResourceFile(TimeStampedModel):
 
         Catalog files are referenced from a workflow step via
         ``WorkflowStepResource.validator_resource_file``. The check
-        walks that one FK and gates on the same workflow signal as Ruleset
+        walks that one FK and gates on the same workflow condition as Ruleset
         (versioned history AND locked OR has-runs).
         """
         # Local import to avoid the circular workflows<->validations

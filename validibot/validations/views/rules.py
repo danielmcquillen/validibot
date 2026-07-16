@@ -86,10 +86,13 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
             ),
         )
 
-    def _resolve_selected_entries(self, signals: list[str]) -> list[StepIODefinition]:
-        ids = [int(pk) for pk in signals or [] if str(pk).isdigit()]
+    def _resolve_selected_entries(
+        self,
+        io_definition_ids: list[str],
+    ) -> list[StepIODefinition]:
+        ids = [int(pk) for pk in io_definition_ids or [] if str(pk).isdigit()]
         return list(
-            self.validator.signal_definitions.filter(pk__in=ids).order_by(
+            self.validator.step_io_definitions.filter(pk__in=ids).order_by(
                 "contract_key",
             ),
         )
@@ -97,14 +100,14 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
     def _validate_cel_expression(
         self, expr: str, available_entries: list[StepIODefinition]
     ) -> list[StepIODefinition]:
-        """Validate CEL and return the signal definitions that are referenced.
+        """Validate CEL and return the step I/O definitions that are referenced.
 
         The parser enforces the namespaced convention: all data references
         must use a namespace prefix (``p.``/``payload.``, ``s.``/``signal.``,
         ``i.``/``input.``, ``o.``/``output.``, ``steps.``). Bare identifiers
         are rejected.
 
-        Output signals may be referenced as ``output.<contract_key>`` or
+        Step outputs may be referenced as ``output.<contract_key>`` or
         ``o.<contract_key>``; step inputs as ``input.<contract_key>`` or
         ``i.<contract_key>``.
         """
@@ -151,14 +154,17 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
         # forms-layer ones and the runtime binding.
         cel_builtins |= CUSTOM_HELPER_NAMES
 
-        key_map = {sig.contract_key: sig for sig in available_entries}
+        key_map = {
+            io_definition.contract_key: io_definition
+            for io_definition in available_entries
+        }
         referenced: set[StepIODefinition] = set()
         unknown: set[str] = set()
 
         # Strip string literals (including escaped quotes) so identifiers
         # inside quotes are not treated as bare identifiers.
         stripped = re.sub(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'', "", expr)
-        # Match namespaced references and track which signals are used.
+        # Match namespaced references and track which step outputs are used.
         for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", stripped):
             name = match.group(0)
             if name in reserved_literals or name in cel_builtins:
@@ -167,17 +173,15 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
                 continue
             root = name.split(".")[0]
             if root in namespace_roots:
-                # Track referenced signal definitions for output.* and s.* only.
-                # The first tracked reference becomes the assertion's target
-                # signal (see the caller), and an assertion's target is the
-                # output/signal being asserted about — not an input. So an
+                # Track referenced step I/O definitions for output.* only. The
+                # first tracked reference becomes the assertion's target, and
+                # an assertion's target is the output being asserted about —
+                # not an input. So an
                 # ``i.``/``input.`` reference is a valid namespace root (it must
                 # not be flagged as unknown) but is intentionally NOT tracked as
                 # a target: in ``o.result > i.threshold`` the target is
                 # ``o.result``, never ``i.threshold``.
-                if (root in ("output", "o") and "." in name) or (
-                    root == "s" and "." in name
-                ):
+                if root in ("output", "o") and "." in name:
                     key = name.split(".", 1)[1]
                     if key in key_map:
                         referenced.add(key_map[key])
@@ -217,31 +221,35 @@ class ValidatorRuleCreateView(ValidatorRuleMixin, FormView):
     def post(self, request, *args, **kwargs):
         form = self.form_class(
             request.POST,
-            signal_choices=[
-                (sig.id, sig.contract_key)
-                for sig in self.validator.signal_definitions.order_by("contract_key")
+            io_definition_choices=[
+                (io_definition.id, io_definition.contract_key)
+                for io_definition in self.validator.step_io_definitions.order_by(
+                    "contract_key"
+                )
             ],
         )
         if form.is_valid():
-            available_signals = list(
-                self.validator.signal_definitions.order_by("contract_key"),
+            available_io_definitions = list(
+                self.validator.step_io_definitions.order_by("contract_key"),
             )
             cel_expr = form.cleaned_data["cel_expression"]
-            referenced_signals = self._validate_cel_expression(
+            referenced_io_definitions = self._validate_cel_expression(
                 cel_expr,
-                available_signals,
+                available_io_definitions,
             )
-            # Pick the first referenced signal as the assertion target.
+            # Pick the first referenced output as the assertion target.
             # CEL assertions don't strictly need one, but it's useful for
             # display and deletion-protection.
-            target_signal = referenced_signals[0] if referenced_signals else None
+            target_io_definition = (
+                referenced_io_definitions[0] if referenced_io_definitions else None
+            )
             default_ruleset = self.validator.ensure_default_ruleset()
             RulesetAssertion.objects.create(
                 ruleset=default_ruleset,
                 assertion_type=AssertionType.CEL_EXPRESSION,
                 operator="",
-                target_signal_definition=target_signal,
-                target_data_path="" if target_signal else cel_expr,
+                target_io_definition=target_io_definition,
+                target_data_path="" if target_io_definition else cel_expr,
                 rhs={"expr": cel_expr},
                 severity=Severity.ERROR,
                 order=form.cleaned_data.get("order") or 0,
@@ -278,27 +286,31 @@ class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
         )
         form = self.form_class(
             request.POST,
-            signal_choices=[
-                (sig.id, sig.contract_key)
-                for sig in self.validator.signal_definitions.order_by("contract_key")
+            io_definition_choices=[
+                (io_definition.id, io_definition.contract_key)
+                for io_definition in self.validator.step_io_definitions.order_by(
+                    "contract_key"
+                )
             ],
         )
         if form.is_valid():
-            available_signals = list(
-                self.validator.signal_definitions.order_by("contract_key"),
+            available_io_definitions = list(
+                self.validator.step_io_definitions.order_by("contract_key"),
             )
             cel_expr = form.cleaned_data["cel_expression"]
-            referenced_signals = self._validate_cel_expression(
+            referenced_io_definitions = self._validate_cel_expression(
                 cel_expr,
-                available_signals,
+                available_io_definitions,
             )
-            target_signal = referenced_signals[0] if referenced_signals else None
+            target_io_definition = (
+                referenced_io_definitions[0] if referenced_io_definitions else None
+            )
             assertion.message_template = form.cleaned_data["name"]
             assertion.rhs = {"expr": cel_expr}
             assertion.cel_cache = cel_expr
             assertion.order = form.cleaned_data.get("order") or 0
-            assertion.target_signal_definition = target_signal
-            assertion.target_data_path = "" if target_signal else cel_expr
+            assertion.target_io_definition = target_io_definition
+            assertion.target_data_path = "" if target_io_definition else cel_expr
             assertion.save()
             messages.success(request, _("Default assertion updated."))
             if request.headers.get("HX-Request"):
@@ -357,7 +369,7 @@ class ValidatorRuleMoveView(ValidatorRuleMixin, View):
 
         assertions = (
             default_ruleset.assertions.all()
-            .select_related("target_signal_definition")
+            .select_related("target_io_definition")
             .order_by("order", "pk")
         )
         if request.headers.get("HX-Request"):

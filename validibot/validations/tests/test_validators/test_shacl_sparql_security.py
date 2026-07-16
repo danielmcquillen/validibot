@@ -82,7 +82,7 @@ class TestAskAcceptance:
 # ── Non-ASK forms rejected ────────────────────────────────────────────
 #
 # V1 commits to ASK-only at the surface layer. SELECT / CONSTRUCT /
-# DESCRIBE are reserved for the named-SELECT-signal follow-up ADR.
+# DESCRIBE are reserved for a future named-SELECT-output design.
 # Authors who want them must wait until that ADR ships and the
 # scrubber is widened deliberately.
 
@@ -91,11 +91,11 @@ class TestNonAskFormsRejected:
     """SELECT, CONSTRUCT, DESCRIBE must all be refused at parse time."""
 
     def test_select_rejected(self):
-        """SELECT bound for the named-SELECT-signal follow-up ADR is rejected.
+        """SELECT reserved for a future named-output design is rejected.
 
         Until the result-shape inference question is resolved, accepting
         SELECT silently would either crash at evaluation or produce
-        invented Validibot-specific signal semantics.
+        invented Validibot-specific output semantics.
         """
         with pytest.raises(SparqlScrubError, match="SelectQuery"):
             scrub_sparql_ask("SELECT * WHERE { ?s ?p ?o }")

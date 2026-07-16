@@ -10,6 +10,7 @@ from validibot.users.tests.factories import grant_role
 from validibot.users.tests.utils import ensure_all_roles_exist
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import Severity
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.models import RulesetAssertion
@@ -19,20 +20,20 @@ from validibot.validations.utils import create_custom_validator
 
 
 @pytest.mark.django_db
-def test_default_assertion_nulls_signal_on_delete():
+def test_default_assertion_nulls_io_definition_on_delete():
     """Deleting a StepIODefinition nulls the FK on referencing assertions (SET_NULL).
 
-    The target_signal_definition FK uses SET_NULL so that deleting a signal
+    The target_io_definition FK uses SET_NULL so deleting a step I/O definition
     does not cascade-delete or block deletion of assertions. After deletion
-    the assertion still exists but its target_signal_definition is None.
+    the assertion still exists but its target_io_definition is None.
     """
     validator = ValidatorFactory()
-    signal = StepIODefinitionFactory(validator=validator, contract_key="foo")
+    io_definition = StepIODefinitionFactory(validator=validator, contract_key="foo")
     default_ruleset = validator.ensure_default_ruleset()
     RulesetAssertion.objects.create(
         ruleset=default_ruleset,
         assertion_type=AssertionType.CEL_EXPRESSION,
-        target_signal_definition=signal,
+        target_io_definition=io_definition,
         rhs={"expr": "foo > 0"},
         severity=Severity.ERROR,
         order=0,
@@ -40,12 +41,12 @@ def test_default_assertion_nulls_signal_on_delete():
         cel_cache="foo > 0",
     )
 
-    # Deleting the signal should succeed (SET_NULL, not PROTECT).
-    signal.delete()
+    # Deleting the I/O definition should succeed (SET_NULL, not PROTECT).
+    io_definition.delete()
 
     # The assertion still exists but the FK is now None.
     assertion = default_ruleset.assertions.get(message_template="Sample")
-    assert assertion.target_signal_definition is None
+    assert assertion.target_io_definition is None
 
 
 @pytest.mark.django_db
@@ -107,7 +108,11 @@ def test_default_assertion_allows_boolean_literal(client):
     session.save()
 
     validator = ValidatorFactory(org=org, is_system=False)
-    StepIODefinitionFactory(validator=validator, contract_key="bool_in")
+    StepIODefinitionFactory(
+        validator=validator,
+        contract_key="bool_out",
+        direction=StepIODirection.OUTPUT,
+    )
 
     response = client.post(
         reverse(
@@ -118,7 +123,7 @@ def test_default_assertion_allows_boolean_literal(client):
             "name": "Bool check",
             "description": "",
             "rule_type": ValidatorRuleType.CEL_EXPRESSION,
-            "cel_expression": "s.bool_in == true",
+            "cel_expression": "o.bool_out == true",
             "order": 0,
         },
         HTTP_HX_REQUEST="true",
@@ -127,9 +132,9 @@ def test_default_assertion_allows_boolean_literal(client):
     assert response.status_code == HTTPStatus.NO_CONTENT
     default_ruleset = validator.default_ruleset
     assertion = default_ruleset.assertions.get(message_template="Bool check")
-    assert assertion.rhs["expr"] == "s.bool_in == true"
-    assert assertion.target_signal_definition is not None
-    assert assertion.target_signal_definition.contract_key == "bool_in"
+    assert assertion.rhs["expr"] == "o.bool_out == true"
+    assert assertion.target_io_definition is not None
+    assert assertion.target_io_definition.contract_key == "bool_out"
 
 
 @pytest.mark.django_db

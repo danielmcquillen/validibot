@@ -41,7 +41,7 @@ class CallbackAssertionEvaluationTests(TestCase):
     """
     Tests for output-stage assertion evaluation during callback processing.
 
-    Verifies that CEL assertions targeting output-stage signal definitions are
+    Verifies that CEL assertions targeting output-stage step I/O definitions are
     evaluated after an async validator completes and returns its output envelope.
     """
 
@@ -58,7 +58,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
         )
-        self.output_sig = StepIODefinitionFactory(
+        self.output_definition = StepIODefinitionFactory(
             validator=self.validator,
             contract_key="site_eui_kwh_m2",
             label="Site EUI (kWh/m²)",
@@ -174,8 +174,8 @@ class CallbackAssertionEvaluationTests(TestCase):
         assertion = RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_signal_definition=self.output_sig,
-            target_data_path="",  # Must be empty when using signal definition
+            target_io_definition=self.output_definition,
+            target_data_path="",  # Must be empty when using step I/O definition
             rhs={"expr": "output.site_eui_kwh_m2 < 100"},
             success_message="Building meets energy efficiency target!",
         )
@@ -225,8 +225,8 @@ class CallbackAssertionEvaluationTests(TestCase):
         assertion = RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_signal_definition=self.output_sig,
-            target_data_path="",  # Must be empty when using signal definition
+            target_io_definition=self.output_definition,
+            target_data_path="",  # Must be empty when using step I/O definition
             rhs={"expr": "output.site_eui_kwh_m2 < 50"},
             message_template="Site EUI is too high!",
         )
@@ -444,8 +444,8 @@ class CallbackAssertionEvaluationTests(TestCase):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_signal_definition=self.output_sig,
-            target_data_path="",  # Must be empty when using signal definition
+            target_io_definition=self.output_definition,
+            target_data_path="",  # Must be empty when using step I/O definition
             rhs={"expr": "output.site_eui_kwh_m2 < 100"},
             success_message="",  # No custom message
         )
@@ -494,8 +494,8 @@ class CallbackAssertionEvaluationTests(TestCase):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_signal_definition=self.output_sig,
-            target_data_path="",  # Must be empty when using signal definition
+            target_io_definition=self.output_definition,
+            target_data_path="",  # Must be empty when using step I/O definition
             rhs={"expr": "output.site_eui_kwh_m2 < 100"},
             success_message="Custom: Building is energy efficient!",
         )
@@ -532,25 +532,25 @@ class CallbackAssertionEvaluationTests(TestCase):
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")
-    def test_callback_evaluates_cel_assertion_without_target_signal_definition(
+    def test_callback_evaluates_cel_assertion_without_target_io_definition(
         self,
         mock_download,
     ):
         """
-        CEL assertions without target_signal_definition should still evaluate.
+        CEL assertions without target_io_definition should still evaluate.
 
         This tests the real-world scenario where the assertion form sets
-        target_signal_definition=None for CEL expression assertions. The stage
-        should be inferred from which signals the expression references.
+        target_io_definition=None for CEL expression assertions. The stage
+        should be inferred from which step-I/O namespace the expression uses.
         """
-        # Create assertion WITHOUT target_signal_definition (mimics form behavior)
-        # but referencing an output-stage signal.
+        # Create assertion WITHOUT target_io_definition (mimics form behavior)
+        # but referencing a step output.
         # Note: DB constraint requires target_data_path to be non-empty when
-        # target_signal_definition is null - the form sets it to the CEL expression.
+        # target_io_definition is null - the form sets it to the CEL expression.
         assertion = RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
-            target_signal_definition=None,  # Form sets this to None for CEL assertions
+            target_io_definition=None,  # Form sets this to None for CEL assertions
             # For CEL assertions, the expression is stored as the data path.
             target_data_path="output.site_eui_kwh_m2 < 100",
             rhs={"expr": "output.site_eui_kwh_m2 < 100"},
@@ -575,7 +575,7 @@ class CallbackAssertionEvaluationTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # Success finding should be created even without target_signal_definition
+        # Success finding should be created even without target_io_definition
         success_findings = ValidationFinding.objects.filter(
             validation_step_run=self.step_run,
             severity=Severity.SUCCESS,

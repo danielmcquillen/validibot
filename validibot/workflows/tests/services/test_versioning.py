@@ -50,7 +50,7 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import DefaultSourceStrategy
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import RulesetType
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import DerivationFactory
@@ -76,7 +76,7 @@ from validibot.workflows.version_utils import parse_workflow_version
 
 pytestmark = pytest.mark.django_db
 
-EXPECTED_CONTRACT_TREE_SIGNAL_DEFINITIONS = 2
+EXPECTED_CONTRACT_TREE_STEP_IO_DEFINITIONS = 2
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -615,7 +615,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
     def test_clone_deep_copies_step_owned_contract_tree(self):
         """A new workflow version gets independent editable child rows.
 
-        Step-level rulesets, assertions, and step-owned signal/binding rows are
+        Step-level rulesets, assertions, and step-owned I/O/binding rows are
         part of the workflow-owned contract. If the clone reused them, editing
         the new version would silently mutate the meaning of old runs attached
         to the source version.
@@ -626,17 +626,17 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             ruleset_type=RulesetType.BASIC,
         )
         step = WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
-        signal = StepIODefinitionFactory(
+        io_definition = StepIODefinitionFactory(
             validator=None,
             workflow_step=step,
             contract_key="shacl_total_count",
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
         )
         StepIODefinitionFactory(
             validator=None,
             workflow_step=step,
             contract_key="validation_report",
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
             data_type=CatalogValueType.ARTIFACT_REF,
             io_medium=StepIOMedium.ARTIFACT,
             artifact_kind=ArtifactKind.REPORT,
@@ -653,7 +653,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=signal,
+            io_definition=io_definition,
             default_value=0,
         )
         DerivationFactory(
@@ -666,7 +666,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             ruleset=ruleset,
             assertion_type=AssertionType.BASIC,
             operator=AssertionOperator.LE,
-            target_signal_definition=signal,
+            target_io_definition=io_definition,
             target_data_path="",
             rhs={"value": 0},
             notes="No findings expected once the model passes QA.",
@@ -676,35 +676,39 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         report = WorkflowVersioningService.clone(workflow, user=user)
         new_workflow = Workflow.objects.get(pk=report.new_workflow_id)
         new_step = new_workflow.steps.get()
-        new_signal = new_step.signal_definitions.get(contract_key="shacl_total_count")
-        new_artifact_signal = new_step.signal_definitions.get(
+        new_io_definition = new_step.step_io_definitions.get(
+            contract_key="shacl_total_count"
+        )
+        new_artifact_definition = new_step.step_io_definitions.get(
             contract_key="validation_report",
         )
         new_assertion = new_step.ruleset.assertions.get()
 
         assert new_step.pk != step.pk
         assert new_step.ruleset_id != ruleset.pk
-        assert new_signal.pk != signal.pk
-        assert new_artifact_signal.io_medium == StepIOMedium.ARTIFACT
-        assert new_artifact_signal.artifact_kind == ArtifactKind.REPORT
-        assert new_artifact_signal.envelope_channel == EnvelopeChannel.OUTPUT_ARTIFACTS
-        assert new_artifact_signal.accepted_data_formats == ["html"]
-        assert new_artifact_signal.allowed_source_scopes == [
+        assert new_io_definition.pk != io_definition.pk
+        assert new_artifact_definition.io_medium == StepIOMedium.ARTIFACT
+        assert new_artifact_definition.artifact_kind == ArtifactKind.REPORT
+        assert (
+            new_artifact_definition.envelope_channel == EnvelopeChannel.OUTPUT_ARTIFACTS
+        )
+        assert new_artifact_definition.accepted_data_formats == ["html"]
+        assert new_artifact_definition.allowed_source_scopes == [
             BindingSourceScope.UPSTREAM_ARTIFACT,
         ]
-        assert new_assertion.target_signal_definition_id == new_signal.pk
+        assert new_assertion.target_io_definition_id == new_io_definition.pk
         # Author rationale is non-semantic but part of the copied contract, so a
         # new version carries the reasoning forward rather than dropping it.
         assert new_assertion.notes == "No findings expected once the model passes QA."
-        assert new_step.signal_bindings.get().signal_definition_id == new_signal.pk
+        assert new_step.input_bindings.get().io_definition_id == new_io_definition.pk
         assert new_step.derivations.get(contract_key="has_findings").pk is not None
         assert report.components_copied["rulesets"] == 1
         assert report.components_copied["assertions"] == 1
         assert (
-            report.components_copied["signal_definitions"]
-            == EXPECTED_CONTRACT_TREE_SIGNAL_DEFINITIONS
+            report.components_copied["step_io_definitions"]
+            == EXPECTED_CONTRACT_TREE_STEP_IO_DEFINITIONS
         )
-        assert report.components_copied["signal_bindings"] == 1
+        assert report.components_copied["input_bindings"] == 1
         assert report.components_copied["derivations"] == 1
 
     def test_clone_copies_validator_owned_io_promotion_overlays(self):
@@ -737,12 +741,12 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             validator=validator,
             workflow_step=None,
             contract_key="zone_count",
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
         )
         step = WorkflowStepFactory(workflow=workflow, validator=validator)
         WorkflowStepIOPromotion.objects.create(
             workflow_step=step,
-            signal_definition=catalog_row,
+            io_definition=catalog_row,
             promoted_signal_name="zones",
         )
         user = UserFactory()
@@ -756,13 +760,13 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         new_overlay = WorkflowStepIOPromotion.objects.get(
             workflow_step=new_step,
         )
-        assert new_overlay.signal_definition_id == catalog_row.pk
+        assert new_overlay.io_definition_id == catalog_row.pk
         assert new_overlay.promoted_signal_name == "zones"
         # Both versions have their own overlay row — the source's
         # overlay still exists too (separate workflow_step FK).
         assert WorkflowStepIOPromotion.objects.filter(
             workflow_step=step,
-            signal_definition=catalog_row,
+            io_definition=catalog_row,
         ).exists()
         # Components report tracks the overlay count.
         assert report.components_copied["io_promotions"] == 1
@@ -795,13 +799,13 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             validator=None,
             workflow_step=step,
             contract_key="custom_metric",
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
         )
 
         with pytest.raises(DjangoValidationError) as excinfo:
             WorkflowStepIOPromotion.objects.create(
                 workflow_step=step,
-                signal_definition=step_owned_row,
+                io_definition=step_owned_row,
                 promoted_signal_name="metric",
             )
         # Error must explain why and point to the right alternative.
@@ -842,13 +846,13 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             validator=validator_b,
             workflow_step=None,
             contract_key="something",
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
         )
 
         with pytest.raises(DjangoValidationError) as excinfo:
             WorkflowStepIOPromotion.objects.create(
                 workflow_step=step,
-                signal_definition=cross_validator_row,
+                io_definition=cross_validator_row,
                 promoted_signal_name="something",
             )
         assert "same validator" in str(excinfo.value)
@@ -867,7 +871,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
         The earlier version of ``clean()`` short-circuited when
         ``step_validator_id is None``, allowing this shape through.
         The strengthened invariant requires both that the step has
-        a validator AND that it matches the signal_definition's
+        a validator AND that it matches the io_definition's
         validator. Regression test for the May 2026 follow-up
         review finding.
 
@@ -919,13 +923,13 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             validator=validator,
             workflow_step=None,
             contract_key="something",
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
         )
 
         with pytest.raises(DjangoValidationError) as excinfo:
             WorkflowStepIOPromotion.objects.create(
                 workflow_step=step,
-                signal_definition=catalog_row,
+                io_definition=catalog_row,
                 promoted_signal_name="something",
             )
         # Error must call out both the same-validator requirement

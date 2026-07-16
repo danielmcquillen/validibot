@@ -193,21 +193,21 @@ def test_schema_asset_is_a_well_formed_table_schema():
 
 # ── Happy path: clean Darwin Core passes ────────────────────────────────────
 # The baseline. Four real-shaped marine occurrence records that satisfy every
-# column rule must pass with zero findings and surface the dataset (i.*) signals
+# column rule must pass with zero findings and surface the declared dataset outputs
 # a downstream "row count" assertion would consume.
-def test_valid_occurrence_file_passes_with_signals():
-    """A conformant Darwin Core file passes and exposes its dataset signals.
+def test_valid_occurrence_file_passes_with_output_values():
+    """A conformant Darwin Core file passes and exposes its dataset outputs.
 
     This is the contract the blog opens with: point the validator at good data
-    and it gets out of the way. We also assert the ``i.*`` signals so readers
+    and it gets out of the way. We also assert the output values so readers
     see that row/column metadata is available for dataset-level assertions.
     """
     result = _run(content=_asset("occurrence_valid.csv"))
 
     assert result.passed, result.issues
     assert result.issues == []
-    assert result.signals["num_rows"] == 4  # noqa: PLR2004
-    assert result.signals["column_names"] == DARWIN_CORE_COLUMNS
+    assert result.output_values["num_rows"] == 4  # noqa: PLR2004
+    assert result.output_values["column_names"] == DARWIN_CORE_COLUMNS
 
 
 # ── Per-column (native) checks: one Darwin Core rule per finding ─────────────

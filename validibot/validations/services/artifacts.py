@@ -20,7 +20,7 @@ from validibot_shared.validations.artifacts import ArtifactRef
 
 from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import EnvelopeChannel
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.models import Artifact
 from validibot.validations.models import StepIODefinition
@@ -136,15 +136,15 @@ def _output_artifact_ports_for_step_run(
 
     step = step_run.workflow_step
     ports = list(
-        step.signal_definitions.filter(
-            direction=SignalDirection.OUTPUT,
+        step.step_io_definitions.filter(
+            direction=StepIODirection.OUTPUT,
             io_medium=StepIOMedium.ARTIFACT,
             envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
         ),
     )
     ports.extend(
-        step.validator.signal_definitions.filter(
-            direction=SignalDirection.OUTPUT,
+        step.validator.step_io_definitions.filter(
+            direction=StepIODirection.OUTPUT,
             io_medium=StepIOMedium.ARTIFACT,
             envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
         ),

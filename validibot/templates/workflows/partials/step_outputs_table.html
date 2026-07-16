@@ -14,7 +14,7 @@ the promote/demote view) and re-fetches the table partial so the UI
 updates without a full page refresh.
 
 Context:
-  unified_signals.output_signals  - list of output signal dicts
+  step_io_context.output_values  - list of step output dicts
   step                            - the WorkflowStep
   workflow                        - the parent Workflow
 {% endcomment %}
@@ -22,7 +22,7 @@ Context:
      hx-get="{% url 'workflows:workflow_step_outputs_partial' workflow.pk step.pk %}"
      hx-trigger="signals-changed from:body"
      hx-swap="outerHTML">
-  {% if unified_signals.output_signals %}
+  {% if step_io_context.output_values %}
     <div class="table-responsive">
       <table class="table table-sm align-middle" data-sortable-table>
         <thead>
@@ -47,27 +47,27 @@ Context:
           </tr>
         </thead>
         <tbody>
-          {% for signal in unified_signals.output_signals %}
+          {% for output in step_io_context.output_values %}
             <tr>
               <td>
-                <code class="small">o.{{ signal.slug }}</code>
-                {% if signal.label and signal.label != signal.slug %}
+                <code class="small">o.{{ output.slug }}</code>
+                {% if output.label and output.label != output.slug %}
                   <br />
-                  <span class="text-muted small">{{ signal.label }}</span>
+                  <span class="text-muted small">{{ output.label }}</span>
                 {% endif %}
               </td>
               <td class="text-center">
-                {% include "workflows/partials/signal_show_toggle.html" with signal_slug=signal.slug is_shown=signal.show_to_user step=step workflow=workflow %}
+                {% include "workflows/partials/step_output_show_toggle.html" with output_key=output.slug is_shown=output.show_to_user step=step workflow=workflow %}
               </td>
               <td>
                 {% if can_manage_workflow %}
-                  {% if signal.signal_name %}
+                  {% if output.signal_name %}
                     <div class="d-flex align-items-center gap-2">
                       <span class="badge bg-primary-subtle text-primary">
-                        s.{{ signal.signal_name }}
+                        s.{{ output.signal_name }}
                       </span>
                       <form class="d-inline"
-                            hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk signal.signal_definition.pk %}"
+                            hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk output.io_definition.pk %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-swap="none"
                             hx-disabled-elt="find button">
@@ -81,7 +81,7 @@ Context:
                     </div>
                   {% else %}
                     <form class="d-inline"
-                          hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk signal.signal_definition.pk %}"
+                          hx-post="{% url 'workflows:workflow_step_promote_step_io' workflow.pk step.pk output.io_definition.pk %}"
                           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                           hx-swap="none"
                           hx-disabled-elt="find button">
@@ -100,9 +100,9 @@ Context:
                       </div>
                     </form>
                   {% endif %}
-                {% elif signal.signal_name %}
+                {% elif output.signal_name %}
                   <span class="badge bg-primary-subtle text-primary">
-                    s.{{ signal.signal_name }}
+                    s.{{ output.signal_name }}
                   </span>
                 {% else %}
                   <span class="text-muted">—</span>

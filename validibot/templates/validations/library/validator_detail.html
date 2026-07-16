@@ -99,11 +99,11 @@
       </li>
       <li class="nav-item">
         <a class="nav-link
-                  {% if active_tab == 'signals' %}
+                  {% if active_tab == 'step_io' %}
                     active
                   {% endif %}"
-           href="{{ validator_detail_urls.signals }}">
-          <i class="bi bi-broadcast me-1"></i>{% trans "Signals" %}
+           href="{{ validator_detail_urls.step_io }}">
+          <i class="bi bi-diagram-3 me-1"></i>{% trans "Inputs & Outputs" %}
         </a>
       </li>
       <li class="nav-item">
@@ -131,8 +131,8 @@
     <div class="validator-detail-tab-content">
       {% if active_tab == 'description' %}
         {% include 'validations/library/partials/validator_description_tab.html' %}
-      {% elif active_tab == 'signals' %}
-        {% include 'validations/library/partials/validator_signals_card.html' with inputs=inputs outputs=outputs catalog_tab_prefix=catalog_tab_prefix can_manage_validators=can_manage_validators can_edit_validator=can_edit_validator show_output_tab=show_output_tab active_signals_tab=active_signals_tab %}
+      {% elif active_tab == 'step_io' %}
+        {% include 'validations/library/partials/validator_step_io_card.html' with inputs=inputs outputs=outputs catalog_tab_prefix=catalog_tab_prefix can_manage_validators=can_manage_validators can_edit_validator=can_edit_validator show_output_tab=show_output_tab active_step_io_tab=active_step_io_tab %}
       {% elif active_tab == 'assertions' %}
         {% if can_edit_validator %}
           <div class="validator-detail-tab-toolbar">
@@ -158,19 +158,19 @@
     </a>
   </div>
   {# ── Modals (only include what the active tab needs) ── #}
-  {% if active_tab == 'signals' %}
+  {% if active_tab == 'step_io' %}
     {% for entry in inputs %}
-      {% include "validations/library/partials/signal_detail_modal.html" with signal=entry entry_id=entry.id %}
+      {% include "validations/library/partials/step_io_detail_modal.html" with io_definition=entry entry_id=entry.id %}
     {% endfor %}
     {% if show_output_tab %}
       {% for entry in outputs %}
-        {% include "validations/library/partials/signal_detail_modal.html" with signal=entry entry_id=entry.id %}
+        {% include "validations/library/partials/step_io_detail_modal.html" with io_definition=entry entry_id=entry.id %}
       {% endfor %}
     {% endif %}
     {% if can_edit_validator %}
-      {% include "validations/library/partials/modal_signal_create.html" with modal_id="modal-signal-create" modal_title=_("Add Signal") modal_form=signal_create_form %}
-      {% for entry_id, payload in signal_edit_forms.items %}
-        {% include "validations/library/partials/modal_signal_edit.html" with entry_id=entry_id form=payload.form modal_title=payload.title %}
+      {% include "validations/library/partials/modal_step_io_create.html" with modal_id="modal-step-io-create" modal_title=_("Add Step Input or Output") modal_form=io_definition_create_form %}
+      {% for entry_id, payload in io_definition_edit_forms.items %}
+        {% include "validations/library/partials/modal_step_io_edit.html" with entry_id=entry_id form=payload.form modal_title=payload.title %}
       {% endfor %}
     {% endif %}
   {% elif active_tab == 'assertions' %}

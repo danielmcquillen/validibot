@@ -214,13 +214,13 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
                 "findings",
                 "findings__ruleset_assertion",
                 # See refactor-step item ``[review-#5]`` (amendment).
-                # ``_build_signal_map`` and
+                # ``_build_step_output_map`` and
                 # ``_build_template_param_meta`` iterate these per
-                # step_run to enrich output_signals /
+                # step_run to enrich output_values /
                 # template_parameters_used — without prefetch each
                 # step issues two extra queries.
-                "workflow_step__signal_definitions",
-                "workflow_step__validator__signal_definitions",
+                "workflow_step__step_io_definitions",
+                "workflow_step__validator__step_io_definitions",
             )
             .order_by("step_order", "pk"),
         )

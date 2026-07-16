@@ -18,10 +18,9 @@ Use this guide when you need to answer questions like:
 > established by ADR-2026-05-22b (internal):
 > *signal* refers only to workflow-vocabulary values (`s.*`); *step input*
 > and *step output* refer to step-local values (`i.*` and `o.*`).
-> The Django models match: `StepIODefinition` and `StepInputBinding`
-> (the underlying database tables retain legacy names —
-> `validations_signaldefinition` and `validations_stepsignalbinding` —
-> to avoid a destructive table rename on mature data).
+> The Django models and tables match: `StepIODefinition` /
+> `validations_stepiodefinition` and `StepInputBinding` /
+> `validations_stepinputbinding`.
 
 ## The Example Workflow
 
@@ -54,8 +53,8 @@ The submission payload looks like this:
 
 This example shows both ownership modes:
 
-- validator-owned signals for reusable library contracts
-- step-owned signals for step-local assets like uploaded FMUs
+- validator-owned step I/O definitions for reusable library contracts
+- step-owned step I/O definitions for step-local assets like uploaded FMUs
 
 ## The Model Set
 
@@ -75,9 +74,9 @@ If you remember only one mental model, remember this:
 - `Derivation` = computation
 - `ResolvedInputTrace` = audit
 
-## Part 1: Library-Owned Signals
+## Part 1: Library-Owned Step I/O
 
-The validator `energyplus-envelope-check` owns these signals:
+The validator `energyplus-envelope-check` owns these step I/O definitions:
 
 | Owner | Contract key | Native name | Direction | Type | Meaning |
 | --- | --- | --- | --- | --- | --- |
@@ -85,7 +84,9 @@ The validator `energyplus-envelope-check` owns these signals:
 | Validator | `window_u_factor` | `window_u_factor` | input | number | Window thermal transmittance |
 | Validator | `annual_site_energy_kwh` | `AnnualSiteEnergy` | output | number | Annual simulated energy use |
 
-These are validator-owned because they belong to the reusable contract of the validator itself. Every workflow step that uses this validator should see the same logical signals.
+These definitions are validator-owned because they belong to the reusable
+contract of the validator itself. Every workflow step that uses this validator
+sees the same logical inputs and outputs.
 
 ### `contract_key` vs `native_name`
 
@@ -104,7 +105,7 @@ These are validator-owned because they belong to the reusable contract of the va
 
 They may match, but they do not serve the same purpose.
 
-## Part 2: A Workflow Step Reuses Those Signals
+## Part 2: A Workflow Step Reuses Those Definitions
 
 Now add a workflow step named `envelope_check` that uses the shared validator.
 
@@ -112,7 +113,7 @@ The step does not need to create new input definitions. Instead, it reuses the v
 
 ### Bindings for `envelope_check`
 
-| Workflow step | Signal contract key | Source scope | Source data path | Default | Required |
+| Workflow step | Input contract key | Source scope | Source data path | Default | Required |
 | --- | --- | --- | --- | --- | --- |
 | `envelope_check` | `wall_r_value` | `submission_payload` | `building.envelope.wall_r_value` | none | yes |
 | `envelope_check` | `window_u_factor` | `submission_payload` | `building.envelope.window_u_factor` | `0.4` | no |
@@ -121,13 +122,15 @@ The contract still lives on `StepIODefinition`, but the wiring now lives on `Ste
 
 That means the same validator can be reused in a different workflow with a different payload shape by changing only the bindings.
 
-## Part 3: A Workflow Step Can Own Its Own Signals
+## Part 3: A Workflow Step Can Own Its Own Step I/O
 
 Now look at the second step, `coil_fmu`.
 
-This step uses an FMU uploaded directly to the workflow step. The discovered signals belong only to this step and should not become reusable library-wide signals.
+This step uses an FMU uploaded directly to the workflow step. The discovered
+inputs and outputs belong only to this step and should not become reusable
+library-wide definitions.
 
-### Step-owned signal definitions for `coil_fmu`
+### Step-owned I/O definitions for `coil_fmu`
 
 | Owner | Contract key | Native name | Direction | Type | Meaning |
 | --- | --- | --- | --- | --- | --- |
@@ -137,16 +140,17 @@ This step uses an FMU uploaded directly to the workflow step. The discovered sig
 
 ### Bindings for `coil_fmu`
 
-| Workflow step | Signal contract key | Source scope | Source data path | Default | Required |
+| Workflow step | Input contract key | Source scope | Source data path | Default | Required |
 | --- | --- | --- | --- | --- | --- |
 | `coil_fmu` | `inlet_temp_c` | `submission_payload` | `hvac.coil.inlet_temp_c` | none | yes |
 | `coil_fmu` | `mass_flow_kg_s` | `submission_payload` | `hvac.coil.mass_flow_kg_s` | `1.0` | no |
 
-These signals are step-owned because they came from probing one specific FMU file attached to one specific workflow step.
+These definitions are step-owned because they came from probing one specific
+FMU file attached to one specific workflow step.
 
 ## Part 4: What the Authoring UI Assembles
 
-The step UI displays one unified signals table, but it is assembled from two sources:
+The step UI displays a unified Inputs/Outputs card assembled from two sources:
 
 - contract metadata from `StepIODefinition`
 - binding metadata from `StepInputBinding`
@@ -171,8 +175,8 @@ For `envelope_check`, the resolver conceptually does this:
 1. Load the step's input bindings.
 2. Read each value from the configured `source_scope` and `source_data_path`.
 3. Apply `default_value` if the path is missing.
-4. Raise a structured error if a required signal cannot be resolved.
-5. Build the runner input dict using each signal's `native_name`.
+4. Raise a structured error if a required step input cannot be resolved.
+5. Build the runner input dict using each input definition's `native_name`.
 
 ### Resolved inputs for `envelope_check`
 
@@ -231,7 +235,8 @@ resolution still succeeds and the runner receives:
 }
 ```
 
-If `inlet_temp_c` is missing, resolution fails before validator execution because that signal is required and has no default.
+If `inlet_temp_c` is missing, resolution fails before validator execution
+because that step input is required and has no default.
 
 This is why `StepInputBinding` is not just metadata. It is executable launch-time wiring.
 
@@ -269,7 +274,7 @@ namespaces.
 o.annual_site_energy_kwh < 50000
 ```
 
-The value comes from `extract_output_signals()` on the validator,
+The value comes from `extract_output_values()` on the validator,
 keyed by the OUTPUT-direction `StepIODefinition`'s `contract_key`.
 
 ### Cross-stage assertion on `coil_fmu`
@@ -339,7 +344,8 @@ workflow-level signals from `WorkflowSignalMapping`.
 
 ## Part 8: Derivations Are Separate on Purpose
 
-A derivation is not a raw signal from the submission or a direct output from a runner. It is a computed value.
+A derivation is neither a raw input from the submission nor a direct output
+from a runner. It is a computed value.
 
 Example derivation on `coil_fmu`:
 
@@ -347,15 +353,18 @@ Example derivation on `coil_fmu`:
 | --- | --- | --- | --- |
 | Workflow step `coil_fmu` | `specific_cooling_index` | `cooling_power_kw / mass_flow_kg_s` | number |
 
-Signals describe data contracts. Derivations describe computations over those contracts. Keeping them separate makes CEL evaluation and UI behavior much clearer.
+Step I/O definitions describe data contracts. Derivations describe
+computations over those contracts. Keeping them separate makes CEL evaluation
+and UI behavior much clearer.
 
 ## Part 9: Resolved Input Traces Explain the Run
 
-Every time a step resolves inputs, Validibot stores one `ResolvedInputTrace` per input signal.
+Every time a step resolves inputs, Validibot stores one `ResolvedInputTrace`
+per step input.
 
 For `coil_fmu`, the trace rows might look like this:
 
-| Step run | Signal | Source scope used | Source path used | Resolved | Used default | Value snapshot |
+| Step run | Step input | Source scope used | Source path used | Resolved | Used default | Value snapshot |
 | --- | --- | --- | --- | --- | --- | --- |
 | run 842 / `coil_fmu` | `inlet_temp_c` | `submission_payload` | `hvac.coil.inlet_temp_c` | yes | no | `12.0` |
 | run 842 / `coil_fmu` | `mass_flow_kg_s` | `submission_payload` | `hvac.coil.mass_flow_kg_s` | yes | no | `0.85` |
@@ -364,9 +373,10 @@ If a value came from a default, `used_default` would be true. If a required valu
 
 This gives operators a concrete audit trail instead of forcing them to infer how resolution behaved.
 
-## Part 10: Validator-Owned vs Step-Owned Signals
+## Part 10: Validator-Owned vs Step-Owned I/O Definitions
 
-Use validator-owned signal definitions when the signal is part of a reusable validator contract.
+Use validator-owned step I/O definitions when the input or output is part of a
+reusable validator contract.
 
 Examples:
 
@@ -374,13 +384,14 @@ Examples:
 - stable outputs of a library validator
 - library-wide assertion targets
 
-Use workflow-step-owned signal definitions when the signal comes from a step-local asset or step-local customization.
+Use workflow-step-owned I/O definitions when the input or output comes from a
+step-local asset or customization.
 
 Examples:
 
 - probed FMU variables from a file uploaded to one step
 - scanned EnergyPlus template variables on one step
-- step-specific custom signals that should not leak back into the validator library
+- step-specific custom inputs or outputs that should not leak back into the validator library
 
 ## Part 11: How This Replaced the Old Catalog Model
 
@@ -434,6 +445,6 @@ The unified step-IO model is easiest to understand in layers:
 
 Once that clicks, the ownership model becomes straightforward:
 
-- validator-owned signals are reusable contracts
-- step-owned signals are local contracts
+- validator-owned step I/O definitions are reusable contracts
+- step-owned step I/O definitions are local contracts
 - bindings are where workflow-specific wiring lives

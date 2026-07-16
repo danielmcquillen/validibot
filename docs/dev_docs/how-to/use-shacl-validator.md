@@ -97,15 +97,15 @@ parse" and engine failures. SHACL violations are automatic gates in
 In **Report only** mode, SHACL violations become report data and the
 author's assertions decide whether the step passes.
 
-### Engine signals available in CEL
+### Engine outputs available in CEL
 
-The SHACL engine emits a fixed set of output signals on every run,
+The SHACL engine emits a fixed set of step output values on every run,
 identical regardless of which shapes or ontologies the author uploaded.
 These appear in the Basic/CEL assertion picker as `o.*` targets.
 
-| Signal | Type | Meaning |
+| Output | Type | Meaning |
 |---|---|---|
-| `o.parse_ok` | bool | Whether RDF parse succeeded. Parse failure already auto-fails the step, but the signal is available for reporting and CEL templates. |
+| `o.parse_ok` | bool | Whether RDF parse succeeded. Parse failure already auto-fails the step, but the output is available for reporting and CEL templates. |
 | `o.parse_serialization` | string | The format used (`turtle`, `json-ld`, …). |
 | `o.triple_count` | number | Total triples after parse. |
 | `o.namespaces_present` | `list[string]` | Namespace URIs seen in any triple. |
@@ -220,7 +220,7 @@ Three artifacts:
   serialised as Turtle and attached to `result.stats["results_graph_turtle"]`.
   Downstream tools (BuildingMOTIF, analytics platforms, AI agents) can
   ingest this directly without going through Validibot's JSON.
-- **Output signals** — scalar `o.*` values such as
+- **Step output values** — scalar `o.*` values such as
   `o.shacl_violation_count` and `o.shacl_total_count`, available to
   Basic and CEL assertions regardless of result-handling mode.
 
@@ -235,7 +235,7 @@ and splits into:
 - `validator.py` — the orchestrator class, `SHACLValidator`. Thin —
   it just sequences the engine functions.
 - `engine.py` — the pure functions: parse, infer, run pyshacl, map
-  results, extract signals. No Django imports. Unit-tested without
+  results, and extract output values. No Django imports. Unit-tested without
   the test database.
 
 Container backend dependencies (all pure Python):

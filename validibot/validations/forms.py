@@ -31,8 +31,8 @@ from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import Severity
-from validibot.validations.constants import SignalDirection
-from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import StepIODirection
+from validibot.validations.constants import StepIOOriginKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.constants import get_resource_type_config
@@ -891,8 +891,8 @@ class RulesetAssertionForm(forms.Form):
         self.shacl_query_max_length = self._resolve_shacl_query_max_length()
         self.catalog_choices = list(catalog_choices or [])
         # catalog_entries parameter contains StepIODefinition objects
-        # (passed from the mixin's signal_definitions query).
-        self.signal_definitions: list[StepIODefinition] = list(catalog_entries or [])
+        # (passed from the mixin's step_io_definitions query).
+        self.step_io_definitions: list[StepIODefinition] = list(catalog_entries or [])
         # Workflow-level signal names (signal mappings + promoted outputs
         # from upstream steps).  These are valid s.* assertion targets
         # even when they don't correspond to a validator input.
@@ -900,24 +900,30 @@ class RulesetAssertionForm(forms.Form):
         self.inputs_by_slug: dict[str, StepIODefinition] = {}
         self.outputs_by_slug: dict[str, StepIODefinition] = {}
         self.choice_map: dict[str, StepIODefinition] = {}
-        for sig in self.signal_definitions:
-            if sig.direction == SignalDirection.OUTPUT:
-                self.outputs_by_slug.setdefault(sig.contract_key, sig)
+        for io_definition in self.step_io_definitions:
+            if io_definition.direction == StepIODirection.OUTPUT:
+                self.outputs_by_slug.setdefault(
+                    io_definition.contract_key,
+                    io_definition,
+                )
             else:
-                self.inputs_by_slug.setdefault(sig.contract_key, sig)
+                self.inputs_by_slug.setdefault(
+                    io_definition.contract_key,
+                    io_definition,
+                )
 
-        # Step-level FMU signals are now included in signal_definitions
+        # Step-level FMU I/O definitions are included in step_io_definitions
         # via the mixin's get_catalog_choices(). Build name sets for
         # CEL validation and target resolution using native_name (the
         # original FMU variable name from modelDescription.xml).
         self.fmu_input_names: set[str] = set()
         self.fmu_output_names: set[str] = set()
-        for sig in self.signal_definitions:
-            if sig.origin_kind == SignalOriginKind.FMU:
-                fmu_name = sig.native_name or sig.contract_key
-                if sig.direction == SignalDirection.INPUT:
+        for io_definition in self.step_io_definitions:
+            if io_definition.origin_kind == StepIOOriginKind.FMU:
+                fmu_name = io_definition.native_name or io_definition.contract_key
+                if io_definition.direction == StepIODirection.INPUT:
                     self.fmu_input_names.add(fmu_name)
-                elif sig.direction == SignalDirection.OUTPUT:
+                elif io_definition.direction == StepIODirection.OUTPUT:
                     self.fmu_output_names.add(fmu_name)
 
         self.catalog_slugs = set(
@@ -938,24 +944,26 @@ class RulesetAssertionForm(forms.Form):
         self.shacl_sparql_assertion_count = shacl_sparql_assertion_count
         self.target_slug_datalist_id = target_slug_datalist_id
         self._configure_shacl_query_field()
-        signal_choices = []
-        for sig in self.signal_definitions:
+        io_definition_choices = []
+        for io_definition in self.step_io_definitions:
             role = (
-                _("Output") if sig.direction == SignalDirection.OUTPUT else _("Input")
+                _("Output")
+                if io_definition.direction == StepIODirection.OUTPUT
+                else _("Input")
             )
-            label = sig.label or sig.contract_key
-            value = f"{sig.direction}:{sig.contract_key}"
-            self.choice_map[value] = sig
-            signal_choices.append((value, f"{label} · {role}"))
-        self.no_signal_choices = len(signal_choices) == 0
+            label = io_definition.label or io_definition.contract_key
+            value = f"{io_definition.direction}:{io_definition.contract_key}"
+            self.choice_map[value] = io_definition
+            io_definition_choices.append((value, f"{label} · {role}"))
+        self.no_io_definition_choices = len(io_definition_choices) == 0
         self.fields["target_catalog_entry"].choices = [
             ("", _("Select a step input or step output")),
-            *signal_choices,
+            *io_definition_choices,
         ]
         # Hide catalog selector in favor of the target field; we
         # still keep it for backend resolution.
         self.fields["target_catalog_entry"].widget = forms.HiddenInput()
-        if self.no_signal_choices:
+        if self.no_io_definition_choices:
             self.fields["target_catalog_entry"].required = False
 
         if self.fields.get("cel_expression"):
@@ -1028,8 +1036,8 @@ class RulesetAssertionForm(forms.Form):
             elif self.requested_tabular_stage == "column":
                 self.fields["cel_expression"].help_text = _(
                     "Use col.<column> aggregates such as null_ratio, "
-                    "distinct_count, min, max, and sum. Dataset metadata and "
-                    "workflow signals remain available as i.* and s.*.",
+                    "distinct_count, min, max, and sum. Dataset metadata remains "
+                    "available as i.*, and workflow signals as s.*.",
                 )
                 self.fields["report_max_examples"].widget = forms.HiddenInput()
             else:
@@ -1102,7 +1110,7 @@ class RulesetAssertionForm(forms.Form):
         assertion_type = cleaned.get("assertion_type")
         if assertion_type == AssertionType.CEL_EXPRESSION:
             # CEL expressions declare their own targets inside the expression.
-            self.cleaned_data["resolved_signal"] = None
+            self.cleaned_data["resolved_io_definition"] = None
             self.cleaned_data["target_catalog_entry"] = None
             self.cleaned_data["target_data_path_value"] = ""
         elif assertion_type == AssertionType.SHACL:
@@ -1121,9 +1129,9 @@ class RulesetAssertionForm(forms.Form):
             # validator base layer (see
             # ``BaseValidator._enrich_basic_payload``): the validator
             # now merges resolved bindings, workflow signals, and
-            # output signals into the BASIC payload by their bare
+            # step output values into the BASIC payload by their bare
             # contract_key before evaluation. With that wiring in
-            # place, ``target_signal_definition.contract_key`` lookups
+            # place, ``target_io_definition.contract_key`` lookups
             # find the right value regardless of which namespace the
             # author chose. The form-side rejection is therefore
             # obsolete — kept as a brief comment for the next reader
@@ -1443,7 +1451,7 @@ class RulesetAssertionForm(forms.Form):
             ) from exc
 
         description = (self.cleaned_data.get("shacl_description") or "").strip()
-        self.cleaned_data["resolved_signal"] = None
+        self.cleaned_data["resolved_io_definition"] = None
         self.cleaned_data["target_catalog_entry"] = None
         self.cleaned_data["target_data_path_value"] = f"shacl.{target_graph}"
         self.cleaned_data["resolved_stage"] = CatalogRunStage.OUTPUT
@@ -1556,7 +1564,7 @@ class RulesetAssertionForm(forms.Form):
         # Step outputs live in ``o.*`` and step inputs in ``i.*``; crossing
         # them passes the namespace-root check (both ``i`` and ``o`` are valid
         # roots) but reads null at runtime. SHACL is the headline case: every
-        # SHACL signal (``namespaces_present``, ``conforms``, …) is a step
+        # SHACL output (``namespaces_present``, ``conforms``, …) is a step
         # output, so an author who writes ``i.namespaces_present`` gets a
         # silently-null assertion. We map each offender to the prefix it should
         # have used ("o" for an output, "i" for an input) and raise a targeted
@@ -1720,10 +1728,10 @@ class RulesetAssertionForm(forms.Form):
         catalog_choice = (self.cleaned_data.get("target_catalog_entry") or "").strip()
         value = (self.cleaned_data.get("target_data_path") or "").strip()
 
-        # Hidden catalog dropdown selection (output signals only).
+        # Hidden step I/O definition selection.
         if catalog_choice:
-            sig = self.choice_map.get(catalog_choice)
-            if not sig:
+            io_definition = self.choice_map.get(catalog_choice)
+            if not io_definition:
                 raise ValidationError(
                     {
                         "target_data_path": _(
@@ -1732,10 +1740,12 @@ class RulesetAssertionForm(forms.Form):
                         ),
                     },
                 )
-            self.cleaned_data["resolved_signal"] = sig
+            self.cleaned_data["resolved_io_definition"] = io_definition
             self.cleaned_data["target_catalog_entry"] = None
             self.cleaned_data["target_data_path_value"] = ""
-            self.cleaned_data["resolved_stage"] = CatalogRunStage(sig.direction)
+            self.cleaned_data["resolved_stage"] = CatalogRunStage(
+                io_definition.direction
+            )
             return
 
         if not value:
@@ -1754,7 +1764,7 @@ class RulesetAssertionForm(forms.Form):
             name = value.split(".", 1)[1]
             if name in self.outputs_by_slug:
                 self._set_resolved(
-                    signal=self.outputs_by_slug[name],
+                    io_definition=self.outputs_by_slug[name],
                     stage=CatalogRunStage.OUTPUT,
                 )
                 return
@@ -1777,44 +1787,26 @@ class RulesetAssertionForm(forms.Form):
             return
 
         # ── Signal prefix: s. / signal. ─────────────────────────────
-        # These reference either:
-        #   1. Validator input signals (resolve to a StepIODefinition)
-        #   2. Workflow-level signals — signal mappings or promoted
-        #      outputs from upstream steps (stored as bare name)
+        # These reference workflow-level signals only: signal mappings or
+        # promoted value ports from upstream steps. Step inputs live in i.*.
         if value.startswith(("s.", "signal.")):
             name = value.split(".", 1)[1]
-            if name in self.inputs_by_slug:
-                self._set_resolved(
-                    signal=self.inputs_by_slug[name],
-                    stage=CatalogRunStage.INPUT,
-                )
-                return
-            # Workflow-level signals (mappings + promoted outputs) are
-            # always valid s.* targets regardless of whether the
-            # validator allows custom assertion targets.
             if name in self.workflow_signal_names:
                 self._set_resolved(
                     path=name,
                     stage=CatalogRunStage.INPUT,
                 )
                 return
-            # Not a known validator input or workflow signal.
-            if not self._validator_allows_custom_targets():
-                raise ValidationError(
-                    {
-                        "target_data_path": _(
-                            "Unknown signal '%(name)s'. Check the "
-                            "Step Inputs tab or Signal Mappings "
-                            "for available names."
-                        )
-                        % {"name": name},
-                    },
-                )
-            self._set_resolved(
-                path=name,
-                stage=CatalogRunStage.INPUT,
+            raise ValidationError(
+                {
+                    "target_data_path": _(
+                        "Unknown workflow signal '%(name)s'. Check Signal "
+                        "Mappings for available names, or use i.%(name)s for "
+                        "a declared step input."
+                    )
+                    % {"name": name},
+                },
             )
-            return
 
         # ── Input prefix: i. / input. ───────────────────────────────
         # Per ADR-2026-05-22, step-local input values (parser-extracted
@@ -1827,12 +1819,12 @@ class RulesetAssertionForm(forms.Form):
         if value.startswith(("i.", "input.")):
             name = value.split(".", 1)[1]
             if name in self.inputs_by_slug:
-                # Known input definition — resolve to the SignalDefinition
+                # Known input definition — resolve to the StepIODefinition
                 # row. The display layer renders this as i.<contract_key>
-                # because target_signal_definition.direction is INPUT
+                # because target_io_definition.direction is INPUT
                 # (Assertion.target_display handles the prefix).
                 self._set_resolved(
-                    signal=self.inputs_by_slug[name],
+                    io_definition=self.inputs_by_slug[name],
                     stage=CatalogRunStage.INPUT,
                 )
                 return
@@ -1932,12 +1924,12 @@ class RulesetAssertionForm(forms.Form):
     def _set_resolved(
         self,
         *,
-        signal=None,
+        io_definition=None,
         path: str = "",
         stage: CatalogRunStage = CatalogRunStage.OUTPUT,
     ) -> None:
         """Store the resolved target in cleaned_data."""
-        self.cleaned_data["resolved_signal"] = signal
+        self.cleaned_data["resolved_io_definition"] = io_definition
         self.cleaned_data["target_catalog_entry"] = None
         self.cleaned_data["target_data_path_value"] = path
         self.cleaned_data["resolved_stage"] = stage
@@ -1964,7 +1956,7 @@ class RulesetAssertionForm(forms.Form):
     # of the May 2026 cleanup. The BASIC + i.*/s.* runtime trap it
     # guarded against is now fixed at the validator base layer via
     # ``BaseValidator._enrich_basic_payload`` — the validator merges
-    # resolved bindings, workflow signals, and output signals into
+    # resolved bindings, workflow signals, and step output values into
     # the BASIC payload by their bare contract_key before evaluation.
     # The form-side rejection is no longer needed because the
     # runtime trap no longer exists.
@@ -2385,15 +2377,15 @@ class RulesetAssertionForm(forms.Form):
         return expr.strip()
 
     def _target_identifier(self) -> str:
-        signal = self.cleaned_data.get("resolved_signal")
-        if signal:
+        io_definition = self.cleaned_data.get("resolved_io_definition")
+        if io_definition:
             # Per ADR-2026-05-22, INPUT-direction targets live in i.*,
             # OUTPUT in o.*. The previous "s." for INPUT was always
             # wrong — step inputs were never in s.* (which is reserved
             # for workflow vocabulary).
-            if signal.direction == SignalDirection.OUTPUT:
-                return f"o.{signal.contract_key}"
-            return f"i.{signal.contract_key}"
+            if io_definition.direction == StepIODirection.OUTPUT:
+                return f"o.{io_definition.contract_key}"
+            return f"i.{io_definition.contract_key}"
         return self.cleaned_data.get("target_data_path_value") or ""
 
     def _format_literal(self, value: Any) -> str:
@@ -2416,16 +2408,18 @@ class RulesetAssertionForm(forms.Form):
             "success_message": assertion.success_message,
             "notes": assertion.notes,
         }
-        if assertion.target_signal_definition_id:
-            sig = assertion.target_signal_definition
-            initial["target_catalog_entry"] = f"{sig.direction}:{sig.contract_key}"
+        if assertion.target_io_definition_id:
+            io_definition = assertion.target_io_definition
+            initial["target_catalog_entry"] = (
+                f"{io_definition.direction}:{io_definition.contract_key}"
+            )
             # Per ADR-2026-05-22: INPUT-direction targets render as
             # i.<slug>, OUTPUT as o.<slug>. The legacy "s." rendering
             # for INPUT was always wrong (step inputs are not signals).
-            if sig.direction == SignalDirection.OUTPUT:
-                initial["target_data_path"] = f"o.{sig.contract_key}"
+            if io_definition.direction == StepIODirection.OUTPUT:
+                initial["target_data_path"] = f"o.{io_definition.contract_key}"
             else:
-                initial["target_data_path"] = f"i.{sig.contract_key}"
+                initial["target_data_path"] = f"i.{io_definition.contract_key}"
         else:
             initial["target_data_path"] = assertion.target_data_path
         if assertion.assertion_type == AssertionType.SHACL:
@@ -2530,18 +2524,18 @@ class ValidatorRuleForm(forms.Form):
         initial=0,
         help_text=_("Lower numbers run first."),
     )
-    signals = forms.MultipleChoiceField(
+    io_definitions = forms.MultipleChoiceField(
         label=_("Inputs/outputs referenced"),
         required=False,
     )
 
     def __init__(self, *args, **kwargs):
-        signal_choices = kwargs.pop("signal_choices", [])
+        io_definition_choices = kwargs.pop("io_definition_choices", [])
         super().__init__(*args, **kwargs)
-        self.fields["signals"].choices = signal_choices
+        self.fields["io_definitions"].choices = io_definition_choices
         # Inputs/outputs are auto-detected from the CEL expression; render as read-only.
-        self.fields["signals"].disabled = True
-        self.fields["signals"].help_text = _(
+        self.fields["io_definitions"].disabled = True
+        self.fields["io_definitions"].help_text = _(
             "Detected from the CEL expression and shown for reference."
         )
         self.helper = FormHelper()
@@ -2553,7 +2547,7 @@ class ValidatorRuleForm(forms.Form):
             ),
             "description",
             "rule_type",
-            "signals",
+            "io_definitions",
             Field(
                 "cel_expression",
                 template="shared/cel_help_field.html",
@@ -2613,12 +2607,12 @@ class StepIODefinitionForm(forms.ModelForm):
             "this input or output represents."
         )
         self.fields["source_kind"].help_text = _(
-            "How the signal's value is obtained: from a payload path "
+            "How this step input or output obtains its value: from a payload path "
             "the author configures, or internally by the validator."
         )
         self.fields["is_path_editable"].help_text = _(
             "Whether workflow authors can edit the source data path "
-            "for this signal when configuring a step."
+            "for this step input when configuring a step."
         )
         self.helper = FormHelper()
         self.helper.form_tag = False

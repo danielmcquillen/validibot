@@ -7,7 +7,7 @@ These tests reproduce the exact scenario from the blog post
 1. A workflow accepts JSON parameter values (U_FACTOR, SHGC,
    VISIBLE_TRANSMITTANCE) for a parameterized IDF template.
 2. Validibot substitutes the values into the template, runs a real
-   EnergyPlus simulation in Docker, extracts output signals, and
+   EnergyPlus simulation in Docker, extracts output values, and
    evaluates CEL assertions against the results.
 3. The tests verify both passing and failing glazing scenarios, plus
    input validation (out-of-range values rejected before simulation).
@@ -37,8 +37,8 @@ import logging
 from tests.tests_e2e.helpers import assert_run_failed_assertion
 from tests.tests_e2e.helpers import assert_run_failed_preprocessing
 from tests.tests_e2e.helpers import assert_run_passed
-from tests.tests_e2e.helpers import get_output_signal
-from tests.tests_e2e.helpers import get_output_signals
+from tests.tests_e2e.helpers import get_output_value
+from tests.tests_e2e.helpers import get_output_values
 from tests.tests_e2e.helpers import get_step_issues
 from tests.tests_e2e.helpers import get_template_parameters_used
 from tests.tests_e2e.helpers import submit_and_poll
@@ -60,7 +60,7 @@ class TestEnergyPlusParameterizedTemplate:
 
     Each test submits JSON parameter values via the API, waits for the
     EnergyPlus simulation to complete in Docker, and verifies the output
-    signals and assertion results match expected behavior.
+    values and assertion results match expected behavior.
 
     Output value assertions use ranges rather than exact values because
     EnergyPlus results vary slightly across versions and platforms.
@@ -105,15 +105,15 @@ class TestEnergyPlusParameterizedTemplate:
         # Run completed and all assertions passed
         assert_run_passed(result)
 
-        # Output signals should be populated
-        signals = get_output_signals(result)
-        assert signals, "Expected output signals but got none"
+        # Step outputs should be populated
+        output_values = get_output_values(result)
+        assert output_values, "Expected output values but got none"
 
         # Window heat loss should be well under the 800 kWh threshold.
         # Blog post shows ~284 kWh; we use a generous range to accommodate
         # variation across EnergyPlus versions and weather data.
-        heat_loss = get_output_signal(result, "window_heat_loss_kwh")
-        assert heat_loss is not None, "window_heat_loss_kwh signal not found in output"
+        heat_loss = get_output_value(result, "window_heat_loss_kwh")
+        assert heat_loss is not None, "window_heat_loss_kwh not found in step outputs"
         heat_loss_val = float(heat_loss)
         assert HEAT_LOSS_MIN_SANITY_KWH < heat_loss_val < HEAT_LOSS_THRESHOLD_KWH, (
             f"Expected window heat loss between {HEAT_LOSS_MIN_SANITY_KWH}-"
@@ -121,8 +121,8 @@ class TestEnergyPlusParameterizedTemplate:
         )
 
         # Heating should exceed cooling (second assertion)
-        heating = float(get_output_signal(result, "heating_energy_kwh") or 0)
-        cooling = float(get_output_signal(result, "cooling_energy_kwh") or 0)
+        heating = float(get_output_value(result, "heating_energy_kwh") or 0)
+        cooling = float(get_output_value(result, "cooling_energy_kwh") or 0)
         assert heating > 0, f"Expected positive heating energy, got {heating}"
         assert cooling >= 0, f"Expected non-negative cooling energy, got {cooling}"
         assert heating > cooling, (
@@ -142,10 +142,10 @@ class TestEnergyPlusParameterizedTemplate:
             f"Expected VT=0.42, got {params.get('VISIBLE_TRANSMITTANCE')}"
         )
 
-        # Log all output signals for visibility
+        # Log all output values for visibility
         logger.info("PASSED: Good double-pane window (U=1.70, SHGC=0.25, VT=0.42)")
-        logger.info("  Output signals:")
-        for slug, value in sorted(signals.items()):
+        logger.info("  Step outputs:")
+        for slug, value in sorted(output_values.items()):
             logger.info("    %-35s = %s", slug, value)
         logger.info(
             "  Verdict: heat_loss=%.1f kWh (< %d threshold), "
@@ -195,8 +195,8 @@ class TestEnergyPlusParameterizedTemplate:
         assert_run_failed_assertion(result)
 
         # Window heat loss should exceed the 800 kWh threshold
-        heat_loss = get_output_signal(result, "window_heat_loss_kwh")
-        assert heat_loss is not None, "window_heat_loss_kwh signal not found in output"
+        heat_loss = get_output_value(result, "window_heat_loss_kwh")
+        assert heat_loss is not None, "window_heat_loss_kwh not found in step outputs"
         heat_loss_val = float(heat_loss)
         assert heat_loss_val > HEAT_LOSS_FAIL_MIN_KWH, (
             f"Expected high window heat loss (>{HEAT_LOSS_FAIL_MIN_KWH} kWh), "
@@ -219,13 +219,13 @@ class TestEnergyPlusParameterizedTemplate:
             f"Expected U_FACTOR=6.00, got {params.get('U_FACTOR')}"
         )
 
-        # Log output signals and assertion errors for visibility
-        signals = get_output_signals(result)
+        # Log output values and assertion errors for visibility
+        output_values = get_output_values(result)
         logger.info(
             "FAILED (as expected): Poor single-pane window (U=6.00, SHGC=0.25, VT=0.42)"
         )
-        logger.info("  Output signals:")
-        for slug, value in sorted(signals.items()):
+        logger.info("  Step outputs:")
+        for slug, value in sorted(output_values.items()):
             logger.info("    %-35s = %s", slug, value)
         logger.info("  Assertion errors:")
         for err in errors:

@@ -62,7 +62,7 @@ class ThermModel:
     Complete parsed representation of a THERM file.
 
     This is the intermediate representation that all domain checks
-    and signal extraction operate on. It is format-agnostic — the
+    and step output extraction operate on. It is format-agnostic — the
     parser produces the same ThermModel whether the input was .thmx
     or .thmz.
     """

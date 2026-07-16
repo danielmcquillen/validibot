@@ -42,7 +42,7 @@ from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
@@ -104,7 +104,7 @@ def _artifact_port(validator, *, contract_key, role, envelope_channel, data_form
         workflow_step=None,
         contract_key=contract_key,
         native_name=contract_key,
-        direction=SignalDirection.INPUT,
+        direction=StepIODirection.INPUT,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         envelope_channel=envelope_channel,
@@ -339,8 +339,8 @@ class TestBuildManifestArtifactLineage:
         private_weather_uri = "gs://validibot-private/resources/weather.epw"
         ResolvedInputTrace.objects.create(
             step_run=step_run,
-            signal_definition=primary_port,
-            signal_contract_key="primary_model",
+            io_definition=primary_port,
+            input_contract_key="primary_model",
             source_scope_used=BindingSourceScope.SUBMISSION_FILE,
             source_data_path_used="primary_file_uri",
             resolved=True,
@@ -354,8 +354,8 @@ class TestBuildManifestArtifactLineage:
         )
         ResolvedInputTrace.objects.create(
             step_run=step_run,
-            signal_definition=weather_port,
-            signal_contract_key="weather_file",
+            io_definition=weather_port,
+            input_contract_key="weather_file",
             source_scope_used=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path_used=ResourceFileType.ENERGYPLUS_WEATHER,
             resolved=True,
@@ -409,8 +409,8 @@ class TestBuildManifestArtifactLineage:
         private_weather_uri = "file:///private/workspace/input/submitted-weather.epw"
         ResolvedInputTrace.objects.create(
             step_run=step_run,
-            signal_definition=weather_port,
-            signal_contract_key="weather_file",
+            io_definition=weather_port,
+            input_contract_key="weather_file",
             source_scope_used=BindingSourceScope.SUBMISSION_FILE,
             source_data_path_used="",
             resolved=True,
@@ -465,8 +465,8 @@ class TestBuildManifestArtifactLineage:
         )
         ResolvedInputTrace.objects.create(
             step_run=step_run,
-            signal_definition=primary_port,
-            signal_contract_key="primary_model",
+            io_definition=primary_port,
+            input_contract_key="primary_model",
             source_scope_used=BindingSourceScope.UPSTREAM_ARTIFACT,
             source_data_path_used="build_model.generated_model",
             upstream_step_key="build_model",
@@ -538,8 +538,8 @@ class TestBuildManifestArtifactLineage:
         )
         ResolvedInputTrace.objects.create(
             step_run=step_run,
-            signal_definition=primary_port,
-            signal_contract_key="primary_model",
+            io_definition=primary_port,
+            input_contract_key="primary_model",
             source_scope_used=BindingSourceScope.UPSTREAM_ARTIFACT,
             source_data_path_used="build_model.generated_model",
             upstream_step_key="build_model",

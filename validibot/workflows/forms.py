@@ -34,7 +34,7 @@ from validibot.validations.cel_columns import referenced_row_columns
 from validibot.validations.constants import VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import JSONSchemaVersion
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
@@ -1966,8 +1966,8 @@ class FMUValidatorStepConfigForm(BaseStepConfigForm):
     Supports two modes, selected automatically based on the validator:
 
     - **Library validator**: The FMU is already attached to the validator
-      via ``validator.fmu_model``.  No upload fields are shown — signals
-      come from the validator's StepIODefinition rows.
+      via ``validator.fmu_model``. No upload fields are shown — step I/O
+      definitions come from the validator's ``StepIODefinition`` rows.
 
     - **System FMU validator (step-level upload)**: The author uploads
       an FMU directly in the step form. The system introspects the
@@ -2754,7 +2754,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
     - **direct**: Users submit a complete IDF file.  The form shows
       IDF-check and simulation options.
     - **template**: Users submit JSON parameter values.  The form shows
-      template upload, case-sensitivity, and signal-selection options.
+      template upload, case-sensitivity, and step-output display options.
 
     Client-side JavaScript toggles the visibility of mode-specific field
     groups.  On the server side, ``build_energyplus_config()`` reads the
@@ -3050,7 +3050,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 
         ports = StepIODefinition.objects.filter(
             validator=validator,
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             io_medium=StepIOMedium.ARTIFACT,
         ).order_by("order", "pk")
         return {port.contract_key: port for port in ports}
@@ -3140,11 +3140,11 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         from validibot.validations.models import StepInputBinding
 
         return {
-            binding.signal_definition.contract_key: binding
+            binding.io_definition.contract_key: binding
             for binding in StepInputBinding.objects.filter(
                 workflow_step=step,
-                signal_definition__in=self.file_input_ports.values(),
-            ).select_related("signal_definition")
+                io_definition__in=self.file_input_ports.values(),
+            ).select_related("io_definition")
         }
 
     def _build_upstream_artifact_choices(self, step) -> list[tuple[str, Any]]:
@@ -3167,7 +3167,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             output_ports = list(
                 StepIODefinition.objects.filter(
                     workflow_step=upstream_step,
-                    direction=SignalDirection.OUTPUT,
+                    direction=StepIODirection.OUTPUT,
                     io_medium=StepIOMedium.ARTIFACT,
                 ).order_by("order", "pk"),
             )
@@ -3175,7 +3175,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                 output_ports.extend(
                     StepIODefinition.objects.filter(
                         validator=upstream_step.validator,
-                        direction=SignalDirection.OUTPUT,
+                        direction=StepIODirection.OUTPUT,
                         io_medium=StepIOMedium.ARTIFACT,
                     ).order_by("order", "pk"),
                 )
@@ -3268,7 +3268,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 
             updates.append(
                 {
-                    "signal_definition": port,
+                    "io_definition": port,
                     "source_scope": source,
                     "source_data_path": source_data_path,
                     "is_required": port.min_items > 0,
@@ -3303,17 +3303,17 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 
 
 # ---------------------------------------------------------------------------
-# Display signals form — used in the modal on the step detail page to
-# select which output signals are shown to users in submission results.
-# Cross-validator: works for any step type with output signal definitions.
+# Display step outputs form — used in the modal on the step detail page to
+# select which output values are shown to users in submission results.
+# Cross-validator: works for any step type with output definitions.
 # ---------------------------------------------------------------------------
 
 
 class DisplayStepOutputsForm(forms.Form):
-    """Form for selecting which output signals appear in submission results.
+    """Form for selecting which step outputs appear in submission results.
 
-    Rendered inside a modal on the step detail page.  Populates choices
-    from the validator's output signal definitions.  The selection is stored
+    Rendered inside a modal on the step detail page. Populates choices
+    from the validator's output definitions. The selection is stored
     in ``step.config["display_step_outputs"]``.
     """
 
@@ -3330,7 +3330,7 @@ class DisplayStepOutputsForm(forms.Form):
         choices: list[tuple[str, str]] = []
         seen_keys: set[str] = set()
 
-        # Step-owned output signals (FMU outputs, etc.)
+        # Step-owned output definitions (FMU outputs, etc.).
         if step:
             from validibot.validations.models import StepIODefinition
 
@@ -3338,14 +3338,18 @@ class DisplayStepOutputsForm(forms.Form):
                 workflow_step=step,
                 direction="output",
             ).order_by("order", "pk")
-            for sig in step_outputs:
-                key = sig.contract_key
+            for io_definition in step_outputs:
+                key = io_definition.contract_key
                 if key not in seen_keys:
                     seen_keys.add(key)
-                    label = sig.label or sig.native_name or sig.contract_key
+                    label = (
+                        io_definition.label
+                        or io_definition.native_name
+                        or io_definition.contract_key
+                    )
                     choices.append((key, label))
 
-        # Validator-owned output signals (library catalog)
+        # Validator-owned output definitions (library catalog).
         if validator:
             from validibot.validations.models import StepIODefinition
 
@@ -3353,16 +3357,16 @@ class DisplayStepOutputsForm(forms.Form):
                 validator=validator,
                 direction="output",
             ).order_by("order", "pk")
-            for sig in validator_outputs:
-                key = sig.contract_key
+            for io_definition in validator_outputs:
+                key = io_definition.contract_key
                 if key not in seen_keys:
                     seen_keys.add(key)
-                    label = sig.label or sig.contract_key
+                    label = io_definition.label or io_definition.contract_key
                     choices.append((key, label))
 
         self.fields["display_step_outputs"].choices = choices
 
-        # Pre-select currently displayed signals (cosmetic → display bucket,
+        # Pre-select currently displayed step outputs (cosmetic → display bucket,
         # ADR-2026-06-18).
         if step:
             current = (step.display_settings or {}).get("display_step_outputs", [])
@@ -3378,7 +3382,7 @@ class DisplayStepOutputsForm(forms.Form):
 # ---------------------------------------------------------------------------
 
 
-def _build_template_vars_from_signals(step: Any) -> list[dict[str, Any]]:
+def _build_template_vars_from_step_inputs(step: Any) -> list[dict[str, Any]]:
     """Build template variable dicts from step-owned StepIODefinition rows.
 
     Reads ``StepIODefinition`` rows with ``origin_kind=TEMPLATE`` and their
@@ -3388,37 +3392,37 @@ def _build_template_vars_from_signals(step: Any) -> list[dict[str, Any]]:
     if not step or not step.pk:
         return []
 
-    from validibot.validations.constants import SignalOriginKind
+    from validibot.validations.constants import StepIOOriginKind
     from validibot.validations.models import StepInputBinding
 
     bindings = (
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+            io_definition__origin_kind=StepIOOriginKind.TEMPLATE,
         )
-        .select_related("signal_definition")
-        .order_by("signal_definition__order", "signal_definition__contract_key")
+        .select_related("io_definition")
+        .order_by("io_definition__order", "io_definition__contract_key")
     )
 
     result: list[dict[str, Any]] = []
     for binding in bindings:
-        sig = binding.signal_definition
-        meta = sig.metadata or {}
+        io_definition = binding.io_definition
+        meta = io_definition.metadata or {}
         default_val = binding.default_value
         result.append(
             {
-                "name": sig.native_name or sig.contract_key,
-                "description": sig.label or "",
+                "name": io_definition.native_name or io_definition.contract_key,
+                "description": io_definition.label or "",
                 "default": str(default_val) if default_val is not None else "",
-                "units": sig.unit or "",
+                "units": io_definition.unit or "",
                 "variable_type": meta.get("variable_type", "text"),
                 "min_value": meta.get("min_value"),
                 "min_exclusive": meta.get("min_exclusive", False),
                 "max_value": meta.get("max_value"),
                 "max_exclusive": meta.get("max_exclusive", False),
                 "choices": meta.get("choices", []),
-                # Carry the signal PK so we can map back on save.
-                "_signal_pk": sig.pk,
+                # Carry the definition PK so we can map back on save.
+                "_io_definition_pk": io_definition.pk,
                 "_binding_pk": binding.pk,
             }
         )
@@ -3444,7 +3448,7 @@ class TemplateVariableAnnotationForm(forms.Form):
         super().__init__(*args, **kwargs)
         self._template_variable_meta: list[dict[str, Any]] = []
 
-        template_vars = _build_template_vars_from_signals(step)
+        template_vars = _build_template_vars_from_step_inputs(step)
         self._create_template_variable_fields(template_vars)
 
     def _create_template_variable_fields(
@@ -3464,7 +3468,7 @@ class TemplateVariableAnnotationForm(forms.Form):
                     "index": i,
                     "name": var.get("name", ""),
                     "prefix": prefix,
-                    "_signal_pk": var.get("_signal_pk"),
+                    "_io_definition_pk": var.get("_io_definition_pk"),
                     "_binding_pk": var.get("_binding_pk"),
                 }
             )
@@ -3596,8 +3600,8 @@ class SingleTemplateVariableForm(forms.Form):
 
     Unlike ``TemplateVariableAnnotationForm`` which creates dynamic
     fields for all variables at once, this form handles one variable
-    at a time. Used by the per-variable edit modal in the unified
-    signals card.
+    at a time. Used by the per-variable edit modal in the workflow
+    data card.
     """
 
     description = forms.CharField(
@@ -4900,22 +4904,22 @@ class BasicStepConfigForm(BaseStepConfigForm):
         self.fields.pop("display_schema", None)
 
 
-class SignalBindingEditForm(forms.Form):
-    """Edit form for signal definition and binding fields.
+class StepInputBindingEditForm(forms.Form):
+    """Edit form for a step I/O definition and its input binding.
 
     Supports editing both ``StepIODefinition`` metadata (label,
     description, unit) and ``StepInputBinding`` configuration
     (source_data_path, default_value, is_required). For library-owned
-    signals, definition fields are rendered as read-only; for
-    step-owned signals, all fields are editable.
+    definitions, definition fields are rendered as read-only; for
+    step-owned definitions, all fields are editable.
     """
 
-    # Definition fields (read-only for library signals)
+    # Definition fields (read-only for library definitions).
     label = forms.CharField(
         max_length=255,
         required=False,
         label=_("Label"),
-        help_text=_("Human-readable display name for this signal."),
+        help_text=_("Human-readable display name for this step input."),
     )
     description = forms.CharField(
         required=False,
@@ -4945,28 +4949,28 @@ class SignalBindingEditForm(forms.Form):
         label=_("Default Value"),
         help_text=_(
             "Fallback value when the source path resolves to nothing. "
-            "Leave empty to make the signal required."
+            "Leave empty to make the step input required."
         ),
     )
     is_required = forms.BooleanField(
         required=False,
         label=_("Required"),
         help_text=_(
-            "If checked, validation fails when this signal is missing. "
+            "If checked, validation fails when this step input is missing. "
             "Cannot be used together with a default value."
         ),
     )
 
-    def __init__(self, *args, signal_definition=None, binding=None, **kwargs):
+    def __init__(self, *args, io_definition=None, binding=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.signal_definition = signal_definition
+        self.io_definition = io_definition
         self.binding = binding
 
         # Pre-populate from existing data.
-        if signal_definition and not self.is_bound:
-            self.fields["label"].initial = signal_definition.label
-            self.fields["description"].initial = signal_definition.description
-            self.fields["unit"].initial = signal_definition.unit
+        if io_definition and not self.is_bound:
+            self.fields["label"].initial = io_definition.label
+            self.fields["description"].initial = io_definition.description
+            self.fields["unit"].initial = io_definition.unit
 
         if binding and not self.is_bound:
             # Display the path with its namespace prefix so the user sees
@@ -4993,14 +4997,14 @@ class SignalBindingEditForm(forms.Form):
                 self.fields["default_value"].initial = str(binding.default_value)
             self.fields["is_required"].initial = binding.is_required
 
-        # Library-owned signals: definition fields are read-only.
-        if signal_definition and signal_definition.validator_id:
+        # Library-owned definitions: definition fields are read-only.
+        if io_definition and io_definition.validator_id:
             for field_name in ("label", "description", "unit"):
                 self.fields[field_name].disabled = True
 
-        # Non-editable paths: disable source_data_path when the signal's
+        # Non-editable paths: disable source_data_path when the input's
         # value source is controlled by the validator (is_path_editable=False).
-        if signal_definition and not signal_definition.is_path_editable:
+        if io_definition and not io_definition.is_path_editable:
             self.fields["source_data_path"].disabled = True
 
     def clean(self):
@@ -5010,23 +5014,23 @@ class SignalBindingEditForm(forms.Form):
         if default_value and is_required:
             raise forms.ValidationError(
                 _(
-                    "A signal cannot be both required and have a default "
+                    "A step input cannot be both required and have a default "
                     "value. Either remove the default or uncheck Required."
                 ),
             )
         return cleaned
 
     def save(self):
-        """Persist changes to the signal definition and/or binding."""
-        sig = self.signal_definition
+        """Persist changes to the step I/O definition and/or binding."""
+        io_definition = self.io_definition
         binding = self.binding
 
-        if sig and not sig.validator_id:
-            # Step-owned signal: update definition fields.
-            sig.label = self.cleaned_data.get("label") or ""
-            sig.description = self.cleaned_data.get("description") or ""
-            sig.unit = self.cleaned_data.get("unit") or ""
-            sig.save(update_fields=["label", "description", "unit"])
+        if io_definition and not io_definition.validator_id:
+            # Step-owned definition: update definition fields.
+            io_definition.label = self.cleaned_data.get("label") or ""
+            io_definition.description = self.cleaned_data.get("description") or ""
+            io_definition.unit = self.cleaned_data.get("unit") or ""
+            io_definition.save(update_fields=["label", "description", "unit"])
 
         if binding:
             from validibot.validations.constants import BindingSourceScope

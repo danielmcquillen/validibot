@@ -19,14 +19,14 @@ class RulesetAssertionSerializer(serializers.ModelSerializer):
     Read-only representation of a single assertion rule within a ruleset.
 
     ``target_field`` normalises the two possible target storage styles
-    (signal definition contract_key vs free-form data path) into a single string field
-    so consumers don't need to know about the internal XOR constraint.
+    (step I/O definition contract_key vs free-form data path) into one string
+    field so consumers don't need to know about the internal XOR constraint.
     """
 
     target_field = serializers.SerializerMethodField(
         help_text=(
-            "The assertion target: the signal definition contract_key "
-            "when targeting a known signal, or the free-form data path "
+            "The assertion target: the step I/O definition contract_key "
+            "when targeting a known input or output, or the free-form data path "
             "otherwise."
         ),
     )
@@ -34,11 +34,11 @@ class RulesetAssertionSerializer(serializers.ModelSerializer):
     def get_target_field(self, obj: RulesetAssertion) -> str:
         """Normalize the assertion target to a single string for API consumers.
 
-        Checks target_signal_definition (preferred), then falls back to
+        Checks target_io_definition (preferred), then falls back to
         target_data_path (custom free-form paths).
         """
-        if obj.target_signal_definition_id:
-            return obj.target_signal_definition.contract_key
+        if obj.target_io_definition_id:
+            return obj.target_io_definition.contract_key
         return obj.target_data_path or ""
 
     class Meta:
@@ -289,8 +289,8 @@ class WorkflowFullSerializer(WorkflowSlimSerializer):
     Used by GET /api/v1/orgs/{org}/workflows/{slug}/.
 
     Performance note: the view prefetches
-    ``steps__*__assertions__target_signal_definition`` and
-    ``steps__*__assertions__target_signal_definition``
+    ``steps__*__assertions__target_io_definition`` and
+    ``steps__*__assertions__target_io_definition``
     so this serializer does not issue additional queries beyond the initial load.
     """
 

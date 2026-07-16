@@ -15,9 +15,9 @@ Key areas covered:
    results into step config dicts with ``fmu_simulation`` settings (variable
    metadata is stored relationally in ``StepIODefinition`` rows).
 
-3. **Unified signals integration** —
-   ``build_unified_signals_from_definitions()`` correctly treats FMU
-   variables as a third signal source (``"fmu"``) alongside
+3. **Unified step I/O integration** —
+   ``build_step_io_context()`` correctly treats FMU
+   variables as a step-owned I/O source (``"fmu"``) alongside
    ``"catalog"`` and ``"template"``.
 
 4. **Step config Pydantic models** — ``FmuStepConfig`` and
@@ -43,7 +43,7 @@ from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.workflows.step_configs import FMUSimulationConfig
 from validibot.workflows.step_configs import FmuStepConfig
 from validibot.workflows.tests.factories import WorkflowStepFactory
-from validibot.workflows.views_helpers import build_unified_signals_from_definitions
+from validibot.workflows.views_helpers import build_step_io_context
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -86,13 +86,15 @@ def _make_minimal_fmu(
     return buf.getvalue()
 
 
-def _create_fmu_input_signal(step, *, contract_key, native_name, label="", **kwargs):
+def _create_fmu_input_definition(
+    step, *, contract_key, native_name, label="", **kwargs
+):
     """Create a step-owned FMU input StepIODefinition with a binding.
 
-    Helper to reduce boilerplate in tests that set up FMU input signals.
+    Helper to reduce boilerplate in tests that set up FMU step inputs.
     Returns the created StepIODefinition.
     """
-    sig = StepIODefinitionFactory(
+    io_definition = StepIODefinitionFactory(
         workflow_step=step,
         validator=None,
         contract_key=contract_key,
@@ -104,17 +106,19 @@ def _create_fmu_input_signal(step, *, contract_key, native_name, label="", **kwa
     )
     StepInputBindingFactory(
         workflow_step=step,
-        signal_definition=sig,
+        io_definition=io_definition,
         source_data_path=native_name,
         is_required=True,
     )
-    return sig
+    return io_definition
 
 
-def _create_fmu_output_signal(step, *, contract_key, native_name, label="", **kwargs):
+def _create_fmu_output_definition(
+    step, *, contract_key, native_name, label="", **kwargs
+):
     """Create a step-owned FMU output StepIODefinition (no binding needed).
 
-    Helper to reduce boilerplate in tests that set up FMU output signals.
+    Helper to reduce boilerplate in tests that set up FMU output values.
     Returns the created StepIODefinition.
     """
     return StepIODefinitionFactory(
@@ -283,7 +287,7 @@ class IntrospectFmuTests(TestCase):
 
     def test_variable_description_parsed(self):
         """The ``description`` attribute on ScalarVariable should be captured.
-        This provides human-readable labels for the unified signals card."""
+        This provides human-readable labels for the Inputs and Outputs card."""
         payload = _make_minimal_fmu(
             variables_xml="""
                 <ScalarVariable name="T_room" valueReference="0"
@@ -322,22 +326,22 @@ class IntrospectFmuTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Tri-state build_fmu_config + _sync_fmu_signals (May 2026 P1 fix)
+# Tri-state build_fmu_config + _sync_fmu_step_io (May 2026 P1 fix)
 # ---------------------------------------------------------------------------
 
 
 class BuildFmuConfigTriStateTests(TestCase):
-    """``build_fmu_config`` returns the right tri-state for signal sync.
+    """``build_fmu_config`` returns the right tri-state for I/O definition sync.
 
     The tri-state (``None`` / ``[]`` / ``[...]``) was introduced after
     the May 2026 review caught that editing a step's simulation
     timing without re-uploading the FMU was clearing every step-owned
-    FMU signal — including parser facts and any author-built
+    FMU I/O definition — including parser facts and any author-built
     StepInputBindings — even though the FMU resource was untouched.
 
     These tests pin the contract:
       - No new upload, no removal → ``None`` (no-op, preserve rows)
-      - User clicked remove          → ``[]``  (clear all FMU signals)
+      - User clicked remove          → ``[]``  (clear all FMU I/O definitions)
       - New upload                   → ``[var dicts]`` (sync variables)
     """
 
@@ -368,14 +372,16 @@ class BuildFmuConfigTriStateTests(TestCase):
         """Create a workflow step that has an existing FMU upload baked in.
 
         We seed StepIODefinitions and step.config the way build_fmu_config
-        + _sync_fmu_signals would have on a prior upload. This lets
+        + _sync_fmu_step_io would have on a prior upload. This lets
         subsequent calls observe whether they preserve or destroy that
         existing state.
         """
-        from validibot.validations.services.fmu_signals import sync_step_fmu_signals
+        from validibot.validations.services.fmu_step_io import (
+            sync_step_fmu_io_definitions,
+        )
 
         step = WorkflowStepFactory()
-        sync_step_fmu_signals(
+        sync_step_fmu_io_definitions(
             step,
             [
                 {
@@ -410,13 +416,13 @@ class BuildFmuConfigTriStateTests(TestCase):
         step.save()
         return step
 
-    def test_no_upload_no_removal_returns_none_for_signal_sync(self):
+    def test_no_upload_no_removal_preserves_step_io(self):
         """Editing simulation timing without re-uploading returns fmu_vars=None.
 
         This is the May 2026 P1 fix in action: when the author tweaks
         ``sim_stop_time`` and saves, the resulting tri-state must NOT
-        be ``[]`` (which would clear all signals); it must be ``None``
-        so ``_sync_fmu_signals`` takes the no-op branch.
+        be ``[]`` (which would clear all I/O definitions); it must be ``None``
+        so ``_sync_fmu_step_io`` takes the no-op branch.
         """
         from validibot.workflows.views_helpers import build_fmu_config
 
@@ -428,7 +434,7 @@ class BuildFmuConfigTriStateTests(TestCase):
         self.assertIsNone(
             fmu_vars,
             "No new upload AND no removal MUST return None — "
-            "returning [] would cascade clear_step_fmu_signals.",
+            "returning [] would cascade clear_step_fmu_io_definitions.",
         )
         # The config still gets rebuilt from form overrides, so the
         # timing change must land in fmu_simulation. fmu_introspection
@@ -438,10 +444,10 @@ class BuildFmuConfigTriStateTests(TestCase):
         self.assertIn("fmu_introspection", config)
         self.assertEqual(config["fmu_introspection"]["model_name"], "Original")
 
-    def test_remove_fmu_returns_empty_list_for_signal_sync(self):
-        """Clicking "remove FMU" returns fmu_vars=[] so signals are cleared.
+    def test_remove_fmu_returns_empty_list_for_step_io_sync(self):
+        """Clicking "remove FMU" returns fmu_vars=[] so I/O definitions are cleared.
 
-        The empty list is the deliberate signal to _sync_fmu_signals
+        The empty list is the deliberate instruction to _sync_fmu_step_io
         that the FMU is gone — distinct from None (no change). The
         config is also cleared in this branch.
         """
@@ -455,16 +461,16 @@ class BuildFmuConfigTriStateTests(TestCase):
         self.assertEqual(fmu_vars, [])
         self.assertEqual(config, {})
 
-    def test_sync_fmu_signals_none_preserves_step_io_definition_pks(self):
+    def test_sync_fmu_step_io_none_preserves_step_io_definition_pks(self):
         """End-to-end: tri-state None preserves existing StepIODefinition PKs.
 
-        Combines the build_fmu_config tri-state with _sync_fmu_signals'
+        Combines the build_fmu_config tri-state with _sync_fmu_step_io'
         no-op branch to prove the full flow. Snapshots PKs before and
         after; any regression to the old ``fmu_vars=[]`` contract
         would destroy them all.
         """
         from validibot.validations.models import StepIODefinition
-        from validibot.workflows.views_helpers import _sync_fmu_signals
+        from validibot.workflows.views_helpers import _sync_fmu_step_io
         from validibot.workflows.views_helpers import build_fmu_config
 
         step = self._make_step_with_existing_fmu()
@@ -479,7 +485,7 @@ class BuildFmuConfigTriStateTests(TestCase):
         # Edit simulation timing without uploading anything new.
         form = self._make_form(sim_step_size=120.0)
         _config, fmu_vars = build_fmu_config(form, step)
-        _sync_fmu_signals(step, fmu_vars)
+        _sync_fmu_step_io(step, fmu_vars)
 
         post_pks = set(
             StepIODefinition.objects.filter(workflow_step=step).values_list(
@@ -558,107 +564,107 @@ class FmuStepConfigModelTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# build_unified_signals_from_definitions() — FMU source type
+# build_step_io_context() — FMU source type
 #
 # These tests use real database objects (WorkflowStep, StepIODefinition,
 # StepInputBinding) instead of the old _FakeStep mock. The function
-# queries the DB for step-owned signals and their bindings.
+# queries the DB for step-owned I/O definitions and their bindings.
 # ---------------------------------------------------------------------------
 
 
-class UnifiedSignalsFmuTests(TestCase):
+class UnifiedStepIOFMUTests(TestCase):
     """Tests for FMU variable integration in
-    ``build_unified_signals_from_definitions()``.
+    ``build_step_io_context()``.
 
     Verifies that step-owned FMU ``StepIODefinition`` rows appear as
-    input/output signals with source ``"fmu"``, alongside the existing
+    input/output values with source ``"fmu"``, alongside the existing
     ``"catalog"`` and ``"template"`` sources.
     """
 
-    def test_fmu_input_variables_become_input_signals(self):
+    def test_fmu_input_variables_become_input_values(self):
         """FMU variables with ``direction="input"`` should appear in
-        the input signals list with ``source="fmu"``."""
+        the step inputs list with ``source="fmu"``."""
         step = WorkflowStepFactory()
-        _create_fmu_input_signal(
+        _create_fmu_input_definition(
             step,
             contract_key="t_outdoor",
             native_name="T_outdoor",
             label="Outdoor",
         )
-        _create_fmu_input_signal(
+        _create_fmu_input_definition(
             step,
             contract_key="q_equipment",
             native_name="Q_equipment",
         )
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        self.assertEqual(len(result["input_signals"]), 2)
+        self.assertEqual(len(result["input_values"]), 2)
         self.assertTrue(result["has_inputs"])
 
-        sig = result["input_signals"][0]
-        self.assertEqual(sig["slug"], "t_outdoor")
-        self.assertEqual(sig["label"], "Outdoor")
-        self.assertEqual(sig["source"], "fmu")
-        self.assertTrue(sig["required"])
+        io_definition = result["input_values"][0]
+        self.assertEqual(io_definition["slug"], "t_outdoor")
+        self.assertEqual(io_definition["label"], "Outdoor")
+        self.assertEqual(io_definition["source"], "fmu")
+        self.assertTrue(io_definition["required"])
 
-    def test_fmu_output_variables_become_output_signals(self):
+    def test_fmu_output_variables_become_output_values(self):
         """FMU variables with ``direction="output"`` should appear in
-        the output signals list with ``show_to_user=True`` by default."""
+        the output values list without being displayed by default."""
         step = WorkflowStepFactory()
-        _create_fmu_output_signal(
+        _create_fmu_output_definition(
             step,
             contract_key="t_room",
             native_name="T_room",
             label="Room temp",
         )
-        _create_fmu_output_signal(
+        _create_fmu_output_definition(
             step,
             contract_key="q_cool",
             native_name="Q_cool",
         )
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        self.assertEqual(len(result["output_signals"]), 2)
+        self.assertEqual(len(result["output_values"]), 2)
         self.assertTrue(result["has_outputs"])
 
-        sig = result["output_signals"][0]
-        self.assertEqual(sig["slug"], "t_room")
-        self.assertEqual(sig["label"], "Room temp")
-        self.assertTrue(sig["show_to_user"])
+        io_definition = result["output_values"][0]
+        self.assertEqual(io_definition["slug"], "t_room")
+        self.assertEqual(io_definition["label"], "Room temp")
+        self.assertFalse(io_definition["show_to_user"])
 
     def test_parameter_variables_excluded(self):
         """FMU variables with causality other than input/output should not
-        appear as either input or output signals — they are internal constants.
+        appear as either input or output values — they are internal constants.
 
         In the new model, parameter variables simply aren't created as
         StepIODefinition rows with direction="input" or "output", so they
         naturally don't appear. This test confirms no leakage when only
-        an input signal exists alongside other step data."""
+        an step input exists alongside other step data."""
         step = WorkflowStepFactory()
-        # Only create the input signal — no parameter signal definition
+        # Only create the step input — no parameter step I/O definition
         # would be created in the real flow (parameters are filtered out
         # during FMU introspection → StepIODefinition creation).
-        _create_fmu_input_signal(
+        _create_fmu_input_definition(
             step,
             contract_key="t_outdoor",
             native_name="T_outdoor",
         )
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        self.assertEqual(len(result["input_signals"]), 1)
-        self.assertEqual(result["input_signals"][0]["slug"], "t_outdoor")
-        self.assertEqual(len(result["output_signals"]), 0)
+        self.assertEqual(len(result["input_values"]), 1)
+        self.assertEqual(result["input_values"][0]["slug"], "t_outdoor")
+        self.assertEqual(len(result["output_values"]), 0)
 
     def test_display_step_outputs_filter_fmu_outputs(self):
         """The ``display_step_outputs`` config should control the ``show_to_user``
         flag on FMU output variables, just like it does for catalog outputs."""
         step = WorkflowStepFactory()
-        _create_fmu_output_signal(
+        _create_fmu_output_definition(
             step,
             contract_key="t_room",
             native_name="T_room",
         )
-        _create_fmu_output_signal(
+        _create_fmu_output_definition(
             step,
             contract_key="q_cool",
             native_name="Q_cool",
@@ -668,47 +674,47 @@ class UnifiedSignalsFmuTests(TestCase):
         step.display_settings = {"display_step_outputs": ["t_room"]}
         step.save()
 
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        signals_by_slug = {s["slug"]: s for s in result["output_signals"]}
-        self.assertTrue(signals_by_slug["t_room"]["show_to_user"])
-        self.assertFalse(signals_by_slug["q_cool"]["show_to_user"])
+        outputs_by_slug = {s["slug"]: s for s in result["output_values"]}
+        self.assertTrue(outputs_by_slug["t_room"]["show_to_user"])
+        self.assertFalse(outputs_by_slug["q_cool"]["show_to_user"])
 
-    def test_empty_fmu_variables_no_signals(self):
+    def test_empty_fmu_variables_have_no_step_io(self):
         """When no StepIODefinition rows exist for the step (library
-        validator path with no signal definitions), no signals should appear."""
+        validator path with no step I/O definitions), no inputs or outputs appear."""
         step = WorkflowStepFactory()
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        self.assertEqual(len(result["input_signals"]), 0)
-        self.assertEqual(len(result["output_signals"]), 0)
+        self.assertEqual(len(result["input_values"]), 0)
+        self.assertEqual(len(result["output_values"]), 0)
         self.assertFalse(result["has_inputs"])
         self.assertFalse(result["has_outputs"])
 
     def test_label_fallback_chain(self):
-        """Signal label should fall back: label → native_name → contract_key."""
+        """Step I/O label should fall back: label → native_name → contract_key."""
         step = WorkflowStepFactory()
-        _create_fmu_input_signal(
+        _create_fmu_input_definition(
             step,
             contract_key="var1",
             native_name="var1",
             label="Custom Label",
         )
-        _create_fmu_input_signal(
+        _create_fmu_input_definition(
             step,
             contract_key="var2",
             native_name="var2_native",
             label="",
         )
-        _create_fmu_input_signal(
+        _create_fmu_input_definition(
             step,
             contract_key="var3",
             native_name="",
             label="",
         )
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        labels = [s["label"] for s in result["input_signals"]]
+        labels = [s["label"] for s in result["input_values"]]
         self.assertEqual(labels, ["Custom Label", "var2_native", "var3"])
 
 
@@ -739,10 +745,10 @@ class ServerRoomCoolingEndToEndTests(TestCase):
 
     These tests verify the full pipeline: introspect a real-world FMU,
     convert the result to step config, then feed through
-    ``build_unified_signals_from_definitions()``. This catches integration issues that
+    ``build_step_io_context()``. This catches integration issues that
     synthetic FMUs (``_make_minimal_fmu``) might miss — for example,
     OpenModelica emits ``causality="unknown"`` for internal/derivative
-    variables, which must be filtered out of signals.
+    variables, which must be filtered out of the step I/O contract.
     """
 
     def test_introspection_finds_correct_variable_counts(self):
@@ -772,8 +778,8 @@ class ServerRoomCoolingEndToEndTests(TestCase):
 
     def test_introspection_variable_descriptions(self):
         """All input and output variables in the ServerRoomCooling FMU
-        have descriptions. These become the default signal labels in
-        the unified signals card (via the label fallback chain)."""
+        have descriptions. These become the default labels in the unified
+        Inputs and Outputs card (via the label fallback chain)."""
         result = introspect_fmu(_server_room_fmu_bytes(), "ServerRoomCooling.fmu")
 
         for var in result.variables:
@@ -802,11 +808,11 @@ class ServerRoomCoolingEndToEndTests(TestCase):
         config = FmuStepConfig.model_validate(config_data)
         self.assertEqual(config.fmu_simulation.stop_time, 3600.0)
 
-    def test_full_pipeline_introspection_to_signals(self):
+    def test_full_pipeline_introspection_to_step_io(self):
         """Verify the complete pipeline: introspect → StepIODefinition rows →
-        unified signals. The ServerRoomCooling FMU's 4 inputs should
-        become 4 input signals and 2 outputs should become 2 output
-        signals. Parameters and internal variables must be excluded."""
+        the unified step I/O context. The ServerRoomCooling FMU's 4 inputs
+        should become 4 step inputs and its 2 outputs should become 2 step
+        outputs. Parameters and internal variables must be excluded."""
         result = introspect_fmu(_server_room_fmu_bytes(), "ServerRoomCooling.fmu")
 
         step = WorkflowStepFactory()
@@ -815,14 +821,14 @@ class ServerRoomCoolingEndToEndTests(TestCase):
         # input/output variable, mirroring the real FMU upload flow.
         for var in result.variables:
             if var.causality == "input":
-                _create_fmu_input_signal(
+                _create_fmu_input_definition(
                     step,
                     contract_key=var.name.lower(),
                     native_name=var.name,
                     label=var.description,
                 )
             elif var.causality == "output":
-                _create_fmu_output_signal(
+                _create_fmu_output_definition(
                     step,
                     contract_key=var.name.lower(),
                     native_name=var.name,
@@ -831,22 +837,22 @@ class ServerRoomCoolingEndToEndTests(TestCase):
             # Parameters and unknown causalities are intentionally skipped —
             # they are not created as StepIODefinition rows.
 
-        signals = build_unified_signals_from_definitions(step=step)
+        step_io = build_step_io_context(step=step)
 
-        self.assertEqual(len(signals["input_signals"]), 4)
-        self.assertEqual(len(signals["output_signals"]), 2)
-        self.assertTrue(signals["has_inputs"])
-        self.assertTrue(signals["has_outputs"])
+        self.assertEqual(len(step_io["input_values"]), 4)
+        self.assertEqual(len(step_io["output_values"]), 2)
+        self.assertTrue(step_io["has_inputs"])
+        self.assertTrue(step_io["has_outputs"])
 
-        # Input signals should have source="fmu".
-        for sig in signals["input_signals"]:
-            self.assertEqual(sig["source"], "fmu")
+        # Step inputs should have source="fmu".
+        for io_definition in step_io["input_values"]:
+            self.assertEqual(io_definition["source"], "fmu")
 
-        # All signals should use description as label (no explicit labels set).
-        for sig in signals["input_signals"] + signals["output_signals"]:
+        # All rows should use description as label (no explicit labels set).
+        for io_definition in step_io["input_values"] + step_io["output_values"]:
             self.assertNotEqual(
-                sig["label"],
-                sig["slug"],
+                io_definition["label"],
+                io_definition["slug"],
                 "Label should be the description, not the variable name",
             )
 

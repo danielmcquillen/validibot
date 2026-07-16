@@ -37,7 +37,7 @@ class _StubSimpleValidator(SimpleValidator):
 
     Each hook can be configured via constructor arguments to simulate
     different validation scenarios (file type rejection, parse failure,
-    domain issues, signal extraction).
+    domain issues, output-value extraction).
     """
 
     def __init__(
@@ -47,7 +47,7 @@ class _StubSimpleValidator(SimpleValidator):
         parsed_value: Any = None,
         parse_exception: Exception | None = None,
         domain_issues: list[ValidationIssue] | None = None,
-        signals: dict[str, Any] | None = None,
+        output_values: dict[str, Any] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -55,7 +55,7 @@ class _StubSimpleValidator(SimpleValidator):
         self._parsed_value = parsed_value
         self._parse_exception = parse_exception
         self._domain_issues = domain_issues or []
-        self._signals = signals or {}
+        self._output_values = output_values or {}
 
     def validate_file_type(self, submission):
         return self._file_type_issue
@@ -68,8 +68,8 @@ class _StubSimpleValidator(SimpleValidator):
     def run_domain_checks(self, parsed):
         return list(self._domain_issues)
 
-    def extract_signals(self, parsed):
-        return dict(self._signals)
+    def extract_output_values(self, parsed):
+        return dict(self._output_values)
 
 
 class SimpleValidatorLifecycleTests(TestCase):
@@ -173,26 +173,26 @@ class SimpleValidatorLifecycleTests(TestCase):
         self.assertEqual(len(result.issues), 1)
         self.assertEqual(result.issues[0].severity, Severity.WARNING)
 
-    def test_signals_appear_in_result(self):
-        """Signals from extract_signals() are included in ValidationResult."""
+    def test_output_values_appear_in_result(self):
+        """Extracted output values must be included in ValidationResult."""
         engine = _StubSimpleValidator(
             parsed_value={},
-            signals={"interior_bc_temp": 21.11, "polygon_count": 8},
+            output_values={"interior_bc_temp": 21.11, "polygon_count": 8},
         )
 
         result = engine.validate(self.validator, self.submission, self.ruleset)
 
         self.assertTrue(result.passed)
-        self.assertEqual(result.signals["interior_bc_temp"], 21.11)
-        self.assertEqual(result.signals["polygon_count"], 8)
+        self.assertEqual(result.output_values["interior_bc_temp"], 21.11)
+        self.assertEqual(result.output_values["polygon_count"], 8)
 
-    def test_empty_signals_result_in_none(self):
-        """When extract_signals() returns empty dict, result.signals is None."""
+    def test_empty_output_values_result_in_none(self):
+        """An empty extraction result must leave result.output_values unset."""
         engine = _StubSimpleValidator(parsed_value={})
 
         result = engine.validate(self.validator, self.submission, self.ruleset)
 
-        self.assertIsNone(result.signals)
+        self.assertIsNone(result.output_values)
 
     def test_run_context_stored_on_validator(self):
         """The run_context argument is stored on the validator instance."""
@@ -208,8 +208,8 @@ class SimpleValidatorLifecycleTests(TestCase):
 
         self.assertIs(engine.run_context, mock_context)
 
-    def test_domain_issues_and_signals_coexist(self):
-        """Domain warnings and signals can both appear in the result."""
+    def test_domain_issues_and_output_values_coexist(self):
+        """Domain warnings and output_values can both appear in the result."""
         engine = _StubSimpleValidator(
             parsed_value={},
             domain_issues=[
@@ -219,14 +219,14 @@ class SimpleValidatorLifecycleTests(TestCase):
                     severity=Severity.WARNING,
                 ),
             ],
-            signals={"mesh_level": 4},
+            output_values={"mesh_level": 4},
         )
 
         result = engine.validate(self.validator, self.submission, self.ruleset)
 
         self.assertTrue(result.passed)
         self.assertEqual(len(result.issues), 1)
-        self.assertEqual(result.signals["mesh_level"], 4)
+        self.assertEqual(result.output_values["mesh_level"], 4)
 
 
 class SimpleValidatorAssertionTests(TestCase):
@@ -255,8 +255,8 @@ class SimpleValidatorAssertionTests(TestCase):
             content=json.dumps({"price": 50}),
         )
 
-    def test_assertion_evaluated_against_signals(self):
-        """Assertions are evaluated using signals as the payload."""
+    def test_assertion_evaluated_against_output_values(self):
+        """Assertions are evaluated using output_values as the payload."""
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type=AssertionType.BASIC,
@@ -268,7 +268,7 @@ class SimpleValidatorAssertionTests(TestCase):
         )
         engine = _StubSimpleValidator(
             parsed_value={},
-            signals={"temperature": 30.0},
+            output_values={"temperature": 30.0},
         )
 
         result = engine.validate(self.validator, self.submission, self.ruleset)
@@ -291,7 +291,7 @@ class SimpleValidatorAssertionTests(TestCase):
         )
         engine = _StubSimpleValidator(
             parsed_value={},
-            signals={"temperature": 20.0},
+            output_values={"temperature": 20.0},
         )
 
         result = engine.validate(self.validator, self.submission, self.ruleset)

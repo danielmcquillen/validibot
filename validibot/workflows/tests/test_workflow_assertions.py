@@ -2,7 +2,7 @@
 
 These cover the modal used by workflow authors to create assertions, the
 server-side persistence of assertion rows, and the step editor surfaces that
-show validator signals used by those assertions.
+show the validator inputs and outputs used by those assertions.
 """
 
 import json
@@ -103,7 +103,7 @@ class WorkflowStepAssertionsTests(TestCase):
         return step
 
     def _make_shacl_step(self, workflow):
-        """Create a SHACL step with output signal definitions for assertions."""
+        """Create a SHACL step with output value definitions for assertions."""
         validator = ValidatorFactory(
             validation_type=ValidationType.SHACL,
             supports_assertions=True,
@@ -470,8 +470,8 @@ class WorkflowStepAssertionsTests(TestCase):
         custom_validator = CustomValidatorFactory(org=workflow.org)
         StepIODefinitionFactory(
             validator=custom_validator.validator,
-            contract_key="custom-signal",
-            label="Custom signal",
+            contract_key="custom-output",
+            label="Custom output",
         )
         step = WorkflowStepFactory(
             workflow=workflow,
@@ -775,8 +775,8 @@ class WorkflowStepAssertionsTests(TestCase):
             1,
         )
 
-    def test_shacl_step_editor_shows_output_signals(self):
-        """SHACL output signals should appear in the step editor right column."""
+    def test_shacl_step_editor_shows_output_values(self):
+        """SHACL output values should appear in the step editor right column."""
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         step = self._make_shacl_step(workflow)
@@ -901,26 +901,26 @@ class WorkflowStepAssertionsTests(TestCase):
         _login_as_author(self.client, workflow)
         step = self._make_energyplus_step(workflow)
         assert step.ruleset
-        input_sig = StepIODefinitionFactory(
+        input_definition = StepIODefinitionFactory(
             validator=step.validator,
-            contract_key="input-signal",
+            contract_key="test-input",
             direction="input",
         )
-        output_sig = StepIODefinitionFactory(
+        output_definition = StepIODefinitionFactory(
             validator=step.validator,
-            contract_key="output-signal",
+            contract_key="test-output",
             direction="output",
         )
         RulesetAssertionFactory(
             ruleset=step.ruleset,
             order=10,
-            target_signal_definition=input_sig,
+            target_io_definition=input_definition,
             target_data_path="",
         )
         a_output = RulesetAssertionFactory(
             ruleset=step.ruleset,
             order=20,
-            target_signal_definition=output_sig,
+            target_io_definition=output_definition,
             target_data_path="",
         )
         move_url = reverse(
@@ -1490,7 +1490,7 @@ class WorkflowStepAssertionsTests(TestCase):
         )
         self.assertEqual(response.status_code, 204)
 
-    def test_custom_assertion_create_rejects_unknown_signal(self):
+    def test_custom_assertion_create_rejects_unknown_io_definition(self):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         step = self._make_energyplus_step(workflow)
@@ -1513,7 +1513,7 @@ class WorkflowStepAssertionsTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("for signals", body)
+        self.assertIn("Select a valid choice", body)
 
     def test_create_custom_target_when_validator_allows(self):
         workflow = WorkflowFactory()

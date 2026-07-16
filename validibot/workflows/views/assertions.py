@@ -518,11 +518,11 @@ class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
             key = "input" if stage == CatalogRunStage.INPUT else "output"
             grouped_assertions[key].append(assertion)
 
-        from validibot.workflows.views.steps import _step_has_signal_stages
+        from validibot.workflows.views.steps import _step_has_io_stages
         from validibot.workflows.views.steps import _tabular_summary_config
 
-        uses_signal_stages = bool(
-            validator and _step_has_signal_stages(self.step) and allow_assertions,
+        uses_io_stages = bool(
+            validator and _step_has_io_stages(self.step) and allow_assertions,
         )
         uses_tabular_stages = bool(
             validator
@@ -555,7 +555,7 @@ class WorkflowStepAssertionsPartialView(WorkflowObjectMixin, TemplateView):
                 "validator": validator,
                 "assertions": assertions,
                 "assertion_groups": grouped_assertions,
-                "uses_signal_stages": uses_signal_stages,
+                "uses_io_stages": uses_io_stages,
                 "uses_tabular_stages": uses_tabular_stages,
                 "tabular_assertion_groups": tabular_assertion_groups,
                 "tabular_config": (

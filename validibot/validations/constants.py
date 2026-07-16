@@ -210,16 +210,16 @@ class ValidationType(TextChoices):
     Assertion support by type:
     - BASIC: Supports BASIC and CEL assertions against JSON payload
     - AI_ASSIST: Supports CEL assertions against JSON payload
-    - ENERGYPLUS: Supports CEL assertions against output signals
-    - FMU: Supports CEL assertions against output signals
+    - ENERGYPLUS: Supports CEL assertions against step outputs
+    - FMU: Supports CEL assertions against step outputs
     - JSON_SCHEMA: Supports BASIC and CEL assertions after schema validation
     - XML_SCHEMA: Supports BASIC and CEL assertions after schema validation
-    - SCHEMATRON: Supports CEL assertions against output signals (the SVRL
+    - SCHEMATRON: Supports CEL assertions against step outputs (the SVRL
       summary is exposed as ``o.*`` — e.g. ``o.error_count == 0`` for a
       warnings-tolerant gate)
-    - SHACL: Supports CEL assertions against output signals
+    - SHACL: Supports CEL assertions against step outputs
     - CUSTOM_VALIDATOR: Supports BASIC and CEL assertions
-    - THERM: Supports CEL assertions against output signals
+    - THERM: Supports CEL assertions against step outputs
     - TABULAR: Supports CEL assertions (dataset-level i.*/o.* plus per-row
       ``row.*`` rules; the ``row.*`` lane is CEL-only)
 
@@ -447,7 +447,7 @@ class JSONSchemaVersion(TextChoices):
 
 
 class CatalogEntryType(TextChoices):
-    SIGNAL = "signal", _("Signal")
+    IO_DEFINITION = "io_definition", _("Step I/O Definition")
     DERIVATION = "derivation", _("Derivation")
 
 
@@ -504,18 +504,18 @@ class ArtifactKind(TextChoices):
     OTHER = "other", _("Other")
 
 
-class SignalDirection(TextChoices):
+class StepIODirection(TextChoices):
     INPUT = "input", _("Input")
     OUTPUT = "output", _("Output")
 
 
-class SignalOriginKind(TextChoices):
+class StepIOOriginKind(TextChoices):
     CATALOG = "catalog", _("Catalog")
     FMU = "fmu", _("FMU")
     TEMPLATE = "template", _("Template")
 
 
-class SignalSourceKind(TextChoices):
+class StepIOSourceKind(TextChoices):
     PAYLOAD_PATH = "payload_path", _("Payload Path")
     INTERNAL = "internal", _("Internal")
 

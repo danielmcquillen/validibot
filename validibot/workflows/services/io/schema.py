@@ -10,7 +10,7 @@ from __future__ import annotations
 
 # Bumped when the on-disk shape of ``workflow.json`` changes incompatibly. The
 # importer refuses a definition whose ``format_version`` it doesn't understand.
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 # Workflow contract fields copied verbatim (the same set
 # ``WorkflowVersioningService.clone`` treats as the workflow contract), minus
@@ -54,8 +54,8 @@ STEP_SCALAR_FIELDS: tuple[str, ...] = (
     "show_success_messages",
 )
 
-# StepIODefinition (step-owned signal) fields that round-trip verbatim.
-SIGNAL_DEFINITION_FIELDS: tuple[str, ...] = (
+# StepIODefinition fields owned by a workflow step that round-trip verbatim.
+STEP_IO_DEFINITION_FIELDS: tuple[str, ...] = (
     "contract_key",
     "native_name",
     "label",
@@ -81,22 +81,22 @@ SIGNAL_DEFINITION_FIELDS: tuple[str, ...] = (
     "unit",
     "promoted_signal_name",
 )
-SIGNAL_DEFINITION_JSON_DICT_FIELDS: tuple[str, ...] = (
+STEP_IO_DEFINITION_JSON_DICT_FIELDS: tuple[str, ...] = (
     "provider_binding",
     "metadata",
 )
-SIGNAL_DEFINITION_JSON_LIST_FIELDS: tuple[str, ...] = (
+STEP_IO_DEFINITION_JSON_LIST_FIELDS: tuple[str, ...] = (
     "accepted_data_formats",
     "accepted_media_types",
     "allowed_source_scopes",
 )
-SIGNAL_DEFINITION_JSON_FIELDS: tuple[str, ...] = (
-    *SIGNAL_DEFINITION_JSON_DICT_FIELDS,
-    *SIGNAL_DEFINITION_JSON_LIST_FIELDS,
+STEP_IO_DEFINITION_JSON_FIELDS: tuple[str, ...] = (
+    *STEP_IO_DEFINITION_JSON_DICT_FIELDS,
+    *STEP_IO_DEFINITION_JSON_LIST_FIELDS,
 )
 
-# StepInputBinding fields (signal reference handled separately).
-SIGNAL_BINDING_FIELDS: tuple[str, ...] = (
+# StepInputBinding fields (the step I/O definition reference is handled separately).
+INPUT_BINDING_FIELDS: tuple[str, ...] = (
     "source_scope",
     "source_data_path",
     "is_required",

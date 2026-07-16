@@ -128,7 +128,7 @@ class TestExecuteWorkflowStepDispatcher:
         assert isinstance(result, ValidationResult)
         assert result.passed is True
         assert result.stats.get("test") is True
-        assert result.signals == {"action_receipt": "receipt-123"}
+        assert result.output_values == {"action_receipt": "receipt-123"}
         assert received_contexts[0].upstream_steps == {
             upstream_step.step_key: {
                 "input": {},

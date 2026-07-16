@@ -8,15 +8,15 @@ from validibot.validations.api.viewsets import ValidationRunFilter
 from validibot.validations.api.viewsets import ValidationRunViewSet
 from validibot.validations.views.evidence import EvidenceBundleDownloadView
 from validibot.validations.views.evidence import EvidenceManifestDownloadView
-from validibot.validations.views.library import CatalogEntryDetailView
+from validibot.validations.views.library import StepIODefinitionDetailView
 from validibot.validations.views.library import ValidationLibraryView
 from validibot.validations.views.library import ValidatorAssertionsTabView
 from validibot.validations.views.library import ValidatorDefaultAssertionsView
 from validibot.validations.views.library import ValidatorDetailView
 from validibot.validations.views.library import ValidatorLibraryMixin
 from validibot.validations.views.library import ValidatorResourceFilesTabView
-from validibot.validations.views.library import ValidatorSignalsListView
-from validibot.validations.views.library import ValidatorSignalsTabView
+from validibot.validations.views.library import ValidatorStepIOListView
+from validibot.validations.views.library import ValidatorStepIOTabView
 from validibot.validations.views.library import ValidatorVersionsListView
 from validibot.validations.views.resources import ResourceFileCreateView
 from validibot.validations.views.resources import ResourceFileDeleteView
@@ -37,11 +37,10 @@ from validibot.validations.views.runs import ValidationRunDeleteView
 from validibot.validations.views.runs import ValidationRunDetailView
 from validibot.validations.views.runs import ValidationRunJsonView
 from validibot.validations.views.runs import ValidationRunListView
-from validibot.validations.views.signals import ValidatorSignalCreateView
-from validibot.validations.views.signals import ValidatorSignalDeleteView
-from validibot.validations.views.signals import ValidatorSignalListView
-from validibot.validations.views.signals import ValidatorSignalMixin
-from validibot.validations.views.signals import ValidatorSignalUpdateView
+from validibot.validations.views.step_io import ValidatorStepIOCreateView
+from validibot.validations.views.step_io import ValidatorStepIODeleteView
+from validibot.validations.views.step_io import ValidatorStepIOMixin
+from validibot.validations.views.step_io import ValidatorStepIOUpdateView
 from validibot.validations.views.validators import CustomValidatorCreateView
 from validibot.validations.views.validators import CustomValidatorDeleteView
 from validibot.validations.views.validators import CustomValidatorManageMixin
@@ -56,7 +55,6 @@ from validibot.validations.views.validators import ShaclLibraryValidatorUpdateVi
 __all__ = [
     "ArtifactDetailView",
     "ArtifactDownloadView",
-    "CatalogEntryDetailView",
     "CredentialDownloadView",
     "CustomValidatorCreateView",
     "CustomValidatorDeleteView",
@@ -75,6 +73,7 @@ __all__ = [
     "ShaclLibraryValidatorCreateView",
     "ShaclLibraryValidatorDeleteView",
     "ShaclLibraryValidatorUpdateView",
+    "StepIODefinitionDetailView",
     "ValidationLibraryView",
     "ValidationRunAccessMixin",
     "ValidationRunDeleteView",
@@ -94,12 +93,11 @@ __all__ = [
     "ValidatorRuleMixin",
     "ValidatorRuleMoveView",
     "ValidatorRuleUpdateView",
-    "ValidatorSignalCreateView",
-    "ValidatorSignalDeleteView",
-    "ValidatorSignalListView",
-    "ValidatorSignalMixin",
-    "ValidatorSignalUpdateView",
-    "ValidatorSignalsListView",
-    "ValidatorSignalsTabView",
+    "ValidatorStepIOCreateView",
+    "ValidatorStepIODeleteView",
+    "ValidatorStepIOListView",
+    "ValidatorStepIOMixin",
+    "ValidatorStepIOTabView",
+    "ValidatorStepIOUpdateView",
     "ValidatorVersionsListView",
 ]

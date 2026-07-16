@@ -46,13 +46,13 @@ class BasicValidator(BaseValidator):
     first converted to a nested dict so paths and CEL expressions work
     identically to JSON.
 
-    **No ``extract_input_signals`` override (per ADR-2026-05-22b
+    **No ``extract_input_values`` override (per ADR-2026-05-22b
     Phase 6).** Basic validators don't parse a packed/arcane format —
     the submission JSON/XML IS the data, addressed directly through
     BASIC paths. Authors point ``target_data_path`` at
     ``payload.<field>`` instead of using ``i.*``. Phase 5 added
     namespace enrichment so BASIC assertions targeting workflow
-    signals or step bindings still resolve, but the parser-fact
+    workflow signals or step input bindings still resolve, but the parser-fact
     pattern itself doesn't apply here.
     """
 

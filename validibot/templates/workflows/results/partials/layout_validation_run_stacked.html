@@ -19,7 +19,7 @@ Outputs.
 Selected by ``validation_detail.html`` by default. The original two-column
 design lives in ``layout_validation_run_classic.html`` for a future toggle.
 
-Context variables: run, step_runs, step_signals, step_params,
+Context variables: run, step_runs, step_outputs, step_params,
 step_template_warnings, artifact_items, issued_credential,
 credential_download_url, evidence_artifact (all forwarded from the run detail
 view).
@@ -70,7 +70,7 @@ view).
         </h2>
         <div id="reportOutputsBody" class="accordion-collapse collapse show">
           <div class="accordion-body">
-            {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_signals=step_signals step_params=step_params step_template_warnings=step_template_warnings bare=True %}
+            {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_outputs=step_outputs step_params=step_params step_template_warnings=step_template_warnings bare=True %}
           </div>
         </div>
       </div>

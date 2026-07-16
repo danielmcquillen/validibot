@@ -227,20 +227,20 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
         findings = list(run.findings.all())
 
         # Build display step outputs and template params for each step run.
-        from validibot.validations.services.signal_display import (
+        from validibot.validations.services.step_output_display import (
             build_display_step_outputs,
         )
-        from validibot.validations.services.signal_display import (
+        from validibot.validations.services.step_output_display import (
             build_template_params_display,
         )
 
-        step_signals: dict[int, list] = {}
+        step_outputs: dict[int, list] = {}
         step_params: dict[int, list] = {}
         step_template_warnings: dict[int, list] = {}
         for sr in step_runs:
-            signals = build_display_step_outputs(sr)
-            if signals:
-                step_signals[sr.pk] = signals
+            display_outputs = build_display_step_outputs(sr)
+            if display_outputs:
+                step_outputs[sr.pk] = display_outputs
             params = build_template_params_display(sr)
             if params:
                 step_params[sr.pk] = params
@@ -257,9 +257,9 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
             submission_content = run.submission.get_viewable_content()
             submission_content_can_be_viewed = bool(submission_content)
 
-        # Flatten all signals across steps for the "Workflow Outputs" summary.
-        all_signals = [
-            signal for signals in step_signals.values() for signal in signals
+        # Flatten all displayed values for the "Workflow Outputs" summary.
+        all_step_outputs = [
+            output for outputs in step_outputs.values() for output in outputs
         ]
 
         # Phase 4 Session C/1: surface the evidence manifest, when
@@ -284,9 +284,9 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 "step_runs": step_runs,
                 "all_findings": findings,
                 "summary_record": getattr(run, "summary_record", None),
-                "step_signals": step_signals,
-                "has_signals": bool(step_signals),
-                "all_signals": all_signals,
+                "step_outputs": step_outputs,
+                "has_step_outputs": bool(step_outputs),
+                "all_step_outputs": all_step_outputs,
                 "step_params": step_params,
                 "step_template_warnings": step_template_warnings,
                 "submission_content": submission_content,

@@ -369,26 +369,26 @@ class Command(BaseCommand):
         """Create the two blog-post output assertions.
 
         Assertion 1: ``window_heat_loss_kwh < 800``
-            Targets the ``window_heat_loss_kwh`` signal definition.
-            (target_signal_definition is set, target_data_path is empty)
+            Targets the ``window_heat_loss_kwh`` step I/O definition.
+            (target_io_definition is set, target_data_path is empty)
 
         Assertion 2: ``cooling_energy_kwh < heating_energy_kwh``
-            A cross-signal comparison with no single signal target.
-            (target_signal_definition is None, target_data_path is set)
+            A cross-output comparison with no single step-output target.
+            (target_io_definition is None, target_data_path is set)
         """
         # Assertion 1: window heat loss threshold
-        heat_loss_signal = StepIODefinition.objects.filter(
+        heat_loss_output = StepIODefinition.objects.filter(
             validator=validator,
             contract_key="window_heat_loss_kwh",
         ).first()
 
-        if heat_loss_signal:
+        if heat_loss_output:
             RulesetAssertion.objects.create(
                 ruleset=ruleset,
                 order=10,
                 assertion_type=AssertionType.CEL_EXPRESSION,
                 operator=AssertionOperator.CEL_EXPR,
-                target_signal_definition=heat_loss_signal,
+                target_io_definition=heat_loss_output,
                 target_data_path="",
                 rhs={"expr": "window_heat_loss_kwh < 800"},
                 severity=Severity.ERROR,
@@ -400,13 +400,13 @@ class Command(BaseCommand):
         else:
             self.stderr.write(
                 self.style.WARNING(
-                    "Signal definition 'window_heat_loss_kwh' not found. "
-                    "Run 'manage.py setup_validibot' to sync signal definitions. "
+                    "Step I/O definition 'window_heat_loss_kwh' not found. "
+                    "Run 'manage.py setup_validibot' to sync step I/O definitions. "
                     "Skipping heat loss assertion."
                 )
             )
 
-        # Assertion 2: cooling < heating (cross-signal comparison)
+        # Assertion 2: cooling < heating (cross-output comparison)
         RulesetAssertion.objects.create(
             ruleset=ruleset,
             order=20,

@@ -37,26 +37,26 @@ class _StubAdvancedValidator(AdvancedValidator):
     Concrete stub for testing the AdvancedValidator template method lifecycle.
 
     Implements the two abstract methods (validator_display_name and
-    extract_output_signals) with configurable behavior to exercise
+    extract_output_values) with configurable behavior to exercise
     the base class orchestration without needing real containers.
     """
 
-    def __init__(self, *, signals: dict[str, Any] | None = None, **kwargs):
+    def __init__(self, *, output_values: dict[str, Any] | None = None, **kwargs):
         super().__init__(**kwargs)
-        self._signals = signals
+        self._output_values = output_values
 
     @property
     def validator_display_name(self) -> str:
         return "Stub"
 
-    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
-        """Extract signals from the stub envelope's _signals attribute.
+    def extract_output_values(self, output_envelope: Any) -> dict[str, Any] | None:
+        """Extract values from the stub envelope's test-only output attribute.
 
         Instance method to match the post-May 2026 base contract — see
-        ``AdvancedValidator.extract_output_signals`` for the rationale
+        ``AdvancedValidator.extract_output_values`` for the rationale
         (catalog scoping via ``self.run_context``).
         """
-        return getattr(output_envelope, "_test_signals", None)
+        return getattr(output_envelope, "_test_output_values", None)
 
 
 def _make_mock_backend(*, is_async: bool = False, is_available: bool = True):
@@ -73,7 +73,7 @@ def _make_output_envelope(
     status: str = "success",
     messages: list | None = None,
     outputs: Any = None,
-    test_signals: dict[str, Any] | None = None,
+    test_output_values: dict[str, Any] | None = None,
 ):
     """
     Create a mock output envelope matching the ValidationOutputEnvelope interface.
@@ -93,8 +93,8 @@ def _make_output_envelope(
     envelope.status = status_map.get(status, ValidationStatus.SUCCESS)
     envelope.messages = messages or []
     envelope.outputs = outputs
-    # Custom attribute for the stub's extract_output_signals()
-    envelope._test_signals = test_signals
+    # Custom attribute for the stub's extract_output_values()
+    envelope._test_output_values = test_output_values
     return envelope
 
 
@@ -408,7 +408,7 @@ class AdvancedValidatorPostExecuteTests(TestCase):
         """SUCCESS envelope with no messages returns passed=True."""
         envelope = _make_output_envelope(
             status="success",
-            test_signals={"site_eui": 75.2},
+            test_output_values={"site_eui": 75.2},
         )
         engine = _StubAdvancedValidator()
 
@@ -416,7 +416,7 @@ class AdvancedValidatorPostExecuteTests(TestCase):
 
         self.assertTrue(result.passed)
         self.assertEqual(result.issues, [])
-        self.assertEqual(result.signals, {"site_eui": 75.2})
+        self.assertEqual(result.output_values, {"site_eui": 75.2})
 
     def test_failed_validation_envelope_returns_failed(self):
         """FAILED_VALIDATION envelope returns passed=False."""
@@ -462,29 +462,32 @@ class AdvancedValidatorPostExecuteTests(TestCase):
         self.assertEqual(result.issues[1].severity, Severity.WARNING)
         self.assertEqual(result.issues[1].path, "")
 
-    def test_extract_output_signals_called_correctly(self):
-        """Signals from extract_output_signals() appear in result.signals."""
+    def test_extract_output_values_called_correctly(self):
+        """Output values from extract_output_values() appear in result.output_values."""
         envelope = _make_output_envelope(
             status="success",
-            test_signals={"site_eui_kwh_m2": 120.5, "peak_demand_w": 5000},
+            test_output_values={
+                "site_eui_kwh_m2": 120.5,
+                "peak_demand_w": 5000,
+            },
         )
         engine = _StubAdvancedValidator()
 
         result = engine.post_execute_validate(envelope, run_context=None)
 
         self.assertEqual(
-            result.signals,
+            result.output_values,
             {"site_eui_kwh_m2": 120.5, "peak_demand_w": 5000},
         )
 
-    def test_no_signals_returns_empty_dict(self):
-        """When extract_output_signals() returns None, signals is empty dict."""
-        envelope = _make_output_envelope(status="success", test_signals=None)
+    def test_no_output_values_returns_empty_dict(self):
+        """When extract_output_values() returns None, output_values is empty dict."""
+        envelope = _make_output_envelope(status="success", test_output_values=None)
         engine = _StubAdvancedValidator()
 
         result = engine.post_execute_validate(envelope, run_context=None)
 
-        self.assertEqual(result.signals, {})
+        self.assertEqual(result.output_values, {})
 
     def test_envelope_outputs_included_in_stats(self):
         """Envelope outputs are serialized into result.stats."""
@@ -647,7 +650,7 @@ class AdvancedValidatorHelperTests(TestCase):
 # _build_assertion_payload — nested output namespace
 #
 # Output-stage assertions can reference both user inputs (from the submission
-# JSON) and validator outputs (from extract_output_signals).  The payload
+# JSON) and validator outputs (from extract_output_values).  The payload
 # merges these into a single dict with a nested ``output`` namespace so that
 # CEL member access (``output.T_room``) and basic-assertion dot-path
 # navigation (``output.T_room``) both resolve correctly.
@@ -658,17 +661,17 @@ class BuildAssertionPayloadTests(TestCase):
     """Tests for the merged assertion payload structure.
 
     The ``_build_assertion_payload`` static method combines submission
-    input values with output signals for evaluation at the output stage.
+    input values with output output_values for evaluation at the output stage.
     The nested ``output`` namespace ensures that ``output.<name>``
     resolves via both CEL member access and basic-assertion dot-path
     navigation.
     """
 
-    def _build(self, signals, content_json=None):
+    def _build(self, output_values, content_json=None):
         """Call _build_assertion_payload with a mock RunContext.
 
         Args:
-            signals: Output signals dict (from extract_output_signals).
+            output_values: Output output_values dict (from extract_output_values).
             content_json: Optional JSON string for the submission content.
                 If None, the submission mock returns None for get_content().
         """
@@ -677,18 +680,21 @@ class BuildAssertionPayloadTests(TestCase):
         submission.get_content.return_value = content_json
         run_context.validation_run = MagicMock()
         run_context.validation_run.submission = submission
-        return _StubAdvancedValidator._build_assertion_payload(signals, run_context)
+        return _StubAdvancedValidator._build_assertion_payload(
+            output_values,
+            run_context,
+        )
 
-    def test_no_submission_content_returns_signals(self):
-        """When the submission has no content, only output signals are
+    def test_no_submission_content_returns_output_values(self):
+        """When the submission has no content, only output output_values are
         returned — no nested namespace since there's nothing to merge.
         """
         result = self._build({"T_room": 296.63}, content_json=None)
         self.assertEqual(result, {"T_room": 296.63})
 
-    def test_non_json_content_returns_signals(self):
+    def test_non_json_content_returns_output_values(self):
         """Non-JSON submission content (e.g., EnergyPlus IDF files)
-        can't be merged with output signals.
+        can't be merged with output output_values.
         """
         result = self._build({"T_room": 296.63}, content_json="!- IDF file")
         self.assertEqual(result, {"T_room": 296.63})
@@ -717,7 +723,7 @@ class BuildAssertionPayloadTests(TestCase):
         self.assertEqual(result["output"]["Q_cooling_actual"], 5172.83)
 
     def test_collision_input_keeps_bare_name(self):
-        """When a submission key collides with an output signal name,
+        """When a submission key collides with an output value name,
         the input value keeps the bare name and the output is only
         reachable via the nested ``output`` namespace.
 
@@ -735,17 +741,17 @@ class BuildAssertionPayloadTests(TestCase):
         # Non-colliding input still under bare name
         self.assertEqual(result["T_setpoint"], 295)
 
-    def test_no_run_context_returns_signals_copy(self):
-        """Without run_context, a plain copy of signals is returned."""
-        signals = {"T_room": 296.63}
-        result = _StubAdvancedValidator._build_assertion_payload(signals, None)
+    def test_no_run_context_returns_output_values_copy(self):
+        """Without run_context, a plain copy of output_values is returned."""
+        output_values = {"T_room": 296.63}
+        result = _StubAdvancedValidator._build_assertion_payload(output_values, None)
         self.assertEqual(result, {"T_room": 296.63})
         # Must be a copy, not the original dict
-        self.assertIsNot(result, signals)
+        self.assertIsNot(result, output_values)
 
-    def test_non_dict_json_returns_signals(self):
+    def test_non_dict_json_returns_output_values(self):
         """JSON content that isn't a dict (e.g., an array) can't be
-        merged — only the output signals are returned.
+        merged — only the output output_values are returned.
         """
         result = self._build({"T_room": 296.63}, content_json="[1, 2, 3]")
         self.assertEqual(result, {"T_room": 296.63})
@@ -762,15 +768,15 @@ class BuildAssertionPayloadTests(TestCase):
         rather than parsing the raw submission JSON.
 
         This is the core fix: a StepInputBinding may define a default
-        value for an input signal.  If the submission omits that key,
-        resolve_step_input_signals() fills it in.  The assertion payload
+        value for an step input.  If the submission omits that key,
+        resolve_step_input_values() fills it in.  The assertion payload
         must see the resolved value, not the raw (missing) one.
         """
-        signals = {"T_room": 296.63}
+        output_values = {"T_room": 296.63}
         resolved = {"Q_cooling_max": 6000, "panel_area": 12.5}
         # Raw submission is missing Q_cooling_max — but resolved_inputs has it.
         result = _StubAdvancedValidator._build_assertion_payload(
-            signals,
+            output_values,
             run_context=None,
             resolved_inputs=resolved,
         )
@@ -781,13 +787,13 @@ class BuildAssertionPayloadTests(TestCase):
 
     def test_resolved_inputs_collision_input_keeps_bare_name(self):
         """When resolved_inputs contains a key that collides with an
-        output signal, the input value keeps the bare name (same
+        output value, the input value keeps the bare name (same
         convention as the raw-submission path).
         """
-        signals = {"T_room": 296.63}
+        output_values = {"T_room": 296.63}
         resolved = {"T_room": 293.15, "T_setpoint": 295}
         result = _StubAdvancedValidator._build_assertion_payload(
-            signals,
+            output_values,
             run_context=None,
             resolved_inputs=resolved,
         )
@@ -815,14 +821,14 @@ class BuildAssertionPayloadTests(TestCase):
         """When resolved_inputs is explicitly None, the method falls
         back to the raw submission JSON (backward compatibility).
         """
-        signals = {"T_room": 296.63}
+        output_values = {"T_room": 296.63}
         run_context = MagicMock()
         submission = MagicMock()
         submission.get_content.return_value = '{"Q_cooling_max": 6000}'
         run_context.validation_run = MagicMock()
         run_context.validation_run.submission = submission
         result = _StubAdvancedValidator._build_assertion_payload(
-            signals,
+            output_values,
             run_context,
             resolved_inputs=None,
         )
@@ -835,7 +841,7 @@ class BuildAssertionPayloadTests(TestCase):
 #
 # The _get_resolved_inputs helper retrieves resolved input values from
 # step_run.output, where the envelope builder stores them after
-# resolve_step_input_signals() runs.  This enables output-stage
+# resolve_step_input_values() runs.  This enables output-stage
 # assertions to see the same values (with defaults, nested paths) that
 # the validator launch used.
 # ==============================================================================

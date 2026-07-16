@@ -300,7 +300,7 @@ class CelAssertionEvaluator:
                 ) % {"identifier": identifier}
             return _(
                 "CEL references undefined name '%(identifier)s'. "
-                "Ensure a matching validator signal exists."
+                "Ensure a matching step input or output exists."
             ) % {"identifier": identifier}
 
         return raw_error

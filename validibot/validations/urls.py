@@ -66,14 +66,14 @@ urlpatterns = [
         name="validator_version_detail",
     ),
     path(
-        "library/custom/<slug:slug>/versions/<int:version>/signals/",
-        views.ValidatorSignalsListView.as_view(),
-        name="validator_version_signals_list",
+        "library/custom/<slug:slug>/versions/<int:version>/step-io/",
+        views.ValidatorStepIOListView.as_view(),
+        name="validator_version_step_io_list",
     ),
     path(
-        "library/custom/<slug:slug>/versions/<int:version>/signals-tab/",
-        views.ValidatorSignalsTabView.as_view(),
-        name="validator_version_signals_tab",
+        "library/custom/<slug:slug>/versions/<int:version>/step-io-tab/",
+        views.ValidatorStepIOTabView.as_view(),
+        name="validator_version_step_io_tab",
     ),
     path(
         "library/custom/<slug:slug>/versions/<int:version>/assertions/",
@@ -96,14 +96,14 @@ urlpatterns = [
         name="validator_detail",
     ),
     path(
-        "library/custom/<slug:slug>/signals/",
-        views.ValidatorSignalsListView.as_view(),
-        name="validator_signals_list",
+        "library/custom/<slug:slug>/step-io/",
+        views.ValidatorStepIOListView.as_view(),
+        name="validator_step_io_list",
     ),
     path(
-        "library/custom/<slug:slug>/signals-tab/",
-        views.ValidatorSignalsTabView.as_view(),
-        name="validator_signals_tab",
+        "library/custom/<slug:slug>/step-io-tab/",
+        views.ValidatorStepIOTabView.as_view(),
+        name="validator_step_io_tab",
     ),
     path(
         "library/custom/<slug:slug>/assertions/",
@@ -136,19 +136,19 @@ urlpatterns = [
         name="resource_file_delete",
     ),
     path(
-        "library/custom/<int:pk>/signals/new/",
-        views.ValidatorSignalCreateView.as_view(),
-        name="validator_signal_create",
+        "library/custom/<int:pk>/step-io/new/",
+        views.ValidatorStepIOCreateView.as_view(),
+        name="validator_step_io_create",
     ),
     path(
-        "library/custom/<int:pk>/signals/<int:entry_pk>/edit/",
-        views.ValidatorSignalUpdateView.as_view(),
-        name="validator_signal_update",
+        "library/custom/<int:pk>/step-io/<int:entry_pk>/edit/",
+        views.ValidatorStepIOUpdateView.as_view(),
+        name="validator_step_io_update",
     ),
     path(
-        "library/custom/<int:pk>/signals/<int:entry_pk>/delete/",
-        views.ValidatorSignalDeleteView.as_view(),
-        name="validator_signal_delete",
+        "library/custom/<int:pk>/step-io/<int:entry_pk>/delete/",
+        views.ValidatorStepIODeleteView.as_view(),
+        name="validator_step_io_delete",
     ),
     path(
         "library/custom/<int:pk>/rules/",
@@ -227,7 +227,7 @@ urlpatterns = [
     ),
     path(
         "catalog-entry/<int:entry_pk>/",
-        views.CatalogEntryDetailView.as_view(),
+        views.StepIODefinitionDetailView.as_view(),
         name="catalog_entry_detail",
     ),
 ]

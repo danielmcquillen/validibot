@@ -10,19 +10,21 @@ without mutating payload or ordinary output values.
 from types import SimpleNamespace
 
 import pytest
+from django.core.exceptions import ValidationError
 from validibot_shared.validations.envelopes import ValidationArtifact
 
 from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import EnvelopeChannel
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import StepStatus
 from validibot.validations.models import Artifact
+from validibot.validations.models import WorkflowStepIOPromotion
 from validibot.validations.services.artifacts import build_step_artifact_refs
 from validibot.validations.services.artifacts import register_output_artifacts
-from validibot.validations.services.path_resolution import resolve_input_signal
+from validibot.validations.services.path_resolution import resolve_step_input
 from validibot.validations.services.run_context import RunContextBuilder
 from validibot.validations.tests.factories import StepInputBindingFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
@@ -33,6 +35,45 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 pytestmark = pytest.mark.django_db
 
 UPDATED_REPORT_SIZE_BYTES = 200
+
+
+class TestArtifactPromotionContract:
+    """Promotion guards keep artifacts out of the workflow signal namespace."""
+
+    def test_artifact_step_io_definition_rejects_promoted_signal_name(self):
+        """An artifact port cannot masquerade as a small CEL/JSON signal value."""
+        io_definition = StepIODefinitionFactory(
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+        )
+        io_definition.promoted_signal_name = "report"
+
+        with pytest.raises(
+            ValidationError,
+            match="Artifacts cannot be promoted to workflow signals",
+        ):
+            io_definition.full_clean()
+
+    def test_artifact_step_io_definition_rejects_promotion_overlay(self):
+        """Validator-owned artifact ports must also reject overlay promotion."""
+        step = WorkflowStepFactory()
+        io_definition = StepIODefinitionFactory(
+            validator=step.validator,
+            direction=StepIODirection.OUTPUT,
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+        )
+        promotion = WorkflowStepIOPromotion(
+            workflow_step=step,
+            io_definition=io_definition,
+            promoted_signal_name="report",
+        )
+
+        with pytest.raises(
+            ValidationError,
+            match="Only value ports can be promoted to workflow signals",
+        ):
+            promotion.full_clean()
 
 
 class TestStepArtifactRegistration:
@@ -131,7 +172,7 @@ class TestStepArtifactRegistration:
         step = WorkflowStepFactory(workflow=run.workflow, name="Simulate Model")
         StepIODefinitionFactory(
             validator=step.validator,
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
             contract_key="eplusout_sql",
             native_name="eplusout_sql",
             data_type=CatalogValueType.ARTIFACT_REF,
@@ -184,7 +225,7 @@ class TestStepArtifactRegistration:
         step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
         StepIODefinitionFactory(
             validator=step_run.workflow_step.validator,
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
             contract_key="eplusout_sql",
             data_type=CatalogValueType.ARTIFACT_REF,
             io_medium=StepIOMedium.ARTIFACT,
@@ -225,7 +266,7 @@ class TestStepArtifactRegistration:
         step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
         StepIODefinitionFactory(
             validator=step_run.workflow_step.validator,
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
             contract_key="eplusout_sql",
             data_type=CatalogValueType.ARTIFACT_REF,
             io_medium=StepIOMedium.ARTIFACT,
@@ -350,10 +391,10 @@ class TestStepArtifactRunContext:
                 raw_outputs=None,
             ),
         )
-        signal_definition = StepIODefinitionFactory(
+        io_definition = StepIODefinitionFactory(
             validator=None,
             workflow_step=downstream_step,
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             contract_key="primary_model",
             native_name="primary-model",
             data_type=CatalogValueType.ARTIFACT_REF,
@@ -361,13 +402,13 @@ class TestStepArtifactRunContext:
         )
         binding = StepInputBindingFactory(
             workflow_step=downstream_step,
-            signal_definition=signal_definition,
+            io_definition=io_definition,
             source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
             source_data_path=f"{upstream_step.step_key}.generated_model",
         )
         context = RunContextBuilder(run, downstream_step).build()
 
-        resolved = resolve_input_signal(
+        resolved = resolve_step_input(
             binding,
             upstream_steps=context.upstream_steps,
         )

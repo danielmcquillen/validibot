@@ -2,7 +2,7 @@
 THMX/THMZ file parser.
 
 Parses THERM XML files into a ThermModel dataclass for domain checks
-and signal extraction. Handles both .thmx (raw XML) and .thmz (ZIP
+and step output extraction. Handles both .thmx (raw XML) and .thmz (ZIP
 archive containing XML) formats.
 
 TODO: The XML element names and attribute names used here are

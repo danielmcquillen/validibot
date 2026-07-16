@@ -43,7 +43,7 @@ class ValidationStepProcessor(ABC):
     - Handle errors and set appropriate status
     - Finalize step with timing
 
-    Processors do NOT evaluate assertions or extract signals - that's the
+    Processors do NOT evaluate assertions or extract output values - that's the
     validator's job. Processors only persist what the validator returns.
     """
 

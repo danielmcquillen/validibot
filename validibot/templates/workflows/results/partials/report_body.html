@@ -10,7 +10,7 @@ itself lives in each page's header (``_report_layout_toggle.html``), not here.
 
 ``report_layout`` is resolved per request by ``resolve_report_layout`` (default
 "stacked"). The classic and stacked partials read the surrounding context
-(run, step_runs, step_signals, step_params, step_template_warnings,
+(run, step_runs, step_outputs, step_params, step_template_warnings,
 artifact_items, issued_credential, evidence_artifact, …); each section is
 independently guarded, so a caller that supplies only a subset simply renders
 fewer sections.

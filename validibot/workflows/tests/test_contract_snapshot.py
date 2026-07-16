@@ -40,7 +40,7 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 
 
 class ContractProjectionTests(TestCase):
-    """The projection covers constants + signal definitions + steps."""
+    """The projection covers constants, signal mappings, and steps."""
 
     def setUp(self):
         self.workflow = WorkflowFactory()

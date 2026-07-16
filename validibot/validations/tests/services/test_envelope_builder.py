@@ -40,10 +40,10 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
-from validibot.validations.constants import SignalDirection
-from validibot.validations.constants import SignalOriginKind
-from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOOriginKind
+from validibot.validations.constants import StepIOSourceKind
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Artifact
@@ -156,9 +156,9 @@ def _make_fmu_model_port(validator):
         workflow_step=None,
         contract_key="fmu_model",
         native_name="fmu_model",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
-        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
+        source_kind=StepIOSourceKind.PAYLOAD_PATH,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -187,9 +187,9 @@ def _make_shacl_data_graph_port(validator):
         workflow_step=None,
         contract_key="data_graph",
         native_name="data_graph",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
-        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
+        source_kind=StepIOSourceKind.PAYLOAD_PATH,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -271,9 +271,9 @@ def _make_schematron_xml_document_port(validator):
         workflow_step=None,
         contract_key="xml_document",
         native_name="xml_document",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
-        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
+        source_kind=StepIOSourceKind.PAYLOAD_PATH,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -370,9 +370,9 @@ def _build_energyplus_file_port_run():
         workflow_step=None,
         contract_key="primary_model",
         native_name="primary_model",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
-        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
+        source_kind=StepIOSourceKind.PAYLOAD_PATH,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -401,9 +401,9 @@ def _build_energyplus_file_port_run():
         workflow_step=None,
         contract_key="weather_file",
         native_name="weather_file",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
-        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
+        source_kind=StepIOSourceKind.PAYLOAD_PATH,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -651,13 +651,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=_step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=_step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -725,13 +725,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
             source_data_path=f"{upstream_step.step_key}.generated_model",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -792,13 +792,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
             source_data_path=f"{upstream_step.step_key}.generated_model",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -813,7 +813,7 @@ class TestEnergyPlusFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="primary_model",
+            input_contract_key="primary_model",
         )
         assert trace.resolved is False
         assert "csv" in trace.error_message
@@ -855,13 +855,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
             source_data_path=f"{upstream_step.step_key}.generated_model",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -876,7 +876,7 @@ class TestEnergyPlusFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="primary_model",
+            input_contract_key="primary_model",
         )
         assert trace.resolved is False
         assert "application/pdf" in trace.error_message
@@ -889,13 +889,13 @@ class TestEnergyPlusFilePortMaterialization:
         weather_resource.delete()
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -923,13 +923,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="",
         )
@@ -967,13 +967,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="",
         )
@@ -990,7 +990,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         traces = {
-            trace.signal_contract_key: trace
+            trace.input_contract_key: trace
             for trace in ResolvedInputTrace.objects.filter(
                 step_run=run.current_step_run,
             )
@@ -1015,13 +1015,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="",
         )
@@ -1039,7 +1039,7 @@ class TestEnergyPlusFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="weather_file",
+            input_contract_key="weather_file",
         )
         assert trace.resolved is False
         assert "submitted file URI" in trace.error_message
@@ -1051,13 +1051,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="",
         )
@@ -1076,7 +1076,7 @@ class TestEnergyPlusFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="weather_file",
+            input_contract_key="weather_file",
         )
         assert trace.resolved is False
         assert "expected one of .epw" in trace.error_message
@@ -1095,13 +1095,13 @@ class TestEnergyPlusFilePortMaterialization:
         primary_port.save(update_fields=["allowed_source_scopes"])
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -1119,7 +1119,7 @@ class TestEnergyPlusFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="primary_model",
+            input_contract_key="primary_model",
         )
         assert trace.resolved is False
         assert "does not allow source scope" in trace.error_message
@@ -1137,13 +1137,13 @@ class TestEnergyPlusFilePortMaterialization:
         primary_port.save(update_fields=["accepted_data_formats"])
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -1161,7 +1161,7 @@ class TestEnergyPlusFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="primary_model",
+            input_contract_key="primary_model",
         )
         assert trace.resolved is False
         assert "energyplus_epjson" in trace.error_message
@@ -1180,13 +1180,13 @@ class TestEnergyPlusFilePortMaterialization:
         primary_port.save(update_fields=["accepted_media_types"])
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -1204,7 +1204,7 @@ class TestEnergyPlusFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="primary_model",
+            input_contract_key="primary_model",
         )
         assert trace.resolved is False
         assert "application/vnd.energyplus.epjson" in trace.error_message
@@ -1228,13 +1228,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -1252,7 +1252,7 @@ class TestEnergyPlusFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="weather_file",
+            input_contract_key="weather_file",
         )
         assert trace.resolved is False
         assert "accepts at most 1" in trace.error_message
@@ -1268,13 +1268,13 @@ class TestEnergyPlusFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=primary_port,
+            io_definition=primary_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="primary_file_uri",
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=weather_port,
+            io_definition=weather_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
@@ -1297,7 +1297,7 @@ class TestEnergyPlusFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="weather_file",
+            input_contract_key="weather_file",
         )
         assert trace.resolved is False
         assert "expected one of .epw" in trace.error_message
@@ -1326,7 +1326,7 @@ class TestSHACLDataGraphFilePortMaterialization:
         run, step, data_graph_port = _build_shacl_data_graph_run()
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=data_graph_port,
+            io_definition=data_graph_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="data_graph",
         )
@@ -1351,7 +1351,7 @@ class TestSHACLDataGraphFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="data_graph",
+            input_contract_key="data_graph",
         )
         assert trace.resolved is True
         assert trace.source_scope_used == BindingSourceScope.SUBMISSION_FILE
@@ -1401,7 +1401,7 @@ class TestSHACLDataGraphFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=data_graph_port,
+            io_definition=data_graph_port,
             source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
             source_data_path=f"{upstream_step.step_key}.data_graph",
         )
@@ -1420,7 +1420,7 @@ class TestSHACLDataGraphFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="data_graph",
+            input_contract_key="data_graph",
         )
         assert trace.resolved is True
         assert trace.source_scope_used == BindingSourceScope.UPSTREAM_ARTIFACT
@@ -1431,7 +1431,7 @@ class TestSHACLDataGraphFilePortMaterialization:
         run, step, data_graph_port = _build_shacl_data_graph_run()
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=data_graph_port,
+            io_definition=data_graph_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="data_graph",
         )
@@ -1449,7 +1449,7 @@ class TestSHACLDataGraphFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="data_graph",
+            input_contract_key="data_graph",
         )
         assert trace.resolved is False
         assert "expected one of .ttl" in trace.error_message
@@ -1472,7 +1472,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
         run, step, xml_document_port = _build_schematron_xml_document_run()
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=xml_document_port,
+            io_definition=xml_document_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="xml_document",
         )
@@ -1497,7 +1497,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="xml_document",
+            input_contract_key="xml_document",
         )
         assert trace.resolved is True
         assert trace.source_scope_used == BindingSourceScope.SUBMISSION_FILE
@@ -1539,7 +1539,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=xml_document_port,
+            io_definition=xml_document_port,
             source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
             source_data_path=f"{upstream_step.step_key}.xml_document",
         )
@@ -1560,7 +1560,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="xml_document",
+            input_contract_key="xml_document",
         )
         assert trace.resolved is True
         assert trace.source_scope_used == BindingSourceScope.UPSTREAM_ARTIFACT
@@ -1571,7 +1571,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
         run, step, xml_document_port = _build_schematron_xml_document_run()
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=xml_document_port,
+            io_definition=xml_document_port,
             source_scope=BindingSourceScope.SUBMISSION_FILE,
             source_data_path="xml_document",
         )
@@ -1589,7 +1589,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="xml_document",
+            input_contract_key="xml_document",
         )
         assert trace.resolved is False
         assert "expected one of .xml" in trace.error_message
@@ -1613,7 +1613,7 @@ class TestFMUFilePortMaterialization:
         fmu_port = _make_fmu_model_port(step.validator)
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=fmu_port,
+            io_definition=fmu_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=FMU_MODEL_RESOURCE,
         )
@@ -1633,7 +1633,7 @@ class TestFMUFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="fmu_model",
+            input_contract_key="fmu_model",
         )
         assert trace.resolved is True
         assert trace.source_scope_used == BindingSourceScope.WORKFLOW_RESOURCE
@@ -1671,7 +1671,7 @@ class TestFMUFilePortMaterialization:
         fmu_port = _make_fmu_model_port(validator)
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=fmu_port,
+            io_definition=fmu_port,
             source_scope=BindingSourceScope.SYSTEM,
             source_data_path="fmu_model",
         )
@@ -1688,7 +1688,7 @@ class TestFMUFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="fmu_model",
+            input_contract_key="fmu_model",
         )
         assert trace.resolved is True
         assert trace.source_scope_used == BindingSourceScope.SYSTEM
@@ -1717,7 +1717,7 @@ class TestFMUFilePortMaterialization:
         fmu_port = _make_fmu_model_port(validator)
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=fmu_port,
+            io_definition=fmu_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=FMU_MODEL_RESOURCE,
         )
@@ -1732,7 +1732,7 @@ class TestFMUFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="fmu_model",
+            input_contract_key="fmu_model",
         )
         assert trace.resolved is False
         assert "expected at least 1" in trace.error_message
@@ -1743,7 +1743,7 @@ class TestFMUFilePortMaterialization:
         fmu_port = _make_fmu_model_port(step.validator)
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=fmu_port,
+            io_definition=fmu_port,
             source_scope=BindingSourceScope.WORKFLOW_RESOURCE,
             source_data_path=FMU_MODEL_RESOURCE,
         )
@@ -1759,7 +1759,7 @@ class TestFMUFilePortMaterialization:
 
         trace = ResolvedInputTrace.objects.get(
             step_run=run.current_step_run,
-            signal_contract_key="fmu_model",
+            input_contract_key="fmu_model",
         )
         assert trace.resolved is False
         assert "expected one of .fmu" in trace.error_message
@@ -1792,8 +1792,8 @@ class TestFMUInputBindings:
             validator=None,
             contract_key="panel_area",
             native_name="Panel.Area",
-            direction=SignalDirection.INPUT,
-            origin_kind=SignalOriginKind.FMU,
+            direction=StepIODirection.INPUT,
+            origin_kind=StepIOOriginKind.FMU,
         )
 
         with pytest.raises(ValueError, match="StepInputBinding"):
@@ -1813,17 +1813,17 @@ class TestFMUInputBindings:
                 '"accidental": "must-not-enter-envelope"}'
             ),
         )
-        signal = StepIODefinitionFactory(
+        io_definition = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             contract_key="panel_area",
             native_name="Panel.Area",
-            direction=SignalDirection.INPUT,
-            origin_kind=SignalOriginKind.FMU,
+            direction=StepIODirection.INPUT,
+            origin_kind=StepIOOriginKind.FMU,
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=signal,
+            io_definition=io_definition,
             source_data_path="building.panel_area",
         )
 

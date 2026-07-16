@@ -120,7 +120,7 @@ These tests live in `tests/tests_e2e/test_energyplus_template.py` and run a
 **real EnergyPlus simulation** in Docker against the local Docker Compose stack.
 They reproduce the exact scenario from the blog post "Validating With EnergyPlus
 - Window Glazing Analysis": submit JSON parameter values via the API, wait for
-the EnergyPlus simulation to complete, and verify output signals and assertion
+the EnergyPlus simulation to complete, and verify output values and assertion
 results.
 
 Each test takes 2-5 minutes because it runs a real EnergyPlus simulation inside
@@ -190,7 +190,7 @@ command, which creates:
 - A weather file reference (San Francisco TMY3)
 
 The tests submit JSON payloads via the API, which triggers the full validation
-pipeline: template substitution, EnergyPlus simulation in Docker, output signal
+pipeline: template substitution, EnergyPlus simulation in Docker, output-value
 extraction, and CEL assertion evaluation.
 
 ### Adding new E2E workflow tests

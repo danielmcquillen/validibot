@@ -36,7 +36,12 @@ The names differ a little between validators and actions, but the moving parts a
 | Database sync target | `Validator`, `StepIODefinition`, `Derivation` | `ActionDefinition` |
 | Main sync command | `sync_validators` | `seed_default_actions` or `setup_validibot` |
 
-The main difference is that validators carry more catalog metadata than actions. A validator declaration does not just say "this validator exists." It also says what signals and derivations it exposes, which file types it supports, and which optional editor cards it adds. Action declarations are simpler. They mainly identify the action, its feature gate, and the runtime classes needed to edit and execute it.
+The main difference is that validators carry more contract metadata than actions.
+A validator declaration does not just say "this validator exists." It also says
+which step inputs, step outputs, and derivations it exposes, which file types it
+supports, and which optional editor cards it adds. Action declarations are
+simpler. They mainly identify the action, its feature gate, and the runtime
+classes needed to edit and execute it.
 
 ## Validator plugin mechanism
 
@@ -63,7 +68,7 @@ That is why a new validator usually requires both halves:
 The editor and runtime then use the same declaration for several different jobs:
 
 - the workflow editor can list the validator
-- the signal catalog can show its declared inputs and outputs
+- the step I/O catalog can show its declared inputs and outputs
 - the runtime can instantiate the validator class
 - optional step-editor cards can be injected without hard-coding template logic in the core app
 
@@ -80,7 +85,7 @@ For simple, in-process validators:
 | `validate_file_type(submission)` | Yes | Reject incompatible uploads before parsing. Return a `ValidationIssue` or `None`. |
 | `parse_content(submission)` | Yes | Convert the submission into the domain object the validator understands. Raise on parse failure; the base class turns that into a validation issue. |
 | `run_domain_checks(parsed)` | Yes | Return structural or semantic findings from the parsed domain object. |
-| `extract_signals(parsed)` | No | Return output signals used by assertions and downstream steps. The default is an empty dict. |
+| `extract_output_values(parsed)` | No | Return step output values used by assertions and downstream steps. The default is an empty dict. |
 
 For advanced validators that delegate to an isolated validator backend:
 
@@ -88,12 +93,17 @@ For advanced validators that delegate to an isolated validator backend:
 | --- | --- | --- |
 | `validator_display_name` | Yes | Human-readable name used in operational error messages. |
 | `preprocess_submission(step, submission)` | No | Resolve templates or normalize inputs before dispatch. The default is a no-op. |
-| `extract_input_signals(payload)` | No | Expose parsed input-stage facts for `i.*` assertions before the backend runs. The default returns `None`. |
-| `extract_output_signals(output_envelope)` | Yes | Expose output-stage facts for `o.*` assertions after the backend returns. |
+| `extract_input_values(payload)` | No | Expose parsed input-stage facts for `i.*` assertions before the backend runs. The default returns `None`. |
+| `extract_output_values(output_envelope)` | Yes | Expose output-stage facts for `o.*` assertions after the backend returns. |
 
 All validators can also override `get_cel_helpers()` when they need a narrower or wider CEL helper allowlist. Treat it as a security-sensitive hook: only expose helpers the validator really needs.
 
-Avoid overriding `validate()` or `post_execute_validate()` in normal validators. Those methods are the framework-owned lifecycle: they set run context, evaluate assertions, persist signal semantics, handle sync vs async execution, and assemble `ValidationResult`. Override them only when the validator has a lifecycle shape the base class cannot express, and document that decision in the validator package.
+Avoid overriding `validate()` or `post_execute_validate()` in normal validators.
+Those methods are the framework-owned lifecycle: they set run context, evaluate
+assertions, persist step results, handle sync vs async execution, and assemble
+`ValidationResult`. Override them only when the validator has a lifecycle shape
+the base class cannot express, and document that decision in the validator
+package.
 
 ## Action plugin mechanism
 

@@ -30,7 +30,7 @@ class AssertionMutationPayload:
 
     assertion_type: str
     operator: str
-    target_signal_definition: StepIODefinition | None
+    target_io_definition: StepIODefinition | None
     target_data_path: str
     severity: str
     when_expression: str
@@ -182,7 +182,7 @@ class AssertionMutationService:
         return AssertionMutationPayload(
             assertion_type=cleaned_data["assertion_type"],
             operator=cleaned_data["resolved_operator"],
-            target_signal_definition=cleaned_data.get("resolved_signal"),
+            target_io_definition=cleaned_data.get("resolved_io_definition"),
             target_data_path=cleaned_data.get("target_data_path_value") or "",
             severity=cleaned_data["severity"],
             when_expression=cleaned_data.get("when_expression") or "",
@@ -201,9 +201,9 @@ class AssertionMutationService:
         resolved_stage = cleaned_data.get("resolved_stage")
         if resolved_stage:
             return resolved_stage
-        signal = cleaned_data.get("resolved_signal")
-        if signal and getattr(signal, "direction", None):
-            return signal.direction
+        io_definition = cleaned_data.get("resolved_io_definition")
+        if io_definition and getattr(io_definition, "direction", None):
+            return io_definition.direction
         return CatalogRunStage.OUTPUT
 
     @staticmethod
@@ -211,10 +211,10 @@ class AssertionMutationService:
         """Return the queryset filter that matches a stage bucket."""
 
         if stage == CatalogRunStage.INPUT:
-            return Q(target_signal_definition__direction=CatalogRunStage.INPUT)
+            return Q(target_io_definition__direction=CatalogRunStage.INPUT)
         return Q(
-            Q(target_signal_definition__direction=CatalogRunStage.OUTPUT)
-            | Q(target_signal_definition__isnull=True),
+            Q(target_io_definition__direction=CatalogRunStage.OUTPUT)
+            | Q(target_io_definition__isnull=True),
         )
 
     @classmethod

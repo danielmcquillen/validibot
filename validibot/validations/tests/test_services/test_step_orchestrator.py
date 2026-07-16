@@ -187,7 +187,7 @@ class TestRecordActionStepResult:
             validation_result=ValidationResult(
                 passed=True,
                 issues=[],
-                signals={"credential_id": "credential-123"},
+                output_values={"credential_id": "credential-123"},
                 stats={"delivery_ms": DELIVERY_MS},
             ),
         )
@@ -195,7 +195,6 @@ class TestRecordActionStepResult:
         step_run.refresh_from_db()
         assert step_run.output_values == {"credential_id": "credential-123"}
         assert step_run.output["delivery_ms"] == DELIVERY_MS
-        assert "signals" not in step_run.output
 
 
 @pytest.mark.django_db

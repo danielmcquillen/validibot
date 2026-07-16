@@ -275,7 +275,8 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
         """The Tabular operation should own its settings action at the right edge.
 
         The operation card also carries the compact configuration summary. The
-        right column should use the standard IO and signal cards instead of a
+        right column should use the standard step-I/O and workflow-data cards
+        instead of a
         Tabular-specific configuration card.
         """
         edit_path = reverse(
@@ -321,15 +322,15 @@ class TabularSettingsBrowserTests(StaticLiveServerTestCase):
                 ),
             ),
         )
-        input_tab = self.driver.find_element(By.ID, "signals-input-tab")
+        input_tab = self.driver.find_element(By.ID, "step-io-input-tab")
         self.assertEqual(
             input_tab.find_element(By.CSS_SELECTOR, ".badge").text,
             str(len(TABULAR_DATASET_INPUTS)),
         )
         self.assertTrue(
-            self.driver.find_element(By.ID, "signals-output-tab"),
+            self.driver.find_element(By.ID, "step-io-output-tab"),
         )
-        input_panel = self.driver.find_element(By.ID, "signals-input-panel")
+        input_panel = self.driver.find_element(By.ID, "step-io-input-panel")
         rendered_inputs = {
             element.text
             for element in input_panel.find_elements(By.CSS_SELECTOR, "tbody code")

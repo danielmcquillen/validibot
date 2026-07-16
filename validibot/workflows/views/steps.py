@@ -1,9 +1,9 @@
 """Step management views including the wizard and editing.
 
 Contains the step list, add-step wizard, step form (create/update),
-step edit detail page, template variable editing, display signal
+step edit detail page, template variable editing, step-output display
 selection, and step reordering/deletion. Also includes helper functions
-for FMU signal-stage resolution.
+for step I/O stage resolution.
 """
 
 import json
@@ -51,7 +51,7 @@ from validibot.workflows.forms import TABULAR_COLUMN_FORMSET_PREFIX
 from validibot.workflows.forms import TABULAR_INFER_REQUEST_MAX_BYTES
 from validibot.workflows.forms import TABULAR_SAMPLE_MAX_BYTES
 from validibot.workflows.forms import TABULAR_SCHEMA_MAX_BYTES
-from validibot.workflows.forms import SignalBindingEditForm
+from validibot.workflows.forms import StepInputBindingEditForm
 from validibot.workflows.forms import TabularColumnFormSet
 from validibot.workflows.forms import WorkflowStepTypeForm
 from validibot.workflows.forms import get_config_form_class
@@ -1592,19 +1592,19 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         return breadcrumbs
 
 
-# ── Signal-stage helpers ─────────────────────────────────────────────
-# These helpers let the step detail view detect signal stages and group
+# ── Step I/O stage helpers ───────────────────────────────────────────
+# These helpers let the step detail view detect I/O stages and group
 # assertions correctly.
 
 
-def _step_has_signal_stages(step) -> bool:
+def _step_has_io_stages(step) -> bool:
     """True when the step's validator has a processor (input → process → output).
 
     This checks the validator's *capability* (``has_processor``), not whether
-    signal definitions actually exist yet.  A validator with a processor
+    step I/O definitions actually exist yet. A validator with a processor
     always shows the three-section layout (input assertions, process divider,
-    output assertions) even when no signals have been defined yet, so the
-    user sees the structural slots where signals will appear.
+    output assertions) even when no definitions have been created yet, so the
+    user sees the structural slots where inputs and outputs will appear.
     """
     validator = getattr(step, "validator", None)
     return bool(validator and validator.has_processor)
@@ -1614,7 +1614,7 @@ def _resolve_assertion_stage(assertion) -> CatalogRunStage:
     """Determine which stage bucket an assertion belongs to.
 
     Delegates to the model's ``resolved_run_stage`` property which checks
-    ``target_signal_definition``, then defaults to OUTPUT.
+    ``target_io_definition``, then defaults to OUTPUT.
     """
     return assertion.resolved_run_stage
 
@@ -1734,8 +1734,8 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             stage = _resolve_assertion_stage(assertion)
             key = "input" if stage == CatalogRunStage.INPUT else "output"
             grouped_assertions[key].append(assertion)
-        uses_signal_stages = bool(
-            validator and _step_has_signal_stages(self.step) and allow_assertions,
+        uses_io_stages = bool(
+            validator and _step_has_io_stages(self.step) and allow_assertions,
         )
         uses_tabular_stages = bool(
             validator
@@ -1761,12 +1761,10 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             else 0
         )
 
-        # Build unified input/output signals for the right-column card.
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        # Build unified step inputs and outputs for the right-column card.
+        from validibot.workflows.views_helpers import build_step_io_context
 
-        unified_signals = build_unified_signals_from_definitions(self.step)
+        step_io_context = build_step_io_context(self.step)
 
         # Workflow-level signal mappings — shown as "Available Signals"
         # on every step editor so authors know what s.name values exist.
@@ -1817,10 +1815,10 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 workflow_step__workflow=workflow,
                 workflow_step__order__lt=self.step.order,
             )
-            .select_related("signal_definition")
+            .select_related("io_definition")
             .values_list(
                 "promoted_signal_name",
-                "signal_definition__contract_key",
+                "io_definition__contract_key",
             )
         )
         for signal_name, contract_key in overlay_promoted:
@@ -1857,19 +1855,19 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             .exclude(pk=self.step.pk)
             .order_by("order")
         ):
-            from validibot.validations.constants import SignalDirection
+            from validibot.validations.constants import StepIODirection
             from validibot.validations.constants import StepIOMedium
             from validibot.validations.models import StepIODefinition
 
             output_query = StepIODefinition.objects.filter(
                 workflow_step=ws,
-                direction=SignalDirection.OUTPUT,
+                direction=StepIODirection.OUTPUT,
             ).exclude(io_medium=StepIOMedium.ARTIFACT)
             if ws.validator_id:
                 output_query = output_query.union(
                     StepIODefinition.objects.filter(
                         validator=ws.validator,
-                        direction=SignalDirection.OUTPUT,
+                        direction=StepIODirection.OUTPUT,
                     ).exclude(io_medium=StepIOMedium.ARTIFACT),
                 )
             outputs = list(output_query.values_list("contract_key", flat=True))
@@ -1886,14 +1884,14 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 )
             artifact_query = StepIODefinition.objects.filter(
                 workflow_step=ws,
-                direction=SignalDirection.OUTPUT,
+                direction=StepIODirection.OUTPUT,
                 io_medium=StepIOMedium.ARTIFACT,
             )
             if ws.validator_id:
                 artifact_query = artifact_query.union(
                     StepIODefinition.objects.filter(
                         validator=ws.validator,
-                        direction=SignalDirection.OUTPUT,
+                        direction=StepIODirection.OUTPUT,
                         io_medium=StepIOMedium.ARTIFACT,
                     ),
                 )
@@ -1918,7 +1916,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "validator": validator,
                 "assertions": assertions,
                 "assertion_groups": grouped_assertions,
-                "uses_signal_stages": uses_signal_stages,
+                "uses_io_stages": uses_io_stages,
                 "uses_tabular_stages": uses_tabular_stages,
                 "tabular_assertion_groups": tabular_assertion_groups,
                 "tabular_stage_choices": [
@@ -1953,7 +1951,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
                 "validator_default_assertions_count": default_assertions_count,
                 "can_manage_workflow": self.user_can_manage_workflow(),
-                "unified_signals": unified_signals,
+                "step_io_context": step_io_context,
                 "available_signals": available_signals,
                 "available_constants": available_constants,
                 "upstream_outputs": upstream_outputs,
@@ -2093,7 +2091,7 @@ class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
 
 
 class WorkflowStepDisplayStepOutputsView(WorkflowObjectMixin, FormView):
-    """HTMx modal endpoint for editing which output signals are shown to users.
+    """HTMx modal endpoint for editing which step outputs are shown to users.
 
     GET returns the modal form content (loaded into displayStepOutputsModal).
     POST validates and saves the selection to
@@ -2144,7 +2142,7 @@ class WorkflowStepDisplayStepOutputsView(WorkflowObjectMixin, FormView):
             {
                 "close-modal": "displayStepOutputsModal",
                 "showToast": {
-                    "message": str(_("Display signals updated.")),
+                    "message": str(_("Displayed step outputs updated.")),
                     "level": "success",
                 },
             },
@@ -2158,15 +2156,13 @@ class WorkflowStepDisplayStepOutputsView(WorkflowObjectMixin, FormView):
 
 
 class WorkflowStepToggleStepOutputDisplayView(WorkflowObjectMixin, View):
-    """HTMx endpoint that toggles a single output signal's visibility.
+    """HTMx endpoint that toggles a single step output's visibility.
 
-    POST adds or removes the signal slug from the step's
+    POST adds or removes the output key from the step's
     ``display_settings["display_step_outputs"]`` list (the cosmetic bucket —
     ADR-2026-06-18) and returns the updated toggle button HTML fragment.
 
-    Semantics: an empty ``display_step_outputs`` list means "show all".
-    Toggling a signal OFF when the list is empty first populates the
-    list with all output slugs, then removes the target slug.
+    An empty ``display_step_outputs`` list means no outputs are shown.
     """
 
     def dispatch(self, request, *args, **kwargs):
@@ -2180,11 +2176,11 @@ class WorkflowStepToggleStepOutputDisplayView(WorkflowObjectMixin, View):
         return super().dispatch(request, *args, **kwargs)
 
     def post(self, request, *args, **kwargs):
-        slug = self.kwargs["signal_slug"]
+        slug = self.kwargs["output_key"]
         display_settings = dict(self.step.display_settings or {})
         display_step_outputs = list(display_settings.get("display_step_outputs", []))
 
-        from validibot.validations.constants import SignalDirection
+        from validibot.validations.constants import StepIODirection
 
         owner_filter = models.Q(workflow_step=self.step)
         if self.step.validator_id:
@@ -2193,35 +2189,27 @@ class WorkflowStepToggleStepOutputDisplayView(WorkflowObjectMixin, View):
         all_slugs = list(
             StepIODefinition.objects.filter(
                 owner_filter,
-                direction=SignalDirection.OUTPUT,
+                direction=StepIODirection.OUTPUT,
             ).values_list("contract_key", flat=True),
         )
-
-        if not display_step_outputs:
-            # Empty list means "show all". Expand to the explicit list
-            # so we can remove the target slug.
-            display_step_outputs = list(all_slugs)
+        if slug not in all_slugs:
+            raise Http404("Step output not found.")
 
         if slug in display_step_outputs:
             display_step_outputs.remove(slug)
         else:
             display_step_outputs.append(slug)
 
-        # If the result matches "all shown", normalize back to empty
-        # list to preserve the "show all" semantic.
-        if set(display_step_outputs) == set(all_slugs):
-            display_step_outputs = []
-
         display_settings["display_step_outputs"] = display_step_outputs
         self.step.display_settings = display_settings
         self.step.save(update_fields=["display_settings"])
 
-        is_shown = not display_step_outputs or slug in display_step_outputs
+        is_shown = slug in display_step_outputs
         return HttpResponse(
             render_to_string(
-                "workflows/partials/signal_show_toggle.html",
+                "workflows/partials/step_output_show_toggle.html",
                 {
-                    "signal_slug": slug,
+                    "output_key": slug,
                     "is_shown": is_shown,
                     "step": self.step,
                     "workflow": self.get_workflow(),
@@ -2255,34 +2243,34 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
         )
         self.var_index = int(self.kwargs.get("var_index", 0))
 
-        # Look up the template signal by index in the same ordering used
-        # by the annotation form and signal display.
-        from validibot.validations.constants import SignalOriginKind
+        # Look up the template input by index in the same ordering used
+        # by the annotation form and step output display.
+        from validibot.validations.constants import StepIOOriginKind
         from validibot.validations.models import StepInputBinding
 
         bindings = list(
             StepInputBinding.objects.filter(
                 workflow_step=self.step,
-                signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+                io_definition__origin_kind=StepIOOriginKind.TEMPLATE,
             )
-            .select_related("signal_definition")
+            .select_related("io_definition")
             .order_by(
-                "signal_definition__order",
-                "signal_definition__contract_key",
+                "io_definition__order",
+                "io_definition__contract_key",
             )
         )
         if self.var_index < 0 or self.var_index >= len(bindings):
             return HttpResponse(status=HTTPStatus.NOT_FOUND)
 
         binding = bindings[self.var_index]
-        sig = binding.signal_definition
-        meta = sig.metadata or {}
+        io_definition = binding.io_definition
+        meta = io_definition.metadata or {}
         default_val = binding.default_value
         self.variable = {
-            "name": sig.native_name or sig.contract_key,
-            "description": sig.label or "",
+            "name": io_definition.native_name or io_definition.contract_key,
+            "description": io_definition.label or "",
             "default": str(default_val) if default_val is not None else "",
-            "units": sig.unit or "",
+            "units": io_definition.unit or "",
             "variable_type": meta.get("variable_type", "text"),
             "min_value": meta.get("min_value"),
             "min_exclusive": meta.get("min_exclusive", False),
@@ -2290,7 +2278,7 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
             "max_exclusive": meta.get("max_exclusive", False),
             "choices": meta.get("choices", []),
         }
-        self._signal_pk = sig.pk
+        self._io_definition_pk = io_definition.pk
         self._binding_pk = binding.pk
         return super().dispatch(request, *args, **kwargs)
 
@@ -2317,14 +2305,14 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
     def form_valid(self, form):
         from validibot.validations.models import StepInputBinding
         from validibot.validations.models import StepIODefinition
-        from validibot.validations.signal_metadata.metadata import (
-            TemplateSignalMetadata,
+        from validibot.validations.step_io_metadata.metadata import (
+            TemplateStepIOMetadata,
         )
         from validibot.workflows.views_helpers import _parse_choices
         from validibot.workflows.views_helpers import _parse_optional_float
 
         variable_type = form.cleaned_data.get("variable_type", "text")
-        metadata = TemplateSignalMetadata(
+        metadata = TemplateStepIOMetadata(
             variable_type=variable_type,
             min_value=_parse_optional_float(
                 form.cleaned_data.get("min_value", ""),
@@ -2339,7 +2327,7 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
             ),
         ).model_dump()
 
-        StepIODefinition.objects.filter(pk=self._signal_pk).update(
+        StepIODefinition.objects.filter(pk=self._io_definition_pk).update(
             label=form.cleaned_data.get("description", ""),
             unit=form.cleaned_data.get("units", ""),
             metadata=metadata,
@@ -2372,29 +2360,29 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
         return render(self.request, self.template_name, context)
 
 
-class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
-    """Edit a signal definition and its binding via an HTMx modal.
+class WorkflowStepIOEditView(WorkflowObjectMixin, FormView):
+    """Edit a step I/O definition and its binding via an HTMx modal.
 
-    Handles both step-owned signals (all fields editable) and library-owned
-    signals (definition fields read-only, binding fields editable).
+    Handles both step-owned definitions (all fields editable) and library-owned
+    definitions (definition fields read-only, binding fields editable).
 
-    The signal must belong to either the current step (step-owned) or the
-    step's validator (library-owned). This prevents editing signals from
+    The definition must belong to either the current step (step-owned) or the
+    step's validator (library-owned). This prevents editing definitions from
     other steps or workflows.
 
     Uses WorkflowObjectMixin (not WorkflowStepAssertionsMixin) because
-    signal editing doesn't require assertion support — that mixin
+    step I/O editing doesn't require assertion support — that mixin
     would reject steps whose validators don't support assertions,
     which is unrelated.
     """
 
-    template_name = "workflows/partials/signal_edit_modal_content.html"
-    form_class = SignalBindingEditForm
+    template_name = "workflows/partials/step_io_edit_modal_content.html"
+    form_class = StepInputBindingEditForm
 
     def dispatch(self, request, *args, **kwargs):
         if not self.user_can_manage_workflow():
             raise PermissionDenied
-        # Resolve the step early so _get_signal()/_get_binding() can use it.
+        # Resolve the step early so the definition and binding lookups can use it.
         self.step = get_object_or_404(
             WorkflowStep,
             workflow=self.get_workflow(),
@@ -2402,36 +2390,36 @@ class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
         )
         return super().dispatch(request, *args, **kwargs)
 
-    def _get_signal(self):
-        """Fetch the signal definition, scoped to this step or its validator."""
-        if hasattr(self, "_signal"):
-            return self._signal
-        signal_id = self.kwargs.get("signal_id")
-        # Scope the lookup: signal must belong to this step or its validator.
-        sig = (
-            StepIODefinition.objects.filter(pk=signal_id)
+    def _get_io_definition(self):
+        """Fetch the I/O definition, scoped to this step or its validator."""
+        if hasattr(self, "_io_definition"):
+            return self._io_definition
+        io_definition_id = self.kwargs.get("io_definition_id")
+        # Scope the lookup to definitions owned by the step or its validator.
+        io_definition = (
+            StepIODefinition.objects.filter(pk=io_definition_id)
             .filter(
                 models.Q(workflow_step=self.step)
                 | models.Q(validator=self.step.validator),
             )
             .first()
         )
-        if not sig:
+        if not io_definition:
             raise Http404
-        self._signal = sig
-        return sig
+        self._io_definition = io_definition
+        return io_definition
 
     def _get_binding(self):
-        """Get or create the per-step binding for this signal."""
+        """Get or create the per-step binding for this input definition."""
         if hasattr(self, "_binding"):
             return self._binding
-        sig = self._get_signal()
+        io_definition = self._get_io_definition()
         self._binding, _ = StepInputBinding.objects.get_or_create(
             workflow_step=self.step,
-            signal_definition=sig,
+            io_definition=io_definition,
             defaults={
                 "source_scope": BindingSourceScope.SUBMISSION_PAYLOAD,
-                "source_data_path": sig.native_name or "",
+                "source_data_path": io_definition.native_name or "",
                 "is_required": True,
             },
         )
@@ -2439,25 +2427,28 @@ class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        kwargs["signal_definition"] = self._get_signal()
+        kwargs["io_definition"] = self._get_io_definition()
         kwargs["binding"] = self._get_binding()
         return kwargs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        sig = self._get_signal()
-        from validibot.validations.constants import SignalDirection
+        io_definition = self._get_io_definition()
+        from validibot.validations.constants import StepIODirection
 
-        is_input = sig.direction == SignalDirection.INPUT
+        is_input = io_definition.direction == StepIODirection.INPUT
         title_prefix = _("Edit input") if is_input else _("Edit output")
         context.update(
             {
-                "signal": sig,
+                "io_definition": io_definition,
                 "binding": self._get_binding(),
-                "is_library_signal": bool(sig.validator_id),
-                "is_path_editable": sig.is_path_editable,
-                "source_kind_display": sig.get_source_kind_display(),
-                "modal_title": f"{title_prefix}: {sig.label or sig.contract_key}",
+                "is_library_definition": bool(io_definition.validator_id),
+                "is_path_editable": io_definition.is_path_editable,
+                "source_kind_display": io_definition.get_source_kind_display(),
+                "modal_title": (
+                    f"{title_prefix}: "
+                    f"{io_definition.label or io_definition.contract_key}"
+                ),
             },
         )
 
@@ -2484,7 +2475,7 @@ class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
 
     def form_valid(self, form):
         form.save()
-        messages.success(self.request, _("Signal updated."))
+        messages.success(self.request, _("Step I/O definition updated."))
         response = HttpResponse(status=200)
         response["HX-Refresh"] = "true"
         return response
@@ -2500,11 +2491,11 @@ class WorkflowStepSignalEditView(WorkflowObjectMixin, FormView):
         return super().render_to_response(context, **response_kwargs)
 
 
-class WorkflowStepSignalAutoLinkView(WorkflowObjectMixin, View):
-    """POST: auto-link an input signal to a matching workflow-level signal.
+class WorkflowStepIOAutoLinkView(WorkflowObjectMixin, View):
+    """POST: auto-link a step input to a matching workflow-level signal.
 
     Looks for a ``WorkflowSignalMapping`` whose ``name`` matches the
-    signal definition's ``contract_key``.  When found, sets the
+    input definition's ``contract_key``. When found, sets the
     ``StepInputBinding.source_data_path`` to ``s.<name>`` and refreshes
     the page.  When no match exists, adds a warning message.
     """
@@ -2523,21 +2514,21 @@ class WorkflowStepSignalAutoLinkView(WorkflowObjectMixin, View):
         from validibot.workflows.models import WorkflowSignalMapping
 
         workflow = self.get_workflow()
-        signal_id = self.kwargs.get("signal_id")
+        io_definition_id = self.kwargs.get("io_definition_id")
 
-        # Scope lookup: signal must belong to this step or its validator.
-        signal_def = (
-            StepIODefinition.objects.filter(pk=signal_id)
+        # Scope the input definition to this step or its validator.
+        io_definition = (
+            StepIODefinition.objects.filter(pk=io_definition_id)
             .filter(
                 models.Q(workflow_step=self.step)
                 | models.Q(validator=self.step.validator),
             )
             .first()
         )
-        if not signal_def:
+        if not io_definition:
             raise Http404
 
-        contract_key = signal_def.contract_key
+        contract_key = io_definition.contract_key
 
         mapping = WorkflowSignalMapping.objects.filter(
             workflow=workflow,
@@ -2559,7 +2550,7 @@ class WorkflowStepSignalAutoLinkView(WorkflowObjectMixin, View):
 
         binding, created = StepInputBinding.objects.get_or_create(
             workflow_step=self.step,
-            signal_definition=signal_def,
+            io_definition=io_definition,
             defaults={
                 "source_scope": BindingSourceScope.SIGNAL,
                 "source_data_path": mapping.name,
@@ -2595,16 +2586,14 @@ class WorkflowStepOutputsPartialView(WorkflowObjectMixin, View):
             workflow=workflow,
             pk=self.kwargs.get("step_id"),
         )
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
-        unified_signals = build_unified_signals_from_definitions(step)
+        step_io_context = build_step_io_context(step)
         return render(
             request,
             "workflows/partials/step_outputs_table.html",
             {
-                "unified_signals": unified_signals,
+                "step_io_context": step_io_context,
                 "step": step,
                 "workflow": workflow,
                 "can_manage_workflow": self.user_can_manage_workflow(),
@@ -2630,16 +2619,14 @@ class WorkflowStepInputsPartialView(WorkflowObjectMixin, View):
             workflow=workflow,
             pk=self.kwargs.get("step_id"),
         )
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
-        unified_signals = build_unified_signals_from_definitions(step)
+        step_io_context = build_step_io_context(step)
         return render(
             request,
             "workflows/partials/step_inputs_table.html",
             {
-                "unified_signals": unified_signals,
+                "step_io_context": step_io_context,
                 "step": step,
                 "workflow": workflow,
                 "can_manage_workflow": self.user_can_manage_workflow(),

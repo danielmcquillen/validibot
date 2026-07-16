@@ -711,7 +711,7 @@ class ValidationCallbackService:
         Delegate to ValidationStepProcessor and emit the step-completed signal.
 
         The processor handles findings persistence, output-stage assertion
-        evaluation, and signal storage. After it completes, we refresh the
+        evaluation, and output value storage. After it completes, we refresh the
         step_run from the database to get the authoritative final status
         (which may differ from the envelope status if assertions failed).
 

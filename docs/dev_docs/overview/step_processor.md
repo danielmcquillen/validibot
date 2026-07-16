@@ -33,7 +33,7 @@ The **Validation Step Processor** is the core abstraction that orchestrates the 
 │   Responsibilities:                                                  │
 │   - Call engine methods at the right time                            │
 │   - Persist findings to database                                     │
-│   - Store signals for downstream steps                               │
+│   - Store step output values for downstream steps                    │
 │   - Handle errors gracefully                                         │
 │   - Finalize step with timing and status                             │
 └─────────────────────────────────────────────────────────────────────┘
@@ -46,7 +46,7 @@ The **Validation Step Processor** is the core abstraction that orchestrates the 
 │   Responsibilities:                                                  │
 │   - Execute validation logic (schema checking, AI prompts, etc.)     │
 │   - Evaluate CEL assertions                                          │
-│   - Extract signals/metrics from outputs                             │
+│   - Extract declared values/metrics from outputs                     │
 │   - Return structured ValidationResult                               │
 └─────────────────────────────────────────────────────────────────────┘
 
@@ -91,7 +91,7 @@ These validators:
 Advanced validators are **container-based** — they run as isolated Docker
 containers (locally or on Cloud Run). An FMU validator takes input parameters
 (e.g. outdoor temperature, equipment load) and runs a simulation to produce
-output signals (e.g. room temperature, cooling power). EnergyPlus takes a
+step output values (e.g. room temperature, cooling power). EnergyPlus takes a
 building model and produces energy metrics.
 
 Advanced validators always have `has_processor=True` on the `Validator` model,
@@ -140,7 +140,7 @@ ValidationStepProcessor (abstract base)
 |----------------|-------------|
 | Validator dispatch | Call `engine.validate()` and `engine.post_execute_validate()` |
 | Finding persistence | Save `ValidationFinding` records to database |
-| Signal storage | Store extracted metrics for downstream steps |
+| Output storage | Store extracted step output values for downstream steps |
 | Assertion tracking | Record assertion counts for run summaries |
 | Error handling | Catch exceptions and set appropriate status |
 | Step finalization | Set ended_at, duration_ms, status, output |
@@ -149,7 +149,7 @@ ValidationStepProcessor (abstract base)
 
 Processors handle lifecycle, not logic. They do NOT:
 - Evaluate CEL assertions (validator's job)
-- Extract signals from output data (validator's job)
+- Extract declared output values from output data (validator's job)
 - Know about validation semantics (validator's job)
 
 ## Detailed Execution Flows
@@ -267,14 +267,14 @@ When running with Docker Compose, container execution blocks until complete.
 └────────┬────────┘      └────────┬────────┘
          │                        │
          │                        │ 6. engine.post_execute_validate()
-         │                        │    - Extract signals from envelope
+         │                        │    - Extract output values from envelope
          │                        │    - Evaluate OUTPUT-stage assertions
-         │                        │    - Return ValidationResult with signals
+         │                        │    - Return ValidationResult with output values
          │                        │
          │◀───────────────────────┘
          │
          │ 7. persist_findings(output_stage_issues)
-         │ 8. store_output_values(signals)
+         │ 8. store_output_values(output_values)
          │ 9. store_assertion_counts(combined)
          │ 10. finalize_step(status, stats)
          │
@@ -371,7 +371,7 @@ When running on GCP, containers are launched asynchronously and report back via 
          │ 5. Get existing finding counts (INPUT-stage preserved!)
          │ 6. engine.post_execute_validate()
          │ 7. persist_findings(output_issues, append=True)  ◀─── APPEND, not replace!
-         │ 8. store_output_values(signals)
+         │ 8. store_output_values(output_values)
          │ 9. store_assertion_counts(combined)
          │ 10. finalize_step(status, stats)
          │
@@ -408,7 +408,7 @@ output.metrics.site_eui_kwh_m2 < 100
 | Stage | When Evaluated | Available Data | Applies To |
 |-------|----------------|----------------|------------|
 | Input | During `engine.validate()` | Submission content, metadata | All validators |
-| Output | During `engine.post_execute_validate()` | Processor output, signals, metrics | Validators with `has_processor=True` only |
+| Output | During `engine.post_execute_validate()` | Processor output values and metrics | Validators with `has_processor=True` only |
 
 The output stage only exists for validators that perform a transformation —
 they take input data, do something with it (run a simulation, execute a model),
@@ -421,14 +421,14 @@ come from the model itself and vary between models.
 
 ### The `output` namespace
 
-At the output stage, advanced validators merge submission inputs with output
-signals into a single assertion payload via `_build_assertion_payload()`. All
-output signals are placed in a **nested `output` dict** so that `output.T_room`
+At the output stage, advanced validators merge submission inputs with step
+output values into a single assertion payload via `_build_assertion_payload()`.
+All output values are placed in a **nested `output` dict** so that `output.T_room`
 resolves correctly via both CEL member access and basic-assertion dot-path
 navigation.
 
 **Name collision convention**: When a submission key shares a name with an output
-signal, the input keeps the bare name and the output is reachable only via
+value, the input keeps the bare name and the output is reachable only via
 `output.<name>`. Example payload:
 
 ```python
@@ -443,9 +443,9 @@ signal, the input keeps the bare name and the output is reachable only via
 }
 ```
 
-The assertion form enforces this convention: when a target signal name is
+The assertion form enforces this convention: when a target contract key is
 ambiguous (exists as both input and output), the form requires the `output.`
-prefix for the output signal.
+prefix for the output value.
 
 This `output.T_room` syntax is **standard CEL member access**, not a custom
 extension. The `output` variable is a real Python dict that cel-python
@@ -477,11 +477,13 @@ return ValidationResult(
 )
 ```
 
-## Signals and Cross-Step Communication
+## Step Outputs and Cross-Step Communication
 
-### What Are Signals?
+### What Are Step Outputs?
 
-Signals are metrics extracted from validation outputs that can be used by downstream steps. For example, an EnergyPlus step might extract:
+Step outputs are declared values extracted from validator results. They remain
+owned by their producing step and can be used by downstream steps. For example,
+an EnergyPlus step might extract:
 
 ```json
 {
@@ -499,12 +501,17 @@ using the ``steps`` namespace:
 steps.energyplus_step.output.site_eui_kwh_m2 < 100
 ```
 
-### Signal Flow
+### Output Flow
 
-1. **Extraction**: Validator extracts signals during `post_execute_validate()`
-2. **Return**: Validator returns signals in `ValidationResult.signals`
+1. **Extraction**: Validator extracts output values during `post_execute_validate()`
+2. **Return**: Validator returns step output values in `ValidationResult.output_values`
 3. **Storage**: Processor persists values on `ValidationStepRun`
 4. **Access**: Downstream steps access them via `run_context.upstream_steps`
+
+These values are not workflow signals merely because they cross a step
+boundary. They become `s.*` signals only when the author explicitly uses
+"Copy to Signal" promotion. Without promotion, the canonical downstream
+reference remains `steps.<step_key>.output.<contract_key>`.
 
 ## File Structure
 

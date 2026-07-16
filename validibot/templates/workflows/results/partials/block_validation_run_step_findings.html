@@ -6,16 +6,16 @@ Outputs card for validation run results.
 Displays simulation outputs and findings (errors/warnings/info) from each
 validation step. Split into two sections:
 
-1. **Workflow Outputs** — aggregated signal metrics across all steps (only
-   shown when at least one step produced signal data).
+1. **Workflow Outputs** — aggregated displayed values across all steps (only
+   shown when at least one step produced output data).
 2. **Outputs by Step** — per-step findings table grouped by severity, plus
-   per-step signals and template parameters/warnings.
+   per-step outputs and template parameters/warnings.
 
 Context variables (passed via ``{% include ... with %}``):
   step_runs              — list of ValidationStepRun objects
-  step_signals           — dict mapping step_run.pk → list of DisplaySignal
-  has_signals            — bool, True when step_signals is non-empty
-  all_signals            — flat list of all DisplaySignal objects across steps
+  step_outputs           — dict mapping step_run.pk → list of DisplayStepOutput
+  has_step_outputs            — bool, True when step_outputs is non-empty
+  all_step_outputs            — flat list of all DisplayStepOutput objects across steps
   step_params            — dict mapping step_run.pk → list of param dicts
   step_template_warnings — dict mapping step_run.pk → list of warning strings
   bare                   — when truthy, render only the inner content (no
@@ -34,11 +34,11 @@ Context variables (passed via ``{% include ... with %}``):
     {% endif %}
     {% comment %}
     ── Workflow Outputs ───────────────────────────────────────────────
-    Aggregated signal metrics from all steps in a single table. Gives
+    Aggregated displayed step outputs in a single table. Gives
     the submitter the headline numbers (site EUI, energy totals, etc.)
     up front before per-step details.
     {% endcomment %}
-    {% if has_signals %}
+    {% if has_step_outputs %}
       <section class="mb-3">
         <h6 class="fw-semibold mb-2">
           {% trans "Workflow Outputs" %}
@@ -60,16 +60,16 @@ Context variables (passed via ``{% include ... with %}``):
               </tr>
             </thead>
             <tbody>
-              {% for signal in all_signals %}
+              {% for output in all_step_outputs %}
                 <tr>
                   <td>
-                    {{ signal.label }}
+                    {{ output.label }}
                   </td>
                   <td class="text-end font-monospace">
-                    {{ signal.formatted_value }}
+                    {{ output.formatted_value }}
                   </td>
                   <td class="text-muted small">
-                    {{ signal.units }}
+                    {{ output.units }}
                   </td>
                 </tr>
               {% endfor %}

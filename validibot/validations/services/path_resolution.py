@@ -195,19 +195,19 @@ def resolve_path(data: Any, path: str | None) -> tuple[Any, bool]:
     return current, True
 
 
-# ── Signal resolution engine ─────────────────────────────────────────
+# ── Step input resolution engine ─────────────────────────────────────
 #
-# Higher-level functions that resolve input signals for a workflow step
+# Higher-level functions that resolve step inputs for a workflow step
 # by reading StepInputBinding rows and applying resolve_path() against
 # the appropriate data scope (submission payload, metadata, or upstream
 # step output).
 
 
-class InputSignalResolutionError(Exception):
-    """Raised when one or more required input signals cannot be resolved.
+class StepInputResolutionError(Exception):
+    """Raised when one or more required step inputs cannot be resolved.
 
-    Carries the ``signal_contract_key`` so callers can report which
-    specific signal failed to resolve without parsing the message.
+    Carries the ``input_contract_key`` so callers can report which
+    specific step input failed to resolve without parsing the message.
 
     The ``traces`` attribute holds the complete list of unsaved
     ``ResolvedInputTrace`` instances (both successes and failures)
@@ -217,24 +217,24 @@ class InputSignalResolutionError(Exception):
 
     def __init__(
         self,
-        signal_contract_key: str,
+        input_contract_key: str,
         message: str,
         traces: list | None = None,
     ):
-        self.signal_contract_key = signal_contract_key
+        self.input_contract_key = input_contract_key
         self.traces = traces or []
         super().__init__(message)
 
 
 @dataclass
-class ResolvedSignal:
-    """Result of resolving a single input signal binding.
+class ResolvedStepInput:
+    """Result of resolving a single step input binding.
 
     Captures both the resolved value and the resolution metadata needed
     to create a ``ResolvedInputTrace`` audit row.
     """
 
-    signal_definition: StepIODefinition
+    io_definition: StepIODefinition
     binding: StepInputBinding
     value: Any = None
     resolved: bool = False
@@ -245,15 +245,15 @@ class ResolvedSignal:
     error_message: str = ""
 
 
-def resolve_input_signal(
+def resolve_step_input(
     binding: StepInputBinding,
     *,
     submission_data: dict[str, Any] | None = None,
     submission_metadata: dict[str, Any] | None = None,
     upstream_steps: dict[str, dict[str, Any]] | None = None,
     workflow_signals: dict[str, Any] | None = None,
-) -> ResolvedSignal:
-    """Resolve a single input signal from its binding configuration.
+) -> ResolvedStepInput:
+    """Resolve a single step input from its binding configuration.
 
     Looks up the value in the data scope specified by
     ``binding.source_scope``, using ``binding.source_data_path`` as the
@@ -272,25 +272,25 @@ def resolve_input_signal(
             ``resolve_workflow_signals()``.
 
     Returns:
-        A ``ResolvedSignal`` with the resolved value and audit metadata.
-        When a required signal cannot be resolved, the returned
-        ``ResolvedSignal`` has ``resolved=False`` and a populated
-        ``error_message``. The caller (``resolve_step_input_signals``)
+        A ``ResolvedStepInput`` with the resolved value and audit metadata.
+        When a required step input cannot be resolved, the returned
+        ``ResolvedStepInput`` has ``resolved=False`` and a populated
+        ``error_message``. The caller (``resolve_step_input_values``)
         collects all results — including errors — before raising
-        ``InputSignalResolutionError`` so audit traces are preserved.
+        ``StepInputResolutionError`` so audit traces are preserved.
     """
     from validibot.validations.constants import BindingSourceScope
 
-    sig = binding.signal_definition
+    io_definition = binding.io_definition
     scope = binding.source_scope
     path = binding.source_data_path
 
     # When source_data_path is empty, fall back to matching by
     # contract_key as a top-level key in the scoped data.
-    effective_path = path if path else sig.contract_key
+    effective_path = path if path else io_definition.contract_key
 
-    result = ResolvedSignal(
-        signal_definition=sig,
+    result = ResolvedStepInput(
+        io_definition=io_definition,
         binding=binding,
         source_scope_used=scope,
         source_data_path_used=effective_path,
@@ -322,7 +322,7 @@ def resolve_input_signal(
     elif scope == BindingSourceScope.UPSTREAM_ARTIFACT:
         # Upstream artifacts are exposed separately from small output
         # values so file-like data-plane references are not confused with
-        # scalar output signals:
+        # scalar step output values:
         #   upstream_steps[step_key]["artifact"][contract_key]
         raw = upstream_steps or {}
         source = {
@@ -351,7 +351,7 @@ def resolve_input_signal(
         result.resolved = True
         logger.debug(
             "Validator input '%s' resolved to %r via path '%s' (scope=%s)",
-            sig.contract_key,
+            io_definition.contract_key,
             value,
             effective_path,
             scope,
@@ -361,7 +361,7 @@ def resolve_input_signal(
     logger.warning(
         "Validator input '%s' could not be resolved from %s at path '%s'. "
         "Check that the data path matches the submission structure.",
-        sig.contract_key,
+        io_definition.contract_key,
         scope,
         effective_path,
     )
@@ -377,13 +377,13 @@ def resolve_input_signal(
     result.resolved = False
     if binding.is_required:
         result.error_message = (
-            f"Required validator input '{sig.contract_key}' could not be "
+            f"Required validator input '{io_definition.contract_key}' could not be "
             f"resolved from {scope} at path '{path}'"
         )
     return result
 
 
-def resolve_step_input_signals(
+def resolve_step_input_values(
     step: WorkflowStep,
     step_run: ValidationStepRun,
     *,
@@ -392,9 +392,9 @@ def resolve_step_input_signals(
     upstream_steps: dict[str, dict[str, Any]] | None = None,
     workflow_signals: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[ResolvedInputTrace]]:
-    """Batch-resolve all input signal bindings for a workflow step.
+    """Batch-resolve all step input bindings for a workflow step.
 
-    Queries all ``StepInputBinding`` rows for the step's input signals,
+    Queries all ``StepInputBinding`` rows for the step's inputs,
     resolves each one, and returns:
 
     1. A dict mapping ``native_name`` → resolved value, suitable for
@@ -404,15 +404,15 @@ def resolve_step_input_signals(
 
     **Collect-then-raise:** All bindings are resolved and all audit traces
     are built before any error is raised. This ensures that operators get
-    complete diagnostic information (which signals resolved, which failed)
-    even when one or more required signals are missing.
+    complete diagnostic information (which inputs resolved, which failed)
+    even when one or more required inputs are missing.
 
     Raises:
-        InputSignalResolutionError: If any required signal fails to resolve.
-            The error message lists ALL missing required signals, not just
+        StepInputResolutionError: If any required step input fails to resolve.
+            The error message lists ALL missing required inputs, not just
             the first one encountered.
     """
-    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIODirection
     from validibot.validations.constants import StepIOMedium
     from validibot.validations.models import ResolvedInputTrace
     from validibot.validations.models import StepInputBinding
@@ -420,11 +420,11 @@ def resolve_step_input_signals(
     bindings = (
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition__direction=SignalDirection.INPUT,
+            io_definition__direction=StepIODirection.INPUT,
         )
-        .exclude(signal_definition__io_medium=StepIOMedium.ARTIFACT)
-        .select_related("signal_definition")
-        .order_by("signal_definition__order")
+        .exclude(io_definition__io_medium=StepIOMedium.ARTIFACT)
+        .select_related("io_definition")
+        .order_by("io_definition__order")
     )
 
     input_values: dict[str, Any] = {}
@@ -432,7 +432,7 @@ def resolve_step_input_signals(
     errors: list[str] = []
 
     for binding in bindings:
-        resolved = resolve_input_signal(
+        resolved = resolve_step_input(
             binding,
             submission_data=submission_data,
             submission_metadata=submission_metadata,
@@ -443,7 +443,7 @@ def resolve_step_input_signals(
         if resolved.resolved:
             # Use the native_name as the key (FMU variable name or
             # template placeholder) since that's what the runner expects.
-            native = resolved.signal_definition.native_name
+            native = resolved.io_definition.native_name
             input_values[native] = resolved.value
         elif resolved.error_message:
             # Required validator input failed — collect the error but
@@ -453,8 +453,8 @@ def resolve_step_input_signals(
         traces.append(
             ResolvedInputTrace(
                 step_run=step_run,
-                signal_definition=resolved.signal_definition,
-                signal_contract_key=resolved.signal_definition.contract_key,
+                io_definition=resolved.io_definition,
+                input_contract_key=resolved.io_definition.contract_key,
                 source_scope_used=resolved.source_scope_used,
                 source_data_path_used=resolved.source_data_path_used,
                 upstream_step_key=resolved.upstream_step_key,
@@ -469,8 +469,8 @@ def resolve_step_input_signals(
     # exception so the caller can persist them for diagnostics even
     # when resolution fails.
     if errors:
-        raise InputSignalResolutionError(
-            signal_contract_key=errors[0].split("'")[1] if "'" in errors[0] else "",
+        raise StepInputResolutionError(
+            input_contract_key=errors[0].split("'")[1] if "'" in errors[0] else "",
             message="; ".join(errors),
             traces=traces,
         )

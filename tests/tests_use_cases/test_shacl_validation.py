@@ -16,7 +16,7 @@ rest of the suite without installing the optional Docker runner.
 
 These tests live alongside the other use-case tests for parity. The
 finer-grained Django-side tests for SHACL (launch envelope construction,
-finding persistence, signal extraction, library-validator merge) live next
+finding persistence, output-value extraction, library-validator merge) live next
 to the SHACL package at
 ``validibot/validations/tests/test_validators/test_shacl_*.py``.
 """
@@ -429,7 +429,7 @@ class TestShacl223PBlogScenario:
         # Exactly one finding is expected: Zone-101 satisfies the
         # shape (it declares s223:Domain-HVAC), and Zone-102 violates
         # it. If we see more than one finding, something has broken
-        # in the shape evaluation or signal extraction. If we see
+        # in the shape evaluation or finding extraction. If we see
         # zero, the shape isn't firing at all.
         assert len(issues) == 1, (
             f"Expected exactly one SHACL finding (Zone-102 missing "

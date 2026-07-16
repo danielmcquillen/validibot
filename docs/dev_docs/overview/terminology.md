@@ -7,7 +7,7 @@ This page is the canonical glossary for Validibot's architecture. Use these term
 | Term | Meaning |
 |---|---|
 | **Validator** | The step-level Validibot component represented by `validations.Validator` and implemented by a `BaseValidator` subclass resolved through `ValidatorConfig`. Receives the full Validibot run context: submission, workflow, step config, assertions, rulesets, resource bindings, retention/reporting context, internal services. |
-| **Simple validator** | A `SimpleValidator` subclass that runs synchronously inside Django and returns a complete `ValidationResult` from `validate()`. May still evaluate CEL assertions, emit findings, and produce signals, but does not launch an external validator backend. Examples: JSON Schema, XML Schema, Basic/CEL, THERM's structural checks. |
+| **Simple validator** | A `SimpleValidator` subclass that runs synchronously inside Django and returns a complete `ValidationResult` from `validate()`. May still evaluate CEL assertions, emit findings, and produce step outputs, but does not launch an external validator backend. Examples: JSON Schema, XML Schema, Basic/CEL, THERM's structural checks. |
 | **Advanced validator** | An `AdvancedValidator` subclass that orchestrates external compute. Validates run context, preprocesses the submission (e.g. EnergyPlus template resolution), builds an `ExecutionRequest`, selects an `ExecutionBackend`, dispatches to a validator backend, processes the output envelope, evaluates output-stage assertions. |
 | **Validator backend** | The external domain implementation an advanced validator delegates to. Receives a `validibot-shared` input envelope, performs isolated heavyweight work, returns a typed output envelope. Today: Docker images in `validibot-validator-backends/`. Future: WASM modules, Windows VM jobs, partner-provided containers. |
 | **Validator container** / **validator job** | Use only when referring to the concrete runtime of one execution (a specific Docker container or Cloud Run Job instance). |
@@ -20,6 +20,28 @@ There are two interfaces:
 2. **Advanced validator → validator backend.** Envelope and execution boundary. Sees the minimum data needed to run the domain tool and return typed outputs.
 
 **The advanced validator is the policy boundary; the validator backend is the compute boundary.** The advanced validator may see more data than its validator backend. That's intentional.
+
+## Workflow values and step I/O
+
+The namespace determines the correct term. A value is not a signal merely
+because a validator parses, consumes, or produces it.
+
+| Term | Meaning |
+|---|---|
+| **Workflow signal** | An author-named CEL/JSON value in the workflow vocabulary, exposed as `s.<name>` / `signal.<name>`. A `WorkflowSignalMapping` resolves a signal from submission data before the run's steps begin. Promotion can add a value-port step input or step output to the same namespace for later steps; artifacts can never be signals. |
+| **Step I/O definition** | A `StepIODefinition` row declaring one input or output port in a validator or workflow-step contract. It may describe a small value or an artifact reference. The row is not itself a signal. |
+| **Step input** | A value or artifact consumed by one step. Small values are exposed to that step as `i.<contract_key>` / `input.<contract_key>` and may come from parser facts or a `StepInputBinding`. |
+| **Step output** | A value or artifact produced by one step. Small values are exposed to that step as `o.<contract_key>` / `output.<contract_key>`. Completed upstream values remain available as `steps.<step_key>.output.<contract_key>`. |
+| **Step input binding** | A `StepInputBinding` row connecting a step input to submission data, a workflow signal, a workflow constant, an upstream step value or artifact, a workflow resource, or a system source. |
+| **Promotion** | The explicit act of giving a small step input/output value a `promoted_signal_name`. The value keeps its step-local identity and also becomes `s.<promoted_signal_name>` for downstream steps after the producing stage completes. |
+| **Workflow constant** | An author-defined literal in `c.<name>` / `const.<name>`. Constants are part of the workflow contract but are not signals because they are not resolved from run data. |
+| **Django signal** | A framework event hook such as `post_save` or `user_logged_in`. This is unrelated to the Validibot workflow-signal vocabulary; Django's established term remains correct. |
+
+Use **signal** only for a value that actually appears in `s.*`, for the
+configuration that creates such a value, or for a Django framework signal.
+Use **step input**, **step output**, **step I/O definition**, or **port** for
+validator contract entries and the values they carry. An input/output becomes
+a workflow signal only after explicit promotion.
 
 ## Execution and dispatch
 

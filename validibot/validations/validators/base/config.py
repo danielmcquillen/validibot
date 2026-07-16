@@ -45,10 +45,10 @@ OFFICIAL_VALIDATOR_PLUGIN_PREFIXES = (
 
 
 class CatalogEntrySpec(BaseModel):
-    """Specification for a single catalog entry (signal or derivation).
+    """Specification for a single step I/O definition or derivation.
 
     Maps 1:1 to a ``StepIODefinition`` or ``Derivation`` row. The sync
-    command uses these specs to create or update signals for a validator.
+    command uses these specs to create or update a validator's contract.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -66,7 +66,7 @@ class CatalogEntrySpec(BaseModel):
     source_kind: str = "payload_path"
     is_path_editable: bool = True
 
-    # Artifact-port metadata. Value signals keep these defaults; validators
+    # Artifact-port metadata. Value ports keep these defaults; validators
     # that consume or emit files/directories set io_medium="artifact" and
     # persist the role/format contract into StepIODefinition.
     io_medium: str = "value"
@@ -294,7 +294,7 @@ class ValidatorConfig(BaseModel):
     # --- Workflow import/export ---
     # Dotted path to a ``StepSerializer`` subclass that knows how to serialize
     # and deserialize *this validator's* step body (validator-specific ruleset
-    # body, config, validator-owned signals) for the ``.vaf`` workflow archive.
+    # body, config, validator-owned step I/O) for the ``.vaf`` workflow archive.
     # Empty means "use the generic base serializer", which already round-trips
     # the common case (rules_text + metadata + assertions). A validator only
     # sets this when it needs special handling — e.g. the Tabular Validator

@@ -1,7 +1,7 @@
 """
 THERM validator.
 
-Parses THMX/THMZ files, runs domain checks, and extracts signals
+Parses THMX/THMZ files, runs domain checks, and extracts output values
 for downstream assertion evaluation. Does NOT run THERM simulations.
 """
 
@@ -18,8 +18,8 @@ from validibot.validations.validators.base.simple import SimpleValidator
 from validibot.validations.validators.therm.boundaries import run_boundary_checks
 from validibot.validations.validators.therm.geometry import run_geometry_checks
 from validibot.validations.validators.therm.materials import run_material_checks
+from validibot.validations.validators.therm.output_values import extract_output_values
 from validibot.validations.validators.therm.parser import parse_therm_file
-from validibot.validations.validators.therm.signals import extract_signals
 
 if TYPE_CHECKING:
     from validibot.submissions.models import Submission
@@ -33,21 +33,21 @@ class ThermValidator(SimpleValidator):
     THERM thermal analysis file validator.
 
     Validates THMX and THMZ files by parsing their XML structure,
-    running domain checks, and extracting structured signals for
+    running domain checks, and extracting structured output values for
     use in downstream assertion evaluation.
 
     This is a parser and checker only — it does not run THERM
     simulations or compute U-factors.
 
-    **No ``extract_input_signals`` override yet (per ADR-2026-05-22b
+    **No ``extract_input_values`` override yet (per ADR-2026-05-22b
     Phase 6).** Because THERM is a SimpleValidator that finishes
     inline, dispatch-gating from ``i.*`` saves no compute, so the
     pattern's primary motivation (avoid paying for simulation when
     we already know a precondition fails) doesn't apply. Once
-    ``signals.extract_signals`` is implemented (currently a stub),
+    ``output_values.extract_output_values`` is implemented (currently a stub),
     file-metadata facts could be split into ``i.*`` (e.g.,
     ``therm_version``, ``has_glazing_system``) and parsed values
-    into ``o.*``. Deferred until ``extract_signals`` ships its
+    into ``o.*``. Deferred until ``extract_output_values`` ships its
     initial pass.
     """
 
@@ -100,9 +100,9 @@ class ThermValidator(SimpleValidator):
         )
         return issues
 
-    def extract_signals(self, parsed: ThermModel) -> dict[str, Any]:
-        """Extract signals from the parsed ThermModel."""
-        return extract_signals(parsed)
+    def extract_output_values(self, parsed: ThermModel) -> dict[str, Any]:
+        """Extract output values from the parsed ThermModel."""
+        return extract_output_values(parsed)
 
     @staticmethod
     def _read_binary_content(submission: Submission) -> bytes:

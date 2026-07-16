@@ -48,7 +48,7 @@ class RunContext:
         step_input_contract_values: The merged contract-keyed step input
             dict for the current step, populated at the start of the
             input stage from (a) parser-extracted facts via
-            ``extract_input_signals()`` and (b) resolved
+            ``extract_input_values()`` and (b) resolved
             ``StepInputBinding`` rows. Consumed by ``_build_cel_context``
             to populate the ``i.*`` namespace. Per ADR-2026-05-22, both
             sources feed the same namespace; bindings take precedence

@@ -627,20 +627,20 @@ class TestTabbedValidatorDetail:
         assert re.search(r'class="nav-link\s+active\s*"', html)
         assert "Description" in html
 
-    def test_signals_tab_loads(self, client):
-        """Signals tab URL renders correctly."""
+    def test_step_io_tab_loads(self, client):
+        """Inputs & Outputs tab URL renders correctly."""
         org = OrganizationFactory()
         _setup_user(client, org, RoleCode.ADMIN)
         validator = ValidatorFactory(org=org, is_system=False)
 
         url = reverse(
-            "validations:validator_signals_tab",
+            "validations:validator_step_io_tab",
             kwargs={"slug": validator.slug},
         )
         response = client.get(url)
         assert response.status_code == HTTPStatus.OK
         html = response.content.decode()
-        assert "Signals" in html
+        assert "Inputs & Outputs" in html
 
     def test_assertions_tab_loads(self, client):
         """Assertions tab URL renders correctly."""
@@ -684,7 +684,7 @@ class TestTabbedValidatorDetail:
 
         for url_name in [
             "validations:validator_detail",
-            "validations:validator_signals_tab",
+            "validations:validator_step_io_tab",
             "validations:validator_assertions_tab",
             "validations:validator_resource_files",
         ]:
@@ -692,7 +692,7 @@ class TestTabbedValidatorDetail:
             response = client.get(url)
             html = response.content.decode()
             assert "Description" in html
-            assert "Signals" in html
+            assert "Inputs & Outputs" in html
             assert "Default Assertions" in html
             assert "Resource Files" in html
 
@@ -709,7 +709,7 @@ class TestTabbedValidatorDetail:
         response = client.get(url)
         html = response.content.decode()
         assert "Description" in html
-        assert "Signals" in html
+        assert "Inputs & Outputs" in html
         assert "Default Assertions" in html
         assert "Resource Files" not in html
 

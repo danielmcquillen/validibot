@@ -7,7 +7,7 @@ This package splits the workflow views into focused submodules:
 - ``launch`` -- Launching workflows and viewing run status.
 - ``public`` -- Public-facing workflow pages and public info management.
 - ``steps`` -- Step management (wizard, form, edit, template variables,
-  display signals, create/update/delete/move) plus FMU signal helpers.
+  output display, create/update/delete/move) plus FMU I/O definition helpers.
 - ``assertions`` -- Workflow step assertion CRUD and validation list.
 - ``sharing`` -- Guest access, invites, and sharing settings.
 
@@ -68,11 +68,11 @@ from validibot.workflows.views.steps import WorkflowStepDisplayStepOutputsView
 from validibot.workflows.views.steps import WorkflowStepEditView
 from validibot.workflows.views.steps import WorkflowStepFormView
 from validibot.workflows.views.steps import WorkflowStepInputsPartialView
+from validibot.workflows.views.steps import WorkflowStepIOAutoLinkView
+from validibot.workflows.views.steps import WorkflowStepIOEditView
 from validibot.workflows.views.steps import WorkflowStepListView
 from validibot.workflows.views.steps import WorkflowStepMoveView
 from validibot.workflows.views.steps import WorkflowStepOutputsPartialView
-from validibot.workflows.views.steps import WorkflowStepSignalAutoLinkView
-from validibot.workflows.views.steps import WorkflowStepSignalEditView
 from validibot.workflows.views.steps import WorkflowStepTemplateVariableEditView
 from validibot.workflows.views.steps import WorkflowStepTemplateVariablesView
 from validibot.workflows.views.steps import WorkflowStepToggleStepOutputDisplayView
@@ -127,12 +127,12 @@ __all__ = [
     "WorkflowStepDisplayStepOutputsView",
     "WorkflowStepEditView",
     "WorkflowStepFormView",
+    "WorkflowStepIOAutoLinkView",
+    "WorkflowStepIOEditView",
     "WorkflowStepInputsPartialView",
     "WorkflowStepListView",
     "WorkflowStepMoveView",
     "WorkflowStepOutputsPartialView",
-    "WorkflowStepSignalAutoLinkView",
-    "WorkflowStepSignalEditView",
     "WorkflowStepTemplateVariableEditView",
     "WorkflowStepTemplateVariablesView",
     "WorkflowStepToggleStepOutputDisplayView",

@@ -34,8 +34,8 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import DefaultSourceStrategy
 from validibot.validations.constants import EnvelopeChannel
-from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
@@ -74,7 +74,7 @@ config = ValidatorConfig(
     processor_name="Schematron Validation",
     # v3: ADR-2026-07-06 declares the uploaded SVRL report as the
     # ``svrl_report`` output artifact port, giving the canonical report bytes
-    # a stable artifact reference in addition to parsed output signals.
+    # a stable artifact reference in addition to parsed step outputs.
     #
     # v2: ADR-2026-07-06 declares the XML document as the ``xml_document``
     # artifact input port, rather than an implicit ``primary_file_uri`` envelope
@@ -91,13 +91,13 @@ config = ValidatorConfig(
     compute_tier=ComputeTier.LOW,
     icon="bi-card-checklist",
     card_image="default_card_img_small.png",
-    # All OUTPUT signals, populated from the container's SVRL summary
+    # All step outputs, populated from the container's SVRL summary
     # (INTERNAL source, non-editable path) — same shape as the SHACL config.
     catalog_entries=[
         CatalogEntrySpec(
             slug="xml_document",
             label="XML Document",
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             data_type=CatalogValueType.ARTIFACT_REF,
             description=(
@@ -108,7 +108,7 @@ config = ValidatorConfig(
             is_required=True,
             on_missing="error",
             order=1,
-            source_kind=SignalSourceKind.PAYLOAD_PATH,
+            source_kind=StepIOSourceKind.PAYLOAD_PATH,
             is_path_editable=False,
             io_medium=StepIOMedium.ARTIFACT,
             artifact_kind=ArtifactKind.FILE,
@@ -129,7 +129,7 @@ config = ValidatorConfig(
         CatalogEntrySpec(
             slug="svrl_report",
             label="SVRL Report",
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.ARTIFACT_REF,
             description=(
@@ -142,7 +142,7 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",
             order=5,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
             io_medium=StepIOMedium.ARTIFACT,
             artifact_kind=ArtifactKind.REPORT,
@@ -160,7 +160,7 @@ config = ValidatorConfig(
         CatalogEntrySpec(
             slug="passed",
             label="Passed",
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.BOOLEAN,
             description=(
@@ -168,29 +168,29 @@ config = ValidatorConfig(
                 "(unknown) when the engine could not run the rules."
             ),
             order=10,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="error_count",
             label="Error Count",
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             description="Number of ERROR-level Schematron findings.",
             order=20,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="warning_count",
             label="Warning Count",
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             description="Number of WARNING-level Schematron findings.",
             order=30,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # `fired_rule_count`, NOT an "assertion count": svrl:fired-rule marks
@@ -199,7 +199,7 @@ config = ValidatorConfig(
         CatalogEntrySpec(
             slug="fired_rule_count",
             label="Fired Rule Count",
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.NUMBER,
             description=(
@@ -208,7 +208,7 @@ config = ValidatorConfig(
                 "assertions."
             ),
             order=40,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # A MAP of {rule_id: severity}, e.g. {"BR-CO-15": "ERROR"} — pinned
@@ -219,7 +219,7 @@ config = ValidatorConfig(
         CatalogEntrySpec(
             slug="finding_rule_ids_by_severity",
             label="Finding Rule IDs by Severity",
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.OBJECT,
             description=(
@@ -228,27 +228,27 @@ config = ValidatorConfig(
                 "membership tests and severity-aware gates."
             ),
             order=50,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ── Provenance of the executed rules (D5) ──
         CatalogEntrySpec(
             slug="query_binding",
             label="Query Binding",
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.STRING,
             description=(
                 "Query binding detected from the uploaded rules (xslt1/xslt2)."
             ),
             order=60,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
             slug="engine",
             label="Engine",
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.STRING,
             description=(
@@ -256,7 +256,7 @@ config = ValidatorConfig(
                 "e.g. 'SaxonC-HE 12.9'."
             ),
             order=70,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
     ],

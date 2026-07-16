@@ -11,7 +11,7 @@ Planned check categories:
 - Polygon self-intersection
 - Polygon overlap detection
 - Gap detection between adjacent polygons
-- Bounding box computation for signal extraction
+- Bounding box computation for step output extraction
 """
 
 from __future__ import annotations

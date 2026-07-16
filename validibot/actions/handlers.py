@@ -144,7 +144,7 @@ class ValidatorStepHandler:
             passed=v_result.passed,
             issues=v_result.issues or [],
             stats=v_result.stats or {},
-            output_values=v_result.signals or {},
+            output_values=v_result.output_values or {},
         )
 
 

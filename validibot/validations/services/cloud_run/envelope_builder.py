@@ -75,7 +75,7 @@ def build_energyplus_input_envelope(
     This function creates a fully typed input envelope for EnergyPlus validators.
     It takes Django model data and transforms it into the container input format.
 
-    The validator always returns a fixed set of output signals defined in its
+    The validator always returns a fixed set of output values defined in its
     catalog - users don't need to specify which outputs they want.
 
     Args:
@@ -305,7 +305,7 @@ def _resolve_energyplus_file_port_items(
     allowing unsynced tests/dev databases to keep using the legacy path.
     """
 
-    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIODirection
     from validibot.validations.constants import StepIOMedium
     from validibot.validations.models import StepInputBinding
     from validibot.validations.models import StepIODefinition
@@ -314,7 +314,7 @@ def _resolve_energyplus_file_port_items(
         port.contract_key: port
         for port in StepIODefinition.objects.filter(
             validator_id=step.validator_id,
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             io_medium=StepIOMedium.ARTIFACT,
         )
     }
@@ -322,11 +322,11 @@ def _resolve_energyplus_file_port_items(
         return None
 
     bindings = {
-        binding.signal_definition.contract_key: binding
+        binding.io_definition.contract_key: binding
         for binding in StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition__in=ports.values(),
-        ).select_related("signal_definition")
+            io_definition__in=ports.values(),
+        ).select_related("io_definition")
     }
 
     input_files: list[InputFileItem] = []
@@ -584,7 +584,7 @@ def _resolve_input_file_artifact_port_item(
 ) -> tuple[InputFileItem, str] | None:
     """Resolve one declared input-files artifact port into an envelope item."""
 
-    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIODirection
     from validibot.validations.constants import StepIOMedium
     from validibot.validations.models import StepInputBinding
     from validibot.validations.models import StepIODefinition
@@ -592,7 +592,7 @@ def _resolve_input_file_artifact_port_item(
     port = (
         StepIODefinition.objects.filter(
             validator_id=step.validator_id,
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             io_medium=StepIOMedium.ARTIFACT,
             contract_key=contract_key,
         )
@@ -605,9 +605,9 @@ def _resolve_input_file_artifact_port_item(
     binding = (
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition=port,
+            io_definition=port,
         )
-        .select_related("signal_definition")
+        .select_related("io_definition")
         .first()
     )
     if binding is None:
@@ -671,11 +671,11 @@ def _resolve_input_file_artifact_port_item(
 def _resolve_upstream_artifact_ref(*, run, step, port, binding) -> dict:
     """Resolve and type-check an upstream artifact reference."""
 
-    from validibot.validations.services.path_resolution import resolve_input_signal
+    from validibot.validations.services.path_resolution import resolve_step_input
     from validibot.validations.services.run_context import RunContextBuilder
 
     context = RunContextBuilder(run, step).build()
-    resolved = resolve_input_signal(
+    resolved = resolve_step_input(
         binding,
         upstream_steps=context.upstream_steps,
     )
@@ -765,8 +765,8 @@ def _record_artifact_input_trace(
 
     ResolvedInputTrace.objects.create(
         step_run=current_step_run,
-        signal_definition=port,
-        signal_contract_key=port.contract_key,
+        io_definition=port,
+        input_contract_key=port.contract_key,
         source_scope_used=source_scope,
         source_data_path_used=source_data_path or port.contract_key,
         upstream_step_key=upstream_step_key,
@@ -855,7 +855,7 @@ def _resolve_fmu_file_port_item(
 ) -> tuple[InputFileItem, dict] | None:
     """Resolve the declared FMU model artifact port into an input file item."""
 
-    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIODirection
     from validibot.validations.constants import StepIOMedium
     from validibot.validations.models import StepInputBinding
     from validibot.validations.models import StepIODefinition
@@ -863,7 +863,7 @@ def _resolve_fmu_file_port_item(
     port = (
         StepIODefinition.objects.filter(
             validator_id=validator.id,
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             io_medium=StepIOMedium.ARTIFACT,
             contract_key="fmu_model",
         )
@@ -876,9 +876,9 @@ def _resolve_fmu_file_port_item(
     binding = (
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition=port,
+            io_definition=port,
         )
-        .select_related("signal_definition")
+        .select_related("io_definition")
         .first()
     )
     if binding is None:
@@ -1333,20 +1333,20 @@ def build_input_envelope(
         # auditable.
         input_values: dict = {}
         has_bindings = (
-            step.signal_bindings.filter(
-                signal_definition__direction="input",
+            step.input_bindings.filter(
+                io_definition__direction="input",
             )
-            .exclude(signal_definition__io_medium=StepIOMedium.ARTIFACT)
+            .exclude(io_definition__io_medium=StepIOMedium.ARTIFACT)
             .exists()
         )
 
         if has_bindings and current_step_run:
             from validibot.validations.models import ResolvedInputTrace
             from validibot.validations.services.path_resolution import (
-                InputSignalResolutionError,
+                StepInputResolutionError,
             )
             from validibot.validations.services.path_resolution import (
-                resolve_step_input_signals,
+                resolve_step_input_values,
             )
 
             submission_data: dict = {}
@@ -1364,7 +1364,7 @@ def build_input_envelope(
                         run.id,
                     )
                 # Submission metadata is a JSONField (always a dict),
-                # needed for signals scoped to SUBMISSION_METADATA
+                # needed for inputs scoped to SUBMISSION_METADATA
                 # (e.g., EnergyPlus expected_floor_area_m2).
                 submission_metadata = run.submission.metadata or {}
 
@@ -1385,14 +1385,14 @@ def build_input_envelope(
                     resolve_workflow_signals,
                 )
 
-                sig_result = resolve_workflow_signals(
+                signal_result = resolve_workflow_signals(
                     step.workflow,
                     submission_data,
                 )
-                workflow_signals_dict = sig_result.signals
+                workflow_signals_dict = signal_result.signals
 
             try:
-                input_values, traces = resolve_step_input_signals(
+                input_values, traces = resolve_step_input_values(
                     step,
                     current_step_run,
                     submission_data=submission_data,
@@ -1402,11 +1402,11 @@ def build_input_envelope(
                 )
                 if traces:
                     ResolvedInputTrace.objects.bulk_create(traces)
-            except InputSignalResolutionError as exc:
+            except StepInputResolutionError as exc:
                 # Persist ALL traces (successes + failures) for diagnostics
                 # even when resolution fails. The exception carries the
                 # complete trace list so operators can see exactly which
-                # signals resolved and which didn't.
+                # inputs resolved and which didn't.
                 if exc.traces:
                     ResolvedInputTrace.objects.bulk_create(exc.traces)
                 raise
@@ -1421,7 +1421,7 @@ def build_input_envelope(
             #   historically use the provider variable names.
             if current_step_run:
                 current_step_run.input_values = {
-                    trace.signal_contract_key: trace.value_snapshot
+                    trace.input_contract_key: trace.value_snapshot
                     for trace in traces
                     if trace.resolved
                 }
@@ -1431,23 +1431,25 @@ def build_input_envelope(
                 current_step_run.save(update_fields=["input_values", "output"])
         elif _fmu_step_declares_inputs(step):
             msg = (
-                f"Step {step.id} declares FMU input signals but has no "
+                f"Step {step.id} declares FMU inputs but has no "
                 "StepInputBinding rows. Configure input bindings before launch."
             )
             raise ValueError(msg)
 
         # Extract output variable names: prefer StepIODefinition rows,
         # fall back to step config JSON.
-        from validibot.validations.constants import SignalDirection
-        from validibot.validations.constants import SignalOriginKind
+        from validibot.validations.constants import StepIODirection
+        from validibot.validations.constants import StepIOOriginKind
         from validibot.validations.models import StepIODefinition
 
-        output_sigs = StepIODefinition.objects.filter(
+        output_definitions = StepIODefinition.objects.filter(
             workflow_step=step,
-            direction=SignalDirection.OUTPUT,
-            origin_kind=SignalOriginKind.FMU,
+            direction=StepIODirection.OUTPUT,
+            origin_kind=StepIOOriginKind.FMU,
         )
-        output_variables = [sig.native_name for sig in output_sigs]
+        output_variables = [
+            io_definition.native_name for io_definition in output_definitions
+        ]
 
         fmu_inputs = FMUInputs(
             input_values=input_values,
@@ -1607,20 +1609,20 @@ def build_input_envelope(
 
 
 def _fmu_step_declares_inputs(step) -> bool:
-    """Return whether this FMU step has declared input signals.
+    """Return whether this FMU step has declared input definitions.
 
-    Step-owned FMU uploads attach signals to ``workflow_step``. Library FMU
+    Step-owned FMU uploads attach I/O definitions to ``workflow_step``. Library FMU
     validators may attach them to the reusable validator. Either form means
     launch requires explicit ``StepInputBinding`` rows.
     """
-    from validibot.validations.constants import SignalDirection
-    from validibot.validations.constants import SignalOriginKind
+    from validibot.validations.constants import StepIODirection
+    from validibot.validations.constants import StepIOOriginKind
     from validibot.validations.models import StepIODefinition
 
     step_owned_inputs = StepIODefinition.objects.filter(
         workflow_step=step,
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.FMU,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.FMU,
     ).exists()
     if step_owned_inputs:
         return True
@@ -1631,6 +1633,6 @@ def _fmu_step_declares_inputs(step) -> bool:
 
     return StepIODefinition.objects.filter(
         validator_id=validator_id,
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.FMU,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.FMU,
     ).exists()

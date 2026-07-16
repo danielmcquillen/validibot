@@ -27,18 +27,18 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import DefaultSourceStrategy
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import FMUProbeStatus
-from validibot.validations.constants import SignalDirection
-from validibot.validations.constants import SignalOriginKind
-from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOOriginKind
+from validibot.validations.constants import StepIOSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import FMUModel
 from validibot.validations.models import FMUProbeResult
 from validibot.validations.models import FMUVariable
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
-from validibot.validations.signal_metadata.metadata import FMUProviderBinding
-from validibot.validations.signal_metadata.metadata import FMUSignalMetadata
+from validibot.validations.step_io_metadata.metadata import FMUProviderBinding
+from validibot.validations.step_io_metadata.metadata import FMUStepIOMetadata
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -202,7 +202,7 @@ def introspect_fmu(payload: bytes, filename: str) -> FMUIntrospectionResult:
     - ``create_fmu_validator()`` (library flow) — results feed into
       FMUModel + FMUVariable + StepIODefinition creation.
     - ``build_fmu_config()`` (step-level flow) — results feed into
-      ``sync_step_fmu_signals()`` and ``step.config["fmu_simulation"]``.
+      ``sync_step_fmu_io_definitions()`` and ``step.config["fmu_simulation"]``.
 
     Raises ``FMUIntrospectionError`` on validation failure.
     """
@@ -270,8 +270,8 @@ def introspect_fmu(payload: bytes, filename: str) -> FMUIntrospectionResult:
 #   2. ``validators/fmu/config.py`` — derives the system FMU validator's
 #      static ``CatalogEntrySpec`` list from this collection so a new
 #      fact added here surfaces in the catalog without a parallel edit.
-#   3. ``_seed_parser_fact_signals`` (this module) and
-#      ``services/fmu_signals.seed_step_parser_fact_signals`` — seed
+#   3. ``_seed_parser_fact_io_definitions`` (this module) and
+#      ``services/fmu_step_io.seed_step_parser_fact_io_definitions`` — seed
 #      identical INPUT-direction ``StepIODefinition`` rows on per-FMU
 #      validators (library path) and per-step (step-level path), so
 #      ``i.fmi_version`` etc. resolve regardless of which path was used.
@@ -300,8 +300,8 @@ class FMUParserFactSpec:
 
     The CatalogEntrySpec equivalents are derived in
     ``validators/fmu/config.py``; the StepIODefinition equivalents are
-    seeded in ``_seed_parser_fact_signals`` and
-    ``seed_step_parser_fact_signals``. All three paths read from the
+    seeded in ``_seed_parser_fact_io_definitions`` and
+    ``seed_step_parser_fact_io_definitions``. All three paths read from the
     SAME spec, so a change here propagates without parallel edits.
     """
 
@@ -434,7 +434,7 @@ PARSER_FACT_SPECS: tuple[FMUParserFactSpec, ...] = (
 )
 
 
-# Set of contract keys for fast catalog-filtering in ``extract_input_signals``.
+# Set of contract keys for fast catalog-filtering in ``extract_input_values``.
 PARSER_FACT_KEYS: frozenset[str] = frozenset(s.contract_key for s in PARSER_FACT_SPECS)
 
 
@@ -444,7 +444,7 @@ def build_introspection_metadata(
     """Build the FMU parser-fact dict persisted on ``FMUModel.introspection_metadata``.
 
     The dict is keyed by ``contract_key`` for direct consumption by
-    ``FMUValidator.extract_input_signals``. Each value is produced by
+    ``FMUValidator.extract_input_values``. Each value is produced by
     its spec's ``extractor`` callable, so adding a new fact to
     ``PARSER_FACT_SPECS`` automatically extends what this writes —
     no parallel edit here.
@@ -470,8 +470,8 @@ def _data_type_for_variable(value_type: str) -> str:
 def _parser_fact_step_io_defaults(spec: FMUParserFactSpec) -> dict[str, Any]:
     """Shared StepIODefinition ``defaults`` payload for one parser fact.
 
-    Used by ``_seed_parser_fact_signals`` (library FMU validators) and
-    ``services.fmu_signals.seed_step_parser_fact_signals`` (step-level
+    Used by ``_seed_parser_fact_io_definitions`` (library FMU validators) and
+    ``services.fmu_step_io.seed_step_parser_fact_io_definitions`` (step-level
     FMU uploads). Sharing the dict-builder means the two seeding paths
     can't drift in subtle ways (e.g., one ends up with a label and the
     other doesn't), which was the May 2026 review's P2 concern.
@@ -486,8 +486,8 @@ def _parser_fact_step_io_defaults(spec: FMUParserFactSpec) -> dict[str, Any]:
         "native_name": spec.contract_key,
         "label": spec.label,
         "description": spec.description,
-        "origin_kind": SignalOriginKind.FMU,
-        "source_kind": SignalSourceKind.INTERNAL,
+        "origin_kind": StepIOOriginKind.FMU,
+        "source_kind": StepIOSourceKind.INTERNAL,
         "is_path_editable": False,
         "data_type": spec.data_type,
         "on_missing": spec.on_missing,
@@ -506,8 +506,8 @@ def _fmu_model_port_step_io_defaults() -> dict[str, Any]:
             "Resolved Functional Mock-up Unit file passed to the backend "
             "as the FMU model input."
         ),
-        "origin_kind": SignalOriginKind.CATALOG,
-        "source_kind": SignalSourceKind.PAYLOAD_PATH,
+        "origin_kind": StepIOOriginKind.CATALOG,
+        "source_kind": StepIOSourceKind.PAYLOAD_PATH,
         "is_path_editable": False,
         "data_type": CatalogValueType.ARTIFACT_REF,
         "io_medium": StepIOMedium.ARTIFACT,
@@ -537,7 +537,7 @@ def _fmu_model_port_step_io_defaults() -> dict[str, Any]:
     }
 
 
-def _seed_parser_fact_signals(validator: Validator) -> None:
+def _seed_parser_fact_io_definitions(validator: Validator) -> None:
     """Seed parser-fact and file-port rows on a user-created FMU validator.
 
     These rows declare the ``fmu_model`` artifact input port and
@@ -565,7 +565,7 @@ def _seed_parser_fact_signals(validator: Validator) -> None:
     StepIODefinition.objects.update_or_create(
         validator=validator,
         contract_key=FMU_MODEL_PORT_KEY,
-        direction=SignalDirection.INPUT,
+        direction=StepIODirection.INPUT,
         defaults=_fmu_model_port_step_io_defaults(),
     )
 
@@ -573,18 +573,18 @@ def _seed_parser_fact_signals(validator: Validator) -> None:
         StepIODefinition.objects.update_or_create(
             validator=validator,
             contract_key=spec.contract_key,
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             defaults=_parser_fact_step_io_defaults(spec),
         )
 
 
 def _direction_for_causality(causality: str) -> str | None:
-    """Map FMU causality to signal direction, or None for unsupported types."""
+    """Map FMU causality to step I/O direction, or None for unsupported types."""
     lowered = (causality or "").lower()
     if lowered == "input":
-        return SignalDirection.INPUT
+        return StepIODirection.INPUT
     if lowered == "output":
-        return SignalDirection.OUTPUT
+        return StepIODirection.OUTPUT
     return None
 
 
@@ -722,7 +722,7 @@ def _persist_variables(
     validator: Validator,
     variables: Iterable[FMUVariable],
 ) -> None:
-    """Persist FMUVariable rows and reconcile signal definitions.
+    """Persist FMUVariable rows and reconcile step I/O definitions.
 
     Identity-stable: ``StepIODefinition`` rows are reconciled by
     ``(validator, contract_key, direction)`` via ``update_or_create``.
@@ -772,17 +772,17 @@ def _persist_variables(
     # seeded here, per FMU upload). Without this branch, the same
     # input-stage CEL assertion would pass on one validator and silently
     # resolve to null on another.
-    _seed_parser_fact_signals(validator)
-    survivors.add((FMU_MODEL_PORT_KEY, SignalDirection.INPUT))
+    _seed_parser_fact_io_definitions(validator)
+    survivors.add((FMU_MODEL_PORT_KEY, StepIODirection.INPUT))
     survivors.update(
-        (spec.contract_key, SignalDirection.INPUT) for spec in PARSER_FACT_SPECS
+        (spec.contract_key, StepIODirection.INPUT) for spec in PARSER_FACT_SPECS
     )
 
     for var in prepared:
         direction = _direction_for_causality(var.causality)
         if not direction:
             continue
-        base_key = slugify(var.name, separator="_") or "signal"
+        base_key = slugify(var.name, separator="_") or "io_value"
         key = base_key
         counter = 2
         # Only suffix when THIS (key, direction) has already been
@@ -790,7 +790,7 @@ def _persist_variables(
         # Letting update_or_create reuse existing rows naturally is
         # what keeps StepIODefinition.pk stable across re-probes.
         #
-        # Underscore separator matches ``services.fmu_signals``'s
+        # Underscore separator matches ``services.fmu_step_io``'s
         # step-level path so CEL identifier-safe contract_keys stay
         # the convention across both seeding paths. Hyphenated keys
         # would force authors into bracket-access (``i["t_outdoor-2"]``)
@@ -805,18 +805,18 @@ def _persist_variables(
             direction=direction,
             defaults={
                 "native_name": var.name,
-                "origin_kind": SignalOriginKind.FMU,
+                "origin_kind": StepIOOriginKind.FMU,
                 "source_kind": (
-                    SignalSourceKind.PAYLOAD_PATH
-                    if direction == SignalDirection.INPUT
-                    else SignalSourceKind.INTERNAL
+                    StepIOSourceKind.PAYLOAD_PATH
+                    if direction == StepIODirection.INPUT
+                    else StepIOSourceKind.INTERNAL
                 ),
-                "is_path_editable": direction == SignalDirection.INPUT,
+                "is_path_editable": direction == StepIODirection.INPUT,
                 "data_type": _data_type_for_variable(var.value_type),
                 "provider_binding": FMUProviderBinding(
                     causality=var.causality,
                 ).model_dump(),
-                "metadata": FMUSignalMetadata(
+                "metadata": FMUStepIOMetadata(
                     variability=var.variability,
                     value_reference=var.value_reference,
                     value_type=var.value_type,
@@ -841,12 +841,12 @@ def _persist_variables(
     # explicit Python walk handles the tuple check; the queryset is
     # tiny (one validator) so the O(n) scan is fine.
     orphan_ids = [
-        sig.pk
-        for sig in validator.signal_definitions.all()
-        if (sig.contract_key, sig.direction) not in survivors
+        io_definition.pk
+        for io_definition in validator.step_io_definitions.all()
+        if (io_definition.contract_key, io_definition.direction) not in survivors
     ]
     if orphan_ids:
-        validator.signal_definitions.filter(pk__in=orphan_ids).delete()
+        validator.step_io_definitions.filter(pk__in=orphan_ids).delete()
 
 
 def _read_fmu_bytes(fmu_model: FMUModel) -> bytes:
@@ -954,7 +954,7 @@ def run_fmu_probe(
 
     # Update FMU metadata. Keep both write sites (upload and probe)
     # using the same helper so the parser-fact contract surfaced via
-    # ``FMUValidator.extract_input_signals`` is identical regardless of
+    # ``FMUValidator.extract_input_values`` is identical regardless of
     # which path stamped the metadata.
     fmu_model.fmu_version = result.fmi_version
     fmu_model.introspection_metadata = build_introspection_metadata(result)
@@ -991,7 +991,7 @@ def _refresh_variables_from_probe(
     fmu_model: FMUModel,
     variables: list,
 ) -> None:
-    """Reconcile FMU variables and signal definitions from probe output.
+    """Reconcile FMU variables and step I/O definitions from probe output.
 
     Drops the legacy delete-then-recreate cycle (May 2026 review's
     P1/P2 finding). Instead:

@@ -155,8 +155,8 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         renders without issuing additional queries.
         """
         queryset = self.filter_queryset(self.get_queryset()).prefetch_related(
-            "steps__validator__default_ruleset__assertions__target_signal_definition",
-            "steps__ruleset__assertions__target_signal_definition",
+            "steps__validator__default_ruleset__assertions__target_io_definition",
+            "steps__ruleset__assertions__target_io_definition",
         )
         identifier = self.kwargs.get(self.lookup_field)
 
@@ -329,8 +329,8 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         renders without issuing additional queries.
         """
         queryset = self.filter_queryset(self.get_queryset()).prefetch_related(
-            "steps__validator__default_ruleset__assertions__target_signal_definition",
-            "steps__ruleset__assertions__target_signal_definition",
+            "steps__validator__default_ruleset__assertions__target_io_definition",
+            "steps__ruleset__assertions__target_io_definition",
         )
         version = int(self.kwargs[self.lookup_field])
         obj = get_object_or_404(queryset, version=version)

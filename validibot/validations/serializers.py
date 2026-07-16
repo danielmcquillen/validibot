@@ -105,10 +105,10 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         return ValidationRunResult.UNKNOWN
 
     def get_steps(self, obj: ValidationRun) -> list[dict]:
-        from validibot.validations.services.signal_display import (
+        from validibot.validations.services.step_output_display import (
             build_display_step_outputs,
         )
-        from validibot.validations.services.signal_display import (
+        from validibot.validations.services.step_output_display import (
             build_template_params_display,
         )
 
@@ -122,8 +122,8 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             findings = list(step_run.findings.all())
             output = step_run.output or {}
 
-            # Enrich with output signals and template parameters.
-            signals = build_display_step_outputs(step_run)
+            # Enrich with display-ready step outputs and template parameters.
+            display_outputs = build_display_step_outputs(step_run)
             params = build_template_params_display(step_run)
 
             payload.append(
@@ -147,15 +147,15 @@ class ValidationRunSerializer(serializers.ModelSerializer):
                         for finding in findings
                     ],
                     "error": step_run.error,
-                    "output_signals": [
+                    "output_values": [
                         {
-                            "slug": s.slug,
-                            "label": s.label,
-                            "value": s.value,
-                            "formatted_value": s.formatted_value,
-                            "units": s.units,
+                            "slug": output.slug,
+                            "label": output.label,
+                            "value": output.value,
+                            "formatted_value": output.formatted_value,
+                            "units": output.units,
                         }
-                        for s in signals
+                        for output in display_outputs
                     ],
                     "template_parameters_used": (
                         [

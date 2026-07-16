@@ -379,7 +379,7 @@ class ShaclInferenceOptionFormTests(TestCase):
         """A mode outside the three (e.g. pyshacl's ``"both"``) must not validate.
 
         pyshacl also understands ``"both"`` / ``"all"``, but Validibot
-        deliberately does not expose them — the docs, signal budgets, and
+        deliberately does not expose them — the docs, resource budgets, and
         performance guidance only account for the three documented modes.
         This guards against silently widening the surface: if ``"both"`` ever
         became valid here, an operator could pick a mode the rest of the

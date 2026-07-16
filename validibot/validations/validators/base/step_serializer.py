@@ -39,10 +39,10 @@ if TYPE_CHECKING:
     from validibot.validations.models import RulesetAssertion
     from validibot.validations.models import StepIODefinition
 
-# A resolver the importer passes in so an assertion that targets a signal can be
+# A resolver the importer passes in so an assertion that targets a io_definition can be
 # re-bound to the freshly created/looked-up StepIODefinition. It maps a serialized
-# signal reference (contract_key, direction, owner) to a live row, or None.
-SignalResolver = Callable[[dict[str, Any]], "StepIODefinition | None"]
+# io_definition reference (contract_key, direction, owner) to a live row, or None.
+IODefinitionResolver = Callable[[dict[str, Any]], "StepIODefinition | None"]
 
 
 class WorkflowImportError(Exception):
@@ -59,7 +59,7 @@ class WorkflowImportError(Exception):
 
 
 # The assertion fields that round-trip verbatim. Kept as one list so export and
-# import can't drift on which fields are carried. ``target_signal_definition`` is
+# import can't drift on which fields are carried. ``target_io_definition`` is
 # handled separately (it's an FK that must be re-bound), as is ``ruleset``.
 _ASSERTION_SCALAR_FIELDS = (
     "order",
@@ -128,14 +128,16 @@ class StepSerializer:
         return body
 
     def _export_assertion(self, assertion: RulesetAssertion) -> dict[str, Any]:
-        """Serialize one assertion, including a re-bindable signal reference."""
+        """Serialize one assertion, including a re-bindable io_definition reference."""
         data: dict[str, Any] = {
             field: getattr(assertion, field) for field in _ASSERTION_SCALAR_FIELDS
         }
         for field in _ASSERTION_JSON_FIELDS:
             data[field] = deepcopy(getattr(assertion, field)) or {}
-        signal = assertion.target_signal_definition
-        data["target_signal_ref"] = _export_signal_ref(signal) if signal else None
+        io_definition = assertion.target_io_definition
+        data["target_io_definition_ref"] = (
+            _export_io_definition_ref(io_definition) if io_definition else None
+        )
         return data
 
     # ─────────────────────────────────────────────────────────── import ──
@@ -155,7 +157,7 @@ class StepSerializer:
         rules were exported as a bundled file (uploaded JSON/XML schemas), the
         bytes are restored from *files*; otherwise the inline ``rules_text`` is
         used. Assertions are added later (:meth:`create_assertions`) because they
-        may target step-owned signals that don't exist until their step is
+        may target step-owned step I/O definitions that don't exist until their step is
         created — the same create-order the cloner uses.
         """
         from validibot.validations.models import Ruleset
@@ -220,16 +222,16 @@ class StepSerializer:
         ruleset: Ruleset,
         body: dict[str, Any],
         *,
-        signal_resolver: SignalResolver,
+        io_definition_resolver: IODefinitionResolver,
     ) -> int:
         """Create the ruleset's assertions in order; return how many were made.
 
-        A signal-targeted assertion is re-bound via *signal_resolver*. Call after
-        the step and its signal definitions exist.
+        An I/O-definition-targeted assertion is re-bound via
+        *io_definition_resolver*. Call after the step and its I/O definitions exist.
         """
         count = 0
         for assertion_data in body.get("assertions") or []:
-            self._build_assertion(ruleset, assertion_data, signal_resolver)
+            self._build_assertion(ruleset, assertion_data, io_definition_resolver)
             count += 1
         return count
 
@@ -239,17 +241,21 @@ class StepSerializer:
         *,
         org: Organization,
         user: User,
-        signal_resolver: SignalResolver,
+        io_definition_resolver: IODefinitionResolver,
         files: dict[str, bytes] | None = None,
     ) -> Ruleset:
-        """Create a Ruleset + its assertions in one call (no step-owned signals).
+        """Create a ruleset and assertions without step-owned I/O definitions.
 
         Convenience for the common case (and tests) where assertions don't target
-        step-owned signals. The importer uses the split methods above when it
-        must interleave step/signal creation.
+        step-owned step I/O definitions. The importer uses the split methods above
+        when it must interleave step and I/O-definition creation.
         """
         ruleset = self.create_ruleset_row(body, org=org, user=user, files=files or {})
-        self.create_assertions(ruleset, body, signal_resolver=signal_resolver)
+        self.create_assertions(
+            ruleset,
+            body,
+            io_definition_resolver=io_definition_resolver,
+        )
         self.validate_imported_ruleset(ruleset, body)
         return ruleset
 
@@ -257,9 +263,9 @@ class StepSerializer:
         self,
         ruleset: Ruleset,
         data: dict[str, Any],
-        signal_resolver: SignalResolver,
+        io_definition_resolver: IODefinitionResolver,
     ) -> RulesetAssertion:
-        """Create one assertion row from serialized data, re-binding its signal."""
+        """Create one assertion row and rebind its step I/O definition."""
         from validibot.validations.models import RulesetAssertion
 
         # Skip fields the definition omits so the model's own default applies.
@@ -268,7 +274,7 @@ class StepSerializer:
         # defeat the model default and hit the column's NOT NULL constraint,
         # because Django's clean_fields skips ``blank=True`` empty values rather
         # than coercing them. This mirrors how the importer rebinds other rows
-        # (``_create_workflow``, ``_import_signal_bindings``): present-and-set
+        # (``_create_workflow``, ``_import_input_bindings``): present-and-set
         # wins, absent falls back to the default. Keeps adding an optional
         # assertion field backward-compatible without bumping ``format_version``.
         kwargs: dict[str, Any] = {
@@ -279,9 +285,9 @@ class StepSerializer:
         for field in _ASSERTION_JSON_FIELDS:
             kwargs[field] = deepcopy(data.get(field) or {})
 
-        signal_ref = data.get("target_signal_ref")
-        kwargs["target_signal_definition"] = (
-            signal_resolver(signal_ref) if signal_ref else None
+        io_definition_ref = data.get("target_io_definition_ref")
+        kwargs["target_io_definition"] = (
+            io_definition_resolver(io_definition_ref) if io_definition_ref else None
         )
         assertion = RulesetAssertion(ruleset=ruleset, **kwargs)
         assertion.full_clean()
@@ -339,17 +345,17 @@ def _unique_ruleset_name(
         suffix += 1
 
 
-def _export_signal_ref(signal: StepIODefinition) -> dict[str, Any]:
+def _export_io_definition_ref(io_definition: StepIODefinition) -> dict[str, Any]:
     """Serialize a re-bindable reference to a StepIODefinition.
 
     Records the stable ``(contract_key, direction)`` plus the owner kind so the
-    importer can resolve a validator-owned signal via the resolved validator, or
-    a step-owned signal within the freshly imported step.
+    importer can resolve a validator-owned io_definition via the resolved validator, or
+    a step-owned io_definition within the freshly imported step.
     """
     return {
-        "contract_key": signal.contract_key,
-        "direction": signal.direction,
-        "owner": "validator" if signal.validator_id else "step",
+        "contract_key": io_definition.contract_key,
+        "direction": io_definition.direction,
+        "owner": "validator" if io_definition.validator_id else "step",
     }
 
 

@@ -13,7 +13,7 @@ The base class handles the full lifecycle (input-stage gate, dispatch via the
 configured execution backend, sync/async completion). This subclass supplies two
 things:
 
-1. :meth:`extract_output_signals` — the ``o.*`` signal dict for CEL/Basic
+1. :meth:`extract_output_values` — the ``o.*`` output-value dict for CEL/Basic
    assertions, pulled from the container's ``SHACLOutputs``.
 2. :meth:`post_execute_validate` — a SHACL-specific override that (a) rebuilds
    findings from the structured ``outputs.findings`` so the SHACL ``meta``
@@ -53,10 +53,10 @@ _SEVERITY_FROM_STRING = {
     "SUCCESS": Severity.SUCCESS,
 }
 
-# The o.* signal keys this validator exposes — must match the catalog entries in
+# The o.* output-value keys this validator exposes — must match the catalog entries in
 # config.py (the "catalog is the contract" rule). Extra fields on SHACLOutputs
-# (report turtle, hashes, assertion tallies) are surfaced via stats, not signals.
-_SIGNAL_KEYS = (
+# (report turtle, hashes, assertion tallies) are surfaced via stats, not output_values.
+_OUTPUT_VALUE_KEYS = (
     "parse_ok",
     "parse_serialization",
     "triple_count",
@@ -78,8 +78,8 @@ class SHACLValidator(AdvancedValidator):
     def validator_display_name(self) -> str:
         return "SHACL"
 
-    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
-        """Pull the ``o.*`` signal dict from the container's ``SHACLOutputs``.
+    def extract_output_values(self, output_envelope: Any) -> dict[str, Any] | None:
+        """Pull the ``o.*`` output-value dict from the container's ``SHACLOutputs``.
 
         Filtered to the catalog-declared keys so any extra output fields cannot
         leak into the ``o.*`` namespace — the same "catalog is the contract"
@@ -88,14 +88,14 @@ class SHACLValidator(AdvancedValidator):
         outputs = getattr(output_envelope, "outputs", None)
         if outputs is None:
             return None
-        return {key: getattr(outputs, key, None) for key in _SIGNAL_KEYS}
+        return {key: getattr(outputs, key, None) for key in _OUTPUT_VALUE_KEYS}
 
     def post_execute_validate(
         self,
         output_envelope: Any,
         run_context: RunContext | None = None,
     ) -> ValidationResult:
-        """Process the container output: findings, signals, and folded assertions.
+        """Process the container output: findings, output_values, and folded assertions.
 
         Overrides the base because SHACL needs three things the generic path
         doesn't provide:
@@ -117,7 +117,7 @@ class SHACLValidator(AdvancedValidator):
         issues = self._issues_from_outputs(outputs)
         if outputs is None:
             issues.extend(self._extract_issues_from_envelope(output_envelope))
-        signals = self.extract_output_signals(output_envelope) or {}
+        output_values = self.extract_output_values(output_envelope) or {}
 
         # Container-side SPARQL-ASK assertion tallies.
         container_total = getattr(outputs, "assertion_total", 0) if outputs else 0
@@ -131,14 +131,14 @@ class SHACLValidator(AdvancedValidator):
             if validator and ruleset:
                 resolved_inputs = self._get_resolved_inputs(run_context)
                 payload = self._build_assertion_payload(
-                    signals,
+                    output_values,
                     run_context,
                     resolved_inputs=resolved_inputs,
                 )
                 payload = self._enrich_basic_payload(
                     payload,
                     stage="output",
-                    output_signals=None,
+                    output_values=None,
                 )
                 # Exclude SHACL-type rows — those executed in the container as
                 # SPARQL ASKs and are already counted in container_* above.
@@ -170,7 +170,7 @@ class SHACLValidator(AdvancedValidator):
                 total=assertion_total,
                 failures=assertion_failures,
             ),
-            signals=signals,
+            output_values=output_values,
             stats=stats,
         )
 

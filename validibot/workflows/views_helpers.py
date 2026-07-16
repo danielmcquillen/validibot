@@ -454,7 +454,7 @@ def build_tabular_config(
     delimiter = cleaned.get("delimiter") or ""
     # Encoding is pinned to UTF-8 in V1 — submitted content reaches the
     # validator already decoded as UTF-8, so there is no editable encoding
-    # field. Stored as a constant so the i.encoding signal stays accurate.
+    # field. Stored as a constant so the i.encoding step input stays accurate.
     encoding = "utf-8"
     has_header = bool(cleaned.get("has_header"))
 
@@ -857,7 +857,7 @@ def _validate_and_scan_template(
     """Validate an IDF template and return ``(variable_dicts, warnings)``.
 
     Reads the file, runs the validation pipeline, and converts the scan
-    result into a list of variable dicts ready for ``sync_step_template_signals``.
+    result into variable dicts for ``sync_step_template_io_definitions``.
 
     Raises:
         ValidationError: If the template fails validation checks.
@@ -906,7 +906,7 @@ def build_energyplus_config(
     """Build the JSON config dict for an EnergyPlus step.
 
     Returns a ``(config, template_vars)`` tuple.  The ``template_vars``
-    list is passed to ``sync_step_template_signals()`` to create/update
+    list is passed to ``sync_step_template_io_definitions()`` to create/update
     ``StepIODefinition`` rows — it is **not** written to the config JSON.
 
     The ``validation_mode`` field determines which config keys are
@@ -914,7 +914,7 @@ def build_energyplus_config(
 
     - **direct**: ``idf_checks`` and ``run_simulation`` are stored.
       Template metadata is cleared.
-    - **template**: Case sensitivity and display signals are stored.
+    - **template**: Case sensitivity and displayed step outputs are stored.
       IDF-check and simulation flags are omitted (the template pipeline
       always runs the simulation).
 
@@ -955,7 +955,7 @@ def build_energyplus_config(
         config["run_simulation"] = form.cleaned_data.get("run_simulation", False)
         config["case_sensitive"] = True
         config["display_step_outputs"] = []
-        # Signal _sync_energyplus_resources to remove the template file
+        # Tell _sync_energyplus_resources to remove the template file
         # if one exists from a previous template-mode configuration.
         form.cleaned_data["remove_template"] = True
         return config, []
@@ -975,7 +975,7 @@ def build_energyplus_config(
         config["display_step_outputs"] = []
     elif template_file:
         # New template uploaded — validate, scan, and return vars for
-        # _sync_template_signals() to persist as StepIODefinition rows.
+        # _sync_template_step_io() to persist as StepIODefinition rows.
         template_vars, template_warnings = _validate_and_scan_template(
             template_file,
             case_sensitive=form.cleaned_data.get("case_sensitive", True),
@@ -1099,8 +1099,8 @@ def save_template_variable_annotations(
     """Save template variable annotations directly to StepIODefinition rows.
 
     Reads the form's ``_template_variable_meta`` (which carries
-    ``_signal_pk`` and ``_binding_pk``) and ``cleaned_data`` to update
-    the relational signal model in place.
+    ``_io_definition_pk`` and ``_binding_pk``) and ``cleaned_data`` to update
+    the relational step I/O model in place.
 
     Args:
         form: A ``TemplateVariableAnnotationForm`` instance with
@@ -1108,20 +1108,20 @@ def save_template_variable_annotations(
     """
     from validibot.validations.models import StepInputBinding
     from validibot.validations.models import StepIODefinition
-    from validibot.validations.signal_metadata.metadata import TemplateSignalMetadata
+    from validibot.validations.step_io_metadata.metadata import TemplateStepIOMetadata
 
     for meta in form._template_variable_meta:
         prefix = meta["prefix"]
-        signal_pk = meta.get("_signal_pk")
+        io_definition_pk = meta.get("_io_definition_pk")
         binding_pk = meta.get("_binding_pk")
-        if not signal_pk:
+        if not io_definition_pk:
             continue
 
         variable_type = form.cleaned_data.get(
             f"{prefix}_variable_type",
             "text",
         )
-        metadata = TemplateSignalMetadata(
+        metadata = TemplateStepIOMetadata(
             variable_type=variable_type,
             min_value=_parse_optional_float(
                 form.cleaned_data.get(f"{prefix}_min_value", ""),
@@ -1142,7 +1142,7 @@ def save_template_variable_annotations(
             ),
         ).model_dump()
 
-        StepIODefinition.objects.filter(pk=signal_pk).update(
+        StepIODefinition.objects.filter(pk=io_definition_pk).update(
             label=form.cleaned_data.get(f"{prefix}_description", ""),
             unit=form.cleaned_data.get(f"{prefix}_units", ""),
             metadata=metadata,
@@ -1163,68 +1163,66 @@ def step_has_template_variables(step: WorkflowStep) -> bool:
     Returns True when the step has template-origin StepIODefinitions,
     indicating the template variables card should be rendered.
     """
-    from validibot.validations.constants import SignalOriginKind
+    from validibot.validations.constants import StepIOOriginKind
 
-    return step.signal_definitions.filter(
-        origin_kind=SignalOriginKind.TEMPLATE,
+    return step.step_io_definitions.filter(
+        origin_kind=StepIOOriginKind.TEMPLATE,
     ).exists()
 
 
-def _is_signal_shown(slug: str, display_step_outputs: list[str]) -> bool:
-    """Determine whether an output signal should show a green check.
+def _is_step_output_shown(slug: str, display_step_outputs: list[str]) -> bool:
+    """Determine whether an output value should show a green check.
 
-    Empty display_step_outputs means "show all" (backward-compatible default).
+    An empty selection means no step outputs are shown to submitters.
     """
-    if not display_step_outputs:
-        return True
     return slug in display_step_outputs
 
 
-def build_unified_signals_from_definitions(
+def build_step_io_context(
     step: WorkflowStep,
 ) -> dict[str, Any]:
-    """Build unified input/output signal lists from ``StepIODefinition`` rows.
+    """Build unified step input/output lists from ``StepIODefinition`` rows.
 
     Queries the unified ``StepIODefinition`` and ``StepInputBinding`` models
-    to produce a single list of input and output signals for the step detail
+    to produce a single list of input and output definitions for the step detail
     card.
 
     Returns a dict with keys:
-        input_signals: List of signal dicts for inputs.
-        output_signals: List of signal dicts for outputs.
-        has_inputs: Whether any input signals exist.
-        has_outputs: Whether any output signals exist.
+        input_values: List of step input dictionaries.
+        output_values: List of step output dictionaries.
+        has_inputs: Whether any step inputs exist.
+        has_outputs: Whether any step outputs exist.
     """
-    from validibot.validations.constants import SignalDirection
+    from validibot.validations.constants import StepIODirection
     from validibot.validations.constants import StepIOMedium
     from validibot.validations.constants import ValidationType
     from validibot.validations.models import StepInputBinding
     from validibot.validations.models import StepIODefinition
     from validibot.validations.models import WorkflowStepIOPromotion
 
-    # ``display_step_outputs`` is cosmetic (which output signals the submitter
+    # ``display_step_outputs`` is cosmetic (which output values the submitter
     # sees), so it lives in the display bucket (ADR-2026-06-18).
     display_step_outputs = (step.display_settings or {}).get("display_step_outputs", [])
 
-    # Query step-owned + validator-owned signal definitions.
-    step_sigs = list(
+    # Query step-owned and validator-owned I/O definitions.
+    step_io_definitions = list(
         StepIODefinition.objects.filter(workflow_step=step).order_by("order", "pk")
     )
     validator = step.validator
-    validator_sigs = []
+    validator_io_definitions = []
     if validator:
-        validator_sigs = list(
-            validator.signal_definitions.all().order_by("order", "pk")
+        validator_io_definitions = list(
+            validator.step_io_definitions.all().order_by("order", "pk")
         )
 
-    # Build a binding lookup keyed by signal_definition PK.
+    # Build a binding lookup keyed by io_definition PK.
     binding_map: dict[int, StepInputBinding] = {}
     for b in StepInputBinding.objects.filter(
         workflow_step=step,
-    ).select_related("signal_definition"):
-        binding_map[b.signal_definition_id] = b
+    ).select_related("io_definition"):
+        binding_map[b.io_definition_id] = b
 
-    # Build an overlay lookup keyed by signal_definition PK. The
+    # Build an overlay lookup keyed by io_definition PK. The
     # overlay carries workflow-scoped promoted names for
     # validator-owned StepIODefinitions only — step-owned rows are
     # forbidden from having overlays
@@ -1234,9 +1232,9 @@ def build_unified_signals_from_definitions(
     # contains entries keyed by validator-owned row pks.
     overlay_map: dict[int, str] = {}
     for overlay in WorkflowStepIOPromotion.objects.filter(workflow_step=step):
-        overlay_map[overlay.signal_definition_id] = overlay.promoted_signal_name
+        overlay_map[overlay.io_definition_id] = overlay.promoted_signal_name
 
-    # -- Input signals --
+    # -- Step inputs --
     #
     # The Step Inputs table shows BOTH step-owned and validator-owned
     # input rows. Two motivating cases (per ADR-2026-05-22 + the
@@ -1257,38 +1255,52 @@ def build_unified_signals_from_definitions(
     #    case the step-owned rows cover both sets, so we still render
     #    primarily from step-owned with the catalog providing labels.
     #
-    # The previous "if not input_signals" guard incorrectly conflated
+    # The previous "if not input_values" guard incorrectly conflated
     # FMU's "no validator catalog" case with template mode's "both
     # sets matter". Deduplicating by contract_key lets a step-owned
     # row override a validator-owned row of the same name (rare but
     # possible) while still surfacing everything the validator
     # contributes.
-    input_signals: list[dict[str, Any]] = []
+    input_values: list[dict[str, Any]] = []
     seen_input_keys: set[str] = set()
 
-    def _build_input_row(sig, *, prefer_native_label: bool) -> dict[str, Any]:
-        binding = binding_map.get(sig.pk)
+    def _build_input_row(
+        io_definition,
+        *,
+        prefer_native_label: bool,
+    ) -> dict[str, Any]:
+        binding = binding_map.get(io_definition.pk)
         default_val = ""
         if binding and binding.default_value is not None:
             default_val = str(binding.default_value)
-        validator_managed = sig.source_kind == "internal" or not sig.is_path_editable
+        validator_managed = (
+            io_definition.source_kind == "internal"
+            or not io_definition.is_path_editable
+        )
         is_required = (
             False if validator_managed else (binding.is_required if binding else True)
         )
         source_path = binding.source_data_path if binding else ""
         label_parts = (
-            [sig.label, sig.native_name, sig.contract_key]
+            [
+                io_definition.label,
+                io_definition.native_name,
+                io_definition.contract_key,
+            ]
             if prefer_native_label
-            else [sig.label, sig.contract_key]
+            else [io_definition.label, io_definition.contract_key]
         )
         return {
-            "slug": sig.contract_key,
-            "label": next((p for p in label_parts if p), sig.contract_key),
-            "source": sig.origin_kind,
+            "slug": io_definition.contract_key,
+            "label": next(
+                (part for part in label_parts if part),
+                io_definition.contract_key,
+            ),
+            "source": io_definition.origin_kind,
             "required": is_required,
             "default_value": default_val,
             "source_data_path": source_path,
-            "signal_definition": sig,
+            "io_definition": io_definition,
             "binding": binding,
             "validator_managed": validator_managed,
             # Workflow-scoped promotion name lookup:
@@ -1299,34 +1311,38 @@ def build_unified_signals_from_definitions(
             #   which is keyed only by validator-owned pks.
             # The combined ``or`` works for both row types because
             # exactly one of the two sources can be set per row.
-            "signal_name": (overlay_map.get(sig.pk) or sig.promoted_signal_name or ""),
+            "signal_name": (
+                overlay_map.get(io_definition.pk)
+                or io_definition.promoted_signal_name
+                or ""
+            ),
         }
 
     # First, step-owned inputs (template variables, FMU model inputs).
     # native_name is preferred for these because FMU rows preserve the
     # provider-original variable name.
-    for sig in step_sigs:
-        if sig.direction != SignalDirection.INPUT:
+    for io_definition in step_io_definitions:
+        if io_definition.direction != StepIODirection.INPUT:
             continue
-        if sig.io_medium == StepIOMedium.ARTIFACT:
+        if io_definition.io_medium == StepIOMedium.ARTIFACT:
             continue
-        input_signals.append(_build_input_row(sig, prefer_native_label=True))
-        seen_input_keys.add(sig.contract_key)
+        input_values.append(_build_input_row(io_definition, prefer_native_label=True))
+        seen_input_keys.add(io_definition.contract_key)
 
     # Then, validator-owned inputs for any contract_key not already
     # represented step-side. This is the line the May 2026 P1 review
     # called out: validator-owned parser facts (i.zone_count) MUST
     # appear in template-mode steps even though step-owned template
-    # variables already populated input_signals.
-    for sig in validator_sigs:
-        if sig.direction != SignalDirection.INPUT:
+    # variables already populated input_values.
+    for io_definition in validator_io_definitions:
+        if io_definition.direction != StepIODirection.INPUT:
             continue
-        if sig.io_medium == StepIOMedium.ARTIFACT:
+        if io_definition.io_medium == StepIOMedium.ARTIFACT:
             continue
-        if sig.contract_key in seen_input_keys:
+        if io_definition.contract_key in seen_input_keys:
             continue
-        input_signals.append(_build_input_row(sig, prefer_native_label=False))
-        seen_input_keys.add(sig.contract_key)
+        input_values.append(_build_input_row(io_definition, prefer_native_label=False))
+        seen_input_keys.add(io_definition.contract_key)
 
     # Tabular dataset metadata is produced at runtime rather than stored as
     # StepIODefinition rows. It is still genuine i.* input data, so expose the
@@ -1339,7 +1355,7 @@ def build_unified_signals_from_definitions(
         for contract_key, label in TABULAR_DATASET_INPUTS:
             if contract_key in seen_input_keys:
                 continue
-            input_signals.append(
+            input_values.append(
                 {
                     "slug": contract_key,
                     "label": label,
@@ -1347,7 +1363,7 @@ def build_unified_signals_from_definitions(
                     "required": False,
                     "default_value": "",
                     "source_data_path": "",
-                    "signal_definition": None,
+                    "io_definition": None,
                     "binding": None,
                     "validator_managed": True,
                     "signal_name": "",
@@ -1355,57 +1371,69 @@ def build_unified_signals_from_definitions(
             )
             seen_input_keys.add(contract_key)
 
-    # -- Output signals --
-    output_signals: list[dict[str, Any]] = []
+    # -- Step outputs --
+    output_values: list[dict[str, Any]] = []
 
-    for sig in step_sigs:
-        if sig.direction != SignalDirection.OUTPUT:
+    for io_definition in step_io_definitions:
+        if io_definition.direction != StepIODirection.OUTPUT:
             continue
-        if sig.io_medium == StepIOMedium.ARTIFACT:
+        if io_definition.io_medium == StepIOMedium.ARTIFACT:
             continue
-        show = _is_signal_shown(sig.contract_key, display_step_outputs)
-        output_signals.append(
+        show = _is_step_output_shown(
+            io_definition.contract_key,
+            display_step_outputs,
+        )
+        output_values.append(
             {
-                "slug": sig.contract_key,
-                "label": sig.label or sig.native_name or sig.contract_key,
+                "slug": io_definition.contract_key,
+                "label": (
+                    io_definition.label
+                    or io_definition.native_name
+                    or io_definition.contract_key
+                ),
                 "show_to_user": show,
-                "signal_definition": sig,
-                "signal_name": sig.promoted_signal_name or "",
+                "io_definition": io_definition,
+                "signal_name": io_definition.promoted_signal_name or "",
             },
         )
 
-    for sig in validator_sigs:
-        if sig.direction != SignalDirection.OUTPUT:
+    for io_definition in validator_io_definitions:
+        if io_definition.direction != StepIODirection.OUTPUT:
             continue
-        if sig.io_medium == StepIOMedium.ARTIFACT:
+        if io_definition.io_medium == StepIOMedium.ARTIFACT:
             continue
-        show = _is_signal_shown(sig.contract_key, display_step_outputs)
-        output_signals.append(
+        show = _is_step_output_shown(
+            io_definition.contract_key,
+            display_step_outputs,
+        )
+        output_values.append(
             {
-                "slug": sig.contract_key,
-                "label": sig.label or sig.contract_key,
+                "slug": io_definition.contract_key,
+                "label": io_definition.label or io_definition.contract_key,
                 "show_to_user": show,
-                "signal_definition": sig,
+                "io_definition": io_definition,
                 # Validator-owned outputs read the promotion name from
                 # the overlay table (workflow-scoped). The in-row
                 # ``promoted_signal_name`` on validator-owned rows is
                 # never written by the UI — the fall-back only matters
                 # if a seeder or test fixture set it directly.
                 "signal_name": (
-                    overlay_map.get(sig.pk) or sig.promoted_signal_name or ""
+                    overlay_map.get(io_definition.pk)
+                    or io_definition.promoted_signal_name
+                    or ""
                 ),
             },
         )
 
     has_unmapped_required = any(
-        s["required"] and not s["source_data_path"] for s in input_signals
+        s["required"] and not s["source_data_path"] for s in input_values
     )
 
     return {
-        "input_signals": input_signals,
-        "output_signals": output_signals,
-        "has_inputs": bool(input_signals),
-        "has_outputs": bool(output_signals),
+        "input_values": input_values,
+        "output_values": output_values,
+        "has_inputs": bool(input_values),
+        "has_outputs": bool(output_values),
         "has_unmapped_required": has_unmapped_required,
     }
 
@@ -1497,10 +1525,10 @@ def _sync_step_file_port_bindings(step: WorkflowStep, form: forms.Form) -> None:
     from validibot.validations.models import StepInputBinding
 
     for update in build_updates():
-        signal_definition = update["signal_definition"]
+        io_definition = update["io_definition"]
         StepInputBinding.objects.update_or_create(
             workflow_step=step,
-            signal_definition=signal_definition,
+            io_definition=io_definition,
             defaults={
                 "source_scope": update["source_scope"],
                 "source_data_path": update["source_data_path"],
@@ -1517,10 +1545,10 @@ def build_fmu_config(
     """Build step config for an FMU step with a step-level FMU upload.
 
     Returns a ``(config, fmu_variables)`` tuple. ``fmu_variables`` is a
-    TRI-STATE that ``_sync_fmu_signals()`` interprets to decide
+    TRI-STATE that ``_sync_fmu_step_io()`` interprets to decide
     StepIODefinition lifecycle:
 
-      - ``None``  → no change to FMU signals (no new upload, no
+      - ``None``  → no change to FMU I/O definitions (no new upload, no
                     removal; e.g., author edited simulation timing).
                     Preserves existing rows AND their parser-fact
                     StepIODefinitions.
@@ -1528,21 +1556,21 @@ def build_fmu_config(
                     FMU-origin StepIODefinition (variables + parser
                     facts).
       - ``[...]`` → new FMU uploaded. Reconciles per-variable rows
-                    via ``sync_step_fmu_signals``.
+                    via ``sync_step_fmu_io_definitions``.
 
     The list-only contract (``[]`` for "no new upload") was the May
     2026 review's P1 finding: editing simulation timing without
-    re-uploading the FMU cleared the step's signals and any author-
+    re-uploading the FMU cleared the step's I/O definitions and any author-
     built assertions, even though the FMU resource was untouched.
 
     For library FMU validators (non-system), returns ``({}, None)`` —
-    signals come from the validator's ``StepIODefinition`` rows and
+    I/O definitions come from the validator's ``StepIODefinition`` rows and
     are never managed at the step level.
 
     Mirrors ``build_energyplus_config()`` for consistency.
     """
     if not getattr(form, "is_system_validator", False):
-        # Library validator — no step-level config, no signal sync.
+        # Library validator — no step-level config or I/O-definition sync.
         return {}, None
 
     from validibot.validations.services.fmu import FMUIntrospectionError
@@ -1557,8 +1585,8 @@ def build_fmu_config(
     if remove_fmu:
         # Author is removing the FMU — clear everything (including the
         # stamped introspection facts so i.* doesn't keep resolving
-        # against a ghost FMU). Empty list signals removal to
-        # _sync_fmu_signals.
+        # against a ghost FMU). An empty list indicates removal to
+        # _sync_fmu_step_io.
         return {}, []
 
     # Default for the "no new upload, no removal" path: preserve.
@@ -1588,7 +1616,7 @@ def build_fmu_config(
             )
 
         # Convert FMUVariableInfo dataclasses to dicts for
-        # _sync_fmu_signals() to persist as StepIODefinition rows.
+        # _sync_fmu_step_io() to persist as StepIODefinition rows.
         fmu_variables = [
             {
                 "name": v.name,
@@ -1603,7 +1631,7 @@ def build_fmu_config(
             for v in result.variables
         ]
 
-        # Stamp the parser-fact dict so FMUValidator.extract_input_signals
+        # Stamp the parser-fact dict so FMUValidator.extract_input_values
         # can resolve i.fmi_version / i.input_variable_count / etc. at
         # runtime for step-level uploads against the system FMU
         # validator. Without this, the static catalog entries on the
@@ -1698,7 +1726,7 @@ def build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
     }
 
 
-def _sync_fmu_signals(
+def _sync_fmu_step_io(
     step: WorkflowStep,
     fmu_vars: list[dict[str, Any]] | None,
 ) -> None:
@@ -1710,48 +1738,48 @@ def _sync_fmu_signals(
                       edited unrelated config like simulation timing).
                       Existing rows survive untouched.
       - ``[]``      → user removed the FMU. Clear all FMU-origin
-                      step-owned signals.
+                      step-owned I/O definitions.
       - ``[...]``   → new FMU uploaded. Reconcile via
-                      ``sync_step_fmu_signals``.
+                      ``sync_step_fmu_io_definitions``.
 
     The ``None`` no-op branch was the May 2026 review's P1 fix:
     previously, editing simulation timing without re-uploading the
-    FMU cleared every step-owned FMU signal (including parser
+    FMU cleared every step-owned FMU I/O definition (including parser
     facts) and cascaded any author-built assertions.
     """
-    from validibot.validations.services.fmu_signals import clear_step_fmu_signals
-    from validibot.validations.services.fmu_signals import sync_step_fmu_signals
+    from validibot.validations.services.fmu_step_io import clear_step_fmu_io_definitions
+    from validibot.validations.services.fmu_step_io import sync_step_fmu_io_definitions
 
     if fmu_vars is None:
         return
     if fmu_vars:
-        sync_step_fmu_signals(step, fmu_vars)
+        sync_step_fmu_io_definitions(step, fmu_vars)
     else:
-        clear_step_fmu_signals(step)
+        clear_step_fmu_io_definitions(step)
 
 
-def _sync_template_signals(
+def _sync_template_step_io(
     step: WorkflowStep,
     template_vars: list[dict[str, Any]],
 ) -> None:
     """Sync EnergyPlus template variables to ``StepIODefinition`` rows.
 
     Receives the ``template_vars`` list produced by
-    ``build_energyplus_config()`` and syncs it to the relational signal
-    model.  If the list is empty (template was removed), clears any
-    existing step-owned template signals.
+    ``build_energyplus_config()`` and syncs it to the relational step I/O
+    model. If the list is empty (template was removed), it clears any
+    existing step-owned template definitions.
     """
-    from validibot.validations.services.template_signals import (
-        clear_step_template_signals,
+    from validibot.validations.services.template_step_io import (
+        clear_step_template_io_definitions,
     )
-    from validibot.validations.services.template_signals import (
-        sync_step_template_signals,
+    from validibot.validations.services.template_step_io import (
+        sync_step_template_io_definitions,
     )
 
     if template_vars:
-        sync_step_template_signals(step, template_vars)
+        sync_step_template_io_definitions(step, template_vars)
     else:
-        clear_step_template_signals(step)
+        clear_step_template_io_definitions(step)
 
 
 def _compute_insert_order(
@@ -1887,18 +1915,16 @@ def save_workflow_step(
     if vtype == ValidationType.ENERGYPLUS:
         _sync_energyplus_resources(step, form)
         _sync_step_file_port_bindings(step, form)
-        _sync_template_signals(step, template_vars)
+        _sync_template_step_io(step, template_vars)
     elif vtype == ValidationType.FMU and getattr(form, "is_system_validator", False):
         _sync_fmu_resources(step, form)
-        _sync_fmu_signals(step, fmu_vars)
+        _sync_fmu_step_io(step, fmu_vars)
 
-    # Ensure bindings exist for validator-owned input signals so the
-    # signal resolution engine activates (instead of legacy fallback).
-    from validibot.validations.services.signal_bindings import (
-        ensure_step_signal_bindings,
-    )
+    # Ensure bindings exist for validator-owned step inputs so the
+    # input resolution engine activates.
+    from validibot.validations.services.input_bindings import ensure_step_input_bindings
 
-    ensure_step_signal_bindings(step)
+    ensure_step_input_bindings(step)
 
     return step
 

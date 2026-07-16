@@ -27,8 +27,8 @@ from __future__ import annotations
 
 import pytest
 
-from validibot.validations.constants import SignalDirection
-from validibot.validations.constants import SignalOriginKind
+from validibot.validations.constants import StepIODirection
+from validibot.validations.constants import StepIOOriginKind
 from validibot.validations.services.signal_resolution import RESERVED_CEL_NAMES
 from validibot.validations.services.signal_resolution import SignalResolutionError
 from validibot.validations.services.signal_resolution import resolve_workflow_signals
@@ -189,7 +189,7 @@ class TestResolveWorkflowSignals:
     def test_empty_workflow_returns_empty_dict(self):
         """A workflow with no signal mappings should return an empty
         ``SignalResolutionResult``.  This is the base case for workflows
-        that rely solely on step-level signal bindings.
+        that rely solely on step-level input bindings.
         """
         workflow = WorkflowFactory()
 
@@ -317,8 +317,8 @@ class TestValidateSignalNameUnique:
         StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
-            direction=SignalDirection.OUTPUT,
-            origin_kind=SignalOriginKind.CATALOG,
+            direction=StepIODirection.OUTPUT,
+            origin_kind=StepIOOriginKind.CATALOG,
             promoted_signal_name="emissivity",
         )
 

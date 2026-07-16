@@ -152,7 +152,7 @@ class TestInputStageAssertionGating:
         failure that surfaced when I first wrote these tests with
         MagicMocks.
         """
-        from validibot.validations.constants import SignalDirection
+        from validibot.validations.constants import StepIODirection
         from validibot.validations.models import StepIODefinition
         from validibot.validations.tests.factories import ValidationRunFactory
         from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -164,7 +164,7 @@ class TestInputStageAssertionGating:
             validator=validator,
             contract_key="zone_count",
             native_name="zone_count",
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             data_type="number",
             label="Zone Count",
         )
@@ -442,7 +442,7 @@ class TestInputStageAssertionGating:
         revision 2 (or some other arbitrary row) and drop the legitimate
         ``simulated_conditioned_area_m2`` value.
         """
-        from validibot.validations.constants import SignalDirection
+        from validibot.validations.constants import StepIODirection
         from validibot.validations.models import StepIODefinition
         from validibot.validations.tests.factories import ValidationRunFactory
         from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -462,7 +462,7 @@ class TestInputStageAssertionGating:
             validator=validator_v1_0,
             contract_key="simulated_conditioned_area_m2",
             native_name="simulated_conditioned_area_m2",
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
             data_type="number",
             label="Simulated Conditioned Area",
         )
@@ -474,7 +474,7 @@ class TestInputStageAssertionGating:
             validator=validator_v1_1,
             contract_key="site_eui_kwh_m2",
             native_name="site_eui_kwh_m2",
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
             data_type="number",
             label="Site EUI",
         )
@@ -524,7 +524,7 @@ class TestInputStageAssertionGating:
 
         Regression test for the May 2026 code review's P1 finding.
         """
-        from validibot.validations.constants import SignalDirection
+        from validibot.validations.constants import StepIODirection
         from validibot.validations.models import StepIODefinition
 
         engine, validator, submission, ruleset, run_context = self._build_fixture(
@@ -538,13 +538,13 @@ class TestInputStageAssertionGating:
         # assert against s.* directly in this test (would require a
         # second assertion); the regression we're guarding is the
         # SQL query that drives _inject_promotions.
-        sig = StepIODefinition.objects.get(
+        io_definition = StepIODefinition.objects.get(
             validator=validator,
             contract_key="zone_count",
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
         )
-        sig.promoted_signal_name = "zone_count"
-        sig.save(update_fields=["promoted_signal_name"])
+        io_definition.promoted_signal_name = "zone_count"
+        io_definition.save(update_fields=["promoted_signal_name"])
 
         clear_backend_cache()
         with patch(

@@ -2,7 +2,7 @@
 Tests for the THERM validator.
 
 TODO: Add comprehensive tests once the THERM implementation is
-complete (parser data extraction, domain checks, signal extraction,
+complete (parser data extraction, domain checks, output-value extraction,
 and validator integration).
 """
 

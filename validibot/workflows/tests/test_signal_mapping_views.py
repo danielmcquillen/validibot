@@ -41,7 +41,9 @@ from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.users.tests.utils import ensure_all_roles_exist
 from validibot.validations.constants import AssertionType
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import StepIODirection
+from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import StepIODefinition
@@ -734,7 +736,7 @@ class TestSignalMappingDeleteView(TestCase):
             WorkflowSignalMapping.objects.filter(pk=mapping.pk).exists(),
         )
 
-    def test_delete_blocked_when_signal_referenced_in_cel_assertion(self):
+    def test_delete_blocked_when_io_definition_referenced_in_cel_assertion(self):
         """Deleting a signal that is used in a CEL assertion must be
         blocked with an error message listing the referencing assertions.
 
@@ -786,7 +788,7 @@ class TestSignalMappingDeleteView(TestCase):
         trigger = json.loads(response["HX-Trigger"])
         self.assertIn("target_eui", trigger["toast"]["message"])
 
-    def test_delete_blocked_when_signal_referenced_in_when_expression(self):
+    def test_delete_blocked_when_io_definition_referenced_in_when_expression(self):
         """A signal used in a guard condition (when_expression) must
         also block deletion.
 
@@ -2235,7 +2237,13 @@ class TestPromoteOutputView(TestCase):
     def setUpTestData(cls):
         ensure_all_roles_exist()
 
-    def _create_output_signal(self, workflow, step=None):
+    def _create_output_definition(
+        self,
+        workflow,
+        step=None,
+        *,
+        io_medium=StepIOMedium.VALUE,
+    ):
         """Create a step with an output StepIODefinition for testing."""
         if step is None:
             validator = ValidatorFactory(
@@ -2251,7 +2259,13 @@ class TestPromoteOutputView(TestCase):
         return StepIODefinition.objects.create(
             workflow_step=step,
             contract_key="site_eui",
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
+            data_type=(
+                CatalogValueType.ARTIFACT_REF
+                if io_medium == StepIOMedium.ARTIFACT
+                else CatalogValueType.NUMBER
+            ),
+            io_medium=io_medium,
             promoted_signal_name="",
         )
 
@@ -2265,14 +2279,14 @@ class TestPromoteOutputView(TestCase):
         """
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
-        signal_def = self._create_output_signal(workflow)
+        io_definition = self._create_output_definition(workflow)
 
         url = reverse(
             "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
-                "step_id": signal_def.workflow_step_id,
-                "signal_id": signal_def.pk,
+                "step_id": io_definition.workflow_step_id,
+                "io_definition_id": io_definition.pk,
             },
         )
 
@@ -2280,8 +2294,8 @@ class TestPromoteOutputView(TestCase):
 
         self.assertEqual(response.status_code, 204)
         self.assertIn("signals-changed", response["HX-Trigger"])
-        signal_def.refresh_from_db()
-        self.assertEqual(signal_def.promoted_signal_name, "eui")
+        io_definition.refresh_from_db()
+        self.assertEqual(io_definition.promoted_signal_name, "eui")
 
     def test_unpromote_clears_signal_name(self):
         """POST with an empty signal_name must clear the promotion.
@@ -2291,24 +2305,24 @@ class TestPromoteOutputView(TestCase):
         """
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
-        signal_def = self._create_output_signal(workflow)
-        signal_def.promoted_signal_name = "eui"
-        signal_def.save(update_fields=["promoted_signal_name"])
+        io_definition = self._create_output_definition(workflow)
+        io_definition.promoted_signal_name = "eui"
+        io_definition.save(update_fields=["promoted_signal_name"])
 
         url = reverse(
             "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
-                "step_id": signal_def.workflow_step_id,
-                "signal_id": signal_def.pk,
+                "step_id": io_definition.workflow_step_id,
+                "io_definition_id": io_definition.pk,
             },
         )
 
         response = self.client.post(url, {"signal_name": ""})
 
         self.assertEqual(response.status_code, 204)
-        signal_def.refresh_from_db()
-        self.assertEqual(signal_def.promoted_signal_name, "")
+        io_definition.refresh_from_db()
+        self.assertEqual(io_definition.promoted_signal_name, "")
 
     def test_promote_duplicate_name_returns_error(self):
         """POST with a signal_name that already exists in the workflow
@@ -2325,22 +2339,22 @@ class TestPromoteOutputView(TestCase):
             name="eui",
             source_path="energy.eui",
         )
-        signal_def = self._create_output_signal(workflow)
+        io_definition = self._create_output_definition(workflow)
 
         url = reverse(
             "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
-                "step_id": signal_def.workflow_step_id,
-                "signal_id": signal_def.pk,
+                "step_id": io_definition.workflow_step_id,
+                "io_definition_id": io_definition.pk,
             },
         )
 
         response = self.client.post(url, {"signal_name": "eui"})
 
         self.assertEqual(response.status_code, 400)
-        signal_def.refresh_from_db()
-        self.assertEqual(signal_def.promoted_signal_name, "")
+        io_definition.refresh_from_db()
+        self.assertEqual(io_definition.promoted_signal_name, "")
 
     def test_promote_invalid_name_returns_error(self):
         """POST with an invalid CEL identifier must return 400.
@@ -2351,22 +2365,46 @@ class TestPromoteOutputView(TestCase):
         """
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
-        signal_def = self._create_output_signal(workflow)
+        io_definition = self._create_output_definition(workflow)
 
         url = reverse(
             "workflows:workflow_step_promote_step_io",
             kwargs={
                 "pk": workflow.pk,
-                "step_id": signal_def.workflow_step_id,
-                "signal_id": signal_def.pk,
+                "step_id": io_definition.workflow_step_id,
+                "io_definition_id": io_definition.pk,
             },
         )
 
         response = self.client.post(url, {"signal_name": "123bad"})
 
         self.assertEqual(response.status_code, 400)
-        signal_def.refresh_from_db()
-        self.assertEqual(signal_def.promoted_signal_name, "")
+        io_definition.refresh_from_db()
+        self.assertEqual(io_definition.promoted_signal_name, "")
+
+    def test_promote_artifact_returns_error(self):
+        """Artifact outputs stay in the artifact namespace and cannot become signals."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        io_definition = self._create_output_definition(
+            workflow,
+            io_medium=StepIOMedium.ARTIFACT,
+        )
+        url = reverse(
+            "workflows:workflow_step_promote_step_io",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": io_definition.workflow_step_id,
+                "io_definition_id": io_definition.pk,
+            },
+        )
+
+        response = self.client.post(url, {"signal_name": "report"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Only CEL/JSON values", response.json()["errors"][0])
+        io_definition.refresh_from_db()
+        self.assertEqual(io_definition.promoted_signal_name, "")
 
     def test_promote_validator_owned_row_writes_overlay(self):
         """Validator-owned StepIODefinitions promote via the overlay table.
@@ -2382,7 +2420,7 @@ class TestPromoteOutputView(TestCase):
         URL's step_id. Now the view detects validator-owned rows
         (validator FK matches the step's validator) and writes a
         WorkflowStepIOPromotion overlay row keyed on
-        (workflow_step, signal_definition).
+        (workflow_step, io_definition).
 
         The catalog row itself stays unchanged so other workflows
         using the same validator are unaffected.
@@ -2402,7 +2440,7 @@ class TestPromoteOutputView(TestCase):
         catalog_row = StepIODefinition.objects.create(
             validator=validator,
             contract_key="zone_count",
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             promoted_signal_name="",
         )
         step = WorkflowStepFactory(
@@ -2416,7 +2454,7 @@ class TestPromoteOutputView(TestCase):
             kwargs={
                 "pk": workflow.pk,
                 "step_id": step.pk,
-                "signal_id": catalog_row.pk,
+                "io_definition_id": catalog_row.pk,
             },
         )
 
@@ -2430,7 +2468,7 @@ class TestPromoteOutputView(TestCase):
         # The overlay carries the workflow-scoped promotion.
         overlay = WorkflowStepIOPromotion.objects.get(
             workflow_step=step,
-            signal_definition=catalog_row,
+            io_definition=catalog_row,
         )
         self.assertEqual(overlay.promoted_signal_name, "zones")
 
@@ -2455,7 +2493,7 @@ class TestPromoteOutputView(TestCase):
         catalog_row = StepIODefinition.objects.create(
             validator=validator,
             contract_key="zone_count",
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             promoted_signal_name="",
         )
         step = WorkflowStepFactory(
@@ -2465,7 +2503,7 @@ class TestPromoteOutputView(TestCase):
         )
         WorkflowStepIOPromotion.objects.create(
             workflow_step=step,
-            signal_definition=catalog_row,
+            io_definition=catalog_row,
             promoted_signal_name="zones",
         )
 
@@ -2474,7 +2512,7 @@ class TestPromoteOutputView(TestCase):
             kwargs={
                 "pk": workflow.pk,
                 "step_id": step.pk,
-                "signal_id": catalog_row.pk,
+                "io_definition_id": catalog_row.pk,
             },
         )
 
@@ -2484,7 +2522,7 @@ class TestPromoteOutputView(TestCase):
         self.assertFalse(
             WorkflowStepIOPromotion.objects.filter(
                 workflow_step=step,
-                signal_definition=catalog_row,
+                io_definition=catalog_row,
             ).exists(),
         )
 
@@ -2513,7 +2551,7 @@ class TestPromoteOutputView(TestCase):
         catalog_row = StepIODefinition.objects.create(
             validator=validator,
             contract_key="zone_count",
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
             promoted_signal_name="",
         )
         step_a = WorkflowStepFactory(
@@ -2534,7 +2572,7 @@ class TestPromoteOutputView(TestCase):
                 kwargs={
                     "pk": workflow_a.pk,
                     "step_id": step_a.pk,
-                    "signal_id": catalog_row.pk,
+                    "io_definition_id": catalog_row.pk,
                 },
             ),
             {"signal_name": "zones"},
@@ -2546,7 +2584,7 @@ class TestPromoteOutputView(TestCase):
                 kwargs={
                     "pk": workflow_b.pk,
                     "step_id": step_b.pk,
-                    "signal_id": catalog_row.pk,
+                    "io_definition_id": catalog_row.pk,
                 },
             ),
             {"signal_name": "zone_total"},

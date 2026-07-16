@@ -102,8 +102,8 @@ def _make_template_workflow(
       never runs EnergyPlus, so content doesn't matter)
     - StepIODefinition + StepInputBinding rows for template variables
     """
-    from validibot.validations.services.template_signals import (
-        sync_step_template_signals,
+    from validibot.validations.services.template_step_io import (
+        sync_step_template_io_definitions,
     )
 
     content = template_content or _MINIMAL_TEMPLATE
@@ -121,7 +121,7 @@ def _make_template_workflow(
         validator=validator,
         config=step_config or {"case_sensitive": True},
     )
-    sync_step_template_signals(step, tpl_vars)
+    sync_step_template_io_definitions(step, tpl_vars)
 
     # Attach the template as a step-owned resource
     WorkflowStepResourceFactory(

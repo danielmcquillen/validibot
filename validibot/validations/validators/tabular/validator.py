@@ -5,7 +5,7 @@ native structured validation against the ruleset's Table Schema, evaluates
 per-row CEL assertions through ``row.*`` and aggregate assertions through
 ``col.*``, maps the resulting :class:`NativeFinding`s onto the platform's
 ``ValidationIssue``, and runs the standard dataset ``i.*`` CEL lane. It also
-exposes the ``i.*`` dataset signals so a ``i.num_rows >= 100``-style assertion
+exposes the ``i.*`` dataset input values so a ``i.num_rows >= 100``-style assertion
 can resolve.
 
 Configuration lives on the ruleset, mirroring the JSON Schema validator:
@@ -72,9 +72,9 @@ class TabularValidator(BaseValidator):
 
     def __init__(self, *, config: dict[str, Any] | None = None) -> None:
         super().__init__(config=config)
-        # Populated in validate() and returned by extract_input_signals() so
+        # Populated in validate() and returned by extract_input_values() so
         # dataset (input-stage) CEL assertions can resolve the i.* namespace.
-        self._input_signals: dict[str, Any] = {}
+        self._input_values: dict[str, Any] = {}
 
     def validate(
         self,
@@ -85,7 +85,7 @@ class TabularValidator(BaseValidator):
     ) -> ValidationResult:
         """Validate a tabular submission and return aggregated issues."""
         self.run_context = run_context
-        self._input_signals = {}
+        self._input_values = {}
 
         # 1. Load the structured config (Table Schema). A bad schema is a
         #    configuration error reported as a single finding, not a crash.
@@ -123,10 +123,10 @@ class TabularValidator(BaseValidator):
                 stats={"read_error": exc.code},
             )
 
-        # 3. Dataset signals (i.*) — built before the dataset gate so
+        # 3. Dataset input values (i.*) — built before the dataset gate so
         #    `i.num_rows`/`i.column_names`/… resolve, and returned for downstream
         #    steps. Derived only from the parsed dataframe + submission.
-        self._input_signals = self._build_input_signals(read_result, submission)
+        self._input_values = self._build_input_values(read_result, submission)
 
         # 4. Dataset (input-stage) CEL assertions run BEFORE the native / row /
         #    column passes (ADR-2026-05-26): a *failing* dataset assertion
@@ -149,7 +149,7 @@ class TabularValidator(BaseValidator):
                     total=dataset_result.total,
                     failures=dataset_result.failures,
                 ),
-                signals=self._input_signals,
+                output_values=self._input_values,
                 stats={
                     "num_rows": read_result.num_rows,
                     "num_columns": read_result.num_columns,
@@ -180,7 +180,7 @@ class TabularValidator(BaseValidator):
             schema,
             row_assertions,
             signals=self._workflow_signals(run_context),
-            input_signals=self._input_signals,
+            input_values=self._input_values,
             now=self._run_clock(run_context),
             report_max_examples=report_max_examples,
         )
@@ -193,7 +193,7 @@ class TabularValidator(BaseValidator):
             schema,
             column_assertions,
             signals=self._workflow_signals(run_context),
-            input_signals=self._input_signals,
+            input_values=self._input_values,
             now=self._run_clock(run_context),
             wall_clock_budget_s=limits.max_wallclock_s,
         )
@@ -241,7 +241,7 @@ class TabularValidator(BaseValidator):
                     + len(failed_column_assertion_ids)
                 ),
             ),
-            signals=self._input_signals,
+            output_values=self._input_values,
             stats={
                 "num_rows": read_result.num_rows,
                 "num_columns": read_result.num_columns,
@@ -251,15 +251,15 @@ class TabularValidator(BaseValidator):
             },
         )
 
-    def extract_input_signals(self, payload: Any) -> dict[str, Any] | None:
+    def extract_input_values(self, payload: Any) -> dict[str, Any] | None:
         """Expose the ``i.*`` dataset metadata computed during ``validate()``.
 
-        The signals are derived from the parsed dataframe (row/column counts,
+        The input values are derived from the parsed dataframe (row/column counts,
         column names, dialect), not from re-parsing *payload*, so the argument
         is ignored. Returns ``None`` when no dataset has been read yet, matching
         the base default (which leaves ``i.*`` empty).
         """
-        return self._input_signals or None
+        return self._input_values or None
 
     # ------------------------------------------------------------------ private
 
@@ -434,7 +434,7 @@ class TabularValidator(BaseValidator):
         """Return the workflow signals (s.*) available to row assertions."""
         return getattr(run_context, "workflow_signals", None) or {}
 
-    def _build_input_signals(
+    def _build_input_values(
         self,
         read_result: ReadResult,
         submission: Submission,

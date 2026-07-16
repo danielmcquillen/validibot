@@ -972,18 +972,18 @@ class ValidationRunViewSetTestCase(TestCase):
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data["results"]), 5)
 
-    def test_run_list_query_count_stable_with_signal_bearing_outputs(self):
+    def test_run_list_query_count_stable_with_populated_step_outputs(self):
         """Runs whose step runs have populated ``output_values``
         must not issue proportionally more queries than bare runs.
 
         This is the sneaky N+1 case the original ``[review-#5]`` fix
         missed: ``ValidationRunSerializer.get_steps`` calls
         ``build_display_step_outputs(step_run)``, which iterates
-        ``workflow_step.signal_definitions.filter(contract_key__in=...)``
-        per step_run. Without a prefetch on signal_definitions (and a
-        corresponding in-Python filter inside ``_build_signal_map``),
-        a run with 10 step_runs × 2 signals issues ~10 extra queries
-        against signal_definitions on top of the base queryset.
+        ``workflow_step.step_io_definitions.filter(contract_key__in=...)``
+        per step_run. Without a prefetch on step_io_definitions (and a
+        corresponding in-Python filter inside ``_build_step_output_map``),
+        a run with 10 step_runs × 2 output values issues ~10 extra queries
+        against step_io_definitions on top of the base queryset.
 
         The test constructs a realistic shape — each step produces
         ``eui`` and ``total_cost`` as output values
@@ -992,9 +992,9 @@ class ValidationRunViewSetTestCase(TestCase):
         N+1 ever regresses, the 5-run count grows by ~4 × the per-run
         overhead and this test fails loudly.
         """
-        from validibot.validations.constants import SignalDirection
+        from validibot.validations.constants import StepIODirection
 
-        # Build a workflow step with two OUTPUT signal definitions
+        # Build a workflow step with two OUTPUT step I/O definitions
         # on its validator. The serializer's
         # ``build_display_step_outputs`` helper looks these up by
         # ``contract_key`` to enrich the dashboard payload — the
@@ -1003,12 +1003,12 @@ class ValidationRunViewSetTestCase(TestCase):
         StepIODefinitionFactory(
             validator=target_validator,
             contract_key="eui",
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
         )
         StepIODefinitionFactory(
             validator=target_validator,
             contract_key="total_cost",
-            direction=SignalDirection.OUTPUT,
+            direction=StepIODirection.OUTPUT,
         )
         target_workflow_step = WorkflowStepFactory(
             workflow=self.workflow,
@@ -1016,7 +1016,7 @@ class ValidationRunViewSetTestCase(TestCase):
             display_settings={"display_step_outputs": ["eui", "total_cost"]},
         )
 
-        def _make_run_with_signal_bearing_step():
+        def _make_run_with_output_values():
             run = ValidationRunFactory(
                 org=self.org,
                 user=self.user,
@@ -1042,7 +1042,7 @@ class ValidationRunViewSetTestCase(TestCase):
         self.client.force_authenticate(user=self.user)
         self.client.get(runs_list_url(self.org))  # warm
 
-        _make_run_with_signal_bearing_step()
+        _make_run_with_output_values()
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
 
@@ -1050,9 +1050,9 @@ class ValidationRunViewSetTestCase(TestCase):
             response = self.client.get(runs_list_url(self.org))
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data["results"]), 1)
-            # Sanity: the output_signals enrichment actually ran.
+            # Sanity: the output_values enrichment actually ran.
             self.assertEqual(
-                len(response.data["results"][0]["steps"][0]["output_signals"]),
+                len(response.data["results"][0]["steps"][0]["output_values"]),
                 2,
             )
 
@@ -1061,7 +1061,7 @@ class ValidationRunViewSetTestCase(TestCase):
         # Add four more runs. The delta MUST be bounded by a small
         # constant — not proportional to the new run count.
         for _ in range(4):
-            _make_run_with_signal_bearing_step()
+            _make_run_with_output_values()
 
         with CaptureQueriesContext(connection) as five_run_ctx:
             response = self.client.get(runs_list_url(self.org))
@@ -1069,12 +1069,12 @@ class ValidationRunViewSetTestCase(TestCase):
             self.assertEqual(len(response.data["results"]), 5)
 
         # The real assertion — flat line between 1 and 5 runs.
-        # If it regresses, signal_definitions is being queried per
-        # step_run inside ``_build_signal_map``.
+        # If it regresses, step_io_definitions is being queried per
+        # step_run inside ``_build_step_output_map``.
         self.assertEqual(
             len(five_run_ctx.captured_queries),
             one_run_query_count,
-            f"signal-bearing N+1 regressed — 1-run={one_run_query_count}, "
+            f"step-output N+1 regressed — 1-run={one_run_query_count}, "
             f"5-run={len(five_run_ctx.captured_queries)}",
         )
 

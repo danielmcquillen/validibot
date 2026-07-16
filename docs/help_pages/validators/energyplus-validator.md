@@ -1,6 +1,8 @@
 # EnergyPlus Validator
 
-The EnergyPlus Validator runs building energy simulations using the EnergyPlus engine and extracts performance metrics as signals for assertion evaluation.
+The EnergyPlus Validator runs building energy simulations using the EnergyPlus
+engine and extracts performance metrics as step output values for assertion
+evaluation.
 
 This is a container-based (advanced) validator. It dispatches your submission to an isolated EnergyPlus container, runs the simulation, and collects the output metrics. You can then write CEL assertions against those metrics to check compliance with energy codes, design targets, or performance requirements.
 
@@ -12,15 +14,15 @@ This is a container-based (advanced) validator. It dispatches your submission to
 2. **Optionally resolves** template parameters (if using parametric submissions)
 3. **Runs** the EnergyPlus simulation in an isolated container
 4. **Extracts** energy consumption, comfort, and building metrics from the simulation output
-5. **Exposes** all metrics as signals for CEL assertion evaluation
+5. **Exposes** all metrics as step outputs for CEL assertion evaluation
 
 ---
 
-## Input signals
+## Step inputs
 
 These are values you provide with your submission (as metadata). They're used for comparison assertions against simulation output.
 
-| Signal | Type | Description |
+| Input | Type | Description |
 |--------|------|-------------|
 | `expected_floor_area_m2` | Number | Your expected floor area, for comparison with simulated value |
 | `target_eui_kwh_m2` | Number | Target Energy Use Intensity for code compliance |
@@ -28,13 +30,13 @@ These are values you provide with your submission (as metadata). They're used fo
 
 ---
 
-## Output signals
+## Step outputs
 
 These are extracted from the EnergyPlus simulation results. Use them in CEL assertions to check performance.
 
 ### Energy consumption
 
-| Signal | Type | Description |
+| Output | Type | Description |
 |--------|------|-------------|
 | `site_electricity_kwh` | Number | Total site electricity consumption |
 | `site_natural_gas_kwh` | Number | Total site natural gas consumption |
@@ -43,13 +45,13 @@ These are extracted from the EnergyPlus simulation results. Use them in CEL asse
 
 ### Energy intensity
 
-| Signal | Type | Description |
+| Output | Type | Description |
 |--------|------|-------------|
 | `site_eui_kwh_m2` | Number | Site energy use intensity (total energy per floor area) |
 
 ### End-use breakdown
 
-| Signal | Type | Description |
+| Output | Type | Description |
 |--------|------|-------------|
 | `heating_energy_kwh` | Number | Total heating energy |
 | `cooling_energy_kwh` | Number | Total cooling energy |
@@ -60,7 +62,7 @@ These are extracted from the EnergyPlus simulation results. Use them in CEL asse
 
 ### Comfort and performance
 
-| Signal | Type | Description |
+| Output | Type | Description |
 |--------|------|-------------|
 | `unmet_heating_hours` | Number | Hours where heating setpoint was not met |
 | `unmet_cooling_hours` | Number | Hours where cooling setpoint was not met |
@@ -68,27 +70,27 @@ These are extracted from the EnergyPlus simulation results. Use them in CEL asse
 
 ### Building characteristics
 
-| Signal | Type | Description |
+| Output | Type | Description |
 |--------|------|-------------|
 | `floor_area_m2` | Number | Total conditioned floor area from the model |
 | `zone_count` | Number | Number of thermal zones in the model |
 
 ### Window and envelope
 
-| Signal | Type | Description |
+| Output | Type | Description |
 |--------|------|-------------|
 | `window_heat_gain_kwh` | Number | Heat gain through windows |
 | `window_heat_loss_kwh` | Number | Heat loss through windows |
 | `window_transmitted_solar_kwh` | Number | Solar energy transmitted through windows |
 
-### Derived signals
+### Derived values
 
-These are computed from other signals:
+These are computed from other step values:
 
-| Signal | Type | Computed from |
+| Value | Type | Computed from |
 |--------|------|---------------|
 | `total_unmet_hours` | Number | `unmet_heating_hours + unmet_cooling_hours` |
-| `total_site_energy_kwh` | Number | Sum of all energy source signals |
+| `total_site_energy_kwh` | Number | Sum of all energy-source outputs |
 
 ---
 
@@ -131,4 +133,4 @@ The validator supports parametric submissions using JSON templates. You submit a
 
 - **Check unmet hours** as a sanity check. High unmet hours mean the HVAC system couldn't maintain setpoints, which usually indicates an undersized system or a modeling error.
 - **Compare floor area** against your expected value. A mismatch often means the model geometry was modified without updating the metadata.
-- **Use derived signals** like `total_site_energy_kwh` for overall compliance checks rather than summing individual signals in your CEL expression.
+- **Use derived values** like `total_site_energy_kwh` for overall compliance checks rather than summing individual outputs in your CEL expression.

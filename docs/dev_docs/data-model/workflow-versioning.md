@@ -112,7 +112,7 @@ Referenced rows include:
 
 - system and library `Validator` rows, because validators have their own
   `(slug, version)` trust boundary;
-- validator-owned signal definitions and derivations;
+- validator-owned step I/O definitions and derivations;
 - catalog `ValidatorResourceFile` rows, because content hashes protect
   shared file bytes;
 - historical rows such as submissions, validation runs, findings,

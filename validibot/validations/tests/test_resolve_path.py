@@ -1034,7 +1034,7 @@ class TestFilterExpressionSysMLv2:
     """Integration tests against the actual SysML v2 radiator model.
 
     These load the real test asset and resolve the exact paths that
-    the SysML v2 workflow needs for signal bindings.
+    the SysML v2 workflow needs for input bindings.
     """
 
     @pytest.fixture

@@ -1,6 +1,4 @@
-"""Validator library browsing: listing, detail, signals, assertions,
-and signal definition views.
-"""
+"""Validator library browsing: listing, detail, step I/O, and assertions."""
 
 import logging
 
@@ -23,7 +21,7 @@ from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import VALIDATION_LIBRARY_LAYOUT_SESSION_KEY
 from validibot.validations.constants import VALIDATION_LIBRARY_TAB_SESSION_KEY
 from validibot.validations.constants import LibraryLayout
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.forms import StepIODefinitionForm
@@ -152,7 +150,7 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
             )
             .select_related("custom_validator", "org")
             .prefetch_related(
-                "signal_definitions",
+                "step_io_definitions",
                 "default_ruleset",
                 "default_ruleset__assertions",
             )
@@ -237,8 +235,8 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
                     request=self.request,
                     kwargs=kwargs,
                 ),
-                "signals": reverse_with_org(
-                    "validations:validator_version_signals_tab",
+                "step_io": reverse_with_org(
+                    "validations:validator_version_step_io_tab",
                     request=self.request,
                     kwargs=kwargs,
                 ),
@@ -252,8 +250,8 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
                     request=self.request,
                     kwargs=kwargs,
                 ),
-                "signals_list": reverse_with_org(
-                    "validations:validator_version_signals_list",
+                "step_io_list": reverse_with_org(
+                    "validations:validator_version_step_io_list",
                     request=self.request,
                     kwargs=kwargs,
                 ),
@@ -266,8 +264,8 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
                 request=self.request,
                 kwargs=kwargs,
             ),
-            "signals": reverse_with_org(
-                "validations:validator_signals_tab",
+            "step_io": reverse_with_org(
+                "validations:validator_step_io_tab",
                 request=self.request,
                 kwargs=kwargs,
             ),
@@ -281,8 +279,8 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
                 request=self.request,
                 kwargs=kwargs,
             ),
-            "signals_list": reverse_with_org(
-                "validations:validator_signals_list",
+            "step_io_list": reverse_with_org(
+                "validations:validator_step_io_list",
                 request=self.request,
                 kwargs=kwargs,
             ),
@@ -467,7 +465,7 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 "description": str(
                     _(
                         "Upload an FMU to auto-discover input and "
-                        "output signals and create default assertions.",
+                        "step outputs and create default assertions.",
                     ),
                 ),
                 "icon": "bi-cpu",
@@ -618,8 +616,8 @@ class ValidatorVersionsListView(ValidatorLibraryMixin, TemplateView):
         return breadcrumbs
 
 
-class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
-    """Signals tab on the validator detail page."""
+class ValidatorStepIOTabView(ValidatorLibraryMixin, DetailView):
+    """Step inputs and outputs tab on the validator detail page."""
 
     model = Validator
     context_object_name = "validator"
@@ -656,37 +654,41 @@ class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
             and context["is_latest_validator_version"]
         )
 
-        all_signals = validator.signal_definitions.all().order_by(
+        all_io_definitions = validator.step_io_definitions.all().order_by(
             "direction",
             "order",
             "contract_key",
         )
-        inputs = [s for s in all_signals if s.direction == SignalDirection.INPUT]
-        outputs = [s for s in all_signals if s.direction == SignalDirection.OUTPUT]
+        inputs = [
+            definition
+            for definition in all_io_definitions
+            if definition.direction == StepIODirection.INPUT
+        ]
+        outputs = [
+            definition
+            for definition in all_io_definitions
+            if definition.direction == StepIODirection.OUTPUT
+        ]
 
-        signal_create_form = StepIODefinitionForm(
-            initial={"direction": SignalDirection.INPUT},
+        io_definition_create_form = StepIODefinitionForm(
+            initial={"direction": StepIODirection.INPUT},
             validator=validator,
         )
         if not validator.has_processor:
-            signal_create_form.fields["direction"].widget = forms.HiddenInput()
+            io_definition_create_form.fields["direction"].widget = forms.HiddenInput()
 
         show_output_tab = bool(validator.has_processor)
-        requested_signals_tab = (
-            self.request.GET.get("signals_tab") or "inputs"
-        ).lower()
-        allowed_signals_tabs = {"inputs"}
+        requested_io_tab = (self.request.GET.get("step_io_tab") or "inputs").lower()
+        allowed_io_tabs = {"inputs"}
         if show_output_tab:
-            allowed_signals_tabs.add("outputs")
-        active_signals_tab = (
-            requested_signals_tab
-            if requested_signals_tab in allowed_signals_tabs
-            else "inputs"
+            allowed_io_tabs.add("outputs")
+        active_step_io_tab = (
+            requested_io_tab if requested_io_tab in allowed_io_tabs else "inputs"
         )
 
         context.update(
             {
-                "active_tab": "signals",
+                "active_tab": "step_io",
                 "can_manage_validators": self.can_manage_validators(),
                 "can_edit_validator": can_edit,
                 "return_tab": self._resolve_return_tab(validator),
@@ -694,21 +696,21 @@ class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
                 "outputs": outputs,
                 "catalog_tab_prefix": "validator-detail",
                 "show_output_tab": show_output_tab,
-                "active_signals_tab": active_signals_tab,
-                "signal_create_form": signal_create_form,
-                "signal_edit_forms": {
-                    signal.pk: {
+                "active_step_io_tab": active_step_io_tab,
+                "io_definition_create_form": io_definition_create_form,
+                "io_definition_edit_forms": {
+                    definition.pk: {
                         "form": StepIODefinitionForm(
-                            instance=signal,
+                            instance=definition,
                             validator=validator,
                         ),
                         "title": _(
-                            "Edit Input Signal"
-                            if signal.direction == SignalDirection.INPUT
-                            else "Edit Output Signal"
+                            "Edit Step Input"
+                            if definition.direction == StepIODirection.INPUT
+                            else "Edit Step Output"
                         ),
                     }
-                    for signal in all_signals
+                    for definition in all_io_definitions
                 },
                 "probe_result": (
                     getattr(validator.fmu_model, "probe_result", None)
@@ -769,7 +771,7 @@ class ValidatorDefaultAssertionsView(ValidatorLibraryMixin, DetailView):
         default_ruleset = validator.default_ruleset
         assertions = (
             default_ruleset.assertions.all()
-            .select_related("target_signal_definition")
+            .select_related("target_io_definition")
             .order_by("order", "pk")
             if default_ruleset
             else RulesetAssertion.objects.none()
@@ -822,14 +824,14 @@ class ValidatorAssertionsTabView(ValidatorLibraryMixin, DetailView):
         default_ruleset = validator.default_ruleset
         default_assertions = (
             default_ruleset.assertions.all()
-            .select_related("target_signal_definition")
+            .select_related("target_io_definition")
             .order_by("order", "pk")
             if default_ruleset
             else RulesetAssertion.objects.none()
         )
-        signal_choices = [
-            (sig.id, sig.contract_key)
-            for sig in validator.signal_definitions.order_by("contract_key")
+        io_definition_choices = [
+            (io_definition.id, io_definition.contract_key)
+            for io_definition in validator.step_io_definitions.order_by("contract_key")
         ]
         can_edit = (
             self.can_manage_validators()
@@ -849,7 +851,7 @@ class ValidatorAssertionsTabView(ValidatorLibraryMixin, DetailView):
 
         if can_edit:
             context["default_assertion_create_form"] = ValidatorRuleForm(
-                signal_choices=signal_choices,
+                io_definition_choices=io_definition_choices,
             )
             context["default_assertion_edit_forms"] = {
                 rule.id: ValidatorRuleForm(
@@ -859,11 +861,11 @@ class ValidatorAssertionsTabView(ValidatorLibraryMixin, DetailView):
                         "rule_type": rule.rule_type,
                         "cel_expression": rule.expression,
                         "order": rule.order,
-                        "signals": [
+                        "io_definitions": [
                             link.catalog_entry_id for link in rule.rule_entries.all()
                         ],
                     },
-                    signal_choices=signal_choices,
+                    io_definition_choices=io_definition_choices,
                 )
                 for rule in default_assertions
             }
@@ -892,10 +894,10 @@ class ValidatorAssertionsTabView(ValidatorLibraryMixin, DetailView):
         return breadcrumbs
 
 
-class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
-    """Full-page list of all signals for a validator with complete details."""
+class ValidatorStepIOListView(ValidatorLibraryMixin, DetailView):
+    """Full-page list of a validator's step I/O definitions."""
 
-    template_name = "validations/library/validator_signals_list.html"
+    template_name = "validations/library/validator_step_io_list.html"
     context_object_name = "validator"
 
     def dispatch(self, request, *args, **kwargs):
@@ -928,13 +930,13 @@ class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
         self.add_validator_version_context(context, validator)
-        # Get all signals ordered by direction then contract_key
-        signals = list(
-            validator.signal_definitions.all().order_by("direction", "contract_key"),
+        # Get all step I/O definitions ordered by direction then contract key.
+        io_definitions = list(
+            validator.step_io_definitions.all().order_by("direction", "contract_key"),
         )
         context.update(
             {
-                "signals": signals,
+                "io_definitions": io_definitions,
                 "can_manage_validators": self.can_manage_validators(),
             },
         )
@@ -960,7 +962,7 @@ class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
         )
         breadcrumbs.append(
             {
-                "name": _("Signals"),
+                "name": _("Inputs & Outputs"),
                 "url": "",
             },
         )
@@ -1077,15 +1079,15 @@ class ValidatorResourceFilesTabView(ValidatorLibraryMixin, DetailView):
         return breadcrumbs
 
 
-class CatalogEntryDetailView(LoginRequiredMixin, View):
-    """Return modal content for a signal definition detail view."""
+class StepIODefinitionDetailView(LoginRequiredMixin, View):
+    """Return modal content for a step I/O definition detail view."""
 
     def get(self, request, entry_pk):
-        signal = get_object_or_404(StepIODefinition, pk=entry_pk)
+        io_definition = get_object_or_404(StepIODefinition, pk=entry_pk)
         return render(
             request,
-            "validations/library/partials/signal_detail_modal_content.html",
+            "validations/library/partials/step_io_detail_modal_content.html",
             {
-                "signal": signal,
+                "io_definition": io_definition,
             },
         )

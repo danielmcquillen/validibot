@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "steps": [
     {
       "config": {},
@@ -29,7 +29,7 @@
             "spec_version": 1,
             "success_message": "",
             "target_data_path": "",
-            "target_signal_ref": null,
+            "target_io_definition_ref": null,
             "when_expression": ""
           },
           {
@@ -48,7 +48,7 @@
             "spec_version": 1,
             "success_message": "",
             "target_data_path": "",
-            "target_signal_ref": null,
+            "target_io_definition_ref": null,
             "when_expression": ""
           },
           {
@@ -67,7 +67,7 @@
             "spec_version": 1,
             "success_message": "",
             "target_data_path": "",
-            "target_signal_ref": null,
+            "target_io_definition_ref": null,
             "when_expression": ""
           },
           {
@@ -86,7 +86,7 @@
             "spec_version": 1,
             "success_message": "",
             "target_data_path": "",
-            "target_signal_ref": null,
+            "target_io_definition_ref": null,
             "when_expression": ""
           }
         ],
@@ -97,8 +97,8 @@
         "version": "1"
       },
       "show_success_messages": true,
-      "signal_bindings": [],
-      "signal_definitions": [],
+      "input_bindings": [],
+      "step_io_definitions": [],
       "step_key": "check_incoming_csv",
       "validator_ref": {
         "is_system": true,

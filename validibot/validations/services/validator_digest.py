@@ -39,7 +39,7 @@ Semantic (covered by the digest):
   ``allowed_extensions`` — the input contract
 - ``resource_types`` — what extra files the validator accepts
 - ``compute_tier`` — affects scheduling/resourcing
-- ``catalog_entries`` — the signal/derivation contract; CHANGES IN
+- ``catalog_entries`` — the step I/O contract; CHANGES IN
   this list mean the validator's input/output schema changed
 
 Not semantic (excluded — cosmetic, identity, or runtime-only):

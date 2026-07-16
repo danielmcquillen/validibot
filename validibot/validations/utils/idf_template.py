@@ -794,10 +794,10 @@ def merge_and_validate_template_parameters(
             # explicit value.  A bare truthiness test (``elif var.default:``)
             # wrongly classified legitimate falsy defaults — notably the
             # number ``0`` / ``0.0`` (defaults can arrive numeric from JSON,
-            # see ``template_signals.py``'s ``str | float | None``) — as
+            # see ``template_step_io.py``'s ``str | float | None``) — as
             # missing, producing spurious "required parameter is missing"
             # errors.  ``None``/``""`` are the canonical "no default"
-            # sentinels (see ``template_signals.py`` and migration 0029);
+            # sentinels (see ``template_step_io.py`` and migration 0029);
             # the inverse of that check is the correct guard here.
             value = var.default
         else:

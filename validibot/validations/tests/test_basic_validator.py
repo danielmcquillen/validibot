@@ -8,8 +8,8 @@ No external processor or container is involved — everything runs in-process.
 The CEL context uses four namespaces:
 
 - ``p`` / ``payload`` — raw submission data
-- ``s`` / ``signals`` — author-defined signals (resolved from signal definitions)
-- ``output`` — this step's validator output signals
+- ``s`` / ``signal`` — author-defined workflow signals
+- ``output`` — this step's validator output values
 - ``steps.<key>.output.<name>`` — upstream step outputs
 
 Raw payload keys are **never** promoted to top-level CEL variables.
@@ -21,8 +21,9 @@ These tests cover:
   with a clear error before any parsing is attempted.
 - **Parse error handling**: malformed JSON/XML produces actionable error messages.
 - **CEL context building**: payload data is accessible under ``p.`` / ``payload.``,
-  signal definitions populate ``s.`` / ``signal.``, and output signals go
-  into the ``o.`` / ``output.`` namespace.  Keys that aren't valid CEL identifiers
+  workflow signals populate ``s.`` / ``signal.``, step inputs populate
+  ``i.`` / ``input.``, and output values go into the ``o.`` / ``output.``
+  namespace. Keys that aren't valid CEL identifiers
   (hyphens, ``@``-prefixes, ``#text``) are naturally contained inside their
   namespace dicts rather than promoted to the root.
 - **End-to-end XML with hyphenated elements**: full ``validate()`` calls with
@@ -201,9 +202,9 @@ class BasicValidatorXmlAssertionTests(TestCase):
     def test_cel_assertion_against_xml(self):
         """CEL expression evaluates against XML-derived dict.
 
-        With the namespaced context, the signal definition for ``price``
-        is resolved into the ``s`` (signals) namespace, so the CEL
-        expression uses ``s.price > 0``.
+        The assertion targets the parsed XML payload directly with
+        ``p.product.price``; its step I/O target provides catalog metadata
+        but does not turn the input into a workflow signal.
         """
         xml_content = "<product><price>25.99</price><name>Widget</name></product>"
         SubmissionFactory(
@@ -211,12 +212,12 @@ class BasicValidatorXmlAssertionTests(TestCase):
             file_type=SubmissionFileType.XML,
         )
         ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
-        price_sig = self.price_entry
+        price_definition = self.price_entry
         RulesetAssertionFactory(
             ruleset=ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_signal_definition=price_sig,
+            target_io_definition=price_definition,
             target_data_path="",
             rhs={"expr": "p.product.price > 0"},
         )
@@ -283,7 +284,7 @@ class BasicValidatorXmlAssertionTests(TestCase):
             ruleset=ruleset,
             assertion_type=AssertionType.BASIC,
             operator=AssertionOperator.EQ,
-            target_signal_definition=entry,
+            target_io_definition=entry,
             target_data_path="",
             rhs={"value": "72"},
         )
@@ -309,7 +310,7 @@ class BasicValidatorNamespaceAwarenessTests(TestCase):
     evaluator's payload-walk actually finds the merged value.
 
     The trap these guard against: an author saves a BASIC
-    assertion with ``target_signal_definition.contract_key =
+    assertion with ``target_io_definition.contract_key =
     "temperature"`` where ``temperature`` is a workflow signal
     (``s.temperature``). Pre-Phase-5 the BASIC evaluator walked
     ``payload["temperature"]`` against the raw submission and
@@ -339,7 +340,7 @@ class BasicValidatorNamespaceAwarenessTests(TestCase):
             assertion_type=AssertionType.BASIC,
             operator=AssertionOperator.EQ,
             target_data_path="temp_threshold",  # bare name post-resolve
-            target_signal_definition=None,
+            target_io_definition=None,
             rhs={"value": 72},
         )
         # Minimal submission — the workflow signal value comes from
@@ -379,9 +380,9 @@ class IsValidCelIdentifierTests(SimpleTestCase):
     raises ``ValueError`` at evaluation time if a context dict contains a key
     that violates this rule.
 
-    The helper is used for signal name validation — ensuring signal contract
-    keys are valid CEL identifiers before they are placed in the ``s`` /
-    ``signals`` namespace.  XML-to-dict conversion can produce keys that are
+    The helper is used for workflow signal name validation, ensuring names are
+    valid CEL identifiers before they are placed in the ``s`` / ``signal``
+    namespace. XML-to-dict conversion can produce keys that are
     valid XML but invalid CEL identifiers (hyphens, ``@``-prefixes, ``#text``);
     these are safely contained inside the ``p`` / ``payload`` namespace dict
     and accessed via bracket notation (e.g., ``p["THERM-XML"]``).
@@ -439,7 +440,7 @@ class IsValidCelIdentifierTests(SimpleTestCase):
 # ---------------------------------------------------------------------------
 # CEL context building — namespaced structure
 # ---------------------------------------------------------------------------
-# The CEL context uses four namespaces: p/payload (raw data), s/signals
+# The CEL context uses four namespaces: p/payload (raw data), s/signal
 # (author-defined signals), output (this step's outputs), and steps
 # (upstream step outputs).  Payload keys are never promoted to top-level
 # CEL variables — they are accessed via p.key or payload.key.
@@ -452,7 +453,7 @@ class CelContextNamespaceTests(TestCase):
     structure and that payload keys are contained within the ``p`` /
     ``payload`` namespace.
 
-    The context has fixed root keys: ``p``, ``payload``, ``s``, ``signals``,
+    The context has fixed root keys: ``p``, ``payload``, ``s``, ``signal``,
     and conditionally ``output`` and ``steps``.  Raw payload keys are
     **never** promoted to top-level CEL variables — they live under
     ``p`` and ``payload`` (which are aliases for the same dict).
@@ -465,7 +466,7 @@ class CelContextNamespaceTests(TestCase):
     ``p["THERM-XML"]``.
 
     Uses real Django model instances via FactoryBoy so the
-    ``signal_definitions.all().only()`` ORM path is exercised naturally.
+    ``step_io_definitions.all().only()`` ORM path is exercised naturally.
     """
 
     @classmethod
@@ -562,8 +563,8 @@ class CelContextNamespaceTests(TestCase):
         self.assertIn("THERM-XML", context["p"])
         self.assertIn("Materials", context["p"])
 
-    def test_validator_inputs_not_in_signals_namespace(self):
-        """Validator input signal definitions do NOT appear in the ``s``
+    def test_validator_inputs_not_in_signal_namespace(self):
+        """Validator step input definitions do NOT appear in the ``s``
         namespace. Validator inputs feed the validator (FMU/EnergyPlus
         parameters), not CEL expressions. Authors access payload data
         via ``p.key`` and signals via ``s.name`` (from workflow-level
@@ -596,14 +597,14 @@ class CelContextNamespaceTests(TestCase):
 # ---------------------------------------------------------------------------
 # CEL context output namespace
 #
-# Output signal definitions are stored in a nested ``output`` dict so that
+# Step output definitions are stored in a nested ``output`` dict so that
 # CEL member access (``output.slug``) resolves correctly.  The context
 # structure ensures output values don't collide with payload or signal data.
 # ---------------------------------------------------------------------------
 
 
 class CelContextOutputNamespaceTests(TestCase):
-    """Verify that output signal definitions are exposed in a nested
+    """Verify that output value definitions are exposed in a nested
     ``output`` namespace in the CEL context.
 
     The nested dict structure is critical because:
@@ -624,9 +625,9 @@ class CelContextOutputNamespaceTests(TestCase):
         )
 
     def test_output_entries_in_nested_namespace(self):
-        """Output signal definitions appear under ``context["output"]``.
+        """Step output definitions appear under ``context["output"]``.
 
-        Every output signal should be accessible as ``output.<slug>``
+        Every output value should be accessible as ``output.<slug>``
         in CEL expressions.  The same value is also in ``p.temperature``
         (as raw payload data) but the output namespace provides a
         dedicated access path for assertions about outputs.
@@ -648,7 +649,7 @@ class CelContextOutputNamespaceTests(TestCase):
         self.assertEqual(context["p"]["temperature"], 296.63)
 
     def test_input_and_output_same_key(self):
-        """When an input and output signal share the same contract key,
+        """When an input and output value share the same contract key,
         the output appears in the output namespace but the input does
         NOT appear in s (validator inputs are not signals).
 
@@ -677,7 +678,7 @@ class CelContextOutputNamespaceTests(TestCase):
         self.assertNotIn("price", context)
 
     def test_no_output_entries_output_is_empty_dict(self):
-        """When there are no output signal definitions, the ``output``
+        """When there are no output value definitions, the ``output``
         namespace is an empty dict (always present for consistency).
         """
         StepIODefinitionFactory(
@@ -793,8 +794,8 @@ class CelErrorMessageTests(TestCase):
       suggests checking the data path, since the user controls which paths
       are exposed as CEL variables.
     - **Catalog targets** (``allow_custom_assertion_targets=False``): the error
-      suggests checking signal names, since the validator defines which
-      catalog entries are available.
+      suggests checking step input/output names, since the validator defines
+      which catalog entries are available.
 
     Uses real Django model instances for validators to exercise the
     ``allow_custom_assertion_targets`` field naturally.
@@ -811,8 +812,8 @@ class CelErrorMessageTests(TestCase):
         """Validators with custom data paths get data-path guidance.
 
         BASIC validators have ``allow_custom_assertion_targets=True`` by
-        design, so the error message refers to "data path" rather than
-        "signal".
+        design, so the error message refers to a data path rather than
+        a step input/output.
         """
         evaluator = self._get_evaluator()
         validator = ValidatorFactory(validation_type=ValidationType.BASIC)
@@ -823,14 +824,14 @@ class CelErrorMessageTests(TestCase):
         )
         self.assertIn("undefined name 'Materials'", msg)
         self.assertIn("data path", msg)
-        self.assertNotIn("signal", msg)
+        self.assertNotIn("step input or output", msg)
 
     def test_catalog_targets_message(self):
-        """Validators without custom targets get signal guidance.
+        """Validators without custom targets get step-I/O guidance.
 
         Non-BASIC validators (e.g., JSON_SCHEMA) have
         ``allow_custom_assertion_targets=False`` by default, so the error
-        message refers to "signal" names from the catalog.
+        message refers to step input/output names from the catalog.
         """
         evaluator = self._get_evaluator()
         validator = ValidatorFactory(allow_custom_assertion_targets=False)
@@ -840,7 +841,7 @@ class CelErrorMessageTests(TestCase):
             validator=validator,
         )
         self.assertIn("undefined name 'price'", msg)
-        self.assertIn("signal", msg)
+        self.assertIn("step input or output", msg)
         self.assertNotIn("data path", msg)
 
     def test_non_identifier_error_passes_through(self):
@@ -1001,7 +1002,7 @@ class ThermXmlCelIntegrationTests(TestCase):
             ruleset=ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_signal_definition=None,
+            target_io_definition=None,
             target_data_path="Materials",
             rhs={"expr": expr},
         )
@@ -1168,7 +1169,7 @@ class ThermXmlCelIntegrationTests(TestCase):
             ruleset=ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_signal_definition=None,
+            target_io_definition=None,
             target_data_path="Materials",
             rhs={"expr": _CONDUCTIVITY_CEL},
             message_template=failure_msg,

@@ -613,7 +613,7 @@ def launch_fmu_validation(
         # check at step 0 above (checking step_run.output for existing job_name).
         callback_id = _callback_id_for_step(current_step_run)
 
-        # Build envelope via the shared builder. This gets signal-aware
+        # Build envelope via the shared builder. This gets binding-aware
         # input resolution (StepInputBinding + resolve_path), proper
         # output_variables extraction from StepIODefinition, and audit
         # tracing via ResolvedInputTrace.
@@ -709,7 +709,7 @@ def launch_fmu_validation(
             "execution_name": execution_name,
             "input_uri": input_envelope_uri,
             "execution_bundle_uri": execution_bundle_uri,
-            "signals": {},  # populated on callback; reserved for downstream steps
+            "output_values": {},  # available after callback processing
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 
@@ -892,7 +892,7 @@ def launch_shacl_validation(
             "execution_name": execution_name,
             "input_uri": input_envelope_uri,
             "execution_bundle_uri": execution_bundle_uri,
-            "signals": {},  # populated on callback; reserved for downstream steps
+            "output_values": {},  # available after callback processing
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 
@@ -1088,7 +1088,7 @@ def launch_schematron_validation(
             # Provenance of the executed rules (D5) — recorded at launch so
             # the run is auditable even if the callback never arrives.
             "schematron_sha256": envelope.inputs.schematron_sha256,
-            "signals": {},  # populated on callback; reserved for downstream steps
+            "output_values": {},  # available after callback processing
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 

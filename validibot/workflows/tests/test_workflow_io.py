@@ -29,7 +29,7 @@ from validibot.validations.constants import DefaultSourceStrategy
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import RulesetAssertionFactory
@@ -209,12 +209,12 @@ def test_step_owned_artifact_port_survives_export_import():
     validator = _tabular_validator()
     workflow = WorkflowFactory(org=src_org, user=src_user)
     step = WorkflowStepFactory(workflow=workflow, validator=validator)
-    signal = StepIODefinitionFactory(
+    io_definition = StepIODefinitionFactory(
         workflow_step=step,
         validator=None,
         contract_key="generated_model",
         native_name="generated-model",
-        direction=SignalDirection.INPUT,
+        direction=StepIODirection.INPUT,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -231,16 +231,16 @@ def test_step_owned_artifact_port_survives_export_import():
     )
     StepInputBindingFactory(
         workflow_step=step,
-        signal_definition=signal,
+        io_definition=io_definition,
         source_scope=BindingSourceScope.UPSTREAM_ARTIFACT,
         source_data_path="build_model.generated_model",
     )
 
     definition, files = export_definition(workflow)
-    exported_signal = definition["steps"][0]["signal_definitions"][0]
-    assert exported_signal["io_medium"] == StepIOMedium.ARTIFACT
-    assert exported_signal["envelope_channel"] == EnvelopeChannel.INPUT_FILES
-    assert exported_signal["allowed_source_scopes"] == [
+    exported_io_definition = definition["steps"][0]["step_io_definitions"][0]
+    assert exported_io_definition["io_medium"] == StepIOMedium.ARTIFACT
+    assert exported_io_definition["envelope_channel"] == EnvelopeChannel.INPUT_FILES
+    assert exported_io_definition["allowed_source_scopes"] == [
         BindingSourceScope.UPSTREAM_ARTIFACT,
     ]
 
@@ -248,18 +248,18 @@ def test_step_owned_artifact_port_survives_export_import():
     result = import_definition(definition, files=files, org=dst_org, user=dst_user)
 
     imported_step = result.workflow.steps.get()
-    imported_signal = imported_step.signal_definitions.get(
+    imported_io_definition = imported_step.step_io_definitions.get(
         contract_key="generated_model",
     )
-    assert imported_signal.io_medium == StepIOMedium.ARTIFACT
-    assert imported_signal.data_type == CatalogValueType.ARTIFACT_REF
-    assert imported_signal.envelope_channel == EnvelopeChannel.INPUT_FILES
-    assert imported_signal.accepted_data_formats == ["energyplus_epjson"]
-    assert imported_signal.allowed_source_scopes == [
+    assert imported_io_definition.io_medium == StepIOMedium.ARTIFACT
+    assert imported_io_definition.data_type == CatalogValueType.ARTIFACT_REF
+    assert imported_io_definition.envelope_channel == EnvelopeChannel.INPUT_FILES
+    assert imported_io_definition.accepted_data_formats == ["energyplus_epjson"]
+    assert imported_io_definition.allowed_source_scopes == [
         BindingSourceScope.UPSTREAM_ARTIFACT,
     ]
-    imported_binding = imported_step.signal_bindings.get()
-    assert imported_binding.signal_definition_id == imported_signal.pk
+    imported_binding = imported_step.input_bindings.get()
+    assert imported_binding.io_definition_id == imported_io_definition.pk
     assert imported_binding.source_scope == BindingSourceScope.UPSTREAM_ARTIFACT
     assert imported_binding.source_data_path == "build_model.generated_model"
 

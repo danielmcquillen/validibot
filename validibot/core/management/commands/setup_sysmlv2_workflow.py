@@ -10,8 +10,8 @@ three steps:
 2. **CEL Assertions** -- checks domain constraints (emissivity range,
    absorptivity range) using the Basic Validator with
    ``allow_custom_assertion_targets=True``.
-3. **FMU Simulation** -- runs the ThermalRadiator.fmu with input
-   signals bound from the submission payload and asserts the
+3. **FMU Simulation** -- runs the ThermalRadiator.fmu with step inputs
+   bound from the submission payload and asserts the
    equilibrium temperature is within range.
 
 The command is idempotent -- safe to run repeatedly.
@@ -36,7 +36,7 @@ from validibot.validations.constants import AssertionType
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
@@ -164,7 +164,7 @@ class Command(BaseCommand):
                 ],
             },
         )
-        self._ensure_fmu_signal_bindings(fmu_validator, fmu_step)
+        self._ensure_fmu_input_bindings(fmu_validator, fmu_step)
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -367,15 +367,15 @@ class Command(BaseCommand):
         self.stdout.write(f"  {action} FMU assertion ruleset")
         return ruleset
 
-    def _ensure_fmu_signal_bindings(self, fmu_validator, fmu_step):
-        """Create signal definitions and step bindings for FMU inputs.
+    def _ensure_fmu_input_bindings(self, fmu_validator, fmu_step):
+        """Create step I/O definitions and step bindings for FMU inputs.
 
         The FMU expects flat input variable names (solar_irradiance,
         panel_area, etc.) but the SysML v2 submission stores these as
-        named elements in nested arrays.  The signal bindings use
+        named elements in nested arrays.  The input bindings use
         filter expressions to resolve the right values.
         """
-        input_signals = [
+        input_values = [
             {
                 "contract_key": "solar_irradiance",
                 "native_name": "solar_irradiance",
@@ -414,19 +414,19 @@ class Command(BaseCommand):
             },
         ]
 
-        for sig_data in input_signals:
+        for sig_data in input_values:
             sig, _ = StepIODefinition.objects.get_or_create(
                 validator=fmu_validator,
                 contract_key=sig_data["contract_key"],
                 defaults={
                     "native_name": sig_data["native_name"],
-                    "direction": SignalDirection.INPUT,
-                    "order": input_signals.index(sig_data) * 10,
+                    "direction": StepIODirection.INPUT,
+                    "order": input_values.index(sig_data) * 10,
                 },
             )
             StepInputBinding.objects.get_or_create(
                 workflow_step=fmu_step,
-                signal_definition=sig,
+                io_definition=sig,
                 defaults={
                     "source_scope": BindingSourceScope.SUBMISSION_PAYLOAD,
                     "source_data_path": sig_data["source_data_path"],
@@ -435,5 +435,5 @@ class Command(BaseCommand):
             )
 
         self.stdout.write(
-            f"  Ensured {len(input_signals)} FMU signal bindings",
+            f"  Ensured {len(input_values)} FMU input bindings",
         )

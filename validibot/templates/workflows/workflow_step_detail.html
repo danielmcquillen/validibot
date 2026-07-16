@@ -80,7 +80,7 @@
       {% include "workflows/partials/resizable_columns_handle.html" %}
       <div class="resizable-panel d-flex flex-column gap-2 pb-3">
         {% include 'workflows/partials/components/step_details_card.html' %}
-        {% include 'workflows/partials/unified_signals_card.html' %}
+        {% include 'workflows/partials/workflow_data_card.html' %}
       </div>
     </div>
   </div>
@@ -196,11 +196,11 @@
     </div>
   </div>
   <div class="modal fade"
-       id="signalEditModal"
+       id="stepIOEditModal"
        tabindex="-1"
        aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-      <div class="modal-content" id="signal-edit-modal-content">
+      <div class="modal-content" id="step-io-edit-modal-content">
         <div class="modal-body text-center text-muted py-5">
           <div class="spinner-border" role="status">
           </div>

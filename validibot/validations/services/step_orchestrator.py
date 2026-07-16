@@ -15,10 +15,10 @@ Responsibilities:
   them with status, duration, and diagnostics.
 - Step dispatch: Routing to processor (validators) or handler (actions) based
   on step type.
-- Result recording: Persisting findings, extracting cross-step signals, and
+- Result recording: Persisting findings, recording step outputs, and
   building metrics for the summary builder.
 - Run state transitions: PENDING → RUNNING → SUCCEEDED/FAILED/CANCELED.
-- Cross-step signals: Collecting output signals from prior steps for downstream
+- Cross-step values: Collecting output values from prior steps for downstream
   assertions.
 
 This was extracted from ValidationRunService to follow single-responsibility:
@@ -85,7 +85,7 @@ class StepOrchestrator:
     - Idempotent state transitions (PENDING → RUNNING)
     - Sequential step dispatch with failure/async stop conditions
     - Step lifecycle management (create, finalize, record results)
-    - Cross-step signal propagation for downstream assertions
+    - Cross-step value propagation for downstream assertions
     - Run finalization (SUCCEEDED/FAILED/CANCELED) with summary building
 
     See Also:
@@ -250,7 +250,7 @@ class StepOrchestrator:
                 # Route to appropriate execution path based on step type
                 if wf_step.validator:
                     # Use processors for validator steps - they handle both
-                    # execution AND persistence (findings, signals, stats)
+                    # execution AND persistence (findings, output values, stats)
                     try:
                         result: StepProcessingResult = self._execute_validator_step(
                             validation_run=validation_run,
@@ -864,7 +864,7 @@ class StepOrchestrator:
 
         Routes steps to the correct handler:
         1. Resolves the handler (ValidatorStepHandler or action handler).
-        2. Builds a RunContext with the validation_run, step, and any signals
+        2. Builds a RunContext with the validation_run, step, and any values
            from prior steps (for cross-step assertions).
         3. Calls handler.execute(run_context) and maps the StepResult back to
            ValidationResult for backwards compatibility.
@@ -926,7 +926,7 @@ class StepOrchestrator:
             return ValidationResult(
                 passed=step_result.passed,
                 issues=[normalize_issue(i) for i in step_result.issues],
-                signals=step_result.output_values,
+                output_values=step_result.output_values,
                 stats=step_result.stats,
             )
 
@@ -942,7 +942,7 @@ class StepOrchestrator:
         validation_result = ValidationResult(
             passed=step_result.passed,
             issues=[normalize_issue(i) for i in step_result.issues],
-            signals=step_result.output_values,
+            output_values=step_result.output_values,
             stats=step_result.stats,
         )
         validation_result.workflow_step_name = step.name
@@ -998,7 +998,7 @@ class StepOrchestrator:
         stats["assertion_failures"] = assertion_failures
         # Persist action outputs on their canonical step-run field. The context
         # builder applies the stable step_key namespace when a later step runs.
-        step_run.output_values = dict(validation_result.signals or {})
+        step_run.output_values = dict(validation_result.output_values or {})
         step_run.save(update_fields=["output_values"])
         if validation_result.passed is None:
             # Async validator still running; keep status as RUNNING and
@@ -1036,7 +1036,7 @@ class StepOrchestrator:
         Execute a validator step using the processor abstraction.
 
         Processors handle both execution (calling the validator) AND persistence
-        (findings, signals, assertion stats). This eliminates the separate
+        (findings, output values, assertion stats). This eliminates the separate
         _record_step_result() call for validator steps.
 
         Args:

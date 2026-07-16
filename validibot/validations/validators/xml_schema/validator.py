@@ -40,7 +40,7 @@ class XmlSchemaValidator(BaseValidator):
     ``validator.config['schema']``. New rulesets should keep the schema in
     metadata so it travels with the reusable asset.
 
-    **No ``extract_input_signals`` override (per ADR-2026-05-22b
+    **No ``extract_input_values`` override (per ADR-2026-05-22b
     Phase 6).** XML Schema validators don't parse an "arcane format" —
     the XML submission IS the data, converted to a nested dict via
     ``xml_to_dict`` so assertions can reference its paths directly via

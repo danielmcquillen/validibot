@@ -29,7 +29,7 @@ from validibot.validations.services.validator_digest import compute_semantic_dig
 @pytest.mark.django_db
 def test_sync_validators_creates_energyplus():
     """The sync command should create the EnergyPlus validator
-    and signal definitions.
+    and step I/O definitions.
     """
     # Ensure we start clean
     Validator.objects.filter(slug="energyplus-idf-validator").delete()
@@ -42,9 +42,9 @@ def test_sync_validators_creates_energyplus():
     assert validator.has_processor is True
     assert validator.is_system is True
 
-    # Check signal definitions were created
+    # Check step I/O definitions were created
     keys = set(
-        validator.signal_definitions.values_list("contract_key", flat=True),
+        validator.step_io_definitions.values_list("contract_key", flat=True),
     )
     assert "site_electricity_kwh" in keys
     assert "heating_energy_kwh" in keys

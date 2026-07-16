@@ -6,7 +6,7 @@ Saxon's output into ``SchematronOutputs`` and cannot import this Django
 app), so the canonical implementation moved to
 ``validibot_shared.schematron.svrl`` (shared >= 0.11.0) — beside the
 envelope models, because it defines the same protocol boundary: SVRL in,
-the D2 signal contract out. One parser, both repos.
+the D2 output-value contract out. One parser, both repos.
 
 This module re-exports it so Django-side code and tests keep their
 stable import path. See the shared module for the full contract docs

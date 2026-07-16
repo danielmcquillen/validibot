@@ -17,8 +17,8 @@ from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import DefaultSourceStrategy
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
-from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
@@ -39,7 +39,7 @@ def _energyplus_output_artifact(
     """Declare an EnergyPlus output file emitted by the backend."""
 
     return CatalogEntrySpec(
-        entry_type=CatalogEntryType.SIGNAL,
+        entry_type=CatalogEntryType.IO_DEFINITION,
         run_stage=CatalogRunStage.OUTPUT,
         slug=slug,
         label=label,
@@ -50,7 +50,7 @@ def _energyplus_output_artifact(
         is_required=False,
         on_missing="null",
         order=order,
-        source_kind=SignalSourceKind.INTERNAL,
+        source_kind=StepIOSourceKind.INTERNAL,
         is_path_editable=False,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=artifact_kind,
@@ -84,7 +84,7 @@ config = ValidatorConfig(
     # expansion: nine additional step inputs (building_name,
     # terrain, solar_distribution, timestep_per_hour, surface_count,
     # window_count, construction_count, run_period_count, has_hvac)
-    # extracted from the (resolved) IDF by extract_input_signals().
+    # extracted from the (resolved) IDF by extract_input_values().
     # The earlier 1.1 cleanup is rolled into this changelog entry:
     #
     # - Removed three misconceived "expectation" inputs
@@ -130,7 +130,7 @@ config = ValidatorConfig(
         # EnergyPlus-specific config keys.
         # ==================================================================
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="primary_model",
             label="Primary Model",
@@ -147,7 +147,7 @@ config = ValidatorConfig(
             is_required=True,
             on_missing="error",
             order=1,
-            source_kind=SignalSourceKind.PAYLOAD_PATH,
+            source_kind=StepIOSourceKind.PAYLOAD_PATH,
             is_path_editable=False,
             io_medium=StepIOMedium.ARTIFACT,
             artifact_kind=ArtifactKind.FILE,
@@ -173,7 +173,7 @@ config = ValidatorConfig(
             max_items=1,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="weather_file",
             label="Weather File",
@@ -190,7 +190,7 @@ config = ValidatorConfig(
             is_required=True,
             on_missing="error",
             order=2,
-            source_kind=SignalSourceKind.PAYLOAD_PATH,
+            source_kind=StepIOSourceKind.PAYLOAD_PATH,
             is_path_editable=False,
             io_medium=StepIOMedium.ARTIFACT,
             artifact_kind=ArtifactKind.FILE,
@@ -271,7 +271,7 @@ config = ValidatorConfig(
         #   - zone_count     (int,     always \u22651,     on_missing=error)
         #   - north_axis_deg (number,  defaults 0.0,  on_missing=null)
         #
-        # Populated by EnergyPlusValidator.extract_input_signals() running
+        # Populated by EnergyPlusValidator.extract_input_values() running
         # after preprocess_submission() \u2014 works for both direct-IDF and
         # template-mode submissions because preprocessing has resolved any
         # template variables into a concrete IDF by then.
@@ -280,7 +280,7 @@ config = ValidatorConfig(
         # i.north_axis_deg in input-stage CEL assertions.
         # ==================================================================
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="idf_version",
             label="IDF Version",
@@ -295,11 +295,11 @@ config = ValidatorConfig(
             is_required=True,
             on_missing="error",  # every valid IDF has a Version object
             order=10,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="zone_count",
             label="Zone Count",
@@ -314,11 +314,11 @@ config = ValidatorConfig(
             is_required=True,
             on_missing="error",  # absence means parsing failed
             order=11,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="north_axis_deg",
             label="North Axis (deg)",
@@ -333,12 +333,12 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",  # fall back to EnergyPlus default 0.0
             order=12,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ── Phase 2 (validator revision 3) facts — Building characteristics ──
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="building_name",
             label="Building Name",
@@ -354,11 +354,11 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",
             order=13,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="terrain",
             label="Terrain",
@@ -375,11 +375,11 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",  # IDD default "Suburbs" injected by parser
             order=14,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="solar_distribution",
             label="Solar Distribution",
@@ -397,12 +397,12 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",  # IDD default "FullExterior" injected by parser
             order=15,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ── Phase 2 (validator revision 3) facts — Simulation configuration ──
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="timestep_per_hour",
             label="Timesteps per Hour",
@@ -419,11 +419,11 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",
             order=16,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="run_period_count",
             label="Run Period Count",
@@ -440,12 +440,12 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",
             order=17,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ── Phase 2 (validator revision 3) facts — Geometry counts ──
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="surface_count",
             label="Surface Count",
@@ -460,11 +460,11 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",
             order=18,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="window_count",
             label="Window Count",
@@ -481,11 +481,11 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",
             order=19,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="construction_count",
             label="Construction Count",
@@ -502,12 +502,12 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",
             order=20,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ── Phase 2 (validator revision 3) facts — Capability flag ──
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="has_hvac",
             label="Has HVAC",
@@ -524,14 +524,14 @@ config = ValidatorConfig(
             is_required=False,
             on_missing="null",
             order=21,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ==================================================================
-        # OUTPUT SIGNALS - Energy Consumption
+        # STEP OUTPUTS - Energy Consumption
         # ==================================================================
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="site_electricity_kwh",
             label="Site Electricity (kWh)",
@@ -541,11 +541,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=100,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="site_natural_gas_kwh",
             label="Site Natural Gas (kWh)",
@@ -555,11 +555,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=101,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="site_district_cooling_kwh",
             label="Site District Cooling (kWh)",
@@ -569,11 +569,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=102,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="site_district_heating_kwh",
             label="Site District Heating (kWh)",
@@ -583,14 +583,14 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=103,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ==================================================================
-        # OUTPUT SIGNALS - Energy Use Intensity
+        # STEP OUTPUTS - Energy Use Intensity
         # ==================================================================
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="site_eui_kwh_m2",
             label="Site EUI (kWh/m\u00b2)",
@@ -600,14 +600,14 @@ config = ValidatorConfig(
             metadata={"units": "kWh/m\u00b2"},
             is_required=False,
             order=110,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ==================================================================
-        # OUTPUT SIGNALS - End-Use Breakdown
+        # STEP OUTPUTS - End-Use Breakdown
         # ==================================================================
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="heating_energy_kwh",
             label="Heating Energy (kWh)",
@@ -617,11 +617,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=120,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="cooling_energy_kwh",
             label="Cooling Energy (kWh)",
@@ -631,11 +631,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=121,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="interior_lighting_kwh",
             label="Interior Lighting (kWh)",
@@ -645,11 +645,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=122,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="fans_energy_kwh",
             label="Fans Energy (kWh)",
@@ -659,11 +659,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=123,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="pumps_energy_kwh",
             label="Pumps Energy (kWh)",
@@ -673,11 +673,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=124,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="water_systems_kwh",
             label="Water Systems (kWh)",
@@ -687,14 +687,14 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=125,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ==================================================================
-        # OUTPUT SIGNALS - Comfort / Performance
+        # STEP OUTPUTS - Comfort / Performance
         # ==================================================================
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="unmet_heating_hours",
             label="Unmet Heating Hours",
@@ -704,11 +704,11 @@ config = ValidatorConfig(
             metadata={"units": "hours"},
             is_required=False,
             order=130,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="unmet_cooling_hours",
             label="Unmet Cooling Hours",
@@ -718,11 +718,11 @@ config = ValidatorConfig(
             metadata={"units": "hours"},
             is_required=False,
             order=131,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="peak_electric_demand_w",
             label="Peak Electric Demand (W)",
@@ -732,11 +732,11 @@ config = ValidatorConfig(
             metadata={"units": "W"},
             is_required=False,
             order=132,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ==================================================================
-        # OUTPUT SIGNALS - Building Characteristics (simulation-derived)
+        # STEP OUTPUTS - Building Characteristics (simulation-derived)
         #
         # Per ADR-2026-05-22's provenance rule: anything derived from the
         # IDF text is a step input (i.*); anything derived from EnergyPlus
@@ -751,7 +751,7 @@ config = ValidatorConfig(
         # field rename.
         # ==================================================================
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="simulated_conditioned_area_m2",
             label="Simulated Conditioned Area (m\u00b2)",
@@ -768,14 +768,14 @@ config = ValidatorConfig(
             metadata={"units": "m\u00b2"},
             is_required=False,
             order=140,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ==================================================================
-        # OUTPUT SIGNALS - Window Envelope
+        # STEP OUTPUTS - Window Envelope
         # ==================================================================
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="window_heat_gain_kwh",
             label="Window Heat Gain (kWh)",
@@ -788,11 +788,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh", "precision": 1},
             is_required=False,
             order=150,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="window_heat_loss_kwh",
             label="Window Heat Loss (kWh)",
@@ -805,11 +805,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh", "precision": 1},
             is_required=False,
             order=151,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="window_transmitted_solar_kwh",
             label="Transmitted Solar (kWh)",
@@ -826,11 +826,11 @@ config = ValidatorConfig(
             metadata={"units": "kWh", "precision": 1},
             is_required=False,
             order=152,
-            source_kind=SignalSourceKind.INTERNAL,
+            source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
         # ==================================================================
-        # DERIVATIONS (computed from other signals)
+        # DERIVATIONS (computed from other step values)
         # ==================================================================
         CatalogEntrySpec(
             entry_type=CatalogEntryType.DERIVATION,
@@ -871,6 +871,6 @@ config = ValidatorConfig(
             order=201,
         ),
     ],
-    # Template variable editing is handled by the unified signals card \u2014
+    # Template variable editing is handled by the workflow data card.
     # no custom step_editor_cards needed.
 )

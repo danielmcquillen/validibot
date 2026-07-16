@@ -20,7 +20,7 @@ completion). This subclass supplies:
 1. :meth:`preprocess_submission` — the D8 hardened-XML guard. An XXE /
    entity-bomb / oversize / malformed submission is rejected *before*
    any container is launched.
-2. :meth:`extract_output_signals` — the ``o.*`` signal dict for CEL
+2. :meth:`extract_output_values` — the ``o.*`` output-value dict for CEL
    assertions, filtered to the catalog-declared keys.
 3. :meth:`post_execute_validate` — rebuilds findings from the container's
    structured output with the D10 contract (``code`` = native rule id,
@@ -84,9 +84,9 @@ _SEVERITY_FROM_STRING = {
     "INFO": Severity.INFO,
 }
 
-# The o.* signal keys this validator exposes — must match the catalog entries
+# The o.* output-value keys this validator exposes — must match the catalog entries
 # in config.py (the "catalog is the contract" rule, as SHACL/EnergyPlus).
-_SIGNAL_KEYS = (
+_OUTPUT_VALUE_KEYS = (
     "passed",
     "error_count",
     "warning_count",
@@ -132,8 +132,8 @@ class SchematronValidator(AdvancedValidator):
             raise ValidationError(str(exc)) from exc
         return {}
 
-    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
-        """Pull the ``o.*`` signal dict from the container's outputs.
+    def extract_output_values(self, output_envelope: Any) -> dict[str, Any] | None:
+        """Pull the ``o.*`` output-value dict from the container's outputs.
 
         Filtered to the catalog-declared keys so extra output fields cannot
         leak into the ``o.*`` namespace. On an engine failure (D9) the rule
@@ -145,24 +145,24 @@ class SchematronValidator(AdvancedValidator):
         if outputs is None:
             return None
 
-        signals = {key: getattr(outputs, key, None) for key in _SIGNAL_KEYS}
+        output_values = {key: getattr(outputs, key, None) for key in _OUTPUT_VALUE_KEYS}
 
         engine_status = getattr(outputs, "engine_status", ENGINE_STATUS_OK)
         if engine_status != ENGINE_STATUS_OK:
             # D9: findings/counts are only meaningful when the engine ran.
-            signals["passed"] = None
-            signals["error_count"] = None
-            signals["warning_count"] = None
-            signals["fired_rule_count"] = None
-            signals["finding_rule_ids_by_severity"] = {}
-        return signals
+            output_values["passed"] = None
+            output_values["error_count"] = None
+            output_values["warning_count"] = None
+            output_values["fired_rule_count"] = None
+            output_values["finding_rule_ids_by_severity"] = {}
+        return output_values
 
     def post_execute_validate(
         self,
         output_envelope: Any,
         run_context: RunContext | None = None,
     ) -> ValidationResult:
-        """Process the container output: findings, signals, assertions (D9/D10).
+        """Process the container output: findings, output_values, assertions (D9/D10).
 
         Overrides the base because Schematron needs the richer mapping the
         generic envelope path doesn't provide:
@@ -187,16 +187,16 @@ class SchematronValidator(AdvancedValidator):
             # No structured outputs at all — engine-level failure surfaced
             # via the generic envelope messages.
             issues = self._extract_issues_from_envelope(output_envelope)
-            signals: dict[str, Any] = {}
+            output_values: dict[str, Any] = {}
         elif getattr(outputs, "engine_status", ENGINE_STATUS_OK) != ENGINE_STATUS_OK:
             issues = [self._engine_failure_issue(outputs)]
-            signals = self.extract_output_signals(output_envelope) or {}
+            output_values = self.extract_output_values(output_envelope) or {}
         else:
             issues = self._issues_from_outputs(outputs)
-            signals = self.extract_output_signals(output_envelope) or {}
+            output_values = self.extract_output_values(output_envelope) or {}
 
         # Django-side CEL/Basic output-stage assertions against the o.*
-        # signals (e.g. a warnings-tolerant gate: ``o.error_count == 0``).
+        # output_values (e.g. a warnings-tolerant gate: ``o.error_count == 0``).
         assertion_total = 0
         assertion_failures = 0
         if run_context and run_context.step:
@@ -205,14 +205,14 @@ class SchematronValidator(AdvancedValidator):
             if validator and ruleset:
                 resolved_inputs = self._get_resolved_inputs(run_context)
                 payload = self._build_assertion_payload(
-                    signals,
+                    output_values,
                     run_context,
                     resolved_inputs=resolved_inputs,
                 )
                 payload = self._enrich_basic_payload(
                     payload,
                     stage="output",
-                    output_signals=None,
+                    output_values=None,
                 )
                 assertion_result = self.evaluate_assertions_for_stage(
                     validator=validator,
@@ -236,7 +236,7 @@ class SchematronValidator(AdvancedValidator):
                 total=assertion_total,
                 failures=assertion_failures,
             ),
-            signals=signals,
+            output_values=output_values,
             stats=self._build_stats(outputs),
         )
 

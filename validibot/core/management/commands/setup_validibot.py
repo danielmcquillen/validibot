@@ -510,7 +510,7 @@ class Command(BaseCommand):
 
         These include JSON Schema, XML Schema, Basic (field validation),
         and AI validators. Also syncs advanced validators (EnergyPlus, FMU)
-        with their signal definitions for input/output signals.
+        with their step I/O definitions for input/output values.
         """
         logger.debug("Setting up default validators...")
         self.stdout.write("  Creating default validators...")
@@ -524,9 +524,10 @@ class Command(BaseCommand):
             )
         )
 
-        # Sync system validators (EnergyPlus, FMU, THERM) with their signal definitions.
-        # This populates the input/output signals needed for the step editor UI.
-        self.stdout.write("  Syncing system validators and signal definitions...")
+        # Sync system validators (EnergyPlus, FMU, THERM) with their
+        # step I/O definitions.
+        # This populates the input/output values needed for the step editor UI.
+        self.stdout.write("  Syncing system validators and step I/O definitions...")
 
         from io import StringIO
 
@@ -552,7 +553,7 @@ class Command(BaseCommand):
         logger.debug("sync_validators output: %s", output)
 
         self.stdout.write(
-            self.style.SUCCESS("  System validators and signal definitions synced")
+            self.style.SUCCESS("  System validators and step I/O definitions synced")
         )
 
     # =========================================================================

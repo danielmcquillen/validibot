@@ -497,7 +497,7 @@ class ConstantsRuntimeWiringTests(TestCase):
 # Stage classification — c.* is input-stage-neutral
 # ──────────────────────────────────────────────────────────────────────────
 # These assert the ADR's stage-neutral decision. ``resolved_run_stage`` is a
-# pure property (no DB when there is no signal-definition target), so unsaved
+# pure property (no DB when there is no step-I/O-definition target), so unsaved
 # assertions suffice.
 
 

@@ -165,10 +165,10 @@ def test_rules_validator_accepts_input_namespace(rule_validator, expr):
     "Bare identifiers are not allowed" even though the runtime context binds
     the ``i.*`` namespace. Passing an empty ``available_entries`` is
     intentional: the namespace root must be accepted regardless of whether a
-    matching signal definition exists (membership only affects target
+    matching step I/O definition exists (membership only affects target
     tracking, not legality).
     """
-    # Must not raise. The return value (referenced signal definitions) is
+    # Must not raise. The return value (referenced step I/O definitions) is
     # empty here because inputs are never tracked as assertion targets.
     assert rule_validator._validate_cel_expression(expr, []) == []
 

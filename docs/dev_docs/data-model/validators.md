@@ -60,10 +60,9 @@ Validators own the canonical catalog describing what the validator can read or e
 is stored across two models:
 
 - **`StepIODefinition`** — one row per step input or step output (the values that surface in the
-  `i.*` and `o.*` CEL namespaces). The legacy database table name
-  (`validations_signaldefinition`) is preserved via `Meta.db_table`; only the Python class was
-  renamed.
-- **`Derivation`** — one row per computed value, defined by a CEL expression over signals and
+  `i.*` and `o.*` CEL namespaces). The database table is
+  `validations_stepiodefinition`, matching the current Python model name.
+- **`Derivation`** — one row per computed value, defined by a CEL expression over step values and
   other derivations.
 
 Key fields on `StepIODefinition`:
@@ -83,7 +82,7 @@ Key fields on `StepIODefinition`:
 
 Every catalog row is owned by exactly one of a `Validator` (shared by all steps using that
 validator) or a `WorkflowStep` (per-step rows for FMU uploads, template scans, or
-author-customized signals) — an XOR constraint enforced by the model. Centralising these
+author-customized inputs/outputs) — an XOR constraint enforced by the model. Centralising these
 definitions lets every ruleset reuse them without duplicating structure inside each assertion;
 see [Signals](signals.md) for the full ownership and promotion story and
 [Ruleset Assertions](assertions.md) for how assertions reference them.
@@ -166,7 +165,7 @@ JavaScript tabs. The tab layout is:
 | Tab                    | URL pattern                             | View                            | Default |
 | ---------------------- | --------------------------------------- | ------------------------------- | ------- |
 | **Description**        | `library/custom/<slug>/`                | `ValidatorDetailView`           | Yes     |
-| **Signals**            | `library/custom/<slug>/signals-tab/`    | `ValidatorSignalsTabView`       |         |
+| **Step I/O**           | `library/custom/<slug>/step-io-tab/`    | `ValidatorStepIOTabView`        |         |
 | **Default Assertions** | `library/custom/<slug>/assertions/`     | `ValidatorAssertionsTabView`    |         |
 | **Resource Files**     | `library/custom/<slug>/resource-files/` | `ValidatorResourceFilesTabView` |         |
 
@@ -210,8 +209,8 @@ validator is declared in one place:
 - **Compute** — `compute_tier` (LOW, MEDIUM, HIGH) tells the platform how much resource the
   validator needs when dispatching containers.
 - **Display** — `icon` (Bootstrap Icons class) and `card_image` for the validator library UI.
-- **Catalog entries** — a list of `CatalogEntrySpec` objects describing signals, outputs, and
-  derivations the validator exposes. These sync to `StepIODefinition` rows (signals) and
+- **Catalog entries** — a list of `CatalogEntrySpec` objects describing step inputs, step
+  outputs, and derivations. These sync to `StepIODefinition` rows and
   `Derivation` rows (computed values) in the database.
 - **Step editor cards** — a list of `StepEditorCardSpec` objects that inject custom UI cards
   into the workflow step detail page (see below).
@@ -274,7 +273,7 @@ The drift gate exists because a deploy that swaps a validator's processor or cla
 version bump would silently re-write the rules of every workflow that locked onto the old version.
 Sync's job is to make that loud at deploy time.
 
-Catalog entries (signals + derivations) are still updated in place via `update_or_create` on
+Catalog entries (step I/O + derivations) are updated in place via `update_or_create` on
 `(validator, contract_key, direction)`, with stale entries pruned at the end of each sync. If you
 need to drop or restructure catalog entries, edit the config and re-run sync.
 
@@ -284,9 +283,9 @@ Validators can declare custom UI cards that appear in the workflow step detail p
 column via `StepEditorCardSpec` objects in the config's `step_editor_cards` list. This extension
 point is available for future use, but no validators currently declare custom cards.
 
-!!! note "Template variables use the unified signals card"
+!!! note "Template variables use the unified Inputs and Outputs card"
     Template variable editing is handled by the unified "Inputs and Outputs" card that
-    appears on every step detail page. Template variables are treated as input signals
+    appears on every step detail page. Template variables are treated as step inputs
     with `source="template"`, alongside catalog entries with `source="catalog"`. Each
     template variable has a per-variable edit modal for annotations (label, default,
     type, constraints). This replaced the earlier `StepEditorCardSpec`-based approach.
@@ -304,26 +303,26 @@ Each card spec has the following fields:
 - `condition` — optional dotted path to a `func(step) -> bool` callable. When set, the card
   only renders if the function returns `True`.
 
-### Unified signals card
+### Unified Inputs and Outputs card
 
 Every step detail page shows an "Inputs and Outputs" card in the right column. This card
-merges two sources of signals into a unified view:
+merges two sources of step I/O into a unified view:
 
 - **Catalog entries** — defined in the validator's `ValidatorConfig.catalog_entries` and synced
-  to the database. These represent signals the validator produces (outputs) or consumes
+  to the database. These represent values the validator produces (outputs) or consumes
   (inputs). Source badge: "Catalog".
 - **Template variables** — discovered from uploaded template files (e.g. `$U_FACTOR` in an
-  EnergyPlus IDF). Stored in `step.config["template_variables"]`. Source badge: "Template".
+  EnergyPlus IDF). Stored as step-owned `StepIODefinition` rows. Source badge: "Template".
 
-The card has two tabs when both input and output signals exist:
+The card has two tabs when both inputs and outputs exist:
 
-- **Input Signals** — catalog INPUT entries + template variables, merged in order.
-  Template-source signals have an Edit button (pencil icon) that opens a per-variable
+- **Step Inputs** — catalog INPUT entries + template variables, merged in order.
+  Template-source inputs have an Edit button (pencil icon) that opens a per-variable
   annotation modal (`SingleTemplateVariableForm`).
-- **Output Signals** — catalog OUTPUT entries, each with a "show to user" indicator
-  based on the step's `display_signals` config.
+- **Step Outputs** — catalog OUTPUT entries, each with a "show to user" indicator
+  based on the step's `display_step_outputs` settings.
 
-The `build_unified_signals()` helper in `views_helpers.py` builds this merged representation
+The `build_step_io_context()` helper in `views_helpers.py` builds this merged representation
 at the view layer. No database model changes are needed — it's purely a presentation concern.
 
 ### Concrete example: EnergyPlus config
@@ -351,7 +350,7 @@ config = ValidatorConfig(
         CatalogEntrySpec(
             slug="site_electricity_kwh",
             label="Site Electricity (kWh)",
-            entry_type="signal",
+            entry_type="io_definition",
             run_stage="output",
             data_type="number",
             binding_config={"source": "metric", "key": "site_electricity_kwh"},
@@ -366,15 +365,15 @@ config = ValidatorConfig(
                 "expr": "unmet_heating_hours + unmet_cooling_hours",
             },
         ),
-        # ... more signals, derivations ...
+        # ... more step I/O definitions and derivations ...
     ],
-    # Template variable editing is handled by the unified signals card,
+    # Template variable editing is handled by the Inputs and Outputs card,
     # not by step_editor_cards.
 )
 ```
 
 When a workflow step uses this validator with a parameterized IDF template, template variables
-appear as input signals in the unified card, alongside any catalog INPUT entries. Authors can
+appear as step inputs in the unified card, alongside any catalog INPUT entries. Authors can
 edit each variable's annotations (label, default, type, constraints) via a per-variable modal.
 
 ## Validator lifecycle

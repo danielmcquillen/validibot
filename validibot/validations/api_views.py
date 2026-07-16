@@ -177,17 +177,17 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
                             "workflow_step__validator",
                         ).prefetch_related(
                             "findings",
-                            # ``_build_signal_map`` and
+                            # ``_build_step_output_map`` and
                             # ``_build_template_param_meta`` iterate
-                            # these to enrich output_signals /
+                            # these to enrich output_values /
                             # template_parameters_used. Without the
                             # prefetch, each step_run issues one
-                            # query against signal_definitions
+                            # query against step_io_definitions
                             # (step-owned) plus one against the
-                            # validator's signal_definitions —
-                            # a classic N+1 on signal-bearing runs.
-                            "workflow_step__signal_definitions",
-                            "workflow_step__validator__signal_definitions",
+                            # validator's step_io_definitions —
+                            # a classic N+1 on output-bearing runs.
+                            "workflow_step__step_io_definitions",
+                            "workflow_step__validator__step_io_definitions",
                         )
                     ),
                 ),

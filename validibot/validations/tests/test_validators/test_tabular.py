@@ -61,9 +61,9 @@ def _codes(result):
 class TabularValidatorRuntimeTests(TestCase):
     """The validator's behaviour on valid input, native failures, and errors."""
 
-    def test_valid_csv_passes_with_signals(self):
+    def test_valid_csv_passes_with_output_values(self):
         """A CSV that satisfies the schema passes, emits no issues, and returns
-        the ``i.*`` dataset signals — the baseline happy path.
+        the ``i.*`` dataset input values — the baseline happy path.
         """
         result = _validate(
             rules_text=_schema(
@@ -81,11 +81,11 @@ class TabularValidatorRuntimeTests(TestCase):
         self.assertTrue(result.passed, result.issues)
         self.assertEqual(result.issues, [])
         self.assertEqual(
-            tuple(result.signals),
+            tuple(result.output_values),
             tuple(contract_key for contract_key, _label in TABULAR_DATASET_INPUTS),
         )
-        self.assertEqual(result.signals["num_rows"], 2)
-        self.assertEqual(result.signals["column_names"], ["lat", "lon"])
+        self.assertEqual(result.output_values["num_rows"], 2)
+        self.assertEqual(result.output_values["column_names"], ["lat", "lon"])
 
     def test_native_finding_is_mapped_to_issue_with_meta(self):
         """An out-of-range value fails the run, and the native finding's count

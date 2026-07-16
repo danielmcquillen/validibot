@@ -113,7 +113,7 @@ def evaluate_row_assertions(
     row_assertions: list[RowAssertion],
     *,
     signals: dict[str, Any] | None = None,
-    input_signals: dict[str, Any] | None = None,
+    input_values: dict[str, Any] | None = None,
     now: datetime | None = None,
     wall_clock_budget_s: float = _DEFAULT_WALL_CLOCK_BUDGET_S,
     report_max_examples: int = DEFAULT_REPORT_MAX_EXAMPLES,
@@ -178,7 +178,7 @@ def evaluate_row_assertions(
 
     # ``s.*`` and ``i.*`` are constant across rows — convert once.
     signals_cel = celpy.json_to_cel(signals or {})
-    input_cel = celpy.json_to_cel(input_signals or {})
+    input_cel = celpy.json_to_cel(input_values or {})
 
     outcomes = [_Outcomes(failed=[], null=[], errored=[]) for _ in programs]
     num_rows = read_result.num_rows

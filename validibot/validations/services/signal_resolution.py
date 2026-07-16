@@ -208,7 +208,7 @@ def validate_signal_name_unique(
     name: str,
     *,
     exclude_mapping_id: int | None = None,
-    exclude_signal_def_id: int | None = None,
+    exclude_io_definition_id: int | None = None,
     exclude_overlay_id: int | None = None,
 ) -> list[str]:
     """Check that a signal name is unique within a workflow.
@@ -233,11 +233,12 @@ def validate_signal_name_unique(
         name: The proposed promoted signal name (without ``s.`` prefix).
         exclude_mapping_id: WorkflowSignalMapping pk to ignore (when
             editing an existing mapping).
-        exclude_signal_def_id: StepIODefinition pk to ignore (when
+        exclude_io_definition_id: StepIODefinition pk to ignore (when
             editing a step-owned promotion).
         exclude_overlay_id: WorkflowStepIOPromotion pk to ignore (when
             editing a validator-owned promotion via the overlay).
     """
+    from validibot.validations.constants import StepIOMedium
     from validibot.validations.models import StepIODefinition
     from validibot.validations.models import WorkflowStepIOPromotion
     from validibot.workflows.models import WorkflowSignalMapping
@@ -260,9 +261,10 @@ def validate_signal_name_unique(
     promoted_qs = StepIODefinition.objects.filter(
         workflow_step__workflow_id=workflow_id,
         promoted_signal_name=name,
+        io_medium=StepIOMedium.VALUE,
     ).exclude(promoted_signal_name="")
-    if exclude_signal_def_id:
-        promoted_qs = promoted_qs.exclude(pk=exclude_signal_def_id)
+    if exclude_io_definition_id:
+        promoted_qs = promoted_qs.exclude(pk=exclude_io_definition_id)
     if promoted_qs.exists():
         errors.append(
             f"Signal '{name}' is already used as a promoted output name "
@@ -276,6 +278,7 @@ def validate_signal_name_unique(
     overlay_qs = WorkflowStepIOPromotion.objects.filter(
         workflow_step__workflow_id=workflow_id,
         promoted_signal_name=name,
+        io_definition__io_medium=StepIOMedium.VALUE,
     )
     if exclude_overlay_id:
         overlay_qs = overlay_qs.exclude(pk=exclude_overlay_id)

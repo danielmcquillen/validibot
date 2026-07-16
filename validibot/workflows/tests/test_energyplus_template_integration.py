@@ -6,7 +6,7 @@ config building and resource syncing:
 
 1. ``build_energyplus_config()`` — Validates uploaded IDF files, scans for
    ``$VARIABLE_NAME`` placeholders, returns them as a separate list for
-   ``_sync_template_signals()`` to persist as ``StepIODefinition`` rows,
+   ``_sync_template_step_io()`` to persist as ``StepIODefinition`` rows,
    handles template removal, and preserves existing config as-is when no
    upload occurs.
 
@@ -143,7 +143,7 @@ def _make_form(
             weather_file_id = str(vrf.pk)
 
     # Infer a sensible validation_mode default: template mode when the
-    # test uploads a template file or the step already has template signals.
+    # test uploads a template file or the step already has template input definitions.
     has_template_context = bool(files and files.get("template_file"))
     if step and (step.config or {}).get("template_variables"):
         has_template_context = True
@@ -194,7 +194,7 @@ class TestBuildConfigWithTemplateUpload:
         """A valid template upload returns one dict per detected variable.
 
         The returned ``template_vars`` list contains auto-populated metadata
-        from the IDF annotation, ready for ``_sync_template_signals()``
+        from the IDF annotation, ready for ``_sync_template_step_io()``
         to persist as ``StepIODefinition`` rows.
         """
         validator = _make_energyplus_validator()
@@ -249,9 +249,9 @@ class TestBuildConfigWithTemplateUpload:
         assert config["case_sensitive"] is False
 
     def test_upload_initializes_display_step_outputs_empty(self):
-        """Display signals start empty — the author configures them later.
+        """Displayed step outputs start empty until the author opts in.
 
-        The empty list means "show all signals" (backward-compatible default).
+        An empty list means no step outputs are exposed to submitters.
         """
         validator = _make_energyplus_validator()
         upload = _make_template_upload()
@@ -343,7 +343,7 @@ class TestBuildConfigValidationMode:
     The form's ``validation_mode`` radio selector determines which config keys
     are populated by ``build_energyplus_config()``.  Direct mode stores IDF
     check/simulation settings and clears template metadata.  Template mode
-    stores template variables, case sensitivity, and display signals.
+    stores template variables, case sensitivity, and displayed step outputs.
     """
 
     def test_direct_mode_stores_idf_settings(self):
@@ -369,7 +369,7 @@ class TestBuildConfigValidationMode:
         assert config["run_simulation"] is True
 
     def test_direct_mode_clears_template_metadata(self):
-        """Direct mode returns empty template vars and clears display signals.
+        """Direct mode returns empty template vars and clears displayed outputs.
 
         Even if template data existed before, switching to direct mode should
         produce empty template metadata so the step no longer expects JSON
@@ -416,7 +416,7 @@ class TestBuildConfigValidationMode:
         assert config["idf_checks"] == []
         assert config["run_simulation"] is True
 
-    def test_direct_mode_signals_template_removal(self):
+    def test_direct_mode_marks_template_for_removal(self):
         """Direct mode sets ``remove_template`` in cleaned_data.
 
         This tells ``_sync_energyplus_resources()`` to delete any existing
@@ -465,12 +465,12 @@ class TestBuildConfigWithTemplateRemoval:
     IDF submission.  All template metadata should be cleared from config.
     """
 
-    def test_remove_clears_template_signals(self):
+    def test_remove_clears_template_step_io(self):
         """Switching to direct mode returns an empty template vars list.
 
         Even if the step had template StepIODefinition rows before, the
         returned list should be empty because the author selected direct
-        mode. ``_sync_template_signals()`` will clear the StepIODefinition
+        mode. ``_sync_template_step_io()`` will clear the StepIODefinition
         rows.
         """
         validator = _make_energyplus_validator()
@@ -559,7 +559,7 @@ class TestBuildConfigPreservesExisting:
             # display_step_outputs is cosmetic — it lives in the display bucket,
             # which is where build_energyplus_config's keep-read now looks
             # (ADR-2026-06-18).
-            display_settings={"display_step_outputs": ["some_signal"]},
+            display_settings={"display_step_outputs": ["some_output"]},
         )
         form = _make_form(
             validator=validator,
@@ -576,7 +576,7 @@ class TestBuildConfigPreservesExisting:
         assert template_vars == []
         assert "template_variables" not in config
         assert config["case_sensitive"] is True
-        assert config["display_step_outputs"] == ["some_signal"]
+        assert config["display_step_outputs"] == ["some_output"]
 
     def test_no_step_no_template_keys(self):
         """A new step (no existing step) in direct mode has no template data.
@@ -595,7 +595,7 @@ class TestBuildConfigPreservesExisting:
         assert config["display_step_outputs"] == []
 
     def test_step_without_template_has_no_template_keys(self):
-        """An existing step in direct mode has no template signals.
+        """An existing step in direct mode has no template input definitions.
 
         Pre-template steps have ``config={"idf_checks": [], "run_simulation": False}``
         with no template keys.  Re-saving in direct mode returns an empty
@@ -848,14 +848,14 @@ class TestFileTypeEnforcement:
         # Template variables are now stored as StepIODefinition rows,
         # not in config JSON.
         assert "template_variables" not in step.config
-        from validibot.validations.constants import SignalOriginKind
+        from validibot.validations.constants import StepIOOriginKind
 
-        expected_signal_count = 3
+        expected_io_definition_count = 3
         assert (
-            step.signal_definitions.filter(
-                origin_kind=SignalOriginKind.TEMPLATE,
+            step.step_io_definitions.filter(
+                origin_kind=StepIOOriginKind.TEMPLATE,
             ).count()
-            == expected_signal_count
+            == expected_io_definition_count
         )
 
     def test_template_rejected_when_json_not_in_file_types(self):
@@ -994,13 +994,13 @@ class TestVariableEditorDynamicFields:
         variable_type, min_value, min_exclusive, max_value, max_exclusive,
         and choices.  The form reads from step-owned StepIODefinition rows.
         """
-        from validibot.validations.services.template_signals import (
-            sync_step_template_signals,
+        from validibot.validations.services.template_step_io import (
+            sync_step_template_io_definitions,
         )
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(validator=validator)
-        sync_step_template_signals(
+        sync_step_template_io_definitions(
             step,
             [
                 {"name": "U_FACTOR", "description": "U-Factor"},
@@ -1035,18 +1035,18 @@ class TestVariableEditorDynamicFields:
         assert tplvar_fields == []
 
     def test_dynamic_fields_have_correct_initial_values(self):
-        """Dynamic field initial values match the signal definition data.
+        """Dynamic field initial values match the step I/O definition data.
 
         When editing an existing step, each variable's fields should be
         pre-populated with the saved annotation data from StepIODefinition.
         """
-        from validibot.validations.services.template_signals import (
-            sync_step_template_signals,
+        from validibot.validations.services.template_step_io import (
+            sync_step_template_io_definitions,
         )
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(validator=validator)
-        sync_step_template_signals(
+        sync_step_template_io_definitions(
             step,
             [
                 {
@@ -1106,13 +1106,13 @@ class TestTemplateVariableFieldsProperty:
         The ``name`` and ``index`` are strings/ints for display; the field
         keys are BoundField objects that render as HTML form controls.
         """
-        from validibot.validations.services.template_signals import (
-            sync_step_template_signals,
+        from validibot.validations.services.template_step_io import (
+            sync_step_template_io_definitions,
         )
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(validator=validator)
-        sync_step_template_signals(
+        sync_step_template_io_definitions(
             step,
             [{"name": "U_FACTOR", "description": "U-Factor"}],
         )
@@ -1134,13 +1134,13 @@ class TestTemplateVariableFieldsProperty:
         The required/optional badge is derived from the default value:
         empty default = required, non-empty default = optional.
         """
-        from validibot.validations.services.template_signals import (
-            sync_step_template_signals,
+        from validibot.validations.services.template_step_io import (
+            sync_step_template_io_definitions,
         )
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(validator=validator)
-        sync_step_template_signals(
+        sync_step_template_io_definitions(
             step,
             [{"name": "U_FACTOR", "default": ""}],
         )
@@ -1150,13 +1150,13 @@ class TestTemplateVariableFieldsProperty:
 
     def test_is_optional_when_default_set(self):
         """Variable is marked optional when default is non-empty."""
-        from validibot.validations.services.template_signals import (
-            sync_step_template_signals,
+        from validibot.validations.services.template_step_io import (
+            sync_step_template_io_definitions,
         )
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(validator=validator)
-        sync_step_template_signals(
+        sync_step_template_io_definitions(
             step,
             [{"name": "U_FACTOR", "default": "2.0"}],
         )
@@ -1357,14 +1357,14 @@ class TestAnnotationMerge:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Phase 3: Display signals field
+# Phase 3: Displayed step outputs
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class TestDisplaySignals:
-    """Tests for the ``DisplayStepOutputsForm`` (modal-based signal selection).
+class TestDisplayStepOutputs:
+    """Tests for the ``DisplayStepOutputsForm`` output selection modal.
 
-    Output signal selection lets the author choose which output signals
+    Step output selection lets the author choose which output values
     to display in submission results.  This is now a cross-validator
     feature using a standalone form in a modal, not inline in the step
     config form.
@@ -1381,8 +1381,8 @@ class TestDisplaySignals:
 
         assert "display_step_outputs" not in form.fields
 
-    def test_display_step_outputs_form_choices_empty_without_signal_definitions(self):
-        """When the validator has no output signal definitions, choices are empty.
+    def test_display_step_outputs_form_choices_empty_without_step_io_definitions(self):
+        """When the validator has no output value definitions, choices are empty.
 
         This is the typical case for a freshly created test validator.
         """
@@ -1395,32 +1395,32 @@ class TestDisplaySignals:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Unified signals — build_unified_signals_from_definitions() helper
+# Unified step I/O — build_step_io_context() helper
 # ══════════════════════════════════════════════════════════════════════════════
-# The unified "Inputs and Outputs" card merges validator-owned signals
-# (from StepIODefinition rows) with step-owned template/FMU signals into
-# a single view. ``build_unified_signals_from_definitions()`` is the
+# The unified "Inputs and Outputs" card merges validator-owned definitions
+# (from StepIODefinition rows) with step-owned template/FMU I/O definitions into
+# a single view. ``build_step_io_context()`` is the
 # view-layer helper that builds this merged representation.
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class TestBuildUnifiedSignals(TestCase):
-    """Tests for ``build_unified_signals_from_definitions()`` — the view helper
+class TestBuildStepIOContext(TestCase):
+    """Tests for ``build_step_io_context()`` — the view helper
     that queries ``StepIODefinition`` and ``StepInputBinding`` rows to build
-    unified input/output signal lists.
+    unified input/output value lists.
 
-    The helper produces four keys: ``input_signals``, ``output_signals``,
-    ``has_inputs``, ``has_outputs``.  Input signals come from two ownership
+    The helper produces four keys: ``input_values``, ``output_values``,
+    ``has_inputs``, ``has_outputs``.  Step inputs come from two ownership
     levels: step-owned ``StepIODefinition`` rows (e.g. template variables)
-    and validator-owned ``StepIODefinition`` rows (catalog signals).
+    and validator-owned ``StepIODefinition`` rows (catalog step I/O).
     When step-owned inputs exist, validator-owned inputs are excluded.
-    Output signals come from both levels and are always merged.
+    Step outputs come from both levels and are always merged.
     Each output is annotated with ``show_to_user`` based on the step's
     ``display_step_outputs`` config.
     """
 
     def test_template_variables_only(self):
-        """Steps with template-origin signal definitions still show inputs.
+        """Steps with template-origin step I/O definitions still show inputs.
 
         This is the typical case for an EnergyPlus template-mode step:
         step-owned StepIODefinition rows with origin_kind="template" and
@@ -1428,9 +1428,7 @@ class TestBuildUnifiedSignals(TestCase):
         """
         from validibot.validations.tests.factories import StepInputBindingFactory
         from validibot.validations.tests.factories import StepIODefinitionFactory
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
         step = WorkflowStepFactory(config={})
 
@@ -1447,7 +1445,7 @@ class TestBuildUnifiedSignals(TestCase):
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=sig0,
+            io_definition=sig0,
             source_data_path="u_factor",
             default_value=None,
             is_required=True,
@@ -1466,20 +1464,20 @@ class TestBuildUnifiedSignals(TestCase):
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=sig1,
+            io_definition=sig1,
             source_data_path="shgc",
             default_value="0.4",
             is_required=False,
         )
 
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
         assert result["has_inputs"] is True
         assert result["has_outputs"] is False
-        assert len(result["input_signals"]) == 2  # noqa: PLR2004
+        assert len(result["input_values"]) == 2  # noqa: PLR2004
 
         # First variable: no default → required
-        inp0 = result["input_signals"][0]
+        inp0 = result["input_values"][0]
         assert inp0["slug"] == "u_factor"
         assert inp0["label"] == "U-Factor"
         assert inp0["source"] == "template"
@@ -1487,22 +1485,20 @@ class TestBuildUnifiedSignals(TestCase):
 
         # Second variable: has default → not required; label falls back
         # to native_name when label is empty.
-        inp1 = result["input_signals"][1]
+        inp1 = result["input_values"][1]
         assert inp1["slug"] == "shgc"
         assert inp1["source"] == "template"
         assert inp1["required"] is False
 
-    def test_validator_signal_definitions_only(self):
-        """Steps with validator-owned signal definitions but no step-owned signals.
+    def test_validator_step_io_definitions_only(self):
+        """Steps may have validator-owned definitions but no step-owned ones.
 
         This is the typical case for validators like FMU or THERM that
-        define their signals entirely through validator-level
+        define their inputs and outputs entirely through validator-level
         ``StepIODefinition`` rows.
         """
         from validibot.validations.tests.factories import StepIODefinitionFactory
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(config={}, validator=validator)
@@ -1524,17 +1520,17 @@ class TestBuildUnifiedSignals(TestCase):
             origin_kind="catalog",
         )
 
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
         assert result["has_inputs"] is True
         assert result["has_outputs"] is True
-        assert len(result["input_signals"]) == 1
-        assert len(result["output_signals"]) == 1
+        assert len(result["input_values"]) == 1
+        assert len(result["output_values"]) == 1
 
-        assert result["input_signals"][0]["slug"] == "weather-file"
-        assert result["input_signals"][0]["source"] == "catalog"
-        assert result["output_signals"][0]["slug"] == "total-energy"
-        assert result["output_signals"][0]["show_to_user"] is True
+        assert result["input_values"][0]["slug"] == "weather-file"
+        assert result["input_values"][0]["source"] == "catalog"
+        assert result["output_values"][0]["slug"] == "total-energy"
+        assert result["output_values"][0]["show_to_user"] is False
 
     def test_template_vars_merge_with_catalog_inputs(self):
         """Step-owned template variables merge with validator-owned catalog inputs.
@@ -1561,9 +1557,7 @@ class TestBuildUnifiedSignals(TestCase):
         """
         from validibot.validations.tests.factories import StepInputBindingFactory
         from validibot.validations.tests.factories import StepIODefinitionFactory
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(config={}, validator=validator)
@@ -1588,7 +1582,7 @@ class TestBuildUnifiedSignals(TestCase):
         )
 
         # Step-owned template input (different key — appears alongside).
-        sig = StepIODefinitionFactory(
+        io_definition = StepIODefinitionFactory(
             workflow_step=step,
             validator=None,
             contract_key="u_factor",
@@ -1599,14 +1593,14 @@ class TestBuildUnifiedSignals(TestCase):
         )
         StepInputBindingFactory(
             workflow_step=step,
-            signal_definition=sig,
+            io_definition=io_definition,
             source_data_path="u_factor",
             is_required=True,
         )
 
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        slugs = {row["slug"] for row in result["input_signals"]}
+        slugs = {row["slug"] for row in result["input_values"]}
         # Both step-owned and validator-owned inputs render.
         assert slugs == {"u_factor", "zone_count"}, (
             f"Expected both template var u_factor AND catalog parser "
@@ -1614,22 +1608,20 @@ class TestBuildUnifiedSignals(TestCase):
             f"surface validator-owned parser facts so authors can "
             f"promote them in template-mode steps."
         )
-        # Output signals from validator still present.
+        # Step outputs from validator still present.
         assert result["has_outputs"] is True
-        assert result["output_signals"][0]["slug"] == "total-energy"
+        assert result["output_values"][0]["slug"] == "total-energy"
 
     def test_step_owned_input_overrides_validator_owned_same_key(self):
         """When step-owned and validator-owned rows share a contract_key,
         the step-owned row wins (more specific declaration).
 
         Regression guard for the dedup logic in
-        ``build_unified_signals_from_definitions``: only one row per
+        ``build_step_io_context``: only one row per
         contract_key, with the step-owned row taking precedence.
         """
         from validibot.validations.tests.factories import StepIODefinitionFactory
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(config={}, validator=validator)
@@ -1652,41 +1644,37 @@ class TestBuildUnifiedSignals(TestCase):
             origin_kind="template",
         )
 
-        result = build_unified_signals_from_definitions(step=step)
-        rows = [r for r in result["input_signals"] if r["slug"] == "shared_key"]
+        result = build_step_io_context(step=step)
+        rows = [r for r in result["input_values"] if r["slug"] == "shared_key"]
         assert len(rows) == 1
-        assert rows[0]["signal_definition"].pk == step_row.pk
+        assert rows[0]["io_definition"].pk == step_row.pk
 
-    def test_empty_step_produces_no_signals(self):
-        """A step with no signal definitions at all is empty.
+    def test_empty_step_produces_no_step_io(self):
+        """A step with no step I/O definitions at all is empty.
 
-        This happens for newly created steps before any signals have
+        This happens for newly created steps before any definitions have
         been synced from a catalog, template scan, or FMU probe.
         """
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
         step = WorkflowStepFactory(config={})
 
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
         assert result["has_inputs"] is False
         assert result["has_outputs"] is False
-        assert result["input_signals"] == []
-        assert result["output_signals"] == []
+        assert result["input_values"] == []
+        assert result["output_values"] == []
 
     def test_output_display_step_outputs_filtering(self):
-        """Output signals respect the step's ``display_step_outputs`` config.
+        """Step outputs respect the step's ``display_step_outputs`` config.
 
         When ``display_step_outputs`` lists specific contract_keys, only those
         outputs have ``show_to_user=True``.  Others are still returned
         but marked hidden.
         """
         from validibot.validations.tests.factories import StepIODefinitionFactory
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(
@@ -1713,25 +1701,23 @@ class TestBuildUnifiedSignals(TestCase):
             order=1,
         )
 
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        shown = [s for s in result["output_signals"] if s["show_to_user"]]
-        hidden = [s for s in result["output_signals"] if not s["show_to_user"]]
+        shown = [s for s in result["output_values"] if s["show_to_user"]]
+        hidden = [s for s in result["output_values"] if not s["show_to_user"]]
         assert len(shown) == 1
         assert shown[0]["slug"] == "total-energy"
         assert len(hidden) == 1
         assert hidden[0]["slug"] == "peak-load"
 
-    def test_output_all_shown_when_display_step_outputs_empty(self):
-        """When ``display_step_outputs`` is absent, all outputs are shown.
+    def test_no_outputs_shown_when_display_step_outputs_empty(self):
+        """When ``display_step_outputs`` is absent, outputs are hidden.
 
-        This is the backward-compatible default — before the author
-        configures signal visibility, everything is visible.
+        Output exposure is opt-in, so the default cannot leak validator
+        results to submitters.
         """
         from validibot.validations.tests.factories import StepIODefinitionFactory
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(config={}, validator=validator)
@@ -1745,25 +1731,23 @@ class TestBuildUnifiedSignals(TestCase):
             origin_kind="catalog",
         )
 
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        assert result["output_signals"][0]["show_to_user"] is True
+        assert result["output_values"][0]["show_to_user"] is False
 
-    def test_validator_owned_input_signals_shown_when_no_step_inputs(self):
-        """Validator-owned input signals appear when no step-owned inputs exist.
+    def test_validator_owned_input_values_shown_when_no_step_inputs(self):
+        """Validator-owned step inputs appear when no step-owned inputs exist.
 
         This replaces the old "input derivations included" test.  In the
         unified model, derivations are in the separate ``Derivation`` model
-        and are not returned by ``build_unified_signals_from_definitions()``.
-        Instead, this test verifies that validator-level input signals
+        and are not returned by ``build_step_io_context()``.
+        Instead, this test verifies that validator-level step inputs
         (origin_kind="catalog") appear when the step has no step-owned
-        input signals, and that signals without a binding default to
+        step inputs, and that definitions without a binding default to
         required.
         """
         from validibot.validations.tests.factories import StepIODefinitionFactory
-        from validibot.workflows.views_helpers import (
-            build_unified_signals_from_definitions,
-        )
+        from validibot.workflows.views_helpers import build_step_io_context
 
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(config={}, validator=validator)
@@ -1777,13 +1761,13 @@ class TestBuildUnifiedSignals(TestCase):
             origin_kind="catalog",
         )
 
-        result = build_unified_signals_from_definitions(step=step)
+        result = build_step_io_context(step=step)
 
-        assert len(result["input_signals"]) == 1
-        assert result["input_signals"][0]["slug"] == "window-ratio"
-        assert result["input_signals"][0]["source"] == "catalog"
+        assert len(result["input_values"]) == 1
+        assert result["input_values"][0]["slug"] == "window-ratio"
+        assert result["input_values"][0]["source"] == "catalog"
         # No binding → defaults to required
-        assert result["input_signals"][0]["required"] is True
+        assert result["input_values"][0]["required"] is True
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1798,7 +1782,7 @@ class TestSingleTemplateVariableForm:
     """Tests for ``SingleTemplateVariableForm`` — the per-variable edit form.
 
     This form is rendered in a modal when the user clicks "Edit" on a
-    template-source input signal.  It populates initial values from the
+    template-source step input.  It populates initial values from the
     step's ``StepIODefinition`` rows (origin_kind=TEMPLATE).
     """
 
@@ -1930,19 +1914,19 @@ class TestTemplateVariableEditView:
     """
 
     def _make_step_with_variables(self):
-        """Create a workflow step with template signal definitions for testing.
+        """Create a workflow step with template step I/O definitions for testing.
 
         Returns a (workflow, step) tuple.  Uses ``with_owner=True`` so
         the factory auto-creates an org membership for the workflow user.
-        Signal definitions are created via sync_step_template_signals.
+        Step I/O definitions are created via sync_step_template_io_definitions.
         """
-        from validibot.validations.services.template_signals import (
-            sync_step_template_signals,
+        from validibot.validations.services.template_step_io import (
+            sync_step_template_io_definitions,
         )
 
         workflow = WorkflowFactory(with_owner=True)
         step = WorkflowStepFactory(workflow=workflow)
-        sync_step_template_signals(
+        sync_step_template_io_definitions(
             step,
             [
                 {
@@ -2050,29 +2034,29 @@ class TestTemplateVariableEditView:
 
         assert response.status_code == HTTPStatus.NO_CONTENT
 
-        # Verify the signal definition was updated
-        from validibot.validations.constants import SignalOriginKind
+        # Verify the step I/O definition was updated
+        from validibot.validations.constants import StepIOOriginKind
         from validibot.validations.models import StepInputBinding
 
         bindings = list(
             StepInputBinding.objects.filter(
                 workflow_step=step,
-                signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+                io_definition__origin_kind=StepIOOriginKind.TEMPLATE,
             )
-            .select_related("signal_definition")
+            .select_related("io_definition")
             .order_by(
-                "signal_definition__order",
-                "signal_definition__contract_key",
+                "io_definition__order",
+                "io_definition__contract_key",
             )
         )
-        sig0 = bindings[0].signal_definition
+        sig0 = bindings[0].io_definition
         assert sig0.native_name == "U_FACTOR"  # Name preserved
         assert sig0.label == "Updated U-Factor Label"
         assert bindings[0].default_value == "2.5"
         assert sig0.unit == "BTU/h-ft2-F"
 
         # Second variable untouched
-        sig1 = bindings[1].signal_definition
+        sig1 = bindings[1].io_definition
         assert sig1.native_name == "SHGC"
         assert sig1.label == "Solar Heat Gain"
 
@@ -2116,18 +2100,18 @@ class TestTemplateVariableEditView:
 
         assert response.status_code == HTTPStatus.NO_CONTENT
         # Name (native_name) is preserved from the original, not from form data
-        from validibot.validations.constants import SignalOriginKind
+        from validibot.validations.constants import StepIOOriginKind
         from validibot.validations.models import StepIODefinition
 
-        sig = (
+        io_definition = (
             StepIODefinition.objects.filter(
                 workflow_step=step,
-                origin_kind=SignalOriginKind.TEMPLATE,
+                origin_kind=StepIOOriginKind.TEMPLATE,
             )
             .order_by("order", "contract_key")
             .first()
         )
-        assert sig.native_name == "U_FACTOR"
+        assert io_definition.native_name == "U_FACTOR"
 
 
 # ===========================================================================

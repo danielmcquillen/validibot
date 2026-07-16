@@ -26,7 +26,7 @@ The container execution varies by deployment:
 - GCP: Cloud Run Jobs (async with callbacks)
 - AWS: AWS Batch (future)
 
-## Output Envelopes and Assertion Signals
+## Output Envelopes and Assertion Values
 
 Each advanced validator type produces outputs in its own Pydantic envelope
 structure (defined in validibot_shared). For example:
@@ -35,8 +35,8 @@ structure (defined in validibot_shared). For example:
 - FMU: outputs.output_values contains a dict keyed by catalog slug
 
 To evaluate assertions after a container job completes, the callback service
-needs to extract these signals from the envelope. Validators implement the
-instance method ``extract_output_signals()`` to handle their specific envelope
+needs to extract these step output values from the envelope. Validators implement the
+instance method ``extract_output_values()`` to handle their specific envelope
 structure. This keeps envelope knowledge localized to the validator rather
 than scattered across the callback service. Instance method (not classmethod)
 so subclasses can reach ``self.run_context`` for catalog-version-scoped
@@ -61,7 +61,7 @@ from typing import Any
 from validibot.validations.cel import DEFAULT_HELPERS
 from validibot.validations.cel import CelHelper
 from validibot.validations.constants import Severity
-from validibot.validations.constants import SignalDirection
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.submission_context import (
     build_submission_assertion_context,
@@ -148,8 +148,10 @@ class ValidationResult:
             validation is still pending (for async container-based validators).
         issues: List of issues discovered (may include INFO/WARNING).
         assertion_stats: Structured assertion counts (total and failures).
-        signals: Extracted metrics for downstream steps. For advanced validators,
-            this is populated by post_execute_validate() with output signals.
+        output_values: Extracted step output values for assertions and downstream
+            steps. Advanced validators populate this in
+            ``post_execute_validate()``; processors persist it to
+            ``ValidationStepRun.output_values``.
         output_envelope: For advanced validators, the typed container output
             envelope. Populated for sync execution; None for async.
         workflow_step_name: Slug of the workflow step that produced this result.
@@ -159,7 +161,7 @@ class ValidationResult:
     passed: bool | None
     issues: list[ValidationIssue]
     assertion_stats: AssertionStats = field(default_factory=AssertionStats)
-    signals: dict[str, Any] | None = None
+    output_values: dict[str, Any] | None = None
     output_envelope: Any | None = None
     workflow_step_name: str | None = None  # slug
     stats: dict[str, Any] | None = None
@@ -172,7 +174,7 @@ class ValidationResult:
                 "total": self.assertion_stats.total,
                 "failures": self.assertion_stats.failures,
             },
-            "signals": self.signals or {},
+            "output_values": self.output_values or {},
             "stats": self.stats or {},
         }
 
@@ -205,7 +207,7 @@ class BaseValidator(ABC):
     ## Implementing Advanced Validators
 
     Advanced validators that produce output envelopes should override
-    ``extract_output_signals()`` to extract the signals dict from their
+    ``extract_output_values()`` to extract the step output values from their
     envelope structure. This is used by the callback service to evaluate
     output-stage assertions after the container job completes.
     """
@@ -235,9 +237,9 @@ class BaseValidator(ABC):
         """
         return dict(self.cel_helpers)
 
-    # ------------------------------------- Step input/output signal extraction
+    # ------------------------------------------ Step input/output value extraction
 
-    def extract_input_signals(self, payload: Any) -> dict[str, Any] | None:
+    def extract_input_values(self, payload: Any) -> dict[str, Any] | None:
         """
         Extract input-stage step inputs from the submission payload.
 
@@ -263,7 +265,7 @@ class BaseValidator(ABC):
         from ``self.run_context.step.validator.fmu_model.introspection_metadata``
         because the FMU itself is bound to the validator, not the
         submission. All existing call sites already invoke this via
-        ``self.extract_input_signals(payload)`` so the conversion is
+        ``self.extract_input_values(payload)`` so the conversion is
         backwards-compatible.
 
         Args:
@@ -275,16 +277,16 @@ class BaseValidator(ABC):
         """
         return None
 
-    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
+    def extract_output_values(self, output_envelope: Any) -> dict[str, Any] | None:
         """
-        Extract assertion signals from an output envelope for assertion evaluation.
+        Extract step output values from an envelope for assertion evaluation.
 
         Advanced validators (EnergyPlus, FMU) produce output envelopes with
         domain-specific structures containing simulation results. This method
-        extracts the signals that can be referenced in output-stage assertions.
+        extracts the values that can be referenced in output-stage assertions.
 
         Override this in subclasses to handle validator-specific envelope
-        structures. The base implementation returns None (no signals
+        structures. The base implementation returns None (no output values
         available).
 
         This is an instance method (not a classmethod) so subclasses can
@@ -299,7 +301,7 @@ class BaseValidator(ABC):
 
         Returns:
             Dict mapping catalog slugs to values for CEL evaluation, or None if
-            no signals can be extracted. Keys should match the validator's output
+            no output values can be extracted. Keys should match the validator's output
             catalog entry slugs (e.g., "site_eui_kwh_m2" for EnergyPlus).
 
         Example (EnergyPlus):
@@ -366,14 +368,14 @@ class BaseValidator(ABC):
           can promote.
         - ``i`` / ``input`` — step-local input values for the
           current step. Populated from parser-extracted facts
-          (``extract_input_signals``) and resolved
+          (``extract_input_values``) and resolved
           ``StepInputBinding`` rows. **Step inputs live here, not
           in s.*** — the form's CEL identifier validator rejects
           ``s.<step_input>`` references because they would silently
           read null.
         - ``o`` / ``output`` — this step's declared output values
           (from ``StepIODefinition`` rows with ``direction="output"``,
-          populated by ``extract_output_signals``).
+          populated by ``extract_output_values``).
         - ``steps`` — both inputs and outputs from completed upstream
           steps, accessible as ``steps.<step_key>.input.<name>`` and
           ``steps.<step_key>.output.<name>``.
@@ -438,36 +440,39 @@ class BaseValidator(ABC):
         # under ``output`` so authors access values via ``output.key``
         # or ``o.key``.
         #
-        # For input-stage, declared output signals are resolved from
+        # For input-stage, declared step outputs are resolved from
         # the payload so ``output.name`` is available even during input
         # assertions (e.g., for cross-direction comparisons).
         output_dict: dict[str, Any] = {}
         if stage == "output" and isinstance(payload, dict):
             output_dict = payload
         else:
-            # Input stage: resolve declared output signals
-            for sig in validator.signal_definitions.filter(
-                direction=SignalDirection.OUTPUT,
+            # Input stage: resolve declared step outputs.
+            for io_definition in validator.step_io_definitions.filter(
+                direction=StepIODirection.OUTPUT,
             ).only("contract_key"):
-                value, found = self._resolve_path(payload, sig.contract_key)
-                output_dict[sig.contract_key] = value if found else None
+                value, found = self._resolve_path(
+                    payload,
+                    io_definition.contract_key,
+                )
+                output_dict[io_definition.contract_key] = value if found else None
 
-        # NOTE: Declared input signal definitions are NOT injected into
-        # the s.* namespace. They are step inputs (validator-defined
-        # contracts), not author-defined signals. Step inputs live in
-        # the dedicated i.* namespace built below.
+        # NOTE: Declared step inputs are NOT injected into the s.*
+        # namespace. They are validator-defined contracts, not
+        # author-defined workflow signals. Step inputs live in the
+        # dedicated i.* namespace built below.
 
         # ── Input namespace (i / input) ──────────────────────────────
         # Step-local input values available at the start of the step.
         # Populated from two sources:
-        #   1. Parser-extracted facts via extract_input_signals() —
+        #   1. Parser-extracted facts via extract_input_values() —
         #      validators that parse an arcane format (EnergyPlus IDF)
         #      OR read stamped metadata (FMU's introspection dict)
         #      override the hook to return a dict keyed by catalog
         #      contract_key.
         #   2. Pre-resolved StepInputBinding values (contract-keyed)
         #      cached on the run context by the input-resolution
-        #      pipeline (see resolve_step_input_signals).
+        #      pipeline (see resolve_step_input_values).
         #
         # For built-in validators that don't parse and don't take
         # bindings (JSON Schema, XML Schema, Basic), i.* stays empty
@@ -485,19 +490,19 @@ class BaseValidator(ABC):
         if isinstance(bound_contract_values, dict):
             inputs_dict.update(bound_contract_values)
 
-        # Parser-extracted facts via the validator's extract_input_signals
+        # Parser-extracted facts via the validator's extract_input_values
         # classmethod. Default returns None (most validators don't parse).
         # Called only at input stage where the payload is the raw submission.
         # At output stage the payload is the validator output envelope, not
         # the original submission, so we don't re-parse.
         if stage == "input":
             try:
-                parsed = self.extract_input_signals(payload)
+                parsed = self.extract_input_values(payload)
             except Exception:
                 # Parser failures must not break assertion evaluation —
                 # they surface as findings via the validator's normal
                 # error path. The i.* namespace stays empty for the
-                # signals the parser couldn't produce.
+                # step inputs the parser couldn't produce.
                 parsed = None
             if isinstance(parsed, dict):
                 # Parser facts win over bindings only when not already set —
@@ -604,7 +609,7 @@ class BaseValidator(ABC):
            rows (the ``promoted_signal_name`` field).
         2. **Overlay** promotions on validator-owned rows
            (``WorkflowStepIOPromotion`` rows keyed on
-           ``(workflow_step, signal_definition)``).
+           ``(workflow_step, io_definition)``).
 
         Both sources read from completed upstream ``ValidationStepRun``
         records, but the **direction** of the promotion picks which canonical
@@ -637,6 +642,7 @@ class BaseValidator(ABC):
         if not workflow:
             return
 
+        from validibot.validations.constants import StepIOMedium
         from validibot.validations.models import StepIODefinition
         from validibot.validations.models import WorkflowStepIOPromotion
 
@@ -669,7 +675,7 @@ class BaseValidator(ABC):
         # 2. Validator-owned rows (catalog entries shared across
         #    workflows) can't carry a workflow-scoped name in-row,
         #    so a WorkflowStepIOPromotion overlay holds the name
-        #    per (workflow_step, signal_definition). Query the
+        #    per (workflow_step, io_definition). Query the
         #    overlay table for upstream steps in this workflow.
         #
         # The two queries are run separately and their results merged
@@ -679,6 +685,7 @@ class BaseValidator(ABC):
         # Source 1: in-row promotions on step-owned rows.
         step_owned_qs = StepIODefinition.objects.filter(
             workflow_step__workflow=workflow,
+            io_medium=StepIOMedium.VALUE,
         ).exclude(promoted_signal_name="")
         if current_step_order is not None:
             step_owned_qs = step_owned_qs.filter(
@@ -694,6 +701,7 @@ class BaseValidator(ABC):
         # Source 2: overlay promotions on validator-owned rows.
         overlay_qs = WorkflowStepIOPromotion.objects.filter(
             workflow_step__workflow=workflow,
+            io_definition__io_medium=StepIOMedium.VALUE,
         )
         if current_step_order is not None:
             overlay_qs = overlay_qs.filter(
@@ -701,30 +709,30 @@ class BaseValidator(ABC):
             )
         overlays = overlay_qs.only(
             "promoted_signal_name",
-            "signal_definition__contract_key",
-            "signal_definition__direction",
+            "io_definition__contract_key",
+            "io_definition__direction",
             "workflow_step__step_key",
-        ).select_related("workflow_step", "signal_definition")
+        ).select_related("workflow_step", "io_definition")
 
         # Build a unified iterable of (promoted_name, contract_key,
         # direction, step_key) tuples so the injection loop below
         # doesn't care which source the promotion came from.
         promotions: list[tuple[str, str, str, str | None]] = []
-        for sig in step_owned:
+        for io_definition in step_owned:
             promotions.append(
                 (
-                    sig.promoted_signal_name,
-                    sig.contract_key,
-                    sig.direction,
-                    getattr(sig.workflow_step, "step_key", None),
+                    io_definition.promoted_signal_name,
+                    io_definition.contract_key,
+                    io_definition.direction,
+                    getattr(io_definition.workflow_step, "step_key", None),
                 ),
             )
         for overlay in overlays:
             promotions.append(
                 (
                     overlay.promoted_signal_name,
-                    overlay.signal_definition.contract_key,
-                    overlay.signal_definition.direction,
+                    overlay.io_definition.contract_key,
+                    overlay.io_definition.direction,
                     getattr(overlay.workflow_step, "step_key", None),
                 ),
             )
@@ -736,7 +744,7 @@ class BaseValidator(ABC):
             # The context builder exposes canonical ``input_values`` and
             # ``output_values`` under their author-facing namespace names.
             if isinstance(step_data, dict):
-                if direction == SignalDirection.INPUT:
+                if direction == StepIODirection.INPUT:
                     values = step_data.get("input", {})
                 else:
                     values = step_data.get("output", {})
@@ -746,9 +754,9 @@ class BaseValidator(ABC):
                 signals_dict[promoted_name] = values[contract_key]
 
     def _resolve_bound_input_context(self, payload: Any) -> dict[str, Any]:
-        """Resolve input signals wired to the current workflow step.
+        """Resolve step inputs wired to the current workflow step.
 
-        CEL expressions on simple validators can reference signal contract keys
+        CEL expressions on simple validators can reference step input contract keys
         like ``emissivity`` even when the submission stores the value at a
         nested path such as ``ownedMember[0].ownedAttribute[1].defaultValue``.
         When a workflow step defines ``StepInputBinding`` rows, resolve those
@@ -761,9 +769,9 @@ class BaseValidator(ABC):
         if step is None:
             return {}
 
-        from validibot.validations.constants import SignalDirection
+        from validibot.validations.constants import StepIODirection
         from validibot.validations.models import StepInputBinding
-        from validibot.validations.services.path_resolution import resolve_input_signal
+        from validibot.validations.services.path_resolution import resolve_step_input
 
         submission = getattr(
             getattr(self, "run_context", None),
@@ -783,7 +791,7 @@ class BaseValidator(ABC):
         # Workflow-level signals (the s.* namespace) must be passed to
         # the resolver too — a StepInputBinding with
         # source_scope=SIGNAL reads from this dict via
-        # resolve_input_signal. Without this argument, every
+        # resolve_step_input. Without this argument, every
         # signal-sourced binding silently resolves to its default (or
         # marks "unresolved"), and i.<contract_key> ends up null even
         # when the workflow signal is present. Per the May 2026 P2
@@ -800,10 +808,10 @@ class BaseValidator(ABC):
         bindings = (
             StepInputBinding.objects.filter(
                 workflow_step=step,
-                signal_definition__direction=SignalDirection.INPUT,
+                io_definition__direction=StepIODirection.INPUT,
             )
-            .select_related("signal_definition")
-            .order_by("signal_definition__order", "signal_definition__pk")
+            .select_related("io_definition")
+            .order_by("io_definition__order", "io_definition__pk")
         )
 
         if not bindings.exists():
@@ -813,14 +821,14 @@ class BaseValidator(ABC):
 
         context: dict[str, Any] = {}
         for binding in bindings:
-            resolved = resolve_input_signal(
+            resolved = resolve_step_input(
                 binding,
                 submission_data=submission_data,
                 submission_metadata=submission_metadata,
                 upstream_steps=upstream_steps,
                 workflow_signals=workflow_signals,
             )
-            context[binding.signal_definition.contract_key] = (
+            context[binding.io_definition.contract_key] = (
                 resolved.value if resolved.resolved else None
             )
 
@@ -831,7 +839,7 @@ class BaseValidator(ABC):
         base_payload: Any,
         *,
         stage: str,
-        output_signals: dict[str, Any] | None = None,
+        output_values: dict[str, Any] | None = None,
     ) -> Any:
         """Merge namespaced values into a BASIC-evaluator payload.
 
@@ -844,7 +852,7 @@ class BaseValidator(ABC):
         signal name (for s.*).
 
         That way a BASIC assertion whose
-        ``target_signal_definition.contract_key`` is ``temperature``
+        ``target_io_definition.contract_key`` is ``temperature``
         finds the value at ``payload["temperature"]`` regardless of
         whether it came from a parser fact, a resolved
         ``StepInputBinding``, a workflow signal mapping, or an
@@ -852,7 +860,7 @@ class BaseValidator(ABC):
 
         Merge order (base wins on collision):
 
-        1. The base payload (raw submission or extracted signals dict).
+        1. The base payload (raw submission or extracted step-value dict).
            Its keys win on collision because the submission shape
            should not be silently shadowed by a same-named binding.
         2. Workflow signals (``run_context.workflow_signals``).
@@ -861,7 +869,7 @@ class BaseValidator(ABC):
            ``_build_assertion_payload`` on the advanced side; calling
            ``_resolve_bound_input_context`` again at output stage
            would be redundant.
-        4. Output signals — only when supplied (output stage on
+        4. Step output values — only when supplied (output stage on
            advanced validators).
         5. The ``submission`` envelope — a NESTED sub-dict (not
            flattened to bare keys), so a target like
@@ -886,12 +894,12 @@ class BaseValidator(ABC):
 
         Args:
             base_payload: The validator-specific base payload
-                (typically the signals dict from a simple validator's
-                ``extract_signals`` or the assertion payload from an
+                (typically the output-value dict from a simple validator's
+                ``extract_output_values`` or the assertion payload from an
                 advanced validator).
             stage: ``"input"`` or ``"output"`` — controls whether
                 StepInputBinding resolution runs.
-            output_signals: At output stage, the extracted output
+            output_values: At output stage, the extracted output
                 dict to merge into the payload. None at input stage.
 
         Returns:
@@ -945,10 +953,10 @@ class BaseValidator(ABC):
                 contract_values.update(bound)
                 self.run_context.step_input_contract_values = contract_values
 
-        # Output signals — o.* values from extract_output_signals.
+        # Step outputs — o.* values from extract_output_values.
         # Only at output stage.
-        if stage == "output" and output_signals:
-            for key, value in output_signals.items():
+        if stage == "output" and output_values:
+            for key, value in output_values.items():
                 enriched.setdefault(key, value)
 
         # Submission envelope — injected last as a nested, authoritative
@@ -1160,7 +1168,7 @@ class BaseValidator(ABC):
                 continue
             assertions = list(
                 rs.assertions.all()
-                .select_related("target_signal_definition")
+                .select_related("target_io_definition")
                 .order_by("order", "pk")
             )
             stage_assertions.extend(
@@ -1298,9 +1306,9 @@ class BaseValidator(ABC):
 
         Implementation should:
         1. Extract issues from envelope.messages
-        2. Extract signals via extract_output_signals()
-        3. Evaluate output-stage assertions using those signals
-        4. Return ValidationResult with signals field populated
+        2. Extract step output values via extract_output_values()
+        3. Evaluate output-stage assertions using those values
+        4. Return ValidationResult with output_values populated
 
         Default implementation raises NotImplementedError. Advanced validators
         (EnergyPlus, FMU) must override this.
@@ -1313,7 +1321,7 @@ class BaseValidator(ABC):
 
         Returns:
             ValidationResult with output-stage issues, assertion_stats,
-            and signals populated. A SUCCESS status is treated as passed even
+            and output_values populated. A SUCCESS status is treated as passed even
             if the envelope contains ERROR messages; output-stage assertion
             failures are handled separately by the processor.
         """

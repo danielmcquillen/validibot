@@ -29,7 +29,7 @@ The EnergyPlus validator container produces an ``EnergyPlusOutputEnvelope``
   - site_natural_gas_kwh: Total gas consumption
   - etc. (see validibot_shared/energyplus/models.py)
 
-These metrics are extracted via ``extract_output_signals()`` for use in
+These metrics are extracted via ``extract_output_values()`` for use in
 output-stage assertions (e.g., "site_eui_kwh_m2 < 100").
 """
 
@@ -66,7 +66,7 @@ class EnergyPlusValidator(AdvancedValidator):
     - ``preprocess_submission()`` — resolves parameterized IDF templates into
       a complete IDF before backend dispatch (delegates to
       ``energyplus.preprocessing``).
-    - ``extract_output_signals()`` — extracts simulation metrics for assertions.
+    - ``extract_output_values()`` — extracts simulation metrics for assertions.
 
     The shared validate/post_execute_validate lifecycle is handled by
     ``AdvancedValidator``.
@@ -158,7 +158,7 @@ class EnergyPlusValidator(AdvancedValidator):
         """Process container output, optionally filtering simulation warnings.
 
         Delegates to the base ``AdvancedValidator.post_execute_validate()``
-        for envelope processing, signal extraction, and assertion evaluation.
+        for envelope processing, output-value extraction, and assertion evaluation.
         Then applies warning filtering if ``show_energyplus_warnings`` is
         disabled in the step config.
 
@@ -169,7 +169,7 @@ class EnergyPlusValidator(AdvancedValidator):
         result = super().post_execute_validate(output_envelope, run_context)
         return self._filter_issues(result, run_context)
 
-    def extract_output_signals(self, output_envelope: Any) -> dict[str, Any] | None:
+    def extract_output_values(self, output_envelope: Any) -> dict[str, Any] | None:
         """
         Extract simulation metrics from an EnergyPlus output envelope.
 
@@ -179,7 +179,7 @@ class EnergyPlusValidator(AdvancedValidator):
         etc.
 
         Per ADR-2026-05-22 and the May 2026 code review's P2 finding:
-        the catalog is the authoritative contract for which signals
+        the catalog is the authoritative contract for which step outputs
         belong in ``o.*``. The Pydantic model may carry additional
         fields (left over from older shared-package versions or
         future fields added before the catalog catches up) — we
@@ -204,7 +204,7 @@ class EnergyPlusValidator(AdvancedValidator):
         Returns:
             Dict of metrics keyed by field name (matching catalog slugs), with
             None values filtered out AND filtered to keys the catalog
-            declares as OUTPUT-direction signals. Returns None if
+            declares as OUTPUT-direction definitions. Returns None if
             extraction fails.
         """
         try:
@@ -228,7 +228,7 @@ class EnergyPlusValidator(AdvancedValidator):
             return self._filter_to_catalog_outputs(non_null)
         except (AttributeError, TypeError, ValueError) as exc:
             logger.warning(
-                "Could not extract signals from EnergyPlus envelope: %s",
+                "Could not extract step output values from EnergyPlus envelope: %s",
                 exc,
                 exc_info=True,
             )
@@ -242,7 +242,7 @@ class EnergyPlusValidator(AdvancedValidator):
         """Restrict raw metric dict to keys declared as OUTPUT in the catalog.
 
         Per ADR-2026-05-22: the catalog is the public contract for
-        which signals live in ``o.*``. Anything in the shared
+        which step outputs live in ``o.*``. Anything in the shared
         Pydantic envelope that the catalog doesn't declare as an
         OUTPUT-direction entry must not appear in ``o.*`` — otherwise
         a shared-package version drift (e.g., the shared package
@@ -270,7 +270,7 @@ class EnergyPlusValidator(AdvancedValidator):
         ``sync_validators``.
         """
         try:
-            from validibot.validations.constants import SignalDirection
+            from validibot.validations.constants import StepIODirection
             from validibot.validations.constants import ValidationType
             from validibot.validations.models import StepIODefinition
             from validibot.validations.models import Validator
@@ -295,7 +295,7 @@ class EnergyPlusValidator(AdvancedValidator):
             allowed_keys = set(
                 StepIODefinition.objects.filter(
                     validator=validator,
-                    direction=SignalDirection.OUTPUT,
+                    direction=StepIODirection.OUTPUT,
                 ).values_list("contract_key", flat=True)
             )
             if not allowed_keys:
@@ -330,7 +330,7 @@ class EnergyPlusValidator(AdvancedValidator):
             return None
         return getattr(step, "validator", None)
 
-    def extract_input_signals(self, payload: Any) -> dict[str, Any] | None:
+    def extract_input_values(self, payload: Any) -> dict[str, Any] | None:
         """
         Parse the (resolved) IDF or epJSON and extract declared step inputs.
 

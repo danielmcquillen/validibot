@@ -28,14 +28,14 @@ def create_default_validators():
             "slug": "basic-validator",
             "short_description": _(
                 "The simplest validator. "
-                "Allows workflow author to add signals and assertions directly "
-                "without a validator catalog.",
+                "Allows workflow authors to define assertions directly "
+                "without a predefined step I/O catalog.",
             ),
             "description": _(
                 """
                 <p>Workflow authors can use the 'Basic Validator' as a starting point
-                for creating assertions directly. There are no signals
-                or predefined assertions.
+                for creating assertions directly. There are no predefined
+                step inputs, step outputs, or assertions.
                 Perfect for lightweight checks or ad-hoc rules expressed in CEL.</p>
                 """
             ),
@@ -126,12 +126,12 @@ def create_default_validators():
                 standard to an
                 FMU-based simulation running in an isolated runtime. If the
                 simulation succeeds it
-                gathers outputs and returns them as output signals for further
+                gathers outputs and returns them as output values for further
                 validation, if defined.
                 </p>
                 <p>
                 The workflow author to write assertions against simulation
-                output signals.
+                output values.
                 </p>
                 """
             ),
@@ -173,7 +173,7 @@ def create_default_validators():
                 <p>Validate LBNL THERM files before submission to NFRC or
                 other certification bodies. Checks geometry closure, material
                 property ranges, boundary condition completeness, and
-                reference integrity. Extracts signals for downstream
+                reference integrity. Extracts output values for downstream
                 compliance assertions (e.g. NFRC 100 winter conditions).</p>
                 """
             ),

@@ -1525,7 +1525,7 @@ class TestMergeRequiredMissing:
 # test, which silently dropped any *falsy* default and reported the
 # variable as a missing required parameter.  The real-world trigger is a
 # **numeric** default of ``0`` / ``0.0`` (defaults can arrive numeric
-# from JSON — ``template_signals.py`` types them ``str | float | None``):
+# from JSON — ``template_step_io.py`` types them ``str | float | None``):
 # ``bool(0)`` is ``False``, so such a default was treated as missing.
 # (A *string* ``"0"`` was always truthy, so the ADR's string-"0" example
 # was imprecise.)  These tests pin both directions of the corrected
@@ -1539,12 +1539,12 @@ class TestMergeFalsyDefaults:
     the submitter omitted can be satisfied by the template author's
     default.  The canonical failure case is a numeric ``0`` / ``0.0``:
     although ``TemplateVariableLike`` types ``default`` as ``str``,
-    defaults can arrive numeric (``template_signals.py`` admits
+    defaults can arrive numeric (``template_step_io.py`` admits
     ``str | float | None``) and a numeric zero is falsy, so the buggy
     truthiness check treated such variables as required-and-missing and
     raised a spurious ``ValidationError``.  These tests guard that the fix
     uses an explicit ``None``/``""`` sentinel check instead — matching
-    ``template_signals.py`` and migration 0029.
+    ``template_step_io.py`` and migration 0029.
     """
 
     def test_numeric_zero_default_is_used(self):
@@ -1602,7 +1602,7 @@ class TestMergeFalsyDefaults:
         The fix must not over-correct: ``""`` still means the author
         provided no default, so an omitted variable remains a required-
         missing error.  This is the inverse invariant that keeps the
-        sentinel semantics aligned with ``template_signals.py`` and
+        sentinel semantics aligned with ``template_step_io.py`` and
         migration 0029.
         """
         variables = [
@@ -1619,7 +1619,7 @@ class TestMergeFalsyDefaults:
         """A ``None`` default is also the "no default" sentinel.
 
         ``TemplateVariableLike`` types ``default`` as ``str``, but the
-        relational source (``StepIODefinition`` → ``template_signals.py``)
+        relational source (``StepIODefinition`` → ``template_step_io.py``)
         can surface ``None`` for an unset default.  The sentinel check
         spells out ``None`` explicitly so that path stays a required-
         missing error rather than crashing or being mis-classified.

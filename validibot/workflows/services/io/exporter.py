@@ -10,7 +10,7 @@ new validator's export support is its serializer, not a change here.
 Identity, ownership, and lifecycle are deliberately *not* exported: a workflow's
 ``uuid``/``slug``/``version``, its ``org``/``user``/``project``, and its
 locked/active state are all minted or rebound at import time. What travels is the
-*shape* — fields, steps, rulesets, assertions, signals, resources — not the
+*shape* — fields, steps, rulesets, assertions, step I/O, resources — not the
 particular row it came from.
 """
 
@@ -81,10 +81,10 @@ def _ordered_steps(workflow: Workflow) -> list[WorkflowStep]:
     return list(
         workflow.steps.select_related("ruleset", "validator", "action")
         .prefetch_related(
-            "signal_definitions",
-            "signal_bindings__signal_definition",
+            "step_io_definitions",
+            "input_bindings__io_definition",
             "derivations",
-            "io_promotions__signal_definition",
+            "io_promotions__io_definition",
             "step_resources",
         )
         .order_by("order"),
@@ -92,7 +92,7 @@ def _ordered_steps(workflow: Workflow) -> list[WorkflowStep]:
 
 
 def _export_workflow_fields(workflow: Workflow) -> dict[str, Any]:
-    """Serialize the workflow's contract fields plus public info / signals."""
+    """Serialize contract fields, public info, signals, and constants."""
     data: dict[str, Any] = {
         field: getattr(workflow, field) for field in schema.WORKFLOW_SCALAR_FIELDS
     }
@@ -146,7 +146,7 @@ def _export_constants(workflow: Workflow) -> list[dict[str, Any]]:
 
 
 def _export_step(step: WorkflowStep, files: dict[str, bytes]) -> dict[str, Any]:
-    """Serialize one step: scalars, validator/action ref, ruleset, signals, etc."""
+    """Serialize one step: scalars, validator/action ref, ruleset, step I/O, etc."""
     data: dict[str, Any] = {
         field: getattr(step, field) for field in schema.STEP_SCALAR_FIELDS
     }
@@ -168,8 +168,8 @@ def _export_step(step: WorkflowStep, files: dict[str, bytes]) -> dict[str, Any]:
     data["validator_ref"] = _export_validator_ref(step)
     serializer = get_step_serializer(getattr(step.validator, "validation_type", ""))
     data["ruleset"] = serializer.export_ruleset(step.ruleset, files=files)
-    data["signal_definitions"] = _export_signal_definitions(step)
-    data["signal_bindings"] = _export_signal_bindings(step)
+    data["step_io_definitions"] = _export_step_io_definitions(step)
+    data["input_bindings"] = _export_input_bindings(step)
     data["derivations"] = _export_derivations(step)
     data["io_promotions"] = _export_io_promotions(step)
     data["resources"] = _export_resources(step, files)
@@ -188,30 +188,33 @@ def _export_validator_ref(step: WorkflowStep) -> dict[str, Any]:
     }
 
 
-def _export_signal_definitions(step: WorkflowStep) -> list[dict[str, Any]]:
-    """Serialize step-owned signal definitions (validator-owned ones are shared)."""
+def _export_step_io_definitions(step: WorkflowStep) -> list[dict[str, Any]]:
+    """Serialize step-owned I/O definitions; validator-owned ones are shared."""
     rows = []
-    for signal in step.signal_definitions.all().order_by("order", "pk"):
+    for io_definition in step.step_io_definitions.all().order_by("order", "pk"):
         row = {
-            field: getattr(signal, field) for field in schema.SIGNAL_DEFINITION_FIELDS
+            field: getattr(io_definition, field)
+            for field in schema.STEP_IO_DEFINITION_FIELDS
         }
-        for json_field in schema.SIGNAL_DEFINITION_JSON_DICT_FIELDS:
-            row[json_field] = deepcopy(getattr(signal, json_field)) or {}
-        for json_field in schema.SIGNAL_DEFINITION_JSON_LIST_FIELDS:
-            row[json_field] = deepcopy(getattr(signal, json_field)) or []
+        for json_field in schema.STEP_IO_DEFINITION_JSON_DICT_FIELDS:
+            row[json_field] = deepcopy(getattr(io_definition, json_field)) or {}
+        for json_field in schema.STEP_IO_DEFINITION_JSON_LIST_FIELDS:
+            row[json_field] = deepcopy(getattr(io_definition, json_field)) or []
         rows.append(row)
     return rows
 
 
-def _export_signal_bindings(step: WorkflowStep) -> list[dict[str, Any]]:
-    """Serialize step input bindings with a re-bindable signal reference."""
-    from validibot.validations.validators.base.step_serializer import _export_signal_ref
+def _export_input_bindings(step: WorkflowStep) -> list[dict[str, Any]]:
+    """Serialize step input bindings with a re-bindable io_definition reference."""
+    from validibot.validations.validators.base.step_serializer import (
+        _export_io_definition_ref,
+    )
 
     rows = []
-    for binding in step.signal_bindings.all().order_by("pk"):
-        row = {field: getattr(binding, field) for field in schema.SIGNAL_BINDING_FIELDS}
+    for binding in step.input_bindings.all().order_by("pk"):
+        row = {field: getattr(binding, field) for field in schema.INPUT_BINDING_FIELDS}
         row["default_value"] = deepcopy(binding.default_value)
-        row["signal_ref"] = _export_signal_ref(binding.signal_definition)
+        row["io_definition_ref"] = _export_io_definition_ref(binding.io_definition)
         rows.append(row)
     return rows
 
@@ -227,15 +230,17 @@ def _export_derivations(step: WorkflowStep) -> list[dict[str, Any]]:
 
 
 def _export_io_promotions(step: WorkflowStep) -> list[dict[str, Any]]:
-    """Serialize signal->s.* promotion overlays."""
-    from validibot.validations.validators.base.step_serializer import _export_signal_ref
+    """Serialize io_definition->s.* promotion overlays."""
+    from validibot.validations.validators.base.step_serializer import (
+        _export_io_definition_ref,
+    )
 
     rows = []
     for promotion in step.io_promotions.all().order_by("pk"):
         rows.append(
             {
                 "promoted_signal_name": promotion.promoted_signal_name,
-                "signal_ref": _export_signal_ref(promotion.signal_definition),
+                "io_definition_ref": _export_io_definition_ref(promotion.io_definition),
             },
         )
     return rows

@@ -106,15 +106,15 @@ class BaseDisplaySettings(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     display_step_outputs: list[str] = Field(default_factory=list)
-    """Catalog entry slugs for output signals to display to the submitter.
+    """Catalog entry slugs for output values to display to the submitter.
 
-    Controls which output signals are shown in the results view and returned by
-    the API. **Empty means show NONE** — authors opt in to each signal they want
+    Controls which output values are shown in the results view and returned by
+    the API. **Empty means show NONE** — authors opt in to each output they want
     exposed. This is cross-validator — any step type can use it. It changes only
     *what is shown*, never pass/fail, so it lives in ``display_settings``.
 
-    A workflow-step toggle to "show all output signals" is on the roadmap
-    (tracked in validibot-project); until then, authors who want every signal
+    A workflow-step toggle to "show all output values" is on the roadmap
+    (tracked in validibot-project); until then, authors who want every output
     exposed must list every slug here."""
 
 
@@ -194,7 +194,7 @@ class EnergyPlusStepConfig(BaseStepConfig):
     """Semantic config for EnergyPlus validator steps.
 
     Simulation and template-matching settings change what is validated, so they
-    are semantic. Warning display and output-signal selection are cosmetic and
+    are semantic. Warning display and step-output selection are cosmetic and
     live in :class:`EnergyPlusDisplaySettings`. Resource files (weather EPWs,
     model templates) are stored relationally via ``WorkflowStepResource``.
 
@@ -252,7 +252,7 @@ class FmuStepConfig(BaseStepConfig):
     """Semantic config for FMU validator steps.
 
     Both fields are set at *authoring* time (when the author uploads/edits the
-    FMU), not injected per run, and both change what runs or how ``i.*`` signals
+    FMU), not injected per run, and both change what runs or how ``i.*`` values
     resolve — so they are semantic and hashed. FMU variable metadata is stored
     relationally in ``StepIODefinition`` rows.
     """
@@ -263,7 +263,7 @@ class FmuStepConfig(BaseStepConfig):
 
     fmu_introspection: dict[str, Any] | None = None
     """Parser facts stamped from the uploaded FMU (fmi_version, variable counts,
-    …), used at runtime to resolve ``i.*`` signals for step-level uploads.
+    …), used at runtime to resolve ``i.*`` values for step-level uploads.
     Derived from the FMU file at authoring time and read from ``step.config`` by
     ``FMUValidator``, so it stays in the semantic bucket."""
 

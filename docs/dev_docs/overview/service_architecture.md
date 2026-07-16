@@ -7,7 +7,7 @@ focused modules, the rationale behind the structure, and how to extend it.
 
 `ValidationRunService` started as a single class handling everything: run
 lifecycle, step iteration, finding persistence, summary aggregation, step
-dispatch, and cross-step signal extraction. At over 1200 lines it was becoming
+dispatch, and cross-step value handling. At over 1200 lines it was becoming
 difficult to reason about, test in isolation, and modify safely.
 
 We decomposed it into four modules, each with a single responsibility:
@@ -186,7 +186,7 @@ mismatches at save time rather than at runtime.
 4. Create the validator class implementing `BaseValidator`.
 5. Create a `ValidatorConfig` with `validator_class` pointing to your class
    (in the validator's `config.py` module).
-6. Add `catalog_entries` to define the validator's input/output signals.
+6. Add `catalog_entries` to define the validator's step inputs and outputs.
    These appear automatically in the unified "Inputs and Outputs" card on the step detail page.
 7. Run `python manage.py sync_validators` to sync to the database.
 

@@ -78,9 +78,9 @@ class SimpleValidationProcessor(ValidationStepProcessor):
             result.assertion_stats.total,
         )
 
-        # Store any signals for downstream steps
+        # Store step output values for downstream steps.
         stats = dict(result.stats or {})
-        self.store_output_values(result.signals or {})
+        self.store_output_values(result.output_values or {})
 
         # Finalize the step
         status = StepStatus.PASSED if result.passed else StepStatus.FAILED

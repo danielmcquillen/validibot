@@ -335,7 +335,7 @@ document.body.addEventListener('htmx:afterSwap', (event: Event) => {
     }
 
     // Auto-show modals marked with data-show-modal-on-swap after HTMx swaps
-    // their content in. Used by signal-edit modals (and any future modal that
+    // their content in. Used by step-I/O edit modals (and any future modal that
     // needs to open automatically after a content refresh).
     if (target instanceof HTMLElement) {
         const modal = target.closest<HTMLElement>('[data-show-modal-on-swap]');

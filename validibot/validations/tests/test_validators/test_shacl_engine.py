@@ -1,7 +1,7 @@
 """Tests for the SHACL engine helpers that remain on the Django side.
 
 After SHACL became an advanced (container) validator, all RDF parsing, pyshacl
-execution, SPARQL evaluation, finding mapping, and signal extraction moved into
+execution, SPARQL evaluation, finding mapping, and output extraction moved into
 ``validibot-validator-backends`` — and so did their tests (see that repo's
 ``validator_backends/shacl/tests/``). What remains in ``engine`` are the two
 Django-free helpers used to *build* the container input envelope:
@@ -81,7 +81,7 @@ class TestDetectSerialization:
         assert result == "xml"
 
     def test_unknown_falls_back_to_turtle(self):
-        """When all signals are unhelpful, default to Turtle.
+        """When all format hints are unhelpful, default to Turtle.
 
         Turtle is the most common SHACL serialization, so it's the right
         "I don't know, take a guess" default.

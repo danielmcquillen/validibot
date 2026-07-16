@@ -1,0 +1,527 @@
+"""
+Tests for the step output display helper.
+
+This module verifies that ``build_display_step_outputs()`` and
+``build_template_params_display()`` correctly:
+
+- Extract raw values from ``step_run.output_values``
+- Filter values by the author's ``display_step_outputs`` selection.
+  **Empty list means show NONE** — authors opt in to each output
+  they want surfaced. Tests that need to verify formatting,
+  enrichment, or ordering explicitly set ``display_step_outputs`` to
+  the slugs they want exposed.
+- Enrich each output with I/O definition metadata (labels, units, precision)
+- Format numeric values with thousands separators and configurable decimal
+  precision
+- Handle edge cases (no outputs, missing catalog, unknown types)
+- Build template parameter display data enriched with variable metadata
+
+The step output display system is a **cross-validator capability** — any
+validator type that populates ``step_run.output_values`` gets value
+display automatically.  These tests verify that invariant by exercising
+both EnergyPlus and non-EnergyPlus validators.
+"""
+
+import pytest
+
+from validibot.validations.constants import ValidationType
+from validibot.validations.services.step_output_display import _format_step_output_value
+from validibot.validations.services.step_output_display import (
+    build_display_step_outputs,
+)
+from validibot.validations.services.step_output_display import (
+    build_template_params_display,
+)
+from validibot.validations.tests.factories import StepIODefinitionFactory
+from validibot.validations.tests.factories import ValidationStepRunFactory
+from validibot.validations.tests.factories import ValidatorFactory
+from validibot.workflows.tests.factories import WorkflowStepFactory
+
+# ── Fixtures ─────────────────────────────────────────────────────────
+# These fixtures build the model graph needed by the step output display
+# helpers: Validator → WorkflowStep → ValidationStepRun, with optional
+# I/O definitions. EnergyPlus validators get EnergyPlusStepConfig
+# (which has the ``display_step_outputs`` field); other validators use the
+# generic BaseStepConfig (which does not).
+
+
+def _make_energyplus_step_run(
+    output: dict | None = None,
+    *,
+    display_step_outputs: list[str] | None = None,
+    template_variables: list[dict] | None = None,
+):
+    """Create a ValidationStepRun backed by an EnergyPlus step.
+
+    Args:
+        output: Test data containing optional ``output_values`` plus diagnostics.
+        display_step_outputs: Author-selected output keys. When None,
+            the ``display_step_outputs`` key is omitted from the step
+            config, which (with the opt-in default) results in NO
+            outputs being surfaced. Tests that need values visible
+            must pass an explicit list of keys.
+        template_variables: Optional list of template variable dicts
+            stored in step config as test setup data. In production,
+            these are passed to ``sync_step_template_io_definitions()`` to
+            create ``StepIODefinition`` rows.
+
+    Returns:
+        A saved ``ValidationStepRun`` instance.
+    """
+    validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+    config: dict = {}
+    display_settings: dict = {}
+    if display_step_outputs is not None:
+        # display_step_outputs is cosmetic — it lives in the display bucket now
+        # (ADR-2026-06-18), which is where build_display_step_outputs reads it.
+        display_settings["display_step_outputs"] = display_step_outputs
+    if template_variables is not None:
+        config["template_variables"] = template_variables
+    step = WorkflowStepFactory(
+        validator=validator,
+        config=config,
+        display_settings=display_settings,
+    )
+    output_data = dict(output or {})
+    output_values = output_data.pop("output_values", {})
+    return ValidationStepRunFactory(
+        workflow_step=step,
+        output=output_data,
+        output_values=output_values,
+    )
+
+
+def _make_fmu_step_run(output: dict | None = None):
+    """Create a ValidationStepRun backed by an FMU validator.
+
+    FMU step configs do NOT have a ``display_step_outputs`` field of their
+    own, so this verifies the cross-validator fallback path.  With the
+    opt-in default, the missing field reads as an empty list and the
+    helper surfaces no output values.
+    """
+    validator = ValidatorFactory(validation_type=ValidationType.FMU)
+    step = WorkflowStepFactory(validator=validator, config={})
+    output_data = dict(output or {})
+    output_values = output_data.pop("output_values", {})
+    return ValidationStepRunFactory(
+        workflow_step=step,
+        output=output_data,
+        output_values=output_values,
+    )
+
+
+# ── build_display_step_outputs ────────────────────────────────────────────
+# Tests verifying the core output enrichment function.
+
+
+@pytest.mark.django_db
+class TestBuildDisplayStepOutputs:
+    """Tests for ``build_display_step_outputs()`` output enrichment."""
+
+    def test_returns_empty_for_step_without_output_values(self):
+        """Step runs with no canonical output values should return an
+        empty list.  This is the common case for non-simulation
+        validators like JSON Schema."""
+        sr = _make_energyplus_step_run(output={})
+        assert build_display_step_outputs(sr) == []
+
+    def test_diagnostic_output_without_values_returns_empty(self):
+        """Diagnostic output without canonical values returns an empty list."""
+        sr = _make_energyplus_step_run(output={"some_other_key": 42})
+        assert build_display_step_outputs(sr) == []
+
+    def test_returns_no_outputs_when_display_selection_empty(self):
+        """When ``display_step_outputs`` is ``[]`` (the default), no outputs
+        are surfaced.
+
+        The opt-in default protects against accidentally exposing
+        internal diagnostic values to the submitter, and it matches
+        the principle of least surprise — the API returns only what
+        the workflow author explicitly chose. To show outputs, the
+        author must enumerate them in ``display_step_outputs``.
+        """
+        sr = _make_energyplus_step_run(
+            output={
+                "output_values": {
+                    "electricity_kwh": 100.0,
+                    "gas_kwh": 50.0,
+                },
+            },
+            display_step_outputs=[],
+        )
+        result = build_display_step_outputs(sr)
+        assert result == []
+
+    def test_filters_by_display_step_outputs(self):
+        """When ``display_step_outputs`` contains specific slugs, only those
+        appear in the result.  The author's selection controls what
+        submitters see, even when the runner extracts more output values."""
+        sr = _make_energyplus_step_run(
+            output={
+                "output_values": {
+                    "electricity_kwh": 100.0,
+                    "gas_kwh": 50.0,
+                    "eui_kwh_m2": 89.1,
+                },
+            },
+            display_step_outputs=["electricity_kwh", "eui_kwh_m2"],
+        )
+        result = build_display_step_outputs(sr)
+        slugs = [s.slug for s in result]
+        assert slugs == ["electricity_kwh", "eui_kwh_m2"]
+
+    def test_enriches_with_catalog_metadata(self):
+        """Each output should get its label, units, and description from
+        the matching ``StepIODefinition``.  This test creates a
+        I/O definition with specific metadata and verifies enrichment.
+
+        ``display_step_outputs`` is set explicitly because the opt-in default
+        would otherwise return an empty list and we'd never reach the
+        enrichment assertions below.
+        """
+        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+        StepIODefinitionFactory(
+            validator=validator,
+            contract_key="electricity_kwh",
+            label="Site Electricity",
+            direction="output",
+            data_type="number",
+            description="Total site electricity consumption.",
+            unit="kWh",
+            metadata={"precision": 1},
+            order=10,
+        )
+        step = WorkflowStepFactory(
+            validator=validator,
+            display_settings={"display_step_outputs": ["electricity_kwh"]},
+        )
+        sr = ValidationStepRunFactory(
+            workflow_step=step,
+            output_values={"electricity_kwh": 12345.6},
+        )
+        result = build_display_step_outputs(sr)
+        assert len(result) == 1
+        output = result[0]
+        assert output.label == "Site Electricity"
+        assert output.units == "kWh"
+        assert output.description == "Total site electricity consumption."
+        assert output.formatted_value == "12,345.6"  # precision=1
+
+    def test_formats_float_with_default_precision(self):
+        """Float values should be formatted with 2 decimal places and
+        thousands separators when no precision is specified in catalog
+        metadata. ``display_step_outputs`` opts the test output in so the
+        formatting path actually runs."""
+        sr = _make_energyplus_step_run(
+            output={"output_values": {"value": 12345.6}},
+            display_step_outputs=["value"],
+        )
+        result = build_display_step_outputs(sr)
+        assert result[0].formatted_value == "12,345.60"
+
+    def test_formats_integer_with_thousands_separator(self):
+        """Integer values should get thousands separators and no decimal
+        places (e.g., 12345 → '12,345'). ``display_step_outputs`` opts the
+        test output in so the formatting path actually runs."""
+        sr = _make_energyplus_step_run(
+            output={"output_values": {"count": 12345}},
+            display_step_outputs=["count"],
+        )
+        result = build_display_step_outputs(sr)
+        assert result[0].formatted_value == "12,345"
+
+    def test_formats_none_as_na(self):
+        """``None`` output values should be formatted as 'N/A' rather
+        than displaying Python's ``None`` string. ``display_step_outputs``
+        opts the test output in so the formatting path actually runs."""
+        sr = _make_energyplus_step_run(
+            output={"output_values": {"missing_value": None}},
+            display_step_outputs=["missing_value"],
+        )
+        result = build_display_step_outputs(sr)
+        assert result[0].formatted_value == "N/A"
+
+    def test_formats_string_as_passthrough(self):
+        """String output values should pass through unchanged, without
+        any numeric formatting applied. ``display_step_outputs`` opts the
+        test output in so the formatting path actually runs."""
+        sr = _make_energyplus_step_run(
+            output={"output_values": {"status": "Autosize"}},
+            display_step_outputs=["status"],
+        )
+        result = build_display_step_outputs(sr)
+        assert result[0].formatted_value == "Autosize"
+
+    def test_orders_by_catalog_order(self):
+        """Outputs should be sorted by their I/O definition's ``order``
+        field, not by their slug or insertion order in the output dict.
+        This lets authors control the display order via catalog config.
+
+        ``display_step_outputs`` is set so both outputs are exposed; without
+        it the opt-in default would return an empty list before the
+        ordering logic runs.
+        """
+        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+        StepIODefinitionFactory(
+            validator=validator,
+            contract_key="beta",
+            order=20,
+            direction="output",
+        )
+        StepIODefinitionFactory(
+            validator=validator,
+            contract_key="alpha",
+            order=10,
+            direction="output",
+        )
+        step = WorkflowStepFactory(
+            validator=validator,
+            display_settings={"display_step_outputs": ["alpha", "beta"]},
+        )
+        sr = ValidationStepRunFactory(
+            workflow_step=step,
+            output_values={"beta": 2.0, "alpha": 1.0},
+        )
+        result = build_display_step_outputs(sr)
+        assert [s.slug for s in result] == ["alpha", "beta"]
+
+    def test_falls_back_to_slug_label_when_no_catalog(self):
+        """When an output key has no matching I/O definition, the label
+        should be derived from the slug itself by replacing underscores
+        with spaces and title-casing. ``display_step_outputs`` opts the test
+        output in so the key-fallback path actually runs."""
+        sr = _make_energyplus_step_run(
+            output={"output_values": {"site_electricity_kwh": 100.0}},
+            display_step_outputs=["site_electricity_kwh"],
+        )
+        result = build_display_step_outputs(sr)
+        assert result[0].label == "Site Electricity Kwh"
+
+    def test_cross_validator_no_display_step_outputs_attribute(self):
+        """For validators whose step config model has no
+        ``display_step_outputs`` field (e.g., FMU), no outputs are shown
+        by default — the missing field reads as an empty list via
+        ``getattr(typed_config, 'display_step_outputs', [])`` which, under
+        the opt-in default, means "expose nothing".
+
+        Authors of those validators surface outputs by adding
+        ``display_step_outputs`` to the step config (the ``BaseStepConfig``
+        model already declares the field, so the value lands on the
+        ``step.config`` JSONField even without a validator-specific
+        config class).
+        """
+        sr = _make_fmu_step_run(
+            output={
+                "output_values": {
+                    "metric_a": 1.0,
+                    "metric_b": 2.0,
+                },
+            },
+        )
+        result = build_display_step_outputs(sr)
+        assert result == []
+
+    def test_display_step_outputs_with_nonexistent_slug(self):
+        """If ``display_step_outputs`` references a slug not present in the
+        actual ``output_values``, that slug is silently skipped.
+        This handles the case where the author configured outputs before
+        any run produced them."""
+        sr = _make_energyplus_step_run(
+            output={"output_values": {"electricity_kwh": 100.0}},
+            display_step_outputs=["electricity_kwh", "nonexistent_slug"],
+        )
+        result = build_display_step_outputs(sr)
+        slugs = [s.slug for s in result]
+        assert slugs == ["electricity_kwh"]
+
+
+# ── build_template_params_display ────────────────────────────────────
+# Tests for the template parameter enrichment function (template-mode
+# only).  Template parameters are submitted by the user and stored in
+# step_run.output["template_parameters_used"] by the launcher.  The
+# display function enriches them with labels/units from the step's
+# StepIODefinition rows.
+
+
+@pytest.mark.django_db
+class TestBuildTemplateParamsDisplay:
+    """Tests for ``build_template_params_display()``."""
+
+    def test_returns_empty_for_non_template_step(self):
+        """Step runs without ``template_parameters_used`` in their
+        output should return an empty list.  This is the normal case
+        for direct-mode (non-template) EnergyPlus runs."""
+        sr = _make_energyplus_step_run(output={})
+        assert build_template_params_display(sr) == []
+
+    def test_returns_params_with_metadata(self):
+        """Parameters should be enriched with labels and units from the
+        step's ``StepIODefinition`` rows.  The ``label`` field on a
+        I/O definition serves as the human-readable label.
+
+        The launcher stores parameters WITHOUT the ``$`` prefix — keys
+        are plain variable names like ``"U_FACTOR"``, not ``"$U_FACTOR"``.
+        The display helper must match on plain names.
+        """
+        from validibot.validations.services.template_step_io import (
+            sync_step_template_io_definitions,
+        )
+
+        template_variables = [
+            {
+                "name": "U_FACTOR",
+                "description": "Window U-Factor",
+                "units": "W/m2-K",
+                "variable_type": "number",
+            },
+            {
+                "name": "COOLING_SETPOINT",
+                "description": "Cooling Setpoint Temperature",
+                "units": "°C",
+                "variable_type": "number",
+            },
+        ]
+        sr = _make_energyplus_step_run(
+            output={
+                "template_parameters_used": {
+                    "U_FACTOR": "2.0",
+                    "COOLING_SETPOINT": "24.0",
+                },
+            },
+        )
+        # Create StepIODefinition rows so the display helper can
+        # look up labels and units.
+        sync_step_template_io_definitions(sr.workflow_step, template_variables)
+
+        result = build_template_params_display(sr)
+        expected_count = 2
+        assert len(result) == expected_count
+
+        u_factor = next(p for p in result if p["name"] == "U_FACTOR")
+        assert u_factor["label"] == "Window U-Factor"
+        assert u_factor["value"] == "2.0"
+        assert u_factor["units"] == "W/m2-K"
+
+        setpoint = next(p for p in result if p["name"] == "COOLING_SETPOINT")
+        assert setpoint["label"] == "Cooling Setpoint Temperature"
+        assert setpoint["units"] == "°C"
+
+    def test_falls_back_to_variable_name_as_label(self):
+        """When no StepIODefinition has a description for a variable,
+        the raw variable name is used as the label.  This handles runs
+        that occurred before the author annotated variables."""
+        sr = _make_energyplus_step_run(
+            output={
+                "template_parameters_used": {"UNKNOWN_VAR": "42"},
+            },
+            template_variables=[],  # No variable metadata
+        )
+        result = build_template_params_display(sr)
+        assert len(result) == 1
+        assert result[0]["label"] == "UNKNOWN_VAR"
+        assert result[0]["value"] == "42"
+
+    def test_reads_metadata_from_step_io_definitions(self):
+        """When StepIODefinition rows exist for template inputs,
+        build_template_params_display should read labels and units from them
+        instead of step config JSON. This is the new primary metadata path.
+        """
+        from validibot.validations.services.template_step_io import (
+            sync_step_template_io_definitions,
+        )
+
+        sr = _make_energyplus_step_run(
+            output={
+                "template_parameters_used": {
+                    "U_FACTOR": "2.0",
+                    "SHGC": "0.4",
+                },
+            },
+            template_variables=[
+                {
+                    "name": "U_FACTOR",
+                    "description": "Window U-Factor",
+                    "units": "W/m2-K",
+                    "variable_type": "number",
+                },
+                {
+                    "name": "SHGC",
+                    "description": "Solar Heat Gain Coefficient",
+                    "units": "",
+                    "variable_type": "number",
+                },
+            ],
+        )
+
+        # Create StepIODefinition rows via the template sync — these
+        # take priority over step config JSON for metadata lookup.
+        step = sr.workflow_step
+        sync_step_template_io_definitions(step, step.config["template_variables"])
+
+        result = build_template_params_display(sr)
+        expected_count = 2
+        assert len(result) == expected_count
+
+        u_factor = next(p for p in result if p["name"] == "U_FACTOR")
+        # Label comes from StepIODefinition.label which is set from
+        # the template variable's description by sync_step_template_io_definitions
+        assert u_factor["label"] == "Window U-Factor"
+        assert u_factor["units"] == "W/m2-K"
+
+
+# ── _format_step_output_value ─────────────────────────────────────────────
+# Tests for the numeric formatting helper.  This function handles the
+# various types that output values can take (None, int, float, str,
+# bool) and applies precision and thousands-separator formatting.
+
+
+class TestFormatStepOutputValue:
+    """Tests for ``_format_step_output_value()`` — numeric formatting."""
+
+    def test_none_returns_na(self):
+        """``None`` → ``'N/A'`` — outputs without a value should show
+        a human-readable placeholder."""
+        assert _format_step_output_value(None) == "N/A"
+
+    def test_zero_float(self):
+        """``0.0`` → ``'0.00'`` — zero should still be formatted with
+        the default 2 decimal places."""
+        assert _format_step_output_value(0.0) == "0.00"
+
+    def test_negative_float(self):
+        """``-1234.5`` → ``'-1,234.50'`` — negative values should keep
+        their sign and get thousands separators."""
+        assert _format_step_output_value(-1234.5) == "-1,234.50"
+
+    def test_very_large_number(self):
+        """Large numbers should get thousands separators for
+        readability (e.g., ``1000000.0`` → ``'1,000,000.00'``)."""
+        assert _format_step_output_value(1000000.0) == "1,000,000.00"
+
+    def test_precision_zero(self):
+        """When the catalog specifies ``precision=0``, the value should
+        be rounded to the nearest integer and displayed without decimal
+        places (e.g., ``12345.678`` → ``'12,346'``)."""
+        assert _format_step_output_value(12345.678, precision=0) == "12,346"
+
+    def test_precision_four(self):
+        """When the catalog specifies ``precision=4``, the value should
+        show exactly 4 decimal places."""
+        assert _format_step_output_value(1.23456, precision=4) == "1.2346"
+
+    def test_integer_no_decimals(self):
+        """Integer values should be formatted with thousands separators
+        but no decimal point."""
+        assert _format_step_output_value(12345) == "12,345"
+
+    def test_string_passthrough(self):
+        """String values pass through unchanged — no numeric formatting
+        is applied."""
+        assert _format_step_output_value("Autosize") == "Autosize"
+
+    def test_bool_as_string(self):
+        """Boolean values (which are an ``int`` subclass in Python)
+        should be converted to their string representation, not
+        formatted as numbers."""
+        assert _format_step_output_value(value=True) == "True"
+        assert _format_step_output_value(value=False) == "False"

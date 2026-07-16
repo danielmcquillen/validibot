@@ -78,10 +78,10 @@ def _make_step_with_template(
     the submission separately so it can control the content.
 
     Also creates StepIODefinition + StepInputBinding rows for the
-    template variables via sync_step_template_signals().
+    template variables via sync_step_template_io_definitions().
     """
-    from validibot.validations.services.template_signals import (
-        sync_step_template_signals,
+    from validibot.validations.services.template_step_io import (
+        sync_step_template_io_definitions,
     )
 
     org = OrganizationFactory()
@@ -97,8 +97,8 @@ def _make_step_with_template(
         config=step_config or {"case_sensitive": True},
     )
 
-    # Create signal definitions and bindings for template variables.
-    sync_step_template_signals(step, tpl_vars)
+    # Create step I/O definitions and bindings for template variables.
+    sync_step_template_io_definitions(step, tpl_vars)
 
     # Create the template resource (step-owned file)
     WorkflowStepResourceFactory(
@@ -320,9 +320,9 @@ class TestTemplateModeValidation:
             preprocess_energyplus_submission(step=step, submission=submission)
 
     def test_nested_objects_produces_unrecognized_warning(self):
-        """Nested objects are accepted by the signal-binding path.
+        """Nested objects are accepted by the step-input binding path.
 
-        The signal-binding resolution path supports nested JSON via
+        The step-input resolution path supports nested JSON via
         source_data_path expressions. When using flat bindings,
         nested keys are treated as unrecognized parameters and
         produce a warning alongside missing-parameter errors.
@@ -381,8 +381,8 @@ class TestTemplateModeEncoding:
         # Encode as Latin-1 bytes
         latin1_bytes = template_with_latin1.encode("latin-1")
 
-        from validibot.validations.services.template_signals import (
-            sync_step_template_signals,
+        from validibot.validations.services.template_step_io import (
+            sync_step_template_io_definitions,
         )
 
         org = OrganizationFactory()
@@ -393,7 +393,7 @@ class TestTemplateModeEncoding:
             validator=validator,
             config={"case_sensitive": True},
         )
-        sync_step_template_signals(
+        sync_step_template_io_definitions(
             step,
             [
                 {"name": "U_FACTOR", "variable_type": "number"},
@@ -499,11 +499,11 @@ class TestReadTemplateContentErrorType:
 
 
 # ===========================================================================
-# Signal-binding resolution path (Phase 4b)
+# Step-input binding resolution path (Phase 4b)
 #
-# When a step has StepInputBinding rows for template signals (created by
-# sync_step_template_signals during template upload), the preprocessing
-# function resolves values via resolve_input_signal() instead of the
+# When a step has StepInputBinding rows for template input definitions (created by
+# sync_step_template_io_definitions during template upload), the preprocessing
+# function resolves values via resolve_step_input() instead of the
 # legacy flat-dict merge. This enables nested JSON payloads and
 # source_data_path expressions.
 # ===========================================================================
@@ -513,7 +513,7 @@ def _make_step_with_template_bindings(
     *,
     template_content: str = _TEMPLATE_IDF,
 ) -> tuple:
-    """Create a step with both template resource AND signal bindings.
+    """Create a step with both template resource AND input bindings.
 
     Since ``_make_step_with_template()`` now creates StepIODefinition +
     StepInputBinding rows automatically, this is just a convenience alias.
@@ -521,19 +521,19 @@ def _make_step_with_template_bindings(
     return _make_step_with_template(template_content=template_content)
 
 
-class TestSignalBindingResolution:
-    """Tests for the Phase 4b signal-binding resolution path.
+class TestInputBindingResolution:
+    """Tests for the Phase 4b step-input binding resolution path.
 
-    When StepInputBinding rows exist for template signals, preprocessing
-    resolves values via resolve_input_signal() instead of the legacy
+    When StepInputBinding rows exist for template input definitions, preprocessing
+    resolves values via resolve_step_input() instead of the legacy
     flat-dict merge. This test class verifies that the new path produces
     identical results for flat JSON submissions and additionally supports
     nested JSON payloads.
     """
 
-    def test_flat_json_works_with_signal_bindings(self):
+    def test_flat_json_works_with_input_bindings(self):
         """Flat JSON submission should produce the same result whether
-        resolved via signal bindings or the legacy merge path. This is
+        resolved via input bindings or the legacy merge path. This is
         the backward-compatibility guarantee.
         """
         step, sub_kwargs = _make_step_with_template_bindings()
@@ -555,7 +555,7 @@ class TestSignalBindingResolution:
         }
 
     def test_nested_json_allowed_with_source_data_path(self):
-        """When signal bindings have non-empty source_data_path, nested
+        """When input bindings have non-empty source_data_path, nested
         JSON submissions should be accepted and values resolved via
         path resolution — this is the core Phase 4b capability.
         """
@@ -566,12 +566,12 @@ class TestSignalBindingResolution:
         # Update bindings to use nested source_data_path
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition__native_name="U_FACTOR",
+            io_definition__native_name="U_FACTOR",
         ).update(source_data_path="glazing.u_factor")
 
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition__native_name="SHGC",
+            io_definition__native_name="SHGC",
         ).update(source_data_path="glazing.shgc")
 
         # Submit nested JSON
@@ -593,7 +593,7 @@ class TestSignalBindingResolution:
         assert "0.4" in resolved
 
     def test_default_value_used_when_param_missing(self):
-        """When a signal binding has a default_value and the submission
+        """When an input binding has a default_value and the submission
         doesn't include that parameter, the default should be used —
         matching the legacy behavior where author defaults fill gaps.
         """
@@ -604,7 +604,7 @@ class TestSignalBindingResolution:
         # Set a default value on the SHGC binding
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition__native_name="SHGC",
+            io_definition__native_name="SHGC",
         ).update(default_value="0.25", is_required=False)
 
         # Submit only U_FACTOR, omit SHGC
@@ -624,7 +624,7 @@ class TestSignalBindingResolution:
 
     def test_missing_required_raises_validation_error(self):
         """When a required template parameter is missing and no default
-        is configured, the signal-binding path should raise
+        is configured, the step-input binding path should raise
         ValidationError — same behavior as the legacy path.
         """
         step, sub_kwargs = _make_step_with_template_bindings()
@@ -650,12 +650,12 @@ class TestSignalBindingResolution:
 
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition__native_name="U_FACTOR",
+            io_definition__native_name="U_FACTOR",
         ).update(source_data_path="glazing.u_factor")
 
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition__native_name="SHGC",
+            io_definition__native_name="SHGC",
         ).update(source_data_path="glazing.shgc")
 
         params = json.dumps({"glazing": {"u_factor": "2.5", "shgc": "0.4"}})
@@ -671,7 +671,7 @@ class TestSignalBindingResolution:
 
     def test_number_validation_applied_to_resolved_values(self):
         """Type validation should still apply to values resolved via
-        signal bindings — e.g., a non-numeric value for a number-type
+        input bindings — e.g., a non-numeric value for a number-type
         parameter should raise ValidationError.
         """
         step, sub_kwargs = _make_step_with_template_bindings()

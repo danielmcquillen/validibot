@@ -1439,7 +1439,7 @@ class WorkflowStep(TimeStampedModel):
                     | Q(validator__isnull=True, action__isnull=False)
                 ),
             ),
-            # step_key is the stable namespace for cross-step signal
+            # step_key is the stable namespace for cross-step value
             # references in CEL and APIs. Must be unique within a workflow.
             models.UniqueConstraint(
                 fields=["workflow", "step_key"],
@@ -1470,7 +1470,7 @@ class WorkflowStep(TimeStampedModel):
             "Stable identifier for this step within the workflow. "
             "Used to reference output data from this step in "
             "downstream assertions (e.g., "
-            "steps.simulation.signals.site_eui_kwh_m2). "
+            "steps.simulation.output.site_eui_kwh_m2). "
             "Auto-generated from the step name on creation. "
             "Immutable once set."
         ),
@@ -1598,7 +1598,7 @@ class WorkflowStep(TimeStampedModel):
         """Auto-generate step_key on first save; prevent mutation after.
 
         The step_key is the stable workflow contract identifier used for
-        cross-step signal references in CEL and APIs. It must not change
+        cross-step value references in CEL and APIs. It must not change
         after creation because assertions and API consumers may reference
         it. Auto-generated from the step name via slugify() if not set.
         """

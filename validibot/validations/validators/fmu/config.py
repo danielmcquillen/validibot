@@ -1,10 +1,10 @@
 """
 Configuration for the FMU system validator.
 
-Per-variable signals (the FMU's actual input/output variables) are
-created dynamically from the attached FMU via introspection in
+Per-variable step I/O definitions for the FMU's native input/output variables
+are created dynamically from the attached FMU via introspection in
 ``services.fmu._persist_variables`` (library FMU validators) and
-``services.fmu_signals.sync_step_fmu_signals`` (step-level uploads) —
+``services.fmu_step_io.sync_step_fmu_io_definitions`` (step-level uploads) —
 this static config only defines parser-fact step inputs derived from
 ``modelDescription.xml``. Per ADR-2026-05-22b Phase 6, these facts
 let workflow authors gate dispatch with input-stage assertions like
@@ -30,8 +30,8 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import DefaultSourceStrategy
 from validibot.validations.constants import EnvelopeChannel
-from validibot.validations.constants import SignalSourceKind
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.fmu import PARSER_FACT_SPECS
 from validibot.validations.services.fmu import FMUParserFactSpec
@@ -51,7 +51,7 @@ def _spec_to_catalog_entry(spec: FMUParserFactSpec) -> CatalogEntrySpec:
     rules that class of bug out.
     """
     return CatalogEntrySpec(
-        entry_type=CatalogEntryType.SIGNAL,
+        entry_type=CatalogEntryType.IO_DEFINITION,
         run_stage=CatalogRunStage.INPUT,
         slug=spec.contract_key,
         label=spec.label,
@@ -62,7 +62,7 @@ def _spec_to_catalog_entry(spec: FMUParserFactSpec) -> CatalogEntrySpec:
         is_required=False,
         on_missing=spec.on_missing,
         order=spec.order,
-        source_kind=SignalSourceKind.INTERNAL,
+        source_kind=StepIOSourceKind.INTERNAL,
         is_path_editable=False,
     )
 
@@ -106,7 +106,7 @@ config = ValidatorConfig(
     card_image="FMU_card_img_small.png",
     catalog_entries=[
         CatalogEntrySpec(
-            entry_type=CatalogEntryType.SIGNAL,
+            entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             slug="fmu_model",
             label="FMU Model",
@@ -123,7 +123,7 @@ config = ValidatorConfig(
             is_required=True,
             on_missing="error",
             order=1,
-            source_kind=SignalSourceKind.PAYLOAD_PATH,
+            source_kind=StepIOSourceKind.PAYLOAD_PATH,
             is_path_editable=False,
             io_medium=StepIOMedium.ARTIFACT,
             artifact_kind=ArtifactKind.FILE,

@@ -22,10 +22,10 @@ from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
-from validibot.validations.constants import SignalDirection
-from validibot.validations.constants import SignalOriginKind
-from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOOriginKind
+from validibot.validations.constants import StepIOSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import StepInputBindingFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
@@ -57,9 +57,9 @@ def _energyplus_workflow_with_submitted_weather():
         contract_key="primary_model",
         native_name="primary_model",
         label="Primary Model",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
-        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
+        source_kind=StepIOSourceKind.PAYLOAD_PATH,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -83,9 +83,9 @@ def _energyplus_workflow_with_submitted_weather():
         contract_key="weather_file",
         native_name="weather_file",
         label="Weather File",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
-        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
+        source_kind=StepIOSourceKind.PAYLOAD_PATH,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -104,14 +104,14 @@ def _energyplus_workflow_with_submitted_weather():
     )
     StepInputBindingFactory(
         workflow_step=step,
-        signal_definition=primary_port,
+        io_definition=primary_port,
         source_scope=BindingSourceScope.SUBMISSION_FILE,
         source_data_path="primary_file_uri",
         is_required=True,
     )
     StepInputBindingFactory(
         workflow_step=step,
-        signal_definition=weather_port,
+        io_definition=weather_port,
         source_scope=BindingSourceScope.SUBMISSION_FILE,
         source_data_path="",
         is_required=True,
@@ -138,9 +138,9 @@ def _shacl_workflow_with_primary_data_graph():
         contract_key="data_graph",
         native_name="data_graph",
         label="Data Graph",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
-        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
+        source_kind=StepIOSourceKind.PAYLOAD_PATH,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -161,7 +161,7 @@ def _shacl_workflow_with_primary_data_graph():
     )
     StepInputBindingFactory(
         workflow_step=step,
-        signal_definition=data_graph_port,
+        io_definition=data_graph_port,
         source_scope=BindingSourceScope.SUBMISSION_FILE,
         source_data_path="data_graph",
         is_required=True,
@@ -188,9 +188,9 @@ def _schematron_workflow_with_primary_xml_document():
         contract_key="xml_document",
         native_name="xml_document",
         label="XML Document",
-        direction=SignalDirection.INPUT,
-        origin_kind=SignalOriginKind.CATALOG,
-        source_kind=SignalSourceKind.PAYLOAD_PATH,
+        direction=StepIODirection.INPUT,
+        origin_kind=StepIOOriginKind.CATALOG,
+        source_kind=StepIOSourceKind.PAYLOAD_PATH,
         data_type=CatalogValueType.ARTIFACT_REF,
         io_medium=StepIOMedium.ARTIFACT,
         artifact_kind=ArtifactKind.FILE,
@@ -207,7 +207,7 @@ def _schematron_workflow_with_primary_xml_document():
     )
     StepInputBindingFactory(
         workflow_step=step,
-        signal_definition=xml_document_port,
+        io_definition=xml_document_port,
         source_scope=BindingSourceScope.SUBMISSION_FILE,
         source_data_path="xml_document",
         is_required=True,

@@ -26,7 +26,7 @@ context, distinguished by **scope** (workflow-wide vs. step-local) and by
                    ▲                    ▲
                    │                    │
             parser facts          container output
-            resolved bindings     derived signals
+            resolved bindings     derived values
             template variables
 ```
 
@@ -60,6 +60,8 @@ Inputs (`i.*`) are its parameters. Outputs (`o.*`) are what it returns.
 The workflow vocabulary (`s.*`) is module-level state shared across
 functions. Any function-local value can be promoted into module state via
 "Copy to Signal" — works for inputs and outputs symmetrically.
+Artifacts remain separate: only CEL/JSON value ports can be promoted into
+`s.*`; an artifact reference is never a workflow signal.
 
 ## When do step inputs and step outputs exist?
 
@@ -142,7 +144,7 @@ Step-local values the validator has at the start of a step, before its
 container or main work runs. Three sources feed `i.*`:
 
 - **Parser-extracted facts** — values the validator extracts from the
-  submission payload (or stamped metadata) via its `extract_input_signals()`
+  submission payload (or stamped metadata) via its `extract_input_values()`
   hook (e.g. EnergyPlus parses the IDF and exposes `i.zone_count`,
   `i.idf_version`; FMU reads stamped `introspection_metadata` and exposes
   `i.fmi_version`, `i.input_variable_count`). Source for arcane-format
@@ -164,7 +166,7 @@ signal.
 ### 3. Step outputs — `StepIODefinition` with `direction=OUTPUT` (the `o.*` namespace)
 
 Step-local values the validator produces after running. The catalog
-declares the contract (slug, type, description); `extract_output_signals()`
+declares the contract (slug, type, description); `extract_output_values()`
 populates the values from the container's output envelope.
 
 `o.*` values are **temporally bound** — only available in output-stage
@@ -186,7 +188,7 @@ promotion is stored in one of two places depending on who owns the row:
   `promoted_signal_name` field. One owner, no scope ambiguity.
 - **Validator-owned** rows (shared catalog entries like the EnergyPlus
   outputs) are promoted via a `WorkflowStepIOPromotion` overlay row keyed
-  on `(workflow_step, signal_definition)`. The overlay exists because a
+  on `(workflow_step, io_definition)`. The overlay exists because a
   single in-row value can't carry a different name per workflow; overlay
   rows pointing at step-owned definitions are rejected by `clean()` so a
   value never appears under two `s.*` aliases.
@@ -231,7 +233,7 @@ context = {
     "i": inputs_dict,        # alias for input
     "input": inputs_dict,    # parser facts + resolved bindings (this step)
     "o": output_dict,        # alias for output
-    "output": output_dict,   # this step's declared output signals
+    "output": output_dict,   # this step's declared output values
     "steps": steps_context,  # inputs and outputs from completed upstream steps
     "submission": submission_dict,  # submission envelope (metadata + facts)
 }
@@ -269,7 +271,7 @@ Populated when this step begins, before its container runs (or before its
 main in-process work for built-in validators). Three sources:
 
 1. **Parser-extracted facts** from the validator's
-   `extract_input_signals(payload)` instance method. Validators that
+   `extract_input_values(payload)` instance method. Validators that
    understand an arcane format implement this to expose useful facts about
    the submission before doing their main work. EnergyPlus extracts IDF
    facts; FMU exposes `modelDescription.xml` metadata stamped at
@@ -293,7 +295,7 @@ Authors access input values via `i.zone_count` or `input.zone_count`.
 ### `o` / `output` — step output values
 
 Populated after the validator runs. For output-stage assertions, this
-contains the extracted output dict produced by `extract_output_signals()`.
+contains the extracted output dict produced by `extract_output_values()`.
 For input-stage assertions, `o.*` is empty (or null-defaulted) — the
 container hasn't run yet.
 
@@ -370,7 +372,7 @@ is the general-purpose, rule-author-facing reader used in assertions. The
 `BindingSourceScope.SUBMISSION_METADATA` scope is the *validator's* way to
 consume a specific metadata field as a typed, declared `i.<name>` input (e.g.
 EnergyPlus's `expected_floor_area_m2`). They coexist as complementary layers;
-the signal-binding form does **not** treat a `submission.` prefix as a binding
+the step-input binding form does **not** treat a `submission.` prefix as a binding
 source, by design.
 
 ### CEL expression examples
@@ -481,10 +483,7 @@ or workflow step expects (input, `i.*`) or produces (output, `o.*`) a
 named data point with a specific type. It is the "what" — the contract —
 not the "where" (that is the binding, `StepInputBinding`).
 
-This model was previously named `SignalDefinition`. The rename landed
-with ADR-2026-05-22b (internal); the database table
-(`validations_signaldefinition`) was kept stable to avoid a destructive
-rename across mature data.
+The database table is `validations_stepiodefinition`.
 
 This model unifies step input/output metadata that was previously
 scattered across three legacy storage formats (`ValidatorCatalogEntry`,
@@ -507,7 +506,7 @@ of:
 - A `WorkflowStep` — per-step definitions for step-level FMU uploads,
   template scans, or author-customized inputs/outputs.
 
-This is enforced by the `ck_sigdef_one_owner` database constraint.
+This is enforced by the `ck_step_io_definition_one_owner` database constraint.
 
 **Promotion into `s.*`**: When a `StepIODefinition` is promoted — via
 its in-row `promoted_signal_name` (step-owned rows) or a
@@ -537,28 +536,29 @@ This symmetric promotion is the bridge between step-local namespaces
 | `native_name` | `CharField(500)` | Provider's original name, preserved verbatim. |
 | `label` | `CharField(255)` | Human-readable display label. |
 | `description` | `TextField` | Detailed description. |
-| `direction` | `CharField(10)` | `INPUT` (→ `i.*`) or `OUTPUT` (→ `o.*`), from `SignalDirection` choices. |
-| `data_type` | `CharField(20)` | Value type: `NUMBER`, `STRING`, `BOOLEAN`, `TIMESERIES`, `OBJECT`. |
+| `direction` | `CharField(10)` | `INPUT` (→ `i.*`) or `OUTPUT` (→ `o.*`). |
+| `data_type` | `CharField(20)` | Value type: `NUMBER`, `STRING`, `BOOLEAN`, `TIMESERIES`, `OBJECT`, or `ARTIFACT_REF`. |
 | `origin_kind` | `CharField(20)` | How created: from config declaration, FMU probe, or template scan. |
 | `source_kind` | `CharField(20)` | How the value is obtained: `PAYLOAD_PATH` or `INTERNAL` (see below). |
 | `on_missing` | `CharField(10)` | Behavior when value can't be resolved: `error`, `null`, or `ignore`. Default `null`. |
 | `is_path_editable` | `BooleanField` | Whether the workflow author can edit the source data path in the step binding. |
 | `validator` | FK to `Validator` (nullable) | Owner for library validators. XOR with `workflow_step`. |
-| `workflow_step` | FK to `WorkflowStep` (nullable) | Owner for step-level signals. XOR with `validator`. |
-| `order` | `PositiveIntegerField` | Display ordering within the owner's signal list. |
-| `is_hidden` | `BooleanField` | Hidden from the default signals UI. |
+| `workflow_step` | FK to `WorkflowStep` (nullable) | Owner for step-specific input/output definitions. XOR with `validator`. |
+| `order` | `PositiveIntegerField` | Display ordering within the owner's step I/O list. |
+| `is_hidden` | `BooleanField` | Hidden from the default step I/O UI. |
 | `unit` | `CharField(50)` | Unit of measurement (e.g., `kW`, `m2`, `degC`). |
 | `provider_binding` | `JSONField` | Validator-type-specific binding properties (see below). |
 | `metadata` | `JSONField` | Arbitrary metadata for extensions and integrations. |
-| `promoted_signal_name` | `CharField(100)` | Promotion name (in-row, applies to step-owned rows). When set, value is available as `s.<promoted_signal_name>` in downstream steps. Works for any direction. The Python field was renamed in migration 0051; the database column was renamed along with it. Validator-owned rows (shared catalog entries) carry workflow-scoped promoted names via the separate `WorkflowStepIOPromotion` overlay table — see the "Two promotion sources" section below. |
+| `promoted_signal_name` | `CharField(100)` | Promotion name (in-row, applies to step-owned value rows). When set, the CEL/JSON value is available as `s.<promoted_signal_name>` in downstream steps. Validator-owned rows carry workflow-scoped promoted names via the separate `WorkflowStepIOPromotion` overlay table — see the "Two promotion sources" section below. Artifact ports cannot be promoted. |
 
 ### Constraints
 
 | Constraint | Fields | Purpose |
 |------------|--------|---------|
-| `ck_sigdef_one_owner` | `validator`, `workflow_step` | Exactly one owner (XOR). |
-| `uq_sigdef_validator_key_dir` | `validator`, `contract_key`, `direction` | Unique per validator. |
-| `uq_sigdef_step_key_dir` | `workflow_step`, `contract_key`, `direction` | Unique per step. |
+| `ck_step_io_definition_one_owner` | `validator`, `workflow_step` | Exactly one owner (XOR). |
+| `uq_step_io_definition_validator_key_dir` | `validator`, `contract_key`, `direction` | Unique per validator. |
+| `uq_step_io_definition_step_key_dir` | `workflow_step`, `contract_key`, `direction` | Unique per step. |
+| `ck_step_io_promotion_value_only` | `io_medium`, `promoted_signal_name` | Prevent artifact ports from entering the signal namespace. |
 
 ### Two promotion sources: in-row vs. overlay
 
@@ -574,7 +574,7 @@ e.g. the EnergyPlus catalog entries) — these rows are shared across
 every workflow that uses the validator, so the in-row field can't
 carry a workflow-scoped name without colliding across workflows. The
 promotion lives in a separate `WorkflowStepIOPromotion` overlay table
-keyed on `(workflow_step, signal_definition)` so each workflow gets
+keyed on `(workflow_step, io_definition)` so each workflow gets
 its own promoted name pointing at the same shared catalog row.
 
 The runtime injection in `_inject_promotions()`, the autocomplete
@@ -583,13 +583,9 @@ Available Data panel, and the workflow versioning clone all consult
 **both** sources — read paths merge them so the overlay is a
 first-class part of the workflow contract, not a secondary cache.
 
-The overlay model was introduced by the May 2026 P1 fix; before
-then, Copy-to-Signal on validator-owned catalog rows would 404
-because the promote view required a step-owned row.
-
 ### `provider_binding` examples
 
-FMU signals store causality and value reference:
+FMU step I/O definitions store causality and value reference:
 
 ```json
 {
@@ -599,7 +595,7 @@ FMU signals store causality and value reference:
 }
 ```
 
-EnergyPlus template signals store variable type and constraints:
+EnergyPlus template inputs store variable type and constraints:
 
 ```json
 {
@@ -610,27 +606,27 @@ EnergyPlus template signals store variable type and constraints:
 }
 ```
 
-### Signal source kinds
+### Step I/O source kinds
 
-The `source_kind` field declares how the signal's value is obtained. This
-distinction is surfaced in the UI so workflow authors know which signals
-they can configure and which are fixed by the validator.
+The `source_kind` field declares how a step input/output value is obtained.
+This distinction is surfaced in the UI so workflow authors know which step
+inputs they can bind to a source and which are fixed by the validator.
 
-**`PAYLOAD_PATH`** (default): The signal's value comes from a known data
+**`PAYLOAD_PATH`** (default): The step input's value comes from a known data
 path in the submission payload. The workflow author may (depending on
-`is_path_editable`) configure the exact path via the step's signal
-binding. Most FMU input signals and template signals use this mode — the
+`is_path_editable`) configure the exact path via its `StepInputBinding`.
+Most FMU inputs and template inputs use this mode — the
 author wires each input to the right field in their submission data.
 
 **`INTERNAL`**: The validator has its own mechanism for extracting or
 computing the value. Examples include EnergyPlus parser-extracted facts
-(via `extract_input_signals()`), EnergyPlus simulation metrics (via
-`extract_output_signals()`), THERM signals (parsed inline), and FMU
-output variables (read from the FMU runtime). The source path in the
+(via `extract_input_values()`), EnergyPlus simulation metrics (via
+`extract_output_values()`), THERM step outputs (parsed inline), and FMU
+step outputs (read from the FMU runtime). The source path in the
 step binding is typically fixed and should not be changed by the author.
 
 **`is_path_editable`** controls whether the source data path field in the
-signal edit modal is enabled or disabled. When `False`, Django's
+step input editor is enabled or disabled. When `False`, Django's
 `field.disabled = True` provides server-side protection — even if someone
 tampers with the form HTML, Django ignores the submitted value.
 
@@ -644,13 +640,13 @@ tampers with the form HTML, Django ignores the submitted value.
 | FMU | Output | `INTERNAL` | `False` |
 | Custom | Any | `PAYLOAD_PATH` | `True` |
 
-### `on_missing` behavior on catalog signals
+### `on_missing` behavior on step I/O definitions
 
 The same three-mode semantics as `WorkflowSignalMapping.on_missing`, but
 applied per catalog row:
 
 - **`error`** — value must be resolvable; run fails with a clear message
-  if not. Use for signals that downstream assertions reliably depend on
+  if not. Use for step values that downstream assertions reliably depend on
   (e.g. `idf_version` is required because every IDF has a Version
   object).
 - **`null`** (default) — inject null when value can't be resolved.
@@ -665,9 +661,9 @@ applied per catalog row:
 `StepIODefinition` provides typed access to provider-specific metadata
 through Pydantic accessor properties:
 
-- `sig.fmu_binding` — `FMUProviderBinding` (causality, value_reference, etc.)
-- `sig.fmu_metadata` — `FMUSignalMetadata` (display hints)
-- `sig.template_metadata` — `TemplateSignalMetadata` (variable type, constraints)
+- `io_definition.fmu_binding` — `FMUProviderBinding` (causality, value_reference, etc.)
+- `io_definition.fmu_metadata` — `FMUStepIOMetadata` (display hints)
+- `io_definition.template_metadata` — `TemplateStepIOMetadata` (variable type, constraints)
 
 ## How the two models relate
 
@@ -760,15 +756,15 @@ is the one root deliberately *not* in the constant: it is bound only by the
 Tabular Validator's row-stage loop and is added contextually by the
 tabular-aware allowlists.)
 
-## Signals vs custom data paths
+## Declared step I/O vs custom data paths
 
 Assertions in Validibot target data in one of two ways.
 
-### Declared signals (the data contract)
+### Declared step inputs and outputs (the data contract)
 
-When a validator author defines signals, they are publishing a **data
+When a validator author defines step inputs and outputs, they are publishing a **data
 contract**: "this validator knows about these specific data points."
-Signals have names (slugs), types, stages (input or output), and
+The definitions have contract keys, types, directions (input or output), and
 metadata. They appear in dropdowns, support type-appropriate operators,
 and enable compile-time validation of CEL expressions.
 
@@ -776,16 +772,16 @@ This is the structured, guided path. The validator author has done the
 work of mapping data paths (or parser extraction) to meaningful names,
 and workflow authors benefit from that investment.
 
-Examples of validators with declared signals:
+Examples of validators with declared step I/O:
 
-- **EnergyPlus** declares output signals for simulation metrics plus
-  input signals for parser-extracted IDF facts
-- **FMU** auto-discovers signals by introspecting the model's variables
-- **Custom validators** where the author manually adds signals through the UI
+- **EnergyPlus** declares step outputs for simulation metrics plus
+  step inputs for parser-extracted IDF facts
+- **FMU** auto-discovers step inputs and outputs by introspecting the model's variables
+- **Custom validators** where the author manually adds step I/O through the UI
 
 ### Custom data paths (no contract)
 
-Some validators don't declare signals. The Basic validator, JSON Schema
+Some validators don't declare step I/O. The Basic validator, JSON Schema
 validator, and XML Schema validator validate structure but don't
 pre-declare what specific fields exist in the data. When a workflow
 author uses one of these validators and wants to write assertions, they
@@ -794,23 +790,23 @@ accessed via the `p` (payload) namespace, like
 `p.building.thermostat.setpoint` or `p.results[0].value`.
 
 This is the flexible, exploratory path. The workflow author navigates the
-data shape themselves, without the guardrails that declared signals
+data shape themselves, without the guardrails that declared step I/O
 provide.
 
 ### How the two modes interact
 
 The `allow_custom_assertion_targets` flag on `Validator` controls whether
-workflow authors can go beyond declared signals:
+workflow authors can go beyond declared step I/O:
 
-| Scenario | Signals exist? | Custom paths allowed? | What the author sees |
+| Scenario | Step I/O exists? | Custom paths allowed? | What the author sees |
 |----------|:-:|:-:|------|
-| EnergyPlus | Yes (inputs + outputs) | No | Signal dropdown only |
-| Custom validator with signals | Yes | Configurable | Dropdown + optional free-form paths |
+| EnergyPlus | Yes (inputs + outputs) | No | Step input/output dropdown only |
+| Custom validator with declared step I/O | Yes | Configurable | Dropdown + optional free-form paths |
 | Basic validator | No | Yes (always) | Free-form path entry only |
 | JSON Schema / XML Schema | No | Yes | Free-form path entry only |
 
-When both modes are available, the form shows "Target Signal or Path" and
-attempts to match user input against signal definitions first, falling
+When both modes are available, the form shows "Target Input/Output or Path" and
+attempts to match user input against step I/O definitions first, falling
 back to treating it as a custom path.
 
 ## Workflow-level signal resolution: `resolve_workflow_signals()`
@@ -834,12 +830,12 @@ injected into the CEL context as the `s` / `signal` namespace.
 
 ### Where resolution is called
 
-`StepOrchestrator._resolve_workflow_signals()` calls
-`resolve_workflow_signals()` before each step execution. The resolved
-dict is passed via `RunContext.workflow_signals` to the validator, which
-injects it into the CEL context.
+`RunContextBuilder` calls `resolve_workflow_signals()` while constructing the
+run context used for a step. The resolved dict is passed via
+`RunContext.workflow_signals` to the validator, which injects it into the CEL
+context.
 
-## Step-level input resolution: `extract_input_signals()` and bindings
+## Step-level input resolution: `extract_input_values()` and bindings
 
 **File**: `validibot/validations/validators/base/advanced.py` (the hook)
 
@@ -849,12 +845,12 @@ validators), the engine populates `i.*` from up to three sources:
 ### Parser-extracted facts
 
 A validator that understands an arcane format implements
-`extract_input_signals(payload)` to expose useful facts about the
+`extract_input_values(payload)` to expose useful facts about the
 submission (or about a validator-bound artifact, like the FMU's
 modelDescription.xml stamped at upload time). Signature:
 
 ```python
-def extract_input_signals(self, payload: Any) -> dict[str, Any] | None:
+def extract_input_values(self, payload: Any) -> dict[str, Any] | None:
     """Extract input-stage facts.
 
     Returns a dict keyed by catalog contract_key, or None if not
@@ -956,7 +952,7 @@ accessible as `s.zone_count` in downstream CEL expressions.
 The same mechanism works for OUTPUT-direction promotions reading from
 `step["output"][contract_key]`.
 
-## How signals are defined
+## How step I/O definitions are created
 
 ### Config-based definition (advanced validators)
 
@@ -972,27 +968,27 @@ how the value is obtained and what happens when it can't be resolved.
 - `validibot/validations/validators/base/config.py` — `CatalogEntrySpec`
   and `ValidatorConfig` Pydantic models
 - `validibot/validations/validators/energyplus/config.py` — EnergyPlus
-  signal definitions
+  step I/O definitions
 - `validibot/validations/validators/fmu/config.py` — FMU config (empty
-  `catalog_entries`; signals created dynamically via introspection)
+  `catalog_entries`; definitions created dynamically via introspection)
 
 ### Dynamic definition (FMU validators)
 
-FMU validators don't predefine signals in config. Instead, when an FMU
-file is uploaded, `sync_fmu_catalog()` in
+FMU validators don't predefine step I/O in config. Instead, when an FMU
+file is uploaded, `_persist_variables()` in
 `validibot/validations/services/fmu.py` introspects the FMU's
 `modelDescription.xml`, discovers all input/output variables, and creates
 `StepIODefinition` rows dynamically.
 
 Each FMU variable's `causality` (input, output, parameter) determines
-whether it becomes an INPUT or OUTPUT signal. The `contract_key` is
+whether it becomes a step input or step output. The `contract_key` is
 derived from the variable name via `slugify()`, and the `native_name`
 preserves the original FMU variable name.
 
 ### Custom validators
 
-Users can add signals to custom validators through the UI. The signal
-definition forms handle creation and editing.
+Users can add step inputs and outputs to custom validators through the UI.
+The `StepIODefinition` forms handle creation and editing.
 
 ### Syncing configs to the database
 
@@ -1021,7 +1017,7 @@ python manage.py sync_validators
 
    3a. INPUT STAGE
        ├─ preprocess_submission() Template-mode IDF substitution
-       ├─ extract_input_signals() Parse facts from (resolved) payload → i namespace
+       ├─ extract_input_values() Parse facts from (resolved) payload → i namespace
        ├─ Resolve StepInputBindings    → i namespace
        ├─ store input dict on ValidationStepRun.input_values
        ├─ _build_cel_context(stage="input")
@@ -1033,7 +1029,7 @@ python manage.py sync_validators
        └─ Container or in-process work runs
 
    3c. OUTPUT STAGE
-       ├─ extract_output_signals()  → o namespace
+       ├─ extract_output_values()  → o namespace
        ├─ store output dict on ValidationStepRun.output_values
        ├─ _build_cel_context(stage="output")
        │     all namespaces populated
@@ -1053,7 +1049,7 @@ python manage.py sync_validators
    so the submission looks like a direct-IDF upload by the time the
    parser runs. For other validators, this is a no-op.
 
-2. **Input population.** `extract_input_signals()` parses the payload (if
+2. **Input population.** `extract_input_values()` parses the payload (if
    the validator implements it). Resolved StepInputBindings are
    collected. The merged dict becomes `i.*`.
 
@@ -1074,7 +1070,7 @@ python manage.py sync_validators
    in-process check, AI call, etc.).
 
 7. **Output extraction.** The validator returns extracted outputs. For
-   advanced validators, `extract_output_signals()` converts the container
+   advanced validators, `extract_output_values()` converts the container
    output envelope into a flat dict.
 
 8. **Output-stage assertion evaluation.** CEL expressions reference
@@ -1153,7 +1149,7 @@ def _build_cel_context(
 
 2. **Builds the `i` (inputs) namespace** from three sources:
    - Parser-extracted facts via the validator's
-     `extract_input_signals()` (if implemented)
+     `extract_input_values()` (if implemented)
    - Resolved StepInputBinding values
    - Catalog defaults for declared inputs without resolved values
 
@@ -1169,26 +1165,26 @@ def _build_cel_context(
    roots are always present (even if empty) so CEL expressions can
    reference them without undefined-variable errors.
 
-## Output signal elevation pipeline
+## Step output extraction pipeline
 
-Output signals from advanced validators (FMU, EnergyPlus) go through a
-multi-stage pipeline before they become CEL variables.
+Step outputs from advanced validators (FMU, EnergyPlus) go through a
+multi-stage pipeline before they become available in `o.*`.
 
-### Stage 1: Extraction — `extract_output_signals()`
+### Stage 1: Extraction — `extract_output_values()`
 
-Each advanced validator class defines an `extract_output_signals()`
+Each advanced validator class defines an `extract_output_values()`
 classmethod that converts the container's output envelope into a flat
-Python dict of signal names to values. For FMU validators, this dict
+Python dict of output contract keys to values. For FMU validators, this dict
 contains the final time-step values of each output variable:
 
 ```python
-# FMU extract_output_signals() returns:
+# FMU extract_output_values() returns:
 {"T_room": 296.63, "Q_cooling_actual": 5172.83}
 ```
 
 This method is called in `AdvancedValidator.post_execute_validate()` after the
-container completes. The extracted dict is stored in
-`ValidationResult.signals` and later persisted to
+container completes. The extracted dict is currently stored in the
+`ValidationResult.output_values` field and then persisted canonically to
 `ValidationStepRun.output_values` by the processor.
 
 ### Stage 2: Payload merging
@@ -1216,15 +1212,14 @@ field from a map. At evaluation time:
 
 Standard CEL — no custom operators, no dialect extensions.
 
-## Signal extraction for advanced validators
+## Step value extraction for advanced validators
 
 ### EnergyPlus input extraction (parser facts)
 
 **File**: `validibot/validations/validators/energyplus/validator.py`
 
 ```python
-@classmethod
-def extract_input_signals(cls, payload: Any) -> dict[str, Any] | None:
+def extract_input_values(self, payload: Any) -> dict[str, Any] | None:
     """Parse the (resolved) IDF text and extract declared input facts.
 
     Returns a dict like {"idf_version": "25.1", "zone_count": 12, ...}
@@ -1240,8 +1235,7 @@ parsed against the resolved IDF, not the unresolved JSON variable dict.
 **File**: `validibot/validations/validators/energyplus/validator.py`
 
 ```python
-@classmethod
-def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
+def extract_output_values(self, output_envelope: Any) -> dict[str, Any] | None:
     metrics = output_envelope.outputs.metrics
     if hasattr(metrics, "model_dump"):
         metrics_dict = metrics.model_dump(mode="json")
@@ -1252,10 +1246,10 @@ The `EnergyPlusSimulationMetrics` Pydantic model (from `validibot-shared`)
 defines all possible output fields. `model_dump()` converts them to a
 dict, and `None` values are filtered out.
 
-Not every signal will be populated for every IDF. The signal definitions
+Not every step output will be populated for every IDF. The step I/O definitions
 declare the full set of metrics that the validator knows how to extract,
 but EnergyPlus only produces a value when the IDF is configured to
-generate it. When a signal is absent from the extracted dict, the display
+generate it. When an output is absent from the extracted dict, the display
 layer reports "Value not found" and the `on_missing` policy on the
 catalog row determines runtime behaviour.
 
@@ -1263,7 +1257,7 @@ catalog row determines runtime behaviour.
 
 **File**: `validibot/validations/services/cloud_run/launcher.py`
 
-Before launching an FMU container, the launcher resolves input signals
+Before launching an FMU container, the launcher resolves step inputs
 from the submission payload using `StepIODefinition` rows with
 `direction=INPUT`. Resolved values land in `i.*` for input-stage
 assertions to reference.
@@ -1307,15 +1301,15 @@ Supported syntax:
 | `validate_signal_name_unique()` | `services/signal_resolution.py` | Cross-table uniqueness check (both models, any direction) |
 | `_build_cel_context()` | `validators/base/base.py` | Build the namespaced CEL context for assertion evaluation |
 | `_inject_promotions()` | `validators/base/base.py` | Inject promoted input and output values into the `s` namespace |
-| `_resolve_bound_input_context()` | `validators/base/base.py` | Resolve step-bound input signals from submission data |
+| `_resolve_bound_input_context()` | `validators/base/base.py` | Resolve step-bound inputs from submission data |
 | `_resolve_path()` | `validators/base/base.py` | Wrapper for shared path resolution |
 | `resolve_path()` | `services/path_resolution.py` | Shared dotted/bracket path resolution |
 | `store_input_values()` / `store_output_values()` | `services/step_processor/base.py` | Persist canonical step values |
 | `RunContextBuilder` | `services/run_context.py` | Compose workflow signals and canonical upstream step values |
-| `extract_input_signals()` | `validators/base/advanced.py` (base) | Parse input-stage facts from the submission; overridden per validator |
-| `extract_output_signals()` | `validators/energyplus/validator.py` etc. | Extract signals from a validator's output envelope |
-| `sync_fmu_catalog()` | `services/fmu.py` | Create FMU `StepIODefinition` rows from model introspection |
-| `evaluate_assertions_for_stage()` | `validators/base/base.py` | Evaluate assertions against signal context |
+| `extract_input_values()` | `validators/base/advanced.py` (base) | Parse input-stage facts from the submission; overridden per validator |
+| `extract_output_values()` | `validators/energyplus/validator.py` etc. | Extract step output values from a validator's output envelope |
+| `_persist_variables()` | `services/fmu.py` | Create validator-owned FMU `StepIODefinition` rows from model introspection |
+| `evaluate_assertions_for_stage()` | `validators/base/base.py` | Evaluate assertions against the CEL context |
 | `get_catalog_choices()` | `workflows/mixins.py` | Build the stage-aware variable autocomplete for the assertion form |
 
 ## Related documentation
@@ -1328,29 +1322,23 @@ Supported syntax:
 - [Results](results.md) — How values appear in run summaries
 - [CEL Expressions (user-facing)](https://docs.validibot.com/concepts/cel-expressions/) — Author-oriented namespace reference
 - ADR-2026-05-22 — EnergyPlus catalog cleanup and the `i.*` namespace (internal)
-- ADR-2026-05-22b — Terminology (signal vs. step input/output) and model rename (internal)
+- ADR-2026-05-22b — Signal vs. step input/output terminology (internal)
 
 ---
 
 ## Appendix: code-vs-vocabulary
 
 The vocabulary used throughout this doc — *signal*, *step input*, *step
-output*, *promotion* — matches the user-facing UI and the public
-documentation. The Python class identifiers were aligned with this
-vocabulary in May 2026 per ADR-2026-05-22b (internal). The underlying
-database table names and a handful of URL slugs were intentionally left
-alone to avoid a destructive rename on mature data and to avoid
-churning every workflow link in the codebase.
+output*, *promotion* — matches the model, schema, UI, and public
+documentation.
 
 | Concept (this doc) | Python class / field | Database table / column |
 |---|---|---|
-| Step IO definition (one row per step input or step output) | `StepIODefinition` | `validations_signaldefinition` (legacy name retained) |
-| Step input binding (binds a step input to a payload path or signal) | `StepInputBinding` | `validations_stepsignalbinding` (legacy name retained) |
-| In-row promotion field (step-owned rows) | `promoted_signal_name` | `promoted_signal_name` (column genuinely renamed in migration 0051, unlike the table names) |
-| Overlay promotion for validator-owned rows | `WorkflowStepIOPromotion(workflow_step, signal_definition, promoted_signal_name)` | `validations_workflowstepiopromotion` |
-| Workflow-level signal definition | `WorkflowSignalMapping` | `validations_workflowsignalmapping` |
+| Step I/O definition (one row per step input or step output) | `StepIODefinition` | `validations_stepiodefinition` |
+| Step input binding (binds a step input to a payload path or workflow signal) | `StepInputBinding` | `validations_stepinputbinding` |
+| In-row promotion field (step-owned rows) | `promoted_signal_name` | `promoted_signal_name` |
+| Overlay promotion for validator-owned rows | `WorkflowStepIOPromotion(workflow_step, io_definition, promoted_signal_name)` | `validations_workflowstepiopromotion` |
+| Workflow signal mapping | `WorkflowSignalMapping` | `workflows_workflowsignalmapping` |
 
-The runtime injection method is `_inject_promotions` — it handles both
-in-row and overlay promotions, for inputs and outputs alike. (Earlier
-revisions called it `_inject_promoted_outputs`; if you see that name in
-older ADRs or commit messages, it's the same mechanism.)
+The runtime injection method is `_inject_promotions` — it handles both in-row
+and overlay promotions, for inputs and outputs alike.

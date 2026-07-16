@@ -238,7 +238,7 @@ steps in the workflow. For example, a mapping `name="target_eui"`,
 ### Phase 2: Signals available in the `s` namespace for all steps
 
 When `_build_cel_context()` runs for each step, the `s` / `signal` namespace
-is populated from three sources (in priority order):
+is populated from two sources (in priority order):
 
 1. **Workflow-level signals** from `RunContext.workflow_signals` (highest
    priority -- these represent the author's explicit domain vocabulary)
@@ -248,11 +248,8 @@ is populated from three sources (in priority order):
    `WorkflowStepIOPromotion` overlay rows for validator-owned definitions
    (which are shared across workflows, so the promotion must live in a
    workflow-scoped table)
-3. **Step-bound input signals** resolved from `StepInputBinding` rows
-   (only during input-stage assertion evaluation)
-
 The `p` / `payload` namespace contains the raw submission data. The `o` /
-`output` namespace contains this step's declared output signals (populated
+`output` namespace contains this step's declared output values (populated
 from the validator output during output-stage assertion evaluation).
 
 ### Phase 3: Promotions reconstructed before each step

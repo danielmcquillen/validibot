@@ -11,11 +11,11 @@ design principle from the Parameterized Templates ADR (Section 7):
 *"All template intelligence lives in Django.  The container stays
 simple — it receives a fully resolved IDF."*
 
-**Signal-binding resolution (Phase 4b):** When the step has
-``StepInputBinding`` rows for template signals, the resolution engine
-resolves values via ``resolve_input_signal()`` which supports nested
+**Step-input resolution (Phase 4b):** When the step has
+``StepInputBinding`` rows for template input definitions, the resolution engine
+resolves values via ``resolve_step_input()`` which supports nested
 JSON payloads and ``source_data_path`` expressions. The legacy flat-JSON
-path is used as a fallback for steps without signal bindings.
+path is used as a fallback for steps without input bindings.
 
 The preprocessing is invoked by ``EnergyPlusValidator.preprocess_submission()``
 which is called by ``AdvancedValidator.validate()`` before building the
@@ -23,7 +23,7 @@ which is called by ``AdvancedValidator.validate()`` before building the
 
 See Also:
     - ``validibot.validations.utils.idf_template`` — merge/validate/substitute
-    - ``validibot.validations.services.path_resolution`` — signal resolution engine
+    - ``validibot.validations.services.path_resolution`` — step input resolution engine
     - ``validibot.workflows.step_configs.get_step_config`` — typed config access
     - ``validibot.validations.validators.base.advanced.AdvancedValidator`` — hook
 """
@@ -131,12 +131,12 @@ def preprocess_energyplus_submission(
     # ── 3. Parse submission and resolve parameters ────────────────
     #
     # Resolve template parameters via StepInputBinding rows. Every
-    # EnergyPlus template step should have signal bindings created by
-    # sync_step_template_signals(). The bindings support nested JSON
+    # EnergyPlus template step should have input bindings created by
+    # sync_step_template_io_definitions(). The bindings support nested JSON
     # payloads and source_data_path expressions.
     typed_config = get_step_config(step)
 
-    merge_result = _resolve_via_signal_bindings(
+    merge_result = _resolve_via_input_bindings(
         step=step,
         submission=submission,
         case_sensitive=typed_config.case_sensitive,
@@ -236,7 +236,7 @@ def _parse_submission_params(submission) -> dict[str, Any]:
         )
 
     # Reject nested objects/arrays — parameters must be flat key-value pairs.
-    # This check only applies to the legacy path; the signal-binding path
+    # This check only applies to the legacy path; the input-binding path
     # allows nesting because source_data_path can navigate nested structures.
     nested_keys = [k for k, v in parsed.items() if isinstance(v, (dict, list))]
     if nested_keys:
@@ -252,7 +252,7 @@ def _parse_submission_data(submission) -> dict[str, Any]:
     """Parse submission content as a JSON dict, allowing nested structures.
 
     Unlike ``_parse_submission_params()`` (legacy, flat-only), this parser
-    accepts nested objects and arrays — the signal resolution engine
+    accepts nested objects and arrays — the step input resolution engine
     navigates them via ``source_data_path`` expressions.
 
     Raises:
@@ -276,15 +276,15 @@ def _parse_submission_data(submission) -> dict[str, Any]:
 
 
 def _step_has_template_bindings(step) -> bool:
-    """Check whether the step has StepInputBinding rows for template signals."""
-    from validibot.validations.constants import SignalOriginKind
+    """Check for bindings to template-origin step input definitions."""
+    from validibot.validations.constants import StepIOOriginKind
 
-    return step.signal_bindings.filter(
-        signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+    return step.input_bindings.filter(
+        io_definition__origin_kind=StepIOOriginKind.TEMPLATE,
     ).exists()
 
 
-def _resolve_via_signal_bindings(
+def _resolve_via_input_bindings(
     *,
     step,
     submission,
@@ -296,31 +296,31 @@ def _resolve_via_signal_bindings(
     ``merge_and_validate_template_parameters()`` path. It:
 
     1. Parses the submission as a JSON dict (nesting allowed).
-    2. Queries ``StepInputBinding`` rows for template signals.
-    3. Resolves each binding via ``resolve_input_signal()``.
+    2. Queries ``StepInputBinding`` rows for template input definitions.
+    3. Resolves each binding via ``resolve_step_input()``.
     4. Validates resolved values against constraints stored in
-       ``StepIODefinition.metadata`` (TemplateSignalMetadata).
+       ``StepIODefinition.metadata`` (TemplateStepIOMetadata).
     5. Returns a ``MergeResult`` with the merged parameter dict.
 
     Raises:
         ValidationError: If required parameters are missing or values
             fail type/range/safety validation.
     """
-    from validibot.validations.constants import SignalDirection
-    from validibot.validations.constants import SignalOriginKind
+    from validibot.validations.constants import StepIODirection
+    from validibot.validations.constants import StepIOOriginKind
     from validibot.validations.models import StepInputBinding
-    from validibot.validations.services.path_resolution import resolve_input_signal
+    from validibot.validations.services.path_resolution import resolve_step_input
 
     submission_data = _parse_submission_data(submission)
 
     bindings = list(
         StepInputBinding.objects.filter(
             workflow_step=step,
-            signal_definition__direction=SignalDirection.INPUT,
-            signal_definition__origin_kind=SignalOriginKind.TEMPLATE,
+            io_definition__direction=StepIODirection.INPUT,
+            io_definition__origin_kind=StepIOOriginKind.TEMPLATE,
         )
-        .select_related("signal_definition")
-        .order_by("signal_definition__order")
+        .select_related("io_definition")
+        .order_by("io_definition__order")
     )
 
     merged: dict[str, str] = {}
@@ -349,7 +349,7 @@ def _resolve_via_signal_bindings(
     # For nested payloads, top-level keys like "glazing" are structural
     # containers, not parameters — warning about them is noise.
     if not uses_nested_paths:
-        expected_names = {b.signal_definition.native_name for b in bindings}
+        expected_names = {b.io_definition.native_name for b in bindings}
         flat_keys = set(submission_data.keys())
         extra = flat_keys - expected_names
         if extra:
@@ -361,10 +361,10 @@ def _resolve_via_signal_bindings(
             )
 
     for binding in bindings:
-        sig = binding.signal_definition
-        name = sig.native_name
+        io_definition = binding.io_definition
+        name = io_definition.native_name
 
-        resolved = resolve_input_signal(
+        resolved = resolve_step_input(
             binding,
             submission_data=submission_data,
         )
@@ -375,16 +375,16 @@ def _resolve_via_signal_bindings(
             errors.append(
                 f"Required parameter '{name}' is missing and has no "
                 f"default. Description: "
-                f"{sig.label or '(no description)'}."
+                f"{io_definition.label or '(no description)'}."
             )
             continue
         else:
-            # Optional signal, not found, no default — skip
+            # Optional step input, not found, no default — skip
             continue
 
         # Validate the resolved value against template constraints
-        # stored in StepIODefinition.metadata (TemplateSignalMetadata).
-        meta = sig.metadata or {}
+        # stored in StepIODefinition.metadata (TemplateStepIOMetadata).
+        meta = io_definition.metadata or {}
         variable_type = meta.get("variable_type", "text")
 
         if variable_type == "number":
@@ -429,7 +429,7 @@ def _validate_number_from_metadata(
     meta: dict[str, Any],
     errors: list[str],
 ) -> None:
-    """Validate a number-type value against TemplateSignalMetadata constraints.
+    """Validate a number-type value against TemplateStepIOMetadata constraints.
 
     Mirrors the validation logic in ``idf_template._validate_number()`` but
     reads constraints from the StepIODefinition metadata dict instead of

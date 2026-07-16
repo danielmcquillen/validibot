@@ -7,8 +7,8 @@ validator. Tests run against a real Feedthrough FMU fixture so the
 parsing layer (services/fmu.py + validibot_shared/fmu/models.py) is
 exercised end-to-end, not just mocked.
 
-Phase 6 (ADR-2026-05-22b) added parser-fact StepIODefinitions on top
-of per-variable signals — every user-created FMU validator now carries
+Phase 6 (ADR-2026-05-22b) added parser-fact StepIODefinitions alongside
+the per-variable I/O definitions. Every user-created FMU validator now carries
 seven INPUT-direction rows (model_name, fmi_version, variable_count,
 input_variable_count, output_variable_count, parameter_count,
 has_simulation_defaults) so the ``i.*`` namespace is populated
@@ -28,15 +28,15 @@ from validibot.projects.tests.factories import ProjectFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
-from validibot.validations.constants import SignalDirection
-from validibot.validations.constants import SignalOriginKind
-from validibot.validations.constants import SignalSourceKind
+from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
+from validibot.validations.constants import StepIOOriginKind
+from validibot.validations.constants import StepIOSourceKind
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.fmu import create_fmu_validator
 from validibot.validations.services.fmu import run_fmu_probe
 
-# Parser-fact contract keys seeded by ``_seed_parser_fact_signals``
+# Parser-fact contract keys seeded by ``_seed_parser_fact_io_definitions``
 # (per Phase 6, post May-2026 review). Tests use this constant rather
 # than re-deriving from ``services.fmu.PARSER_FACT_KEYS`` so a desync
 # between this test fixture and the production specs surfaces as a
@@ -91,19 +91,19 @@ class FMUServiceTests(TestCase):
         self.assertEqual(validator.validation_type, ValidationType.FMU)
         # Feedthrough FMU declares 4 inputs and 4 outputs in
         # modelDescription.xml. Per Phase 6 we additionally seed seven
-        # parser-fact INPUT signals (model_name, fmi_version, etc.) on
+        # parser-fact step inputs (model_name, fmi_version, etc.) on
         # every user-created FMU validator so the i.* namespace matches
         # the system FMU validator catalog regardless of binding. The
         # fmu_model artifact input port is an additional INPUT row.
         self.assertEqual(
-            validator.signal_definitions.filter(
-                direction=SignalDirection.INPUT
+            validator.step_io_definitions.filter(
+                direction=StepIODirection.INPUT
             ).count(),
             4 + len(PARSER_FACT_KEYS) + 1,
         )
         self.assertEqual(
-            validator.signal_definitions.filter(
-                direction=SignalDirection.OUTPUT
+            validator.step_io_definitions.filter(
+                direction=StepIODirection.OUTPUT
             ).count(),
             4,
         )
@@ -116,11 +116,11 @@ class FMUServiceTests(TestCase):
         self.assertTrue(fmu_model.file.storage.exists(fmu_model.file.name))
         self.assertEqual(fmu_model.gcs_uri, "")
 
-        fmu_port = validator.signal_definitions.get(
+        fmu_port = validator.step_io_definitions.get(
             contract_key="fmu_model",
-            direction=SignalDirection.INPUT,
+            direction=StepIODirection.INPUT,
         )
-        self.assertEqual(fmu_port.origin_kind, SignalOriginKind.CATALOG)
+        self.assertEqual(fmu_port.origin_kind, StepIOOriginKind.CATALOG)
         self.assertEqual(fmu_port.data_type, CatalogValueType.ARTIFACT_REF)
         self.assertEqual(fmu_port.io_medium, StepIOMedium.ARTIFACT)
         self.assertEqual(fmu_port.role, "fmu")
@@ -154,7 +154,7 @@ class FMUServiceTests(TestCase):
         fmu_model.refresh_from_db()
         self.assertTrue(fmu_model.is_approved)
 
-        # Signal definitions should still match: 4 FMU inputs +
+        # Step I/O definitions should still match: 4 FMU inputs +
         # ``len(PARSER_FACT_KEYS)`` parser facts + fmu_model port +
         # 4 FMU outputs.
         # ``_refresh_variables_from_probe`` reconciles in-place via
@@ -164,14 +164,14 @@ class FMUServiceTests(TestCase):
         # cascade of downstream StepInputBinding / WorkflowStepIOPromotion /
         # RulesetAssertion FKs.
         self.assertEqual(
-            validator.signal_definitions.filter(
-                direction=SignalDirection.INPUT
+            validator.step_io_definitions.filter(
+                direction=StepIODirection.INPUT
             ).count(),
             4 + len(PARSER_FACT_KEYS) + 1,
         )
         self.assertEqual(
-            validator.signal_definitions.filter(
-                direction=SignalDirection.OUTPUT
+            validator.step_io_definitions.filter(
+                direction=StepIODirection.OUTPUT
             ).count(),
             4,
         )
@@ -180,7 +180,7 @@ class FMUServiceTests(TestCase):
     #
     # These tests pin the three-way alignment between
     # build_introspection_metadata (services/fmu.py), the parser-fact
-    # specs seeded on user FMU validators, and FMUValidator.extract_input_signals
+    # specs seeded on user FMU validators, and FMUValidator.extract_input_values
     # (validators/fmu/validator.py). Drift in any one of those three
     # places without matching updates in the others would silently
     # break input-stage assertions, so the tests run against a real
@@ -193,7 +193,7 @@ class FMUServiceTests(TestCase):
         and the facts persisted on ``FMUModel.introspection_metadata``.
         Doing it at upload rather than on every validation run avoids
         re-parsing a ~MB-scale FMU zip per validation — the runtime
-        hook (``FMUValidator.extract_input_signals``) just reads the
+        hook (``FMUValidator.extract_input_values``) just reads the
         stamped dict.
         """
         upload = _make_fake_fmu()
@@ -205,7 +205,7 @@ class FMUServiceTests(TestCase):
         )
 
         metadata = validator.fmu_model.introspection_metadata
-        # Each Phase 6 key must be present, otherwise extract_input_signals
+        # Each Phase 6 key must be present, otherwise extract_input_values
         # would silently return None for that fact at runtime.
         for key in PARSER_FACT_KEYS:
             self.assertIn(key, metadata)
@@ -218,7 +218,7 @@ class FMUServiceTests(TestCase):
         self.assertIsInstance(metadata["fmi_version"], str)
         self.assertIsInstance(metadata["has_simulation_defaults"], bool)
         # Feedthrough declares 4 inputs and 4 outputs (matches the
-        # per-variable signal counts above).
+        # per-variable I/O counts above).
         self.assertEqual(metadata["input_variable_count"], 4)
         self.assertEqual(metadata["output_variable_count"], 4)
 
@@ -240,24 +240,24 @@ class FMUServiceTests(TestCase):
             upload=upload,
         )
 
-        parser_signals = validator.signal_definitions.filter(
-            direction=SignalDirection.INPUT,
-            origin_kind=SignalOriginKind.FMU,
-            source_kind=SignalSourceKind.INTERNAL,
+        parser_definitions = validator.step_io_definitions.filter(
+            direction=StepIODirection.INPUT,
+            origin_kind=StepIOOriginKind.FMU,
+            source_kind=StepIOSourceKind.INTERNAL,
         )
         seeded_keys = set(
-            parser_signals.values_list("contract_key", flat=True),
+            parser_definitions.values_list("contract_key", flat=True),
         )
         self.assertEqual(seeded_keys, PARSER_FACT_KEYS)
-        for sig in parser_signals:
+        for io_definition in parser_definitions:
             self.assertFalse(
-                sig.is_path_editable,
-                f"{sig.contract_key} must not be path-editable "
+                io_definition.is_path_editable,
+                f"{io_definition.contract_key} must not be path-editable "
                 "(values are parser-derived, not author-bound).",
             )
 
-    def test_extract_input_signals_reads_from_introspection_metadata(self):
-        """``FMUValidator.extract_input_signals`` returns the stamped dict.
+    def test_extract_input_values_reads_from_introspection_metadata(self):
+        """``FMUValidator.extract_input_values`` returns the stamped dict.
 
         At runtime, the parser-fact hook reads from
         ``self.run_context.step.validator.fmu_model.introspection_metadata``
@@ -290,7 +290,7 @@ class FMUServiceTests(TestCase):
 
         engine = FMUValidator()
         engine.run_context = run_context
-        facts = engine.extract_input_signals(payload={"unused": True})
+        facts = engine.extract_input_values(payload={"unused": True})
 
         self.assertIsNotNone(facts)
         self.assertEqual(facts, validator.fmu_model.introspection_metadata)
@@ -303,7 +303,7 @@ class FMUServiceTests(TestCase):
             "MUTATED",
         )
 
-    def test_extract_input_signals_returns_none_without_run_context(self):
+    def test_extract_input_values_returns_none_without_run_context(self):
         """Hook returns None when there's no run context to walk.
 
         The system FMU validator has no FMU bound (its catalog comes
@@ -317,9 +317,9 @@ class FMUServiceTests(TestCase):
 
         engine = FMUValidator()
         # Don't set run_context — simulates direct construction.
-        self.assertIsNone(engine.extract_input_signals(payload={}))
+        self.assertIsNone(engine.extract_input_values(payload={}))
 
-    def test_extract_input_signals_uses_step_config_for_step_level_uploads(self):
+    def test_extract_input_values_uses_step_config_for_step_level_uploads(self):
         """Step-level FMU uploads resolve i.* via step.config['fmu_introspection'].
 
         Per the May 2026 P1 finding: the primary product path is the
@@ -357,7 +357,7 @@ class FMUServiceTests(TestCase):
 
         engine = FMUValidator()
         engine.run_context = run_context
-        facts = engine.extract_input_signals(payload={"unused": True})
+        facts = engine.extract_input_values(payload={"unused": True})
 
         self.assertEqual(facts, step_metadata)
 
@@ -386,8 +386,8 @@ class FMUServiceTests(TestCase):
 
         # Snapshot row PKs after the initial seed.
         pre_pks = {
-            (sig.contract_key, sig.direction): sig.pk
-            for sig in validator.signal_definitions.all()
+            (io_definition.contract_key, io_definition.direction): io_definition.pk
+            for io_definition in validator.step_io_definitions.all()
         }
         # Sanity: both per-variable rows and parser-fact rows are in
         # the snapshot. If either set is empty something's wrong before
@@ -400,8 +400,8 @@ class FMUServiceTests(TestCase):
         run_fmu_probe(validator.fmu_model)
 
         post_pks = {
-            (sig.contract_key, sig.direction): sig.pk
-            for sig in validator.signal_definitions.all()
+            (io_definition.contract_key, io_definition.direction): io_definition.pk
+            for io_definition in validator.step_io_definitions.all()
         }
 
         # Every (contract_key, direction) tuple that existed before
@@ -416,7 +416,7 @@ class FMUServiceTests(TestCase):
                 "reconciliation regression",
             )
 
-    def test_extract_input_signals_filters_to_catalog_keys(self):
+    def test_extract_input_values_filters_to_catalog_keys(self):
         """The hook drops keys not in PARSER_FACT_KEYS.
 
         Per the May 2026 P2/P3 finding: the catalog (config.py +
@@ -424,7 +424,7 @@ class FMUServiceTests(TestCase):
         public. Older metadata dicts (or future fields stamped
         before the catalog catches up) must not leak into the i.*
         namespace — EnergyPlus's output extractor enforces the same
-        rule (extract_output_signals filters to catalog OUTPUT keys).
+        rule (extract_output_values filters to catalog OUTPUT keys).
 
         Without this filter, a metadata dict carrying a legacy or
         unrelated key would silently expose it as i.<key>, weakening
@@ -450,7 +450,7 @@ class FMUServiceTests(TestCase):
 
         engine = FMUValidator()
         engine.run_context = run_context
-        facts = engine.extract_input_signals(payload={})
+        facts = engine.extract_input_values(payload={})
 
         self.assertEqual(facts, {"model_name": "OK", "fmi_version": "2.0"})
         self.assertNotIn("legacy_descriptor", facts)

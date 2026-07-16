@@ -300,8 +300,7 @@ class TestWorkflowDetailShape:
     def test_detail_step_assertion_target_field_from_data_path(
         self, api_client, member, org, workflow_with_step
     ):
-        """target_field resolves to target_data_path when no signal
-        definition is set."""
+        """target_field resolves to target_data_path without a step I/O target."""
         api_client.force_authenticate(user=member)
         resp = api_client.get(
             f"/api/v1/orgs/{org.slug}/workflows/{workflow_with_step.slug}/"

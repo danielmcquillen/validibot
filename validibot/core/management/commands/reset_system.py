@@ -356,7 +356,7 @@ class Command(BaseCommand):
         Mirrors what ``setup_validibot`` does on a fresh install: the hardcoded
         baseline list followed by config-driven sync, which together create
         every system validator at the version its ``ValidatorConfig`` declares
-        plus its signal and derivation definitions.
+        plus its step I/O and derivation definitions.
         """
         created, _updated = create_default_validators()
         self.stdout.write(f"  Recreated {created} baseline validator(s).")

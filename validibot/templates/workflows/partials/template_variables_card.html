@@ -8,13 +8,13 @@ the StepEditorCardSpec plugin system when the EnergyPlus validator
 declares a "template-variables" card.
 
 Tab 1 — "Template Variables": per-variable annotation form (HTMx POST)
-Tab 2 — "Signals": flat catalog table (output-stage only) with "Export" column
+Tab 2 — "Step Outputs": flat output table with an "Export" column
 
 Context:
   tplvar_form        - TemplateVariableAnnotationForm instance
   workflow           - the parent Workflow
   step               - the WorkflowStep
-  outputs            - list of output StepIODefinition objects (for signals tab)
+  outputs            - list of output StepIODefinition objects
   catalog_tab_prefix - unique prefix for tab IDs
 {% endcomment %}
 {% with tab_prefix=catalog_tab_prefix|default:"step-editor" %}
@@ -46,7 +46,7 @@ Context:
                 role="tab"
                 aria-controls="{{ tab_prefix }}-catalog-panel"
                 aria-selected="false">
-          <span class="fw-semibold">{% trans "Signals" %}</span>
+          <span class="fw-semibold">{% trans "Step Outputs" %}</span>
         </button>
       </div>
       {# -- Tab panels -- #}
@@ -74,12 +74,12 @@ Context:
             </div>
           </form>
         </div>
-        {# == Signals tab == #}
+        {# == Step Outputs tab == #}
         <div class="tab-pane fade p-3"
              id="{{ tab_prefix }}-catalog-panel"
              role="tabpanel"
              aria-labelledby="{{ tab_prefix }}-catalog-tab">
-          {% include "workflows/partials/signals_tab_content.html" %}
+          {% include "workflows/partials/step_outputs_tab_content.html" %}
         </div>
       </div>
     </div>

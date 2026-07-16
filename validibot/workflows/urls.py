@@ -219,7 +219,7 @@ urlpatterns = [
         name="workflow_step_display_step_outputs",
     ),
     path(
-        "<int:pk>/steps/<int:step_id>/toggle-step-output-display/<str:signal_slug>/",
+        "<int:pk>/steps/<int:step_id>/toggle-step-output-display/<str:output_key>/",
         views.WorkflowStepToggleStepOutputDisplayView.as_view(),
         name="workflow_step_toggle_step_output_display",
     ),
@@ -229,14 +229,14 @@ urlpatterns = [
         name="workflow_step_template_variable_edit",
     ),
     path(
-        "<int:pk>/steps/<int:step_id>/signal/<int:signal_id>/",
-        views.WorkflowStepSignalEditView.as_view(),
-        name="workflow_step_signal_edit",
+        "<int:pk>/steps/<int:step_id>/step-io/<int:io_definition_id>/",
+        views.WorkflowStepIOEditView.as_view(),
+        name="workflow_step_io_edit",
     ),
     path(
-        "<int:pk>/steps/<int:step_id>/signal/<int:signal_id>/auto-link/",
-        views.WorkflowStepSignalAutoLinkView.as_view(),
-        name="workflow_step_signal_auto_link",
+        "<int:pk>/steps/<int:step_id>/step-io/<int:io_definition_id>/auto-link/",
+        views.WorkflowStepIOAutoLinkView.as_view(),
+        name="workflow_step_io_auto_link",
     ),
     path(
         "<int:pk>/steps/<int:step_id>/outputs-partial/",
@@ -349,7 +349,7 @@ urlpatterns = [
     # StepIODefinition (any direction) or write to the
     # WorkflowStepIOPromotion overlay for validator-owned catalog rows.
     path(
-        "<int:pk>/steps/<int:step_id>/io/<int:signal_id>/promote/",
+        "<int:pk>/steps/<int:step_id>/step-io/<int:io_definition_id>/promote/",
         signal_mapping.WorkflowStepPromoteStepIOView.as_view(),
         name="workflow_step_promote_step_io",
     ),

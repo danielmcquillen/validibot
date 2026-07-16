@@ -16,7 +16,7 @@
               {% trans "Type" %}
             </th>
             <th scope="col" class="text-muted small">
-              {% trans "Signal" %}
+              {% trans "Step Input/Output" %}
             </th>
             {% if can_edit_validator %}
               <th scope="col" class="text-muted small text-end">
@@ -38,8 +38,8 @@
                 {{ assertion.get_assertion_type_display }}
               </td>
               <td class="text-muted small">
-                {% if assertion.target_signal_definition %}
-                  <span class="badge bg-light text-dark border">{{ assertion.target_signal_definition.contract_key }}</span>
+                {% if assertion.target_io_definition %}
+                  <span class="badge bg-light text-dark border">{{ assertion.target_io_definition.contract_key }}</span>
                 {% else %}
                   <span class="text-muted">--</span>
                 {% endif %}

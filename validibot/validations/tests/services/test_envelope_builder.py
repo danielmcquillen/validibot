@@ -19,6 +19,7 @@ instances (not hand-rolled mocks), ensuring the builder correctly handles
 UUID fields, validation type normalization, and other real model behavior.
 """
 
+import hashlib
 from types import SimpleNamespace
 
 import pytest
@@ -27,7 +28,9 @@ from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 from validibot_shared.schematron.envelopes import SchematronInputEnvelope
 from validibot_shared.shacl.envelopes import SHACLInputEnvelope
 from validibot_shared.validations.envelopes import ResourceFileItem
-from validibot_shared.validations.envelopes import ValidationArtifact
+from validibot_shared.validations.envelopes import (
+    ValidationArtifact as ValidationArtifactEnvelope,
+)
 from validibot_shared.validations.envelopes import ValidatorType
 
 from validibot.submissions.constants import SubmissionDataFormat
@@ -54,8 +57,9 @@ from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
 )
 from validibot.validations.services.cloud_run.envelope_builder import (
-    build_input_envelope,
+    build_input_envelope as _build_input_envelope,
 )
+from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepInputBindingFactory
@@ -83,6 +87,50 @@ def _create_step_run_with_attempt(**kwargs):
     return step_run
 
 
+def _file_identity(uri: str, content: bytes = b"test file bytes") -> FileIdentity:
+    """Create a complete immutable file identity for an envelope fixture."""
+    digest = hashlib.sha256(content).hexdigest()
+    storage_version = f"sha256:{digest}" if uri.startswith("file://") else "1"
+    return FileIdentity(
+        uri=uri,
+        size_bytes=len(content),
+        sha256=digest,
+        storage_version=storage_version,
+    )
+
+
+def _validation_artifact(**kwargs) -> ValidationArtifactEnvelope:
+    """Create strict backend artifact metadata for registration fixtures."""
+    kwargs.setdefault("size_bytes", 0)
+    kwargs.setdefault("sha256", "a" * 64)
+    kwargs.setdefault("storage_version", "1")
+    return ValidationArtifactEnvelope(**kwargs)
+
+
+def _build_test_input_envelope(
+    run,
+    *,
+    input_file_uris=None,
+    resource_uri_overrides=None,
+    **kwargs,
+):
+    """Adapt concise URI test data into the strict dispatch identity contract."""
+    input_files = {
+        key: value if isinstance(value, FileIdentity) else _file_identity(value)
+        for key, value in (input_file_uris or {}).items()
+    }
+    resources = {
+        key: value if isinstance(value, FileIdentity) else _file_identity(value)
+        for key, value in (resource_uri_overrides or {}).items()
+    }
+    return _build_input_envelope(
+        run,
+        input_file_uris=input_files,
+        resource_uri_overrides=resources,
+        **kwargs,
+    )
+
+
 def _make_weather_resource(
     uri: str = "gs://test-bucket/weather.epw",
 ) -> ResourceFileItem:
@@ -96,6 +144,10 @@ def _make_weather_resource(
         id="resource-weather-123",
         type="energyplus_weather",
         uri=uri,
+        name="weather.epw",
+        size_bytes=18,
+        sha256="a" * 64,
+        storage_version="1",
     )
 
 
@@ -116,7 +168,7 @@ def _build_envelope(validator=None, **overrides) -> EnergyPlusInputEnvelope:
         "workflow_id": "workflow-789",
         "step_id": "step-012",
         "step_name": "EnergyPlus Simulation",
-        "model_file_uri": "gs://test-bucket/model.idf",
+        "model_file": _file_identity("gs://test-bucket/model.idf"),
         "resource_files": [_make_weather_resource()],
         "callback_url": "https://api.example.com/callbacks/",
         "callback_id": "cb-test-123",
@@ -525,7 +577,7 @@ class TestEnvelopeStructure:
         ``input_files[0]`` as the primary model to simulate.
         """
         envelope = _build_envelope(
-            model_file_uri="gs://test-bucket/model.idf",
+            model_file=_file_identity("gs://test-bucket/model.idf"),
         )
         assert len(envelope.input_files) == 1
         model_file = envelope.input_files[0]
@@ -630,6 +682,10 @@ class TestMultipleResourceFiles:
             id="resource-lib-456",
             type="energyplus_library",
             uri="gs://test-bucket/library.dat",
+            name="library.dat",
+            size_bytes=18,
+            sha256="b" * 64,
+            storage_version="2",
         )
         envelope = _build_envelope(resource_files=[weather, library])
 
@@ -648,7 +704,7 @@ class TestMultipleResourceFiles:
 
 
 class TestEnergyPlusFilePortMaterialization:
-    """Tests for declared EnergyPlus artifact ports in ``build_input_envelope()``."""
+    """Tests for declared EnergyPlus artifact ports in strict input envelopes."""
 
     def test_submitted_model_and_workflow_weather_resource_materialize(self):
         """Default file-port bindings should produce backend envelope items.
@@ -673,7 +729,7 @@ class TestEnergyPlusFilePortMaterialization:
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
 
-        envelope = build_input_envelope(
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
@@ -723,7 +779,7 @@ class TestEnergyPlusFilePortMaterialization:
             step_run=upstream_run,
             output_envelope=SimpleNamespace(
                 artifacts=[
-                    ValidationArtifact(
+                    _validation_artifact(
                         name="model.epjson",
                         type="generated-model",
                         mime_type="application/json",
@@ -747,7 +803,7 @@ class TestEnergyPlusFilePortMaterialization:
             source_data_path=ResourceFileType.ENERGYPLUS_WEATHER,
         )
 
-        envelope = build_input_envelope(
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
@@ -788,7 +844,7 @@ class TestEnergyPlusFilePortMaterialization:
             step_run=upstream_run,
             output_envelope=SimpleNamespace(
                 artifacts=[
-                    ValidationArtifact(
+                    _validation_artifact(
                         name="model.epjson",
                         type="generated-model",
                         mime_type="application/json",
@@ -815,7 +871,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match="does not accept data format"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -854,7 +910,7 @@ class TestEnergyPlusFilePortMaterialization:
             step_run=upstream_run,
             output_envelope=SimpleNamespace(
                 artifacts=[
-                    ValidationArtifact(
+                    _validation_artifact(
                         name="model.epjson",
                         type="generated-model",
                         mime_type="application/pdf",
@@ -878,7 +934,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match="does not accept media type"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -912,7 +968,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match="weather_file"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -945,7 +1001,7 @@ class TestEnergyPlusFilePortMaterialization:
             source_data_path="",
         )
 
-        envelope = build_input_envelope(
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
@@ -989,14 +1045,17 @@ class TestEnergyPlusFilePortMaterialization:
             source_data_path="",
         )
 
-        build_input_envelope(
+        weather_identity = _file_identity(
+            "file:///validibot/input/resources/weather.epw",
+        )
+        _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
             execution_bundle_uri="file:///validibot/output",
             input_file_uris={
                 "primary_file_uri": "file:///validibot/input/model.idf",
-                "weather_file": "file:///validibot/input/resources/weather.epw",
+                "weather_file": weather_identity,
             },
         )
 
@@ -1016,7 +1075,7 @@ class TestEnergyPlusFilePortMaterialization:
             "source": BindingSourceScope.SUBMISSION_FILE,
             "port_key": "weather_file",
             "role": "weather",
-            "uri": "file:///validibot/input/resources/weather.epw",
+            **weather_identity.envelope_fields(),
         }
 
     def test_missing_weather_file_records_failed_artifact_input_trace(self):
@@ -1038,7 +1097,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match="weather_file"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1053,7 +1112,7 @@ class TestEnergyPlusFilePortMaterialization:
             input_contract_key="weather_file",
         )
         assert trace.resolved is False
-        assert "submitted file URI" in trace.error_message
+        assert "submitted file identity" in trace.error_message
 
     def test_wrong_weather_extension_fails_before_dispatch_with_trace(self):
         """Wrong file formats should fail before the backend is launched."""
@@ -1074,7 +1133,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match=r"expected one of \.epw"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1118,7 +1177,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match="does not allow source scope"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1160,7 +1219,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match="does not accept data format"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1203,7 +1262,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match="does not accept media type"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1251,7 +1310,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match="accepts at most 1"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1291,7 +1350,7 @@ class TestEnergyPlusFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match=r"expected one of \.epw"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1342,13 +1401,16 @@ class TestSHACLDataGraphFilePortMaterialization:
             source_data_path="data_graph",
         )
 
-        envelope = build_input_envelope(
+        data_graph_identity = _file_identity(
+            "file:///validibot/input/submission.ttl",
+        )
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
             execution_bundle_uri="file:///validibot/output",
             input_file_uris={
-                "data_graph": "file:///validibot/input/submission.ttl",
+                "data_graph": data_graph_identity,
             },
         )
 
@@ -1370,7 +1432,7 @@ class TestSHACLDataGraphFilePortMaterialization:
             "source": BindingSourceScope.SUBMISSION_FILE,
             "port_key": "data_graph",
             "role": "data-graph",
-            "uri": "file:///validibot/input/submission.ttl",
+            **data_graph_identity.envelope_fields(),
         }
 
     def test_upstream_rdf_artifact_sets_auto_detected_format_from_artifact_uri(self):
@@ -1399,7 +1461,7 @@ class TestSHACLDataGraphFilePortMaterialization:
             step_run=upstream_run,
             output_envelope=SimpleNamespace(
                 artifacts=[
-                    ValidationArtifact(
+                    _validation_artifact(
                         name="graph.jsonld",
                         type="data_graph",
                         mime_type="application/json",
@@ -1417,7 +1479,7 @@ class TestSHACLDataGraphFilePortMaterialization:
             source_data_path=f"{upstream_step.step_key}.data_graph",
         )
 
-        envelope = build_input_envelope(
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
@@ -1448,7 +1510,7 @@ class TestSHACLDataGraphFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match=r"expected one of \.ttl"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1488,13 +1550,14 @@ class TestSchematronXmlDocumentFilePortMaterialization:
             source_data_path="xml_document",
         )
 
-        envelope = build_input_envelope(
+        xml_identity = _file_identity("file:///validibot/input/invoice.xml")
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
             execution_bundle_uri="file:///validibot/output",
             input_file_uris={
-                "xml_document": "file:///validibot/input/invoice.xml",
+                "xml_document": xml_identity,
             },
         )
 
@@ -1516,7 +1579,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
             "source": BindingSourceScope.SUBMISSION_FILE,
             "port_key": "xml_document",
             "role": "xml-document",
-            "uri": "file:///validibot/input/invoice.xml",
+            **xml_identity.envelope_fields(),
         }
 
     def test_upstream_xml_artifact_materializes_as_schematron_input_file(self):
@@ -1537,7 +1600,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
             step_run=upstream_run,
             output_envelope=SimpleNamespace(
                 artifacts=[
-                    ValidationArtifact(
+                    _validation_artifact(
                         name="normalized.xml",
                         type="xml_document",
                         mime_type="application/xml",
@@ -1555,7 +1618,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
             source_data_path=f"{upstream_step.step_key}.xml_document",
         )
 
-        envelope = build_input_envelope(
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
@@ -1588,7 +1651,7 @@ class TestSchematronXmlDocumentFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match=r"expected one of \.xml"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1629,7 +1692,7 @@ class TestFMUFilePortMaterialization:
             source_data_path=FMU_MODEL_RESOURCE,
         )
 
-        envelope = build_input_envelope(
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
@@ -1687,11 +1750,15 @@ class TestFMUFilePortMaterialization:
             source_data_path="fmu_model",
         )
 
-        envelope = build_input_envelope(
+        fmu_identity = _file_identity("gs://validibot/fmus/library.fmu")
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
             execution_bundle_uri="file:///validibot/output",
+            input_file_uris={
+                "fmu_model_uri": fmu_identity,
+            },
         )
 
         assert envelope.input_files[0].port_key == "fmu_model"
@@ -1704,7 +1771,7 @@ class TestFMUFilePortMaterialization:
         assert trace.resolved is True
         assert trace.source_scope_used == BindingSourceScope.SYSTEM
         assert trace.value_snapshot["fmu_model_id"] == str(fmu_model.id)
-        assert trace.value_snapshot["sha256"] == "abc123"
+        assert trace.value_snapshot["sha256"] == fmu_identity.sha256
 
     def test_missing_step_owned_fmu_model_fails_with_port_trace(self):
         """Missing FMU resources should fail before dispatch with a port trace."""
@@ -1734,7 +1801,7 @@ class TestFMUFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match="fmu_model"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1760,7 +1827,7 @@ class TestFMUFilePortMaterialization:
         )
 
         with pytest.raises(ValueError, match=r"expected one of \.fmu"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1777,7 +1844,7 @@ class TestFMUFilePortMaterialization:
 
 
 class TestFMUInputBindings:
-    """Tests for FMU input-value construction in ``build_input_envelope()``."""
+    """Tests for FMU input-value construction in ``_build_test_input_envelope()``."""
 
     def test_no_declared_fmu_inputs_produces_empty_input_values(self):
         """A step with no declared FMU inputs should launch with an empty map."""
@@ -1785,7 +1852,7 @@ class TestFMUInputBindings:
             submission_content='{"accidental": "must-not-enter-envelope"}',
         )
 
-        envelope = build_input_envelope(
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,
@@ -1808,7 +1875,7 @@ class TestFMUInputBindings:
         )
 
         with pytest.raises(ValueError, match="StepInputBinding"):
-            build_input_envelope(
+            _build_test_input_envelope(
                 run,
                 callback_url="http://localhost/callback/",
                 callback_id=None,
@@ -1838,7 +1905,7 @@ class TestFMUInputBindings:
             source_data_path="building.panel_area",
         )
 
-        envelope = build_input_envelope(
+        envelope = _build_test_input_envelope(
             run,
             callback_url="http://localhost/callback/",
             callback_id=None,

@@ -74,6 +74,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from validibot.validations.services.attempt_paths import attempt_bundle_relpath
+from validibot.validations.services.file_identity import FileIdentity
+from validibot.validations.services.file_identity import local_file_identity
 
 if TYPE_CHECKING:
     from validibot.core.storage.local import LocalDataStorage
@@ -132,6 +134,8 @@ class MaterializedFile:
         name: Filename inside the workspace (no directory components).
         host_path: Absolute path on the host.
         container_uri: ``file:///validibot/...`` URI as the container sees it.
+        identity: Exact size, digest, and local content-addressed version for
+            the materialised bytes at ``container_uri``.
         resource_id: When this file was materialised from a workflow
             step resource (weather file, FMU model, etc.), the resource
             id the envelope uses to reference it. The dispatch layer
@@ -144,6 +148,7 @@ class MaterializedFile:
     name: str
     host_path: Path
     container_uri: str
+    identity: FileIdentity
     resource_id: str | None = None
 
 
@@ -389,10 +394,15 @@ class RunWorkspaceBuilder:
         primary_host_path.write_bytes(primary_content)
         primary_host_path.chmod(INPUT_FILE_MODE)
 
+        primary_container_uri = f"file://{container_input_dir}/{primary_filename}"
         primary = MaterializedFile(
             name=primary_filename,
             host_path=primary_host_path,
-            container_uri=f"file://{container_input_dir}/{primary_filename}",
+            container_uri=primary_container_uri,
+            identity=local_file_identity(
+                path=primary_host_path,
+                uri=primary_container_uri,
+            ),
         )
 
         # Materialise resource files. Each one is copied as bytes rather
@@ -411,13 +421,15 @@ class RunWorkspaceBuilder:
             target = resources_dir / res.filename
             target.write_bytes(res.source_path.read_bytes())
             target.chmod(INPUT_FILE_MODE)
+            container_uri = (
+                f"file://{container_input_dir}/{RESOURCES_SUBDIR}/{res.filename}"
+            )
             materialised_resources.append(
                 MaterializedFile(
                     name=res.filename,
                     host_path=target,
-                    container_uri=(
-                        f"file://{container_input_dir}/{RESOURCES_SUBDIR}/{res.filename}"
-                    ),
+                    container_uri=container_uri,
+                    identity=local_file_identity(path=target, uri=container_uri),
                     resource_id=res.resource_id,
                 ),
             )

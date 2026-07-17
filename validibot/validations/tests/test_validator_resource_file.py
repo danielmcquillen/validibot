@@ -9,6 +9,7 @@ These tests cover:
 - Envelope builder resource file resolution
 """
 
+import hashlib
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -19,9 +20,26 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidatorResourceFile
+from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.tests.factories import ValidatorFactory
 
 pytestmark = pytest.mark.django_db
+
+
+def _file_identity(uri: str, content: bytes = b"resource bytes") -> FileIdentity:
+    """Create strict resource identity metadata for resolver unit tests."""
+    digest = hashlib.sha256(content).hexdigest()
+    return FileIdentity(
+        uri=uri,
+        size_bytes=len(content),
+        sha256=digest,
+        storage_version=f"sha256:{digest}",
+    )
+
+
+def _stored_resource_identity(step_resource) -> FileIdentity:
+    """Stand in for provider metadata while preserving each stored URI."""
+    return _file_identity(step_resource.get_storage_uri())
 
 
 class TestValidatorResourceFileModel:
@@ -337,7 +355,12 @@ class TestResolveStepResources:
             validator_resource_file=vrf,
         )
 
-        items = resolve_step_resources(step)
+        with patch(
+            "validibot.validations.services.cloud_run.envelope_builder."
+            "_stored_step_resource_identity",
+            side_effect=_stored_resource_identity,
+        ):
+            items = resolve_step_resources(step)
 
         assert len(items) == 1
         assert items[0].id == str(vrf.id)
@@ -363,7 +386,12 @@ class TestResolveStepResources:
             resource_type="ENERGYPLUS_IDF",
         )
 
-        items = resolve_step_resources(step)
+        with patch(
+            "validibot.validations.services.cloud_run.envelope_builder."
+            "_stored_step_resource_identity",
+            side_effect=_stored_resource_identity,
+        ):
+            items = resolve_step_resources(step)
 
         assert len(items) == 1
         assert items[0].id == str(sr.pk)
@@ -402,21 +430,26 @@ class TestResolveStepResources:
         )
 
         # Filter by WEATHER_FILE only
-        weather_items = resolve_step_resources(
-            step, role=WorkflowStepResource.WEATHER_FILE
-        )
-        assert len(weather_items) == 1
-        assert weather_items[0].id == str(vrf.id)
+        with patch(
+            "validibot.validations.services.cloud_run.envelope_builder."
+            "_stored_step_resource_identity",
+            side_effect=_stored_resource_identity,
+        ):
+            weather_items = resolve_step_resources(
+                step, role=WorkflowStepResource.WEATHER_FILE
+            )
+            assert len(weather_items) == 1
+            assert weather_items[0].id == str(vrf.id)
 
-        # Filter by MODEL_TEMPLATE only
-        template_items = resolve_step_resources(
-            step, role=WorkflowStepResource.MODEL_TEMPLATE
-        )
-        assert len(template_items) == 1
+            # Filter by MODEL_TEMPLATE only
+            template_items = resolve_step_resources(
+                step, role=WorkflowStepResource.MODEL_TEMPLATE
+            )
+            assert len(template_items) == 1
 
-        # No filter returns all
-        all_items = resolve_step_resources(step)
-        assert len(all_items) == 2  # noqa: PLR2004
+            # No filter returns all
+            all_items = resolve_step_resources(step)
+            assert len(all_items) == 2  # noqa: PLR2004
 
     def test_resolve_empty_step_returns_empty_list(self):
         """A step with no WorkflowStepResource rows returns an empty list."""
@@ -470,7 +503,7 @@ class TestResolveStepResources:
         container_uri = "file:///validibot/input/resources/weather.epw"
         items = resolve_step_resources(
             step,
-            resource_uri_overrides={str(vrf.id): container_uri},
+            resource_uri_overrides={str(vrf.id): _file_identity(container_uri)},
         )
 
         assert len(items) == 1
@@ -510,12 +543,17 @@ class TestResolveStepResources:
 
         # Both ``None`` and ``{}`` must behave identically: fall through
         # to ``get_storage_uri()`` so the Cloud Run path is unaffected.
-        for overrides in (None, {}):
-            items = resolve_step_resources(step, resource_uri_overrides=overrides)
-            assert len(items) == 1
-            # The default URI is what get_storage_uri() returns —
-            # file:// for local dev tests, gs:// in production GCS.
-            assert items[0].uri == vrf.get_storage_uri()
+        with patch(
+            "validibot.validations.services.cloud_run.envelope_builder."
+            "_stored_step_resource_identity",
+            side_effect=_stored_resource_identity,
+        ):
+            for overrides in (None, {}):
+                items = resolve_step_resources(step, resource_uri_overrides=overrides)
+                assert len(items) == 1
+                # The default URI is what get_storage_uri() returns —
+                # file:// for local dev tests, gs:// in production GCS.
+                assert items[0].uri == vrf.get_storage_uri()
 
     def test_resolve_partial_overrides_only_replaces_matching_ids(self):
         """When the override dict has entries for some but not all
@@ -555,21 +593,23 @@ class TestResolveStepResources:
             validator_resource_file=vrf_passthrough,
         )
 
-        items = resolve_step_resources(
-            step,
-            resource_uri_overrides={
-                str(
-                    vrf_overridden.id
-                ): "file:///validibot/input/resources/weather_a.epw",
-            },
-        )
+        overridden_uri = "file:///validibot/input/resources/weather_a.epw"
+        with patch(
+            "validibot.validations.services.cloud_run.envelope_builder."
+            "_stored_step_resource_identity",
+            side_effect=_stored_resource_identity,
+        ):
+            items = resolve_step_resources(
+                step,
+                resource_uri_overrides={
+                    str(vrf_overridden.id): _file_identity(overridden_uri),
+                },
+            )
 
         # Sort by URI so the assertion order is independent of QuerySet
         # iteration order, which depends on insertion order and PK order.
         items_by_id = {item.id: item for item in items}
-        assert items_by_id[str(vrf_overridden.id)].uri == (
-            "file:///validibot/input/resources/weather_a.epw"
-        )
+        assert items_by_id[str(vrf_overridden.id)].uri == (overridden_uri)
         assert items_by_id[str(vrf_passthrough.id)].uri == (
             vrf_passthrough.get_storage_uri()
         ), "passthrough resource must keep its model-derived URI"

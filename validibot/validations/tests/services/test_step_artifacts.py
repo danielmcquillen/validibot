@@ -12,7 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 from django.core.exceptions import ValidationError
-from validibot_shared.validations.envelopes import ValidationArtifact
+from validibot_shared.validations.envelopes import (
+    ValidationArtifact as ValidationArtifactEnvelope,
+)
 
 from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import BindingSourceScope
@@ -37,6 +39,21 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 pytestmark = pytest.mark.django_db
 
 UPDATED_REPORT_SIZE_BYTES = 200
+TEST_ARTIFACT_SHA256 = "a" * 64
+
+
+def _validation_artifact(**kwargs) -> ValidationArtifactEnvelope:
+    """Build strict artifact metadata while keeping each test focused on intent."""
+    content = kwargs.pop("content", None)
+    if content is not None:
+        digest = hashlib.sha256(content).hexdigest()
+        kwargs.setdefault("size_bytes", len(content))
+        kwargs.setdefault("sha256", digest)
+        kwargs.setdefault("storage_version", f"sha256:{digest}")
+    else:
+        kwargs.setdefault("sha256", TEST_ARTIFACT_SHA256)
+        kwargs.setdefault("storage_version", "generation-1")
+    return ValidationArtifactEnvelope(**kwargs)
 
 
 class TestArtifactPromotionContract:
@@ -95,7 +112,7 @@ class TestStepArtifactRegistration:
         )
         output_envelope = SimpleNamespace(
             artifacts=[
-                ValidationArtifact(
+                _validation_artifact(
                     name="eplusout.sql",
                     type="simulation-db",
                     mime_type="application/vnd.sqlite3",
@@ -161,7 +178,7 @@ class TestStepArtifactRegistration:
             step_run=step_run,
             output_envelope=SimpleNamespace(
                 artifacts=[
-                    ValidationArtifact(
+                    _validation_artifact(
                         name="report.txt",
                         type="report",
                         mime_type="text/plain",
@@ -170,6 +187,7 @@ class TestStepArtifactRegistration:
                             "output/outputs/report.txt"
                         ),
                         size_bytes=len(payload),
+                        content=payload,
                     ),
                 ],
                 raw_outputs=None,
@@ -181,13 +199,58 @@ class TestStepArtifactRegistration:
         assert artifact.sha256 == expected
         assert refs[0]["sha256"] == expected
 
+    def test_rejects_local_artifact_identity_that_does_not_match_bytes(
+        self,
+        settings,
+        tmp_path,
+    ):
+        """Untrusted local artifact claims must not enter the durable index."""
+        settings.DATA_STORAGE_ROOT = str(tmp_path)
+        step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        attempt = ExecutionAttemptFactory(step_run=step_run)
+        report_path = (
+            tmp_path
+            / "runs"
+            / str(step_run.validation_run.org_id)
+            / str(step_run.validation_run_id)
+            / "attempts"
+            / str(attempt.pk)
+            / "output"
+            / "outputs"
+            / "report.txt"
+        )
+        report_path.parent.mkdir(parents=True)
+        report_path.write_bytes(b"actual report")
+        uri = f"file:///validibot/attempts/{attempt.pk}/output/outputs/report.txt"
+
+        with pytest.raises(ValueError, match="does not match stored bytes"):
+            register_output_artifacts(
+                step_run=step_run,
+                output_envelope=SimpleNamespace(
+                    artifacts=[
+                        _validation_artifact(
+                            name="report.txt",
+                            type="report",
+                            mime_type="text/plain",
+                            uri=uri,
+                            size_bytes=len(b"actual report"),
+                            sha256="b" * 64,
+                            storage_version="sha256:" + "b" * 64,
+                        ),
+                    ],
+                    raw_outputs=None,
+                ),
+            )
+
+        assert Artifact.objects.filter(step_run=step_run).count() == 0
+
     def test_reregistering_same_artifact_updates_without_duplicates(self):
         """Callback retries must not duplicate the same step artifact output."""
 
         step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
         first = SimpleNamespace(
             artifacts=[
-                ValidationArtifact(
+                _validation_artifact(
                     name="report.html",
                     type="report",
                     mime_type="text/html",
@@ -199,7 +262,7 @@ class TestStepArtifactRegistration:
         )
         second = SimpleNamespace(
             artifacts=[
-                ValidationArtifact(
+                _validation_artifact(
                     name="report.html",
                     type="report",
                     mime_type="text/html",
@@ -259,7 +322,7 @@ class TestStepArtifactRegistration:
             step_run=step_run,
             output_envelope=SimpleNamespace(
                 artifacts=[
-                    ValidationArtifact(
+                    _validation_artifact(
                         name="eplusout.sql",
                         type="simulation-db",
                         mime_type="application/x-sqlite3",
@@ -306,7 +369,7 @@ class TestStepArtifactRegistration:
                 step_run=step_run,
                 output_envelope=SimpleNamespace(
                     artifacts=[
-                        ValidationArtifact(
+                        _validation_artifact(
                             name="eplusout.csv",
                             type="simulation-db",
                             mime_type="text/csv",
@@ -347,14 +410,14 @@ class TestStepArtifactRegistration:
                 step_run=step_run,
                 output_envelope=SimpleNamespace(
                     artifacts=[
-                        ValidationArtifact(
+                        _validation_artifact(
                             name="eplusout.sql",
                             type="simulation-db",
                             mime_type="application/x-sqlite3",
                             uri="gs://bucket/outputs/eplusout.sql",
                             size_bytes=100,
                         ),
-                        ValidationArtifact(
+                        _validation_artifact(
                             name="copy.sql",
                             type="simulation-db",
                             mime_type="application/x-sqlite3",
@@ -397,7 +460,7 @@ class TestStepArtifactRunContext:
             step_run=upstream_run,
             output_envelope=SimpleNamespace(
                 artifacts=[
-                    ValidationArtifact(
+                    _validation_artifact(
                         name="model.epjson",
                         type="generated-model",
                         mime_type="application/json",
@@ -440,7 +503,7 @@ class TestStepArtifactRunContext:
             step_run=upstream_run,
             output_envelope=SimpleNamespace(
                 artifacts=[
-                    ValidationArtifact(
+                    _validation_artifact(
                         name="model.epjson",
                         type="generated-model",
                         mime_type="application/json",

@@ -3598,6 +3598,16 @@ class Artifact(TimeStampedModel):
 
     sha256 = models.CharField(max_length=64, blank=True, default="")
 
+    storage_version = models.CharField(
+        max_length=512,
+        blank=True,
+        default="",
+        help_text=_(
+            "Provider-specific immutable object version recorded by the "
+            "validator output envelope."
+        ),
+    )
+
     manifest_uri = models.CharField(max_length=1000, blank=True, default="")
 
     manifest_sha256 = models.CharField(max_length=64, blank=True, default="")

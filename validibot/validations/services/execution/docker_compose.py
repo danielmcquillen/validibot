@@ -61,6 +61,8 @@ from validibot.validations.services.runners import get_validator_runner
 if TYPE_CHECKING:
     from validibot_shared.validations.envelopes import ValidationOutputEnvelope
 
+    from validibot.validations.services.file_identity import FileIdentity
+
 logger = logging.getLogger(__name__)
 
 
@@ -207,7 +209,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
 
         Dispatch builds a per-attempt workspace on the host, materialises
         only the files this run needs into ``input/``, rewrites
-        envelope URIs to container paths, and runs the container
+        envelope file identities to container paths, and runs the container
         against attempt-scoped mounts. No validator backend changes are
         required — backends are URI-driven and resolve the
         container-visible URIs directly.
@@ -216,7 +218,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
 
         1. Build the per-attempt workspace (input/, output/, materialised
            primary file + resource files).
-        2. Build the input envelope with container-visible URIs.
+        2. Build the input envelope with container-visible file identities.
         3. Write the envelope into the workspace's input directory.
         4. Run the validator container with per-attempt mounts.
         5. Read the output envelope from the workspace's output
@@ -506,7 +508,11 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         request: ExecutionRequest,
         *,
         attempt_id: str,
-    ) -> tuple[object, dict[str, str], dict[str, str]]:
+    ) -> tuple[
+        object,
+        dict[str, FileIdentity],
+        dict[str, FileIdentity],
+    ]:
         """Build the per-attempt workspace and the envelope override kwargs.
 
         Materialises the primary submission file plus every workflow
@@ -514,13 +520,14 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         EnergyPlus, FMU model files for FMU). Returns the workspace
         plus two dicts that feed straight into ``build_input_envelope``:
 
-        - ``input_file_uris``: the primary file URI (and the FMU model
-          URI when applicable) keyed by the role names the envelope
-          builder reads.
+        - ``input_file_uris``: the primary file identity (and the FMU model
+          identity when applicable) keyed by the role names the envelope
+          builder reads. Each identity includes URI, size, digest, and local
+          content-addressed storage version.
         - ``resource_uri_overrides``: ``resource_id`` →
-          container-visible URI, used by the EnergyPlus envelope to
-          point ``ResourceFileItem.uri`` at the attempt-scoped mount instead
-          of the host ``MEDIA_ROOT`` path.
+          complete container-visible identity, used by the EnergyPlus envelope
+          to point ``ResourceFileItem`` at the attempt-scoped mount instead of
+          the host ``MEDIA_ROOT`` path.
 
         The translation is local-Docker-specific: it expects every
         resource's ``get_storage_uri()`` to return ``file://`` URIs
@@ -633,13 +640,13 @@ class DockerComposeExecutionBackend(ExecutionBackend):
 
         # Build override kwargs the envelope builder consumes.
         resource_uri_overrides = {
-            mf.resource_id: mf.container_uri
+            mf.resource_id: mf.identity
             for mf in workspace.resource_files
             if mf.resource_id is not None
         }
 
-        input_file_uris: dict[str, str] = {
-            "primary_file_uri": workspace.primary_file.container_uri,
+        input_file_uris: dict[str, FileIdentity] = {
+            "primary_file_uri": workspace.primary_file.identity,
         }
 
         for materialized in workspace.resource_files:
@@ -647,19 +654,19 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 materialized.resource_id,
             )
             if port_key:
-                input_file_uris[port_key] = materialized.container_uri
+                input_file_uris[port_key] = materialized.identity
 
         if fmu_resource_id is not None:
-            fmu_container_uri = next(
+            fmu_file = next(
                 (
-                    mf.container_uri
+                    mf.identity
                     for mf in workspace.resource_files
                     if mf.resource_id == fmu_resource_id
                 ),
                 None,
             )
-            if fmu_container_uri is not None:
-                input_file_uris["fmu_model_uri"] = fmu_container_uri
+            if fmu_file is not None:
+                input_file_uris["fmu_model_uri"] = fmu_file
 
         return workspace, input_file_uris, resource_uri_overrides
 

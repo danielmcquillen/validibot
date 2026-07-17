@@ -38,6 +38,7 @@ Phases: 2-4 of the EnergyPlus Parameterized Templates ADR.
 
 from __future__ import annotations
 
+import hashlib
 from http import HTTPStatus
 from unittest.mock import patch
 
@@ -49,6 +50,7 @@ from django.test import TestCase
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import ENERGYPLUS_MODEL_TEMPLATE
 from validibot.validations.constants import ValidationType
+from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
@@ -2136,6 +2138,29 @@ class TestTemplateVariableEditView:
 _PATCH_PREFIX = "validibot.validations.services.cloud_run.launcher"
 
 
+def _uploaded_file_identity(*, content, uri, content_type=None):
+    """Return the strict GCS identity assigned by mocked launcher uploads."""
+    del content_type
+    content_bytes = content.encode() if isinstance(content, str) else content
+    return FileIdentity(
+        uri=uri,
+        size_bytes=len(content_bytes),
+        sha256=hashlib.sha256(content_bytes).hexdigest(),
+        storage_version="1700000000000000",
+    )
+
+
+def _stored_resource_identity(step_resource):
+    """Return provider metadata for the mocked launcher's weather resource."""
+    source = step_resource.validator_resource_file
+    return FileIdentity(
+        uri=step_resource.get_storage_uri(),
+        size_bytes=1,
+        sha256=source.content_hash or "a" * 64,
+        storage_version="1700000000000001",
+    )
+
+
 def _launcher_mocks():
     """Return a dict of patch objects for the four external I/O functions.
 
@@ -2148,6 +2173,11 @@ def _launcher_mocks():
     return {
         "upload_file": patch(f"{_PATCH_PREFIX}.upload_file"),
         "upload_envelope": patch(f"{_PATCH_PREFIX}.upload_envelope"),
+        "stored_resource_identity": patch(
+            "validibot.validations.services.cloud_run.envelope_builder."
+            "_stored_step_resource_identity",
+            side_effect=_stored_resource_identity,
+        ),
         "run_validator_job": patch(
             f"{_PATCH_PREFIX}.run_validator_job",
             return_value="executions/test-exec-001",
@@ -2192,6 +2222,7 @@ class _LauncherMocks:
             self._patchers.append(patcher)
 
         # Default return value for job execution name
+        self.upload_file.side_effect = _uploaded_file_identity
         self.run_validator_job.return_value = "executions/test-exec-001"
         self.build_callback_url.return_value = (
             "https://worker.test/api/v1/validation-callbacks/"

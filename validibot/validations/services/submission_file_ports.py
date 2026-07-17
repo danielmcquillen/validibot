@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from validibot.validations.services.file_identity import FileIdentity
 
 SUBMITTED_FILE_RESOURCE_ID_PREFIX = "submitted_file_port:"
 
@@ -42,23 +46,23 @@ def upload_submitted_input_files_to_gcs(
     submission,
     step,
     execution_bundle_uri: str,
-) -> dict[str, str]:
+) -> dict[str, FileIdentity]:
     """Upload submitted artifact-port files into a Cloud Run execution bundle."""
 
     from validibot.validations.services.cloud_run.gcs_client import upload_file
 
-    input_file_uris: dict[str, str] = {}
+    input_files: dict[str, FileIdentity] = {}
     bundle = execution_bundle_uri.rstrip("/")
     for port_file in submitted_input_files_for_step(submission, step):
         filename = port_file.materialized_filename
         target_uri = f"{bundle}/submitted/{port_file.port_key}/{filename}"
-        upload_file(
+        stored = upload_file(
             content=port_file.read_bytes(),
             uri=target_uri,
             content_type=port_file.content_type or _content_type_for_filename(filename),
         )
-        input_file_uris[port_file.port_key] = target_uri
-    return input_file_uris
+        input_files[port_file.port_key] = stored
+    return input_files
 
 
 def submitted_file_source_path(port_file) -> Path:

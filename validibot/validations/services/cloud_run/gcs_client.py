@@ -12,6 +12,10 @@ from pathlib import Path
 from google.cloud import storage
 from pydantic import BaseModel
 
+from validibot.validations.services.file_identity import FileIdentity
+from validibot.validations.services.file_identity import local_bytes_identity
+from validibot.validations.services.file_identity import local_file_identity
+
 
 def parse_gcs_uri(uri: str) -> tuple[str, str]:
     """
@@ -211,7 +215,7 @@ def upload_file_from_path(
     local_path: Path,
     uri: str,
     content_type: str | None = None,
-) -> None:
+) -> FileIdentity:
     """
     Upload a local file to GCS.
 
@@ -244,10 +248,19 @@ def upload_file_from_path(
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_path)
 
+    source_identity = local_file_identity(path=local_path, uri=uri)
+
     # Upload file
     blob.upload_from_filename(
         str(local_path),
         content_type=content_type,
+    )
+    generation = _uploaded_generation(blob=blob, uri=uri)
+    return FileIdentity(
+        uri=uri,
+        size_bytes=source_identity.size_bytes,
+        sha256=source_identity.sha256,
+        storage_version=generation,
     )
 
 
@@ -255,7 +268,7 @@ def upload_file(
     content: bytes | str,
     uri: str,
     content_type: str | None = None,
-) -> None:
+) -> FileIdentity:
     """
     Upload file content (bytes or string) to GCS.
 
@@ -283,11 +296,59 @@ def upload_file(
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_path)
 
-    # Upload content
+    content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+    source_identity = local_bytes_identity(content=content_bytes, uri=uri)
+
+    # Upload the exact bytes whose identity is returned to the envelope writer.
     blob.upload_from_string(
-        content,
+        content_bytes,
         content_type=content_type,
     )
+    generation = _uploaded_generation(blob=blob, uri=uri)
+    return FileIdentity(
+        uri=uri,
+        size_bytes=source_identity.size_bytes,
+        sha256=source_identity.sha256,
+        storage_version=generation,
+    )
+
+
+def get_gcs_file_identity(*, uri: str, sha256: str) -> FileIdentity:
+    """Return provider metadata bound to an already-recorded content digest.
+
+    Managed resources already persist SHA-256 when they are uploaded. Reading
+    current GCS metadata supplies the exact generation and byte size without a
+    second full download. If the object changed behind Django's back, the
+    backend receives the durable expected digest and rejects the substituted
+    generation before execution.
+    """
+    if not sha256:
+        msg = f"Cannot bind GCS object without a recorded SHA-256: {uri}"
+        raise ValueError(msg)
+
+    bucket_name, blob_path = parse_gcs_uri(uri)
+    client = storage.Client()
+    blob = client.bucket(bucket_name).blob(blob_path)
+    blob.reload()
+    if blob.size is None or blob.generation is None:
+        msg = f"GCS object metadata is incomplete for immutable input: {uri}"
+        raise ValueError(msg)
+    return FileIdentity(
+        uri=uri,
+        size_bytes=int(blob.size),
+        sha256=sha256,
+        storage_version=str(blob.generation),
+    )
+
+
+def _uploaded_generation(*, blob, uri: str) -> str:
+    """Return the immutable generation assigned to a completed GCS upload."""
+    if blob.generation is None:
+        blob.reload()
+    if blob.generation is None:
+        msg = f"GCS did not return an object generation after uploading {uri}"
+        raise ValueError(msg)
+    return str(blob.generation)
 
 
 def download_file(

@@ -40,6 +40,8 @@ from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
 from validibot.validations.services import artifact_ports
+from validibot.validations.services.file_identity import FileIdentity
+from validibot.validations.services.file_identity import local_file_identity
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ def build_energyplus_input_envelope(
     workflow_id: str,
     step_id: str,
     step_name: str | None,
-    model_file_uri: str | None,
+    model_file: FileIdentity | None,
     resource_files: list[ResourceFileItem],
     callback_url: str,
     callback_id: str | None,
@@ -90,7 +92,7 @@ def build_energyplus_input_envelope(
         workflow_id: Workflow UUID
         step_id: Workflow step UUID
         step_name: Human-readable step name
-        model_file_uri: URI to IDF/epJSON file (gs:// for GCS, file:// for local).
+        model_file: Immutable identity of the IDF/epJSON file.
             The file extension determines the envelope metadata: ``.idf`` URIs
             produce ``name="model.idf"`` with ``mime_type=ENERGYPLUS_IDF``;
             ``.epjson`` URIs produce ``name="model.epjson"`` with
@@ -120,8 +122,13 @@ def build_energyplus_input_envelope(
         ...     workflow_id=str(run.workflow.id),
         ...     step_id=str(run.step.id),
         ...     step_name=run.step.name,
-        ...     model_file_uri="gs://bucket/model.idf",
-        ...     resource_files=[ResourceFileItem(id="...", type="energyplus_weather", uri="gs://...")],
+        ...     model_file=FileIdentity(
+        ...         uri="gs://bucket/model.idf",
+        ...         size_bytes=123,
+        ...         sha256="a" * 64,
+        ...         storage_version="1700000000000000",
+        ...     ),
+        ...     resource_files=[weather_resource],
         ...     callback_url="https://api.example.com/callbacks/",
         ...     execution_bundle_uri="gs://bucket/runs/abc-123/",
         ...     timestep_per_hour=4,
@@ -149,11 +156,11 @@ def build_energyplus_input_envelope(
     )
 
     if input_files is None:
-        if not model_file_uri:
-            msg = "EnergyPlus envelope requires a model_file_uri or input_files"
+        if model_file is None:
+            msg = "EnergyPlus envelope requires a model_file or input_files"
             raise ValueError(msg)
         input_files = [
-            _build_energyplus_input_file_item("primary_model", model_file_uri),
+            _build_energyplus_input_file_item("primary_model", model_file),
         ]
 
     # Build EnergyPlus-specific inputs
@@ -190,21 +197,23 @@ def build_energyplus_input_envelope(
 
 def _build_energyplus_input_file_item(
     port_key: str,
-    uri: str,
+    file: FileIdentity,
     *,
     role: str = "primary-model",
 ) -> InputFileItem:
     """Build an EnergyPlus ``InputFileItem`` from a resolved file-port URI."""
 
-    lowered_uri = uri.lower()
+    lowered_uri = file.uri.lower()
     if lowered_uri.endswith((".epjson", ".json")):
-        name = "model.epjson" if role == "primary-model" else _filename_from_uri(uri)
+        name = (
+            "model.epjson" if role == "primary-model" else _filename_from_uri(file.uri)
+        )
         mime_type = SupportedMimeType.ENERGYPLUS_EPJSON
     elif lowered_uri.endswith(".epw"):
-        name = _filename_from_uri(uri) or "weather.epw"
+        name = _filename_from_uri(file.uri) or "weather.epw"
         mime_type = SupportedMimeType.ENERGYPLUS_EPW
     else:
-        name = "model.idf" if role == "primary-model" else _filename_from_uri(uri)
+        name = "model.idf" if role == "primary-model" else _filename_from_uri(file.uri)
         mime_type = SupportedMimeType.ENERGYPLUS_IDF
 
     return InputFileItem(
@@ -212,7 +221,7 @@ def _build_energyplus_input_file_item(
         mime_type=mime_type,
         role=role,
         port_key=port_key,
-        uri=uri,
+        **file.envelope_fields(),
     )
 
 
@@ -228,7 +237,7 @@ def resolve_step_resources(
     step,
     *,
     role: str | None = None,
-    resource_uri_overrides: dict[str, str] | None = None,
+    resource_uri_overrides: dict[str, FileIdentity] | None = None,
 ) -> list[ResourceFileItem]:
     """Resolve a step's ``WorkflowStepResource`` rows to ``ResourceFileItem`` objects.
 
@@ -246,9 +255,10 @@ def resolve_step_resources(
         step: WorkflowStep instance with ``step_resources`` relation.
         role: If provided, only return resources matching this role
               (e.g., ``WorkflowStepResource.WEATHER_FILE``).
-        resource_uri_overrides: Optional mapping of ``resource_id`` to a
-            container-visible URI. When provided and a resource's id is
-            in the dict, the override is used instead of
+        resource_uri_overrides: Optional mapping of ``resource_id`` to the
+            complete identity of the container-visible materialized file.
+            When provided and a resource's id is in the dict, the override is
+            used instead of
             ``WorkflowStepResource.get_storage_uri()``. This is the
             workspace-aware path used by the local Docker dispatch:
             ``WorkflowStepResource.get_storage_uri()`` returns
@@ -268,35 +278,76 @@ def resolve_step_resources(
     if role:
         queryset = queryset.filter(role=role)
 
-    items: list[ResourceFileItem] = []
-    for sr in queryset:
-        if sr.is_catalog_reference:
-            vrf = sr.validator_resource_file
-            resource_id = str(vrf.id)
-            resource_type = vrf.resource_type
-        else:
-            resource_id = str(sr.pk)
-            resource_type = sr.resource_type
-
-        # Workspace-aware override: when the local Docker dispatch
-        # materialises the resource into the per-attempt workspace, it
-        # supplies the container-visible URI here so the validator
-        # backend resolves to the mounted path rather than the host
-        # ``MEDIA_ROOT`` path that lives outside the container's mount
-        # namespace.
-        if resource_uri_overrides and resource_id in resource_uri_overrides:
-            uri = resource_uri_overrides[resource_id]
-        else:
-            uri = sr.get_storage_uri()
-
-        items.append(
-            ResourceFileItem(
-                id=resource_id,
-                type=resource_type,
-                uri=uri,
-            )
+    return [
+        _build_step_resource_item(
+            step_resource=step_resource,
+            resource_uri_overrides=resource_uri_overrides,
         )
-    return items
+        for step_resource in queryset
+    ]
+
+
+def _step_resource_metadata(step_resource) -> tuple[str, str, str]:
+    """Return the stable ID, type, and filename without opening resource bytes."""
+    if step_resource.is_catalog_reference:
+        resource = step_resource.validator_resource_file
+        return str(resource.id), resource.resource_type, resource.filename
+    return (
+        str(step_resource.pk),
+        step_resource.resource_type,
+        step_resource.filename or Path(step_resource.step_resource_file.name).name,
+    )
+
+
+def _build_step_resource_item(
+    *,
+    step_resource,
+    resource_uri_overrides: dict[str, FileIdentity] | None,
+    identity_override: FileIdentity | None = None,
+) -> ResourceFileItem:
+    """Build one strict resource item from stored or materialized identity data."""
+    resource_id, resource_type, name = _step_resource_metadata(step_resource)
+    identity = identity_override
+    if identity is None and resource_uri_overrides:
+        identity = resource_uri_overrides.get(resource_id)
+    if identity is None:
+        identity = _stored_step_resource_identity(step_resource)
+
+    return ResourceFileItem(
+        id=resource_id,
+        name=name,
+        type=resource_type,
+        **identity.envelope_fields(),
+    )
+
+
+def _stored_step_resource_identity(step_resource) -> FileIdentity:
+    """Resolve a managed resource's durable digest and provider version."""
+    if step_resource.is_catalog_reference:
+        source = step_resource.validator_resource_file
+        expected_sha256 = source.content_hash
+    else:
+        expected_sha256 = step_resource.content_hash
+
+    uri = step_resource.get_storage_uri()
+    if uri.startswith("gs://"):
+        from validibot.validations.services.cloud_run.gcs_client import (
+            get_gcs_file_identity,
+        )
+
+        return get_gcs_file_identity(uri=uri, sha256=expected_sha256)
+    if uri.startswith("file://"):
+        identity = local_file_identity(
+            path=Path(unquote(urlparse(uri).path)),
+            uri=uri,
+        )
+        if expected_sha256 and identity.sha256 != expected_sha256:
+            msg = f"Managed resource bytes no longer match their stored digest: {uri}"
+            raise ValueError(msg)
+        return identity
+
+    msg = f"Unsupported managed-resource URI for immutable input: {uri}"
+    raise ValueError(msg)
 
 
 def _resolve_energyplus_file_port_items(
@@ -304,8 +355,8 @@ def _resolve_energyplus_file_port_items(
     run,
     step,
     step_config: dict,
-    input_file_uris: dict[str, str] | None,
-    resource_uri_overrides: dict[str, str] | None,
+    input_file_uris: dict[str, FileIdentity] | None,
+    resource_uri_overrides: dict[str, FileIdentity] | None,
 ) -> tuple[list[InputFileItem], list[ResourceFileItem]] | None:
     """Resolve declared EnergyPlus artifact input ports into envelope items.
 
@@ -404,17 +455,19 @@ def _resolve_energyplus_file_port_items(
                 )
                 continue
 
-            uri, value_snapshot = _resolve_artifact_or_submission_file_uri_with_trace(
-                run=run,
-                step=step,
-                step_config=step_config,
-                input_file_uris=input_file_uris,
-                port=port,
-                binding=binding,
+            identity, value_snapshot = (
+                _resolve_artifact_or_submission_file_identity_with_trace(
+                    run=run,
+                    step=step,
+                    step_config=step_config,
+                    input_file_uris=input_file_uris,
+                    port=port,
+                    binding=binding,
+                )
             )
             item = _build_energyplus_input_file_item(
                 port.contract_key,
-                uri,
+                identity,
                 role=port.role or "weather",
             )
             try:
@@ -437,17 +490,19 @@ def _resolve_energyplus_file_port_items(
             )
             continue
 
-        uri, value_snapshot = _resolve_artifact_or_submission_file_uri_with_trace(
-            run=run,
-            step=step,
-            step_config=step_config,
-            input_file_uris=input_file_uris,
-            port=port,
-            binding=binding,
+        identity, value_snapshot = (
+            _resolve_artifact_or_submission_file_identity_with_trace(
+                run=run,
+                step=step,
+                step_config=step_config,
+                input_file_uris=input_file_uris,
+                port=port,
+                binding=binding,
+            )
         )
         item = _build_energyplus_input_file_item(
             port.contract_key,
-            uri,
+            identity,
             role=port.role or "primary-model",
         )
         try:
@@ -477,16 +532,17 @@ def _resolve_workflow_resource_port(
     step,
     port,
     binding,
-    resource_uri_overrides: dict[str, str] | None,
+    resource_uri_overrides: dict[str, FileIdentity] | None,
 ) -> list[ResourceFileItem]:
     """Resolve a workflow-resource artifact port to resource_files items."""
 
     expected_type = binding.source_data_path or port.resource_type or port.data_format
-    resources = resolve_step_resources(
-        step,
-        resource_uri_overrides=resource_uri_overrides,
+    resource_rows = list(
+        step.step_resources.select_related("validator_resource_file"),
     )
-    matches = [item for item in resources if item.type == expected_type]
+    matches = [
+        row for row in resource_rows if _step_resource_metadata(row)[1] == expected_type
+    ]
     artifact_ports.validate_cardinality(
         port=port,
         count=len(matches),
@@ -495,32 +551,39 @@ def _resolve_workflow_resource_port(
         ),
     )
 
-    for item in matches:
+    items = [
+        _build_step_resource_item(
+            step_resource=row,
+            resource_uri_overrides=resource_uri_overrides,
+        )
+        for row in matches
+    ]
+    for item in items:
         item.port_key = port.contract_key
         artifact_ports.validate_resource_file_item(port=port, item=item)
-    return matches
+    return items
 
 
-def _resolve_artifact_or_submission_file_uri_with_trace(
+def _resolve_artifact_or_submission_file_identity_with_trace(
     *,
     run,
     step,
     step_config: dict,
-    input_file_uris: dict[str, str] | None,
+    input_file_uris: dict[str, FileIdentity] | None,
     port,
     binding,
-) -> tuple[str, dict]:
+) -> tuple[FileIdentity, dict]:
     """Resolve submitted/upstream artifact ports and return an audit snapshot."""
 
     if binding.source_scope == BindingSourceScope.SUBMISSION_FILE:
         try:
-            uri = _resolve_submission_file_uri(
+            identity = _resolve_submission_file_identity(
                 step_config=step_config,
                 input_file_uris=input_file_uris,
                 port=port,
                 binding=binding,
             )
-            artifact_ports.validate_file_uri(port=port, uri=uri)
+            artifact_ports.validate_file_uri(port=port, uri=identity.uri)
         except ValueError as exc:
             _record_and_raise_artifact_resolution_error(
                 run=run,
@@ -529,11 +592,11 @@ def _resolve_artifact_or_submission_file_uri_with_trace(
                 error_message=str(exc),
             )
 
-        return uri, {
+        return identity, {
             "source": BindingSourceScope.SUBMISSION_FILE,
             "port_key": port.contract_key,
             "role": port.role or "",
-            "uri": uri,
+            **identity.envelope_fields(),
         }
 
     if binding.source_scope == BindingSourceScope.UPSTREAM_ARTIFACT:
@@ -552,6 +615,7 @@ def _resolve_artifact_or_submission_file_uri_with_trace(
             uri = _uri_from_artifact_ref(port=port, artifact_ref=artifact_ref)
             artifact_ports.validate_file_uri(port=port, uri=uri)
             artifact_ports.validate_artifact_ref(port=port, artifact_ref=artifact_ref)
+            identity = FileIdentity.from_artifact_ref(artifact_ref)
         except ValueError as exc:
             _record_and_raise_artifact_resolution_error(
                 run=run,
@@ -560,7 +624,7 @@ def _resolve_artifact_or_submission_file_uri_with_trace(
                 error_message=str(exc),
             )
 
-        return uri, {
+        return identity, {
             "source": BindingSourceScope.UPSTREAM_ARTIFACT,
             "port_key": port.contract_key,
             "source_data_path": binding.source_data_path,
@@ -586,7 +650,7 @@ def _resolve_input_file_artifact_port_item(
     run,
     step,
     step_config: dict,
-    input_file_uris: dict[str, str] | None,
+    input_file_uris: dict[str, FileIdentity] | None,
     contract_key: str,
     item_builder,
 ) -> tuple[InputFileItem, str] | None:
@@ -646,7 +710,7 @@ def _resolve_input_file_artifact_port_item(
         )
         raise
 
-    uri, value_snapshot = _resolve_artifact_or_submission_file_uri_with_trace(
+    identity, value_snapshot = _resolve_artifact_or_submission_file_identity_with_trace(
         run=run,
         step=step,
         step_config=step_config,
@@ -654,7 +718,7 @@ def _resolve_input_file_artifact_port_item(
         port=port,
         binding=binding,
     )
-    item = item_builder(port, uri)
+    item = item_builder(port, identity)
     try:
         artifact_ports.validate_input_file_item(port=port, item=item)
     except ValueError as exc:
@@ -743,9 +807,13 @@ def _resource_file_item_snapshot(item: ResourceFileItem) -> dict:
     return {
         "source": BindingSourceScope.WORKFLOW_RESOURCE,
         "id": item.id,
+        "name": item.name,
         "type": item.type,
         "port_key": item.port_key,
         "uri": item.uri,
+        "size_bytes": item.size_bytes,
+        "sha256": item.sha256,
+        "storage_version": item.storage_version,
     }
 
 
@@ -805,14 +873,14 @@ def _record_and_raise_artifact_resolution_error(
     raise ValueError(error_message)
 
 
-def _resolve_submission_file_uri(
+def _resolve_submission_file_identity(
     *,
     step_config: dict,
-    input_file_uris: dict[str, str] | None,
+    input_file_uris: dict[str, FileIdentity] | None,
     port,
     binding,
-) -> str:
-    """Resolve a submitted-file port from runtime overrides or step config."""
+) -> FileIdentity:
+    """Resolve a submitted file only when runtime supplied exact identity."""
 
     candidates = [
         binding.source_data_path,
@@ -823,33 +891,33 @@ def _resolve_submission_file_uri(
     if port.contract_key in {"primary_model", "data_graph", "xml_document"}:
         candidates.append("primary_file_uri")
 
-    sources = [input_file_uris or {}, step_config or {}]
-    for source in sources:
-        for key in candidates:
-            if key and source.get(key):
-                return source[key]
+    del step_config  # Stored config may contain URIs, never immutable identities.
+    for key in candidates:
+        if key and (input_file_uris or {}).get(key):
+            return input_file_uris[key]
 
     msg = (
         f"Required artifact port '{port.contract_key}' could not resolve a "
-        f"submitted file URI from {', '.join(k for k in candidates if k)}."
+        "submitted file identity from runtime materialization keys "
+        f"{', '.join(k for k in candidates if k)}."
     )
     raise ValueError(msg)
 
 
 def _build_fmu_input_file_item(
     port_key: str,
-    uri: str,
+    file: FileIdentity,
     *,
     role: str = "fmu",
 ) -> InputFileItem:
-    """Build an FMU ``InputFileItem`` from a resolved file-port URI."""
+    """Build an FMU ``InputFileItem`` from a resolved immutable file."""
 
     return InputFileItem(
-        name=_filename_from_uri(uri) or "model.fmu",
+        name=_filename_from_uri(file.uri) or "model.fmu",
         mime_type=SupportedMimeType.FMU,
         role=role,
         port_key=port_key,
-        uri=uri,
+        **file.envelope_fields(),
     )
 
 
@@ -858,8 +926,8 @@ def _resolve_fmu_file_port_item(
     run,
     step,
     validator,
-    input_file_uris: dict[str, str] | None,
-    resource_uri_overrides: dict[str, str] | None,
+    input_file_uris: dict[str, FileIdentity] | None,
+    resource_uri_overrides: dict[str, FileIdentity] | None,
 ) -> tuple[InputFileItem, dict] | None:
     """Resolve the declared FMU model artifact port into an input file item."""
 
@@ -971,31 +1039,38 @@ def _resolve_fmu_workflow_resource_port(
     step,
     port,
     binding,
-    input_file_uris: dict[str, str] | None,
-    resource_uri_overrides: dict[str, str] | None,
+    input_file_uris: dict[str, FileIdentity] | None,
+    resource_uri_overrides: dict[str, FileIdentity] | None,
 ) -> tuple[InputFileItem, dict]:
     """Resolve a step-owned FMU resource through the declared file port."""
 
     from validibot.workflows.models import WorkflowStepResource
 
     expected_type = binding.source_data_path or port.resource_type or FMU_MODEL_RESOURCE
-    resources = resolve_step_resources(
-        step,
-        role=WorkflowStepResource.FMU_MODEL,
-        resource_uri_overrides=resource_uri_overrides,
+    resource_rows = list(
+        step.step_resources.select_related("validator_resource_file").filter(
+            role=WorkflowStepResource.FMU_MODEL,
+        ),
     )
-    matches = [item for item in resources if item.type == expected_type]
+    matches = [
+        row for row in resource_rows if _step_resource_metadata(row)[1] == expected_type
+    ]
     artifact_ports.validate_cardinality(
         port=port,
         count=len(matches),
         source_description=f"FMU model resource on step {step.id}",
     )
 
-    resource = matches[0]
-    uri = (input_file_uris or {}).get("fmu_model_uri") or resource.uri
+    identity = (input_file_uris or {}).get("fmu_model_uri")
+    resource = _build_step_resource_item(
+        step_resource=matches[0],
+        resource_uri_overrides=resource_uri_overrides,
+        identity_override=identity,
+    )
+    identity = FileIdentity.from_envelope_item(resource)
     item = _build_fmu_input_file_item(
         port.contract_key,
-        uri,
+        identity,
         role=port.role or "fmu",
     )
     artifact_ports.validate_input_file_item(port=port, item=item)
@@ -1004,7 +1079,7 @@ def _resolve_fmu_workflow_resource_port(
         "id": resource.id,
         "type": resource.type,
         "port_key": port.contract_key,
-        "uri": uri,
+        **identity.envelope_fields(),
     }
 
 
@@ -1012,7 +1087,7 @@ def _resolve_fmu_system_port(
     *,
     validator,
     port,
-    input_file_uris: dict[str, str] | None,
+    input_file_uris: dict[str, FileIdentity] | None,
 ) -> tuple[InputFileItem, dict]:
     """Resolve a library FMU validator's attached model through the file port."""
 
@@ -1021,18 +1096,13 @@ def _resolve_fmu_system_port(
         msg = f"Validator {validator.id} has no FMU model attached"
         raise ValueError(msg)
 
-    uri = (
-        (input_file_uris or {}).get("fmu_model_uri")
-        or fmu_model.gcs_uri
-        or getattr(fmu_model.file, "path", "")
-    )
-    if not uri:
-        msg = f"FMU model {fmu_model.id} has no storage URI or file path"
-        raise ValueError(msg)
+    identity = (input_file_uris or {}).get(
+        "fmu_model_uri",
+    ) or _stored_fmu_model_identity(fmu_model)
 
     item = _build_fmu_input_file_item(
         port.contract_key,
-        uri,
+        identity,
         role=port.role or "fmu",
     )
     artifact_ports.validate_input_file_item(port=port, item=item)
@@ -1040,25 +1110,48 @@ def _resolve_fmu_system_port(
         "source": BindingSourceScope.SYSTEM,
         "fmu_model_id": str(fmu_model.id),
         "port_key": port.contract_key,
-        "uri": uri,
-        "sha256": fmu_model.checksum or "",
+        **identity.envelope_fields(),
     }
+
+
+def _stored_fmu_model_identity(fmu_model) -> FileIdentity:
+    """Resolve the immutable identity of a library-owned FMU model."""
+    expected_sha256 = str(fmu_model.checksum or "").removeprefix("sha256:")
+    uri = str(fmu_model.gcs_uri or "")
+    if uri.startswith("gs://"):
+        from validibot.validations.services.cloud_run.gcs_client import (
+            get_gcs_file_identity,
+        )
+
+        return get_gcs_file_identity(uri=uri, sha256=expected_sha256)
+
+    try:
+        path = Path(fmu_model.file.path)
+    except (AttributeError, NotImplementedError) as exc:
+        msg = f"FMU model {fmu_model.id} has no immutable storage identity"
+        raise ValueError(msg) from exc
+    local_uri = f"file://{path}"
+    identity = local_file_identity(path=path, uri=local_uri)
+    if expected_sha256 and identity.sha256 != expected_sha256:
+        msg = f"FMU model {fmu_model.id} no longer matches its stored digest"
+        raise ValueError(msg)
+    return identity
 
 
 def _build_shacl_input_file_item(
     port,
-    uri: str,
+    file: FileIdentity,
     *,
     rdf_format: str,
 ) -> InputFileItem:
     """Build a SHACL ``InputFileItem`` from a resolved ``data_graph`` port."""
 
     return InputFileItem(
-        name=_filename_from_uri(uri) or "submission.rdf",
+        name=_filename_from_uri(file.uri) or "submission.rdf",
         mime_type=mime_type_for_rdf_format(rdf_format),
         role=port.role or "data-graph",
         port_key=port.contract_key,
-        uri=uri,
+        **file.envelope_fields(),
     )
 
 
@@ -1080,15 +1173,18 @@ def _shacl_inputs_for_upstream_data_graph_uri(shacl_inputs, uri: str):
     return shacl_inputs.model_copy(update={"rdf_format": rdf_format})
 
 
-def _build_schematron_input_file_item(port, uri: str) -> InputFileItem:
+def _build_schematron_input_file_item(
+    port,
+    file: FileIdentity,
+) -> InputFileItem:
     """Build a Schematron ``InputFileItem`` from an ``xml_document`` port."""
 
     return InputFileItem(
-        name=_filename_from_uri(uri) or "submission.xml",
+        name=_filename_from_uri(file.uri) or "submission.xml",
         mime_type=SupportedMimeType.APPLICATION_XML,
         role=port.role or "xml-document",
         port_key=port.contract_key,
-        uri=uri,
+        **file.envelope_fields(),
     )
 
 
@@ -1099,8 +1195,8 @@ def build_input_envelope(
     execution_bundle_uri: str,
     *,
     skip_callback: bool = False,
-    input_file_uris: dict[str, str] | None = None,
-    resource_uri_overrides: dict[str, str] | None = None,
+    input_file_uris: dict[str, FileIdentity] | None = None,
+    resource_uri_overrides: dict[str, FileIdentity] | None = None,
 ) -> ValidationInputEnvelope:
     """
     Build the appropriate input envelope based on validator type.
@@ -1117,21 +1213,18 @@ def build_input_envelope(
             for Cloud Run it is the attempt-specific ``gs://`` prefix.
         skip_callback: If True, container won't POST callback after completion.
             Used for synchronous execution where results are read directly.
-        input_file_uris: Optional dict of file role to URI (e.g.,
-            ``{'primary_file_uri':
-            'file:///validibot/attempts/<attempt>/input/model.idf'}``).
-            If provided, these override values from ``step.config``. Recognised
-            roles: ``primary_file_uri`` (EnergyPlus model file),
-            ``fmu_model_uri`` (FMU model file). Used by the local Docker
-            dispatch to point input files at the per-attempt mount path.
+        input_file_uris: Optional dict of file role to complete immutable file
+            identity. Recognised roles include ``primary_file_uri``
+            (EnergyPlus model file), ``fmu_model_uri`` (FMU model file), and
+            declared artifact-port keys. Local Docker identities point into
+            the per-attempt mount; Cloud Run identities carry the uploaded GCS
+            generation.
         resource_uri_overrides: Optional mapping of ``resource_id`` to
-            a container-visible URI for resource files (weather data,
-            FMU dependencies, etc.). Used by the local Docker dispatch
-            path so resource files in the envelope point at the
-            workspace's ``input/resources/`` mount instead of the host
-            ``MEDIA_ROOT`` path that the model's ``get_storage_uri()``
-            returns by default. Cloud Run leaves this as ``None`` and
-            gets the original ``gs://`` URIs.
+            a complete materialized file identity for resource files (weather
+            data, FMU dependencies, etc.). Local Docker uses identities below
+            the workspace's ``input/resources/`` mount instead of host
+            ``MEDIA_ROOT`` paths. Cloud Run derives current object metadata
+            and the durable stored SHA-256 when no override is supplied.
 
     Returns:
         Typed envelope (EnergyPlusInputEnvelope, FMUInputEnvelope, etc.)
@@ -1177,10 +1270,13 @@ def build_input_envelope(
     # ``config`` holds semantic keys (e.g. timestep_per_hour), ``display_settings``
     # holds cosmetic/runtime-injected keys (ADR-2026-06-18); input_file_uris takes
     # precedence last (it contains the dynamically uploaded primary_file_uri).
+    runtime_file_uris = {
+        key: identity.uri for key, identity in (input_file_uris or {}).items()
+    }
     step_config = {
         **(step.config or {}),
         **(step.display_settings or {}),
-        **(input_file_uris or {}),
+        **runtime_file_uris,
     }
 
     if validator.validation_type == ValidationType.ENERGYPLUS:
@@ -1212,7 +1308,7 @@ def build_input_envelope(
                 workflow_id=str(run.workflow.id),
                 step_id=str(step.id),
                 step_name=step.name,
-                model_file_uri=None,
+                model_file=None,
                 input_files=input_files,
                 resource_files=resource_files,
                 callback_url=callback_url,
@@ -1225,10 +1321,9 @@ def build_input_envelope(
                 skip_callback=skip_callback,
             )
 
-        # Get model file URI (primary file from the workflow step or input_file_uris)
-        model_file_uri = step_config.get("primary_file_uri")
-        if not model_file_uri:
-            msg = f"Step {step.id} has no primary_file_uri in config"
+        model_file = (input_file_uris or {}).get("primary_file_uri")
+        if model_file is None:
+            msg = f"Step {step.id} has no immutable primary file identity"
             raise ValueError(msg)
 
         # Resolve resource files from relational WorkflowStepResource rows.
@@ -1271,7 +1366,7 @@ def build_input_envelope(
             workflow_id=str(run.workflow.id),
             step_id=str(step.id),
             step_name=step.name,
-            model_file_uri=model_file_uri,
+            model_file=model_file,
             resource_files=resource_files,
             callback_url=callback_url,
             callback_id=callback_id,
@@ -1314,13 +1409,15 @@ def build_input_envelope(
             # ``input_file_uris["fmu_model_uri"]``. When set, it wins over
             # any model-derived URI. Cloud Run leaves this unset and falls
             # through to the gs:// path.
-            overridden_fmu_uri = (input_file_uris or {}).get("fmu_model_uri")
+            overridden_fmu_file = (input_file_uris or {}).get("fmu_model_uri")
 
             if fmu_resource:
                 # Step-level upload — use get_storage_uri() which returns
                 # gs:// in production (GCS) or file:// locally, matching
                 # what the container runner expects.
-                fmu_uri = overridden_fmu_uri or fmu_resource.get_storage_uri()
+                fmu_file = overridden_fmu_file or _stored_step_resource_identity(
+                    fmu_resource,
+                )
                 sim_config = (step.config or {}).get("fmu_simulation") or {}
             else:
                 # Library validator — existing behavior
@@ -1328,20 +1425,11 @@ def build_input_envelope(
                 if not fmu_model:
                     msg = f"Validator {validator.id} has no FMU model attached"
                     raise ValueError(msg)
-                fmu_uri = (
-                    overridden_fmu_uri
-                    or fmu_model.gcs_uri
-                    or getattr(fmu_model.file, "path", "")
-                )
-                if not fmu_uri:
-                    msg = f"FMU model {fmu_model.id} has no storage URI or file path"
-                    raise ValueError(msg)
+                fmu_file = overridden_fmu_file or _stored_fmu_model_identity(fmu_model)
                 sim_config = {}
-            fmu_file_item = InputFileItem(
-                name="model.fmu",
-                mime_type=SupportedMimeType.FMU,
-                role="fmu",
-                uri=fmu_uri,
+            fmu_file_item = _build_fmu_input_file_item(
+                "fmu_model",
+                fmu_file,
             )
 
         # Build simulation config, only overriding fields that have values.
@@ -1525,9 +1613,9 @@ def build_input_envelope(
             step_config=step_config,
             input_file_uris=input_file_uris,
             contract_key="data_graph",
-            item_builder=lambda port, uri: _build_shacl_input_file_item(
+            item_builder=lambda port, file: _build_shacl_input_file_item(
                 port,
-                uri,
+                file,
                 rdf_format=shacl_inputs.rdf_format,
             ),
         )
@@ -1542,11 +1630,11 @@ def build_input_envelope(
                 data_graph_item.mime_type = mime_type_for_rdf_format(
                     shacl_inputs.rdf_format,
                 )
-            submission_uri = data_graph_item.uri
+            submission_file = FileIdentity.from_envelope_item(data_graph_item)
         else:
-            submission_uri = step_config.get("primary_file_uri")
-            if not submission_uri:
-                msg = f"Step {step.id} has no primary_file_uri in config for SHACL"
+            submission_file = (input_file_uris or {}).get("primary_file_uri")
+            if submission_file is None:
+                msg = f"Step {step.id} has no immutable primary file for SHACL"
                 raise ValueError(msg)
 
         envelope = build_shacl_input_envelope(
@@ -1557,7 +1645,10 @@ def build_input_envelope(
             workflow_id=str(run.workflow.id),
             step_id=str(step.id),
             step_name=step.name,
-            submission_uri=submission_uri,
+            submission_uri=submission_file.uri,
+            submission_size_bytes=submission_file.size_bytes,
+            submission_sha256=submission_file.sha256,
+            submission_storage_version=submission_file.storage_version,
             inputs=shacl_inputs,
             callback_url=callback_url,
             callback_id=callback_id,
@@ -1604,11 +1695,11 @@ def build_input_envelope(
         xml_document_item = None
         if resolved_xml_document is not None:
             xml_document_item, _source_scope = resolved_xml_document
-            submission_uri = xml_document_item.uri
+            submission_file = FileIdentity.from_envelope_item(xml_document_item)
         else:
-            submission_uri = step_config.get("primary_file_uri")
-            if not submission_uri:
-                msg = f"Step {step.id} has no primary_file_uri in config for Schematron"
+            submission_file = (input_file_uris or {}).get("primary_file_uri")
+            if submission_file is None:
+                msg = f"Step {step.id} has no immutable primary file for Schematron"
                 raise ValueError(msg)
 
         envelope = build_schematron_input_envelope(
@@ -1619,7 +1710,10 @@ def build_input_envelope(
             workflow_id=str(run.workflow.id),
             step_id=str(step.id),
             step_name=step.name,
-            submission_uri=submission_uri,
+            submission_uri=submission_file.uri,
+            submission_size_bytes=submission_file.size_bytes,
+            submission_sha256=submission_file.sha256,
+            submission_storage_version=submission_file.storage_version,
             inputs=schematron_inputs,
             callback_url=callback_url,
             callback_id=callback_id,

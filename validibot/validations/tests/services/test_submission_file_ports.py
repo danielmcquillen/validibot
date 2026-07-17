@@ -15,6 +15,7 @@ from django.test import override_settings
 
 from validibot.submissions.models import SubmissionInputFile
 from validibot.submissions.tests.factories import SubmissionFactory
+from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.services.submission_file_ports import (
     upload_submitted_input_files_to_gcs,
 )
@@ -48,18 +49,27 @@ def test_upload_submitted_input_files_to_gcs_uses_port_keyed_uri(tmp_path):
         with patch(
             "validibot.validations.services.cloud_run.gcs_client.upload_file"
         ) as upload_file:
+            upload_file.return_value = FileIdentity(
+                uri=(
+                    "gs://bucket/runs/org/run/submitted/weather_file/"
+                    "weather_file-weather.epw"
+                ),
+                size_bytes=21,
+                sha256="a" * 64,
+                storage_version="1",
+            )
             uri_map = upload_submitted_input_files_to_gcs(
                 submission=submission,
                 step=step,
                 execution_bundle_uri="gs://bucket/runs/org/run",
             )
 
-    assert uri_map["weather_file"].startswith(
+    assert uri_map["weather_file"].uri.startswith(
         "gs://bucket/runs/org/run/submitted/weather_file/"
     )
-    assert uri_map["weather_file"].endswith(".epw")
+    assert uri_map["weather_file"].uri.endswith(".epw")
     upload_file.assert_called_once()
     kwargs = upload_file.call_args.kwargs
     assert kwargs["content"] == b"LOCATION,Test Weather"
-    assert kwargs["uri"] == uri_map["weather_file"]
+    assert kwargs["uri"] == uri_map["weather_file"].uri
     assert kwargs["content_type"] == "application/vnd.energyplus.epw"

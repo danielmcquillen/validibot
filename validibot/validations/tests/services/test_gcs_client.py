@@ -17,6 +17,7 @@ GCS credentials.  No Django models are involved, so no ``@pytest.mark.django_db`
 is needed.
 """
 
+import hashlib
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -24,8 +25,11 @@ import pytest
 from pydantic import BaseModel
 
 from validibot.validations.services.cloud_run.gcs_client import download_envelope
+from validibot.validations.services.cloud_run.gcs_client import get_gcs_file_identity
 from validibot.validations.services.cloud_run.gcs_client import parse_gcs_uri
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope
+from validibot.validations.services.cloud_run.gcs_client import upload_file
+from validibot.validations.services.cloud_run.gcs_client import upload_file_from_path
 
 
 def test_parse_gcs_uri():
@@ -101,6 +105,76 @@ def test_upload_envelope(mock_storage_client):
     assert "test_field" in uploaded_json
     assert "hello" in uploaded_json
     assert "42" in uploaded_json
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_upload_file_returns_exact_bytes_and_gcs_generation(mock_storage_client):
+    """Dispatch must commit the UTF-8 bytes and generation actually uploaded."""
+    mock_blob = MagicMock(generation=1700000000000000)
+    mock_storage_client.return_value.bucket.return_value.blob.return_value = mock_blob
+    content = "café"
+    content_bytes = content.encode()
+
+    identity = upload_file(
+        content,
+        "gs://test-bucket/inputs/model.txt",
+        content_type="text/plain",
+    )
+
+    mock_blob.upload_from_string.assert_called_once_with(
+        content_bytes,
+        content_type="text/plain",
+    )
+    assert identity.uri == "gs://test-bucket/inputs/model.txt"
+    assert identity.size_bytes == len(content_bytes)
+    assert identity.sha256 == hashlib.sha256(content_bytes).hexdigest()
+    assert identity.storage_version == "1700000000000000"
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_upload_file_from_path_returns_source_hash_and_generation(
+    mock_storage_client,
+    tmp_path,
+):
+    """Path uploads must identify the same source bytes sent to GCS."""
+    mock_blob = MagicMock(generation=1700000000000001)
+    mock_storage_client.return_value.bucket.return_value.blob.return_value = mock_blob
+    source = tmp_path / "model.idf"
+    source.write_bytes(b"Version,24.1;")
+
+    identity = upload_file_from_path(
+        source,
+        "gs://test-bucket/inputs/model.idf",
+        content_type="application/octet-stream",
+    )
+
+    mock_blob.upload_from_filename.assert_called_once_with(
+        str(source),
+        content_type="application/octet-stream",
+    )
+    assert identity.size_bytes == source.stat().st_size
+    assert identity.sha256 == hashlib.sha256(source.read_bytes()).hexdigest()
+    assert identity.storage_version == "1700000000000001"
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_get_gcs_file_identity_combines_durable_hash_with_object_metadata(
+    mock_storage_client,
+):
+    """Existing resources bind their recorded digest to current GCS metadata."""
+    mock_blob = MagicMock(size=42, generation=1700000000000002)
+    mock_storage_client.return_value.bucket.return_value.blob.return_value = mock_blob
+    digest = "b" * 64
+
+    identity = get_gcs_file_identity(
+        uri="gs://test-bucket/resources/weather.epw",
+        sha256=digest,
+    )
+
+    mock_blob.reload.assert_called_once_with()
+    assert identity.size_bytes == 42  # noqa: PLR2004
+    assert identity.sha256 == digest
+    assert identity.storage_version == "1700000000000002"
 
 
 @patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")

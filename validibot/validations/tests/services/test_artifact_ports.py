@@ -200,6 +200,9 @@ class TestArtifactPortContractValidation:
                 role="primary-model",
                 port_key="primary_model",
                 uri="file:///validibot/input/model.epjson",
+                size_bytes=17,
+                sha256="a" * 64,
+                storage_version="sha256:" + "a" * 64,
             ),
         )
 
@@ -219,6 +222,9 @@ class TestArtifactPortContractValidation:
                     role="primary-model",
                     port_key="primary_model",
                     uri="file:///validibot/input/model.epjson",
+                    size_bytes=17,
+                    sha256="a" * 64,
+                    storage_version="sha256:" + "a" * 64,
                 ),
             )
 
@@ -279,6 +285,9 @@ class TestArtifactPortContractValidation:
                 role="xml-document",
                 port_key="xml_document",
                 uri="file:///validibot/input/invoice.xml",
+                size_bytes=17,
+                sha256="a" * 64,
+                storage_version="sha256:" + "a" * 64,
             ),
         )
 
@@ -289,9 +298,13 @@ class TestArtifactPortContractValidation:
             port=_weather_file_port(),
             item=ResourceFileItem(
                 id="resource-weather-123",
+                name="weather.epw",
                 type=ResourceFileType.ENERGYPLUS_WEATHER,
                 port_key="weather_file",
                 uri="gs://validibot/resources/weather.epw",
+                size_bytes=17,
+                sha256="a" * 64,
+                storage_version="1",
             ),
         )
 
@@ -300,9 +313,13 @@ class TestArtifactPortContractValidation:
                 port=_weather_file_port(),
                 item=ResourceFileItem(
                     id="resource-library-123",
+                    name="library.epw",
                     type="library",
                     port_key="weather_file",
                     uri="gs://validibot/resources/library.epw",
+                    size_bytes=17,
+                    sha256="a" * 64,
+                    storage_version="1",
                 ),
             )
 

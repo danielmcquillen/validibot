@@ -8,7 +8,6 @@ run-scoped artifact index and returns compact ``ArtifactRef`` dictionaries for
 
 from __future__ import annotations
 
-import hashlib
 import re
 from pathlib import Path
 from typing import Any
@@ -26,8 +25,8 @@ from validibot.validations.models import Artifact
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.services import artifact_ports
+from validibot.validations.services.file_identity import local_file_identity
 
-SHA256_CHUNK_SIZE = 1024 * 1024
 CONTRACT_KEY_PATTERN = re.compile(r"[^a-z0-9_]+")
 
 
@@ -63,7 +62,9 @@ def register_output_artifacts(
         role = str(getattr(envelope_artifact, "type", "") or "")
         media_type = str(getattr(envelope_artifact, "mime_type", "") or "")
         uri = str(getattr(envelope_artifact, "uri", "") or "")
-        size_bytes = getattr(envelope_artifact, "size_bytes", None)
+        size_bytes = int(envelope_artifact.size_bytes)
+        sha256 = str(envelope_artifact.sha256)
+        storage_version = str(envelope_artifact.storage_version)
         port = _match_declared_output_port(
             ports=declared_ports,
             envelope_artifact=envelope_artifact,
@@ -90,6 +91,14 @@ def register_output_artifacts(
             artifact_kind = _infer_kind(role=role, media_type=media_type, name=name)
             metadata_source = "output_envelope"
 
+        _verify_local_artifact_identity(
+            step_run=step_run,
+            uri=uri,
+            size_bytes=size_bytes,
+            sha256=sha256,
+            storage_version=storage_version,
+        )
+
         artifact, _created = Artifact.objects.update_or_create(
             validation_run=step_run.validation_run,
             workflow_step=step_run.workflow_step,
@@ -105,8 +114,9 @@ def register_output_artifacts(
                 "kind": artifact_kind,
                 "data_format": data_format,
                 "storage_uri": uri,
-                "size_bytes": size_bytes or 0,
-                "sha256": "",
+                "size_bytes": size_bytes,
+                "sha256": sha256,
+                "storage_version": storage_version,
                 "manifest_uri": manifest_uri,
                 "producer_validator_type": validator.validation_type,
                 "producer_validator_version": str(validator.version),
@@ -123,10 +133,6 @@ def register_output_artifacts(
                 },
             },
         )
-        sha256 = _sha256_for_artifact(artifact)
-        if sha256 != artifact.sha256:
-            artifact.sha256 = sha256
-            artifact.save(update_fields=["sha256", "modified"])
         refs.append(build_artifact_ref(artifact).model_dump(mode="json"))
 
     return refs
@@ -244,8 +250,9 @@ def build_artifact_ref(artifact: Artifact) -> ArtifactRef:
         media_type=artifact.content_type,
         data_format=artifact.data_format,
         filename=filename,
-        size_bytes=artifact.size_bytes if artifact.size_bytes >= 0 else None,
+        size_bytes=artifact.size_bytes,
         sha256=artifact.sha256,
+        storage_version=artifact.storage_version,
         uri=uri,
         manifest_uri=artifact.manifest_uri,
         manifest_sha256=artifact.manifest_sha256,
@@ -294,29 +301,40 @@ def _infer_kind(*, role: str, media_type: str, name: str) -> str:
     return ArtifactKind.FILE
 
 
-def _sha256_for_artifact(artifact: Artifact) -> str:
-    """Compute SHA-256 when an artifact resolves to locally available bytes.
-
-    Local validator envelopes address outputs through their attempt-specific
-    container mount (``file:///validibot/attempts/<attempt>/output/...``). The
-    web and worker processes see those same bytes under the host attempt
-    workspace, so use the canonical download resolver rather than treating the
-    container URI as a host path.
-    """
+def _verify_local_artifact_identity(
+    *,
+    step_run: ValidationStepRun,
+    uri: str,
+    size_bytes: int,
+    sha256: str,
+    storage_version: str,
+) -> None:
+    """Verify local artifact bytes before persisting their strict reference."""
+    if urlparse(uri).scheme != "file":
+        return
 
     from validibot.validations.services.artifact_display import (
         resolve_local_artifact_path,
     )
 
-    path = resolve_local_artifact_path(artifact)
-    if path is None or not path.is_file():
-        return ""
+    candidate = Artifact(
+        org=step_run.validation_run.org,
+        validation_run=step_run.validation_run,
+        step_run=step_run,
+        workflow_step=step_run.workflow_step,
+        storage_uri=uri,
+    )
+    path = resolve_local_artifact_path(candidate)
+    if path is None:
+        msg = f"Local output artifact is outside its attempt workspace: {uri}"
+        raise ValueError(msg)
 
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(SHA256_CHUNK_SIZE), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    actual = local_file_identity(path=path, uri=uri)
+    expected = (size_bytes, sha256, storage_version)
+    observed = (actual.size_bytes, actual.sha256, actual.storage_version)
+    if observed != expected:
+        msg = f"Local output artifact identity does not match stored bytes: {uri}"
+        raise ValueError(msg)
 
 
 def _filename_from_uri(uri: str) -> str:

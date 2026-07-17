@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from validibot.submissions.models import Submission
     from validibot.validations.models import ValidationRun
     from validibot.validations.models import Validator
+    from validibot.validations.services.file_identity import FileIdentity
     from validibot.validations.services.runners.base import ExecutionStatus
     from validibot.workflows.models import WorkflowStep
 
@@ -249,8 +250,8 @@ class ExecutionBackend(ABC):
         callback_url: str | None = None,
         callback_id: str | None = None,
         execution_bundle_uri: str,
-        input_file_uris: dict[str, str],
-        resource_uri_overrides: dict[str, str] | None = None,
+        input_file_uris: dict[str, FileIdentity],
+        resource_uri_overrides: dict[str, FileIdentity] | None = None,
     ) -> ValidationInputEnvelope:
         """
         Build the input envelope for a validation.
@@ -263,13 +264,12 @@ class ExecutionBackend(ABC):
             callback_url: URL for async callbacks (None for sync backends).
             callback_id: Unique ID for callback deduplication.
             execution_bundle_uri: URI of the execution bundle directory.
-            input_file_uris: Map of file role to URI (e.g., {'primary-model': 'file://...'}).
+            input_file_uris: Map of file role to exact immutable file identity.
             resource_uri_overrides: Optional ``resource_id`` →
-                container-visible URI mapping. Used by the local Docker
-                dispatch to point resource files in the envelope at the
-                per-attempt mount instead of host ``MEDIA_ROOT`` paths.
-                Cloud Run leaves this as ``None`` and the envelope
-                keeps ``gs://`` URIs.
+                complete materialized identity mapping. Local Docker points
+                resources at the per-attempt mount instead of host
+                ``MEDIA_ROOT`` paths. Cloud Run leaves this as ``None`` and
+                resolves strict identity metadata for the ``gs://`` object.
 
         Returns:
             Typed input envelope (e.g., EnergyPlusInputEnvelope).

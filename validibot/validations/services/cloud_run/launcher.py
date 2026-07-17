@@ -45,6 +45,7 @@ from validibot.validations.services.cloud_run.job_client import (
 )
 from validibot.validations.services.cloud_run.job_client import get_job_configured_image
 from validibot.validations.services.cloud_run.job_client import run_validator_job
+from validibot.validations.services.file_identity import local_bytes_identity
 from validibot.validations.services.image_policy import ValidatorBackendImagePolicy
 from validibot.validations.services.image_policy import enforce_image_policy
 from validibot.validations.services.image_policy import get_current_policy
@@ -475,7 +476,7 @@ def launch_energyplus_validation(
             content_type = "application/json"
 
         logger.info("Uploading submission to %s", model_file_uri)
-        upload_file(
+        model_file = upload_file(
             content=submission.get_content().encode("utf-8"),
             uri=model_file_uri,
             content_type=content_type,
@@ -488,7 +489,7 @@ def launch_energyplus_validation(
         # 4. Build typed input envelope. The shared builder resolves declared
         # file ports when present and falls back to the historical
         # primary_file_uri/resource_files path for unsynced dev rows.
-        input_file_uris = {"primary_file_uri": model_file_uri}
+        input_file_uris = {"primary_file_uri": model_file}
         input_file_uris.update(
             upload_submitted_input_files_to_gcs(
                 submission=submission,
@@ -864,13 +865,17 @@ def launch_shacl_validation(
         content_bytes = content.encode("utf-8") if isinstance(content, str) else content
         if is_gcs:
             logger.info("Uploading SHACL submission to %s", submission_uri)
-            upload_file(
+            submission_file = upload_file(
                 content=content_bytes,
                 uri=submission_uri,
                 content_type="text/plain",
             )
         else:
             local_submission_path.write_bytes(content_bytes)
+            submission_file = local_bytes_identity(
+                content=content_bytes,
+                uri=submission_uri,
+            )
 
         # 2. Callback + idempotency key.
         callback_url = build_validation_callback_url()
@@ -888,8 +893,8 @@ def launch_shacl_validation(
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
             input_file_uris={
-                "data_graph": submission_uri,
-                "primary_file_uri": submission_uri,
+                "data_graph": submission_file,
+                "primary_file_uri": submission_file,
             },
         )
 
@@ -1053,13 +1058,17 @@ def launch_schematron_validation(
         content_bytes = content.encode("utf-8") if isinstance(content, str) else content
         if is_gcs:
             logger.info("Uploading Schematron submission to %s", submission_uri)
-            upload_file(
+            submission_file = upload_file(
                 content=content_bytes,
                 uri=submission_uri,
                 content_type="application/xml",
             )
         else:
             local_submission_path.write_bytes(content_bytes)
+            submission_file = local_bytes_identity(
+                content=content_bytes,
+                uri=submission_uri,
+            )
 
         # 2. Callback + idempotency key.
         callback_url = build_validation_callback_url()
@@ -1078,8 +1087,8 @@ def launch_schematron_validation(
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
             input_file_uris={
-                "xml_document": submission_uri,
-                "primary_file_uri": submission_uri,
+                "xml_document": submission_file,
+                "primary_file_uri": submission_file,
             },
         )
 

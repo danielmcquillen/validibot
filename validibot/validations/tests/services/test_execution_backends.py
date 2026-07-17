@@ -63,6 +63,7 @@ from validibot.validations.services.execution.docker_compose import (
 from validibot.validations.services.execution.gcp import GCPExecutionBackend
 from validibot.validations.services.execution.registry import clear_backend_cache
 from validibot.validations.services.execution.registry import get_execution_backend
+from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
@@ -127,8 +128,19 @@ def _make_weather_resource(
     """
     return ResourceFileItem(
         id="resource-weather-123",
+        name="weather.epw",
         type="energyplus_weather",
+        **_file_identity(uri).envelope_fields(),
+    )
+
+
+def _file_identity(uri: str) -> FileIdentity:
+    """Create complete immutable metadata for an envelope-builder fixture."""
+    return FileIdentity(
         uri=uri,
+        size_bytes=17,
+        sha256="a" * 64,
+        storage_version="sha256:" + "a" * 64,
     )
 
 
@@ -861,7 +873,7 @@ class TestEnvelopeSkipCallback:
             workflow_id="workflow-789",
             step_id="step-012",
             step_name="Test Step",
-            model_file_uri="file:///test/model.idf",
+            model_file=_file_identity("file:///test/model.idf"),
             resource_files=[_make_weather_resource()],
             callback_url="http://localhost:8000/callbacks/",
             callback_id="cb-123",
@@ -890,7 +902,7 @@ class TestEnvelopeSkipCallback:
             workflow_id="workflow-789",
             step_id="step-012",
             step_name="Test Step",
-            model_file_uri="gs://bucket/model.idf",
+            model_file=_file_identity("gs://bucket/model.idf"),
             resource_files=[
                 _make_weather_resource(uri="gs://bucket/weather.epw"),
             ],
@@ -937,7 +949,7 @@ class TestEnvelopeFileMetadata:
             workflow_id="wf-789",
             step_id="step-012",
             step_name="Test Step",
-            model_file_uri="file:///test/model.idf",
+            model_file=_file_identity("file:///test/model.idf"),
             resource_files=[_make_weather_resource()],
             callback_url="http://localhost/cb/",
             callback_id="cb-1",
@@ -969,7 +981,7 @@ class TestEnvelopeFileMetadata:
             workflow_id="wf-789",
             step_id="step-012",
             step_name="Test Step",
-            model_file_uri="file:///test/model.epjson",
+            model_file=_file_identity("file:///test/model.epjson"),
             resource_files=[_make_weather_resource()],
             callback_url="http://localhost/cb/",
             callback_id="cb-1",
@@ -999,7 +1011,7 @@ class TestEnvelopeFileMetadata:
             workflow_id="wf-789",
             step_id="step-012",
             step_name="Test Step",
-            model_file_uri="gs://my-bucket/runs/org-1/run-2/model.epjson",
+            model_file=_file_identity("gs://my-bucket/runs/org-1/run-2/model.epjson"),
             resource_files=[
                 _make_weather_resource(uri="gs://my-bucket/weather.epw"),
             ],
@@ -1031,7 +1043,7 @@ class TestEnvelopeFileMetadata:
             workflow_id="wf-789",
             step_id="step-012",
             step_name="Test Step",
-            model_file_uri="file:///test/model.EPJSON",
+            model_file=_file_identity("file:///test/model.EPJSON"),
             resource_files=[_make_weather_resource()],
             callback_url="http://localhost/cb/",
             callback_id="cb-1",

@@ -37,6 +37,7 @@ import os
 import pytest
 
 from validibot.core.storage.local import LocalDataStorage
+from validibot.validations.services.file_identity import local_file_identity
 from validibot.validations.services.run_workspace import CONTAINER_ATTEMPTS_DIR
 from validibot.validations.services.run_workspace import CONTAINER_GID
 from validibot.validations.services.run_workspace import CONTAINER_UID
@@ -680,6 +681,9 @@ def test_run_workspace_can_be_constructed_directly(tmp_path):
     Uses ``tmp_path`` rather than synthetic ``/tmp/...`` strings so the
     test reads as ordinary, lint-clean Python.
     """
+    model_path = tmp_path / "in" / "m.idf"
+    model_path.parent.mkdir()
+    model_path.write_bytes(b"Version,24.1;")
     ws = RunWorkspace(
         run_id="r",
         attempt_id="attempt-111",
@@ -688,8 +692,12 @@ def test_run_workspace_can_be_constructed_directly(tmp_path):
         host_output_dir=tmp_path / "out",
         primary_file=MaterializedFile(
             name="m.idf",
-            host_path=tmp_path / "in" / "m.idf",
+            host_path=model_path,
             container_uri="file:///validibot/attempts/attempt-111/input/m.idf",
+            identity=local_file_identity(
+                path=model_path,
+                uri="file:///validibot/attempts/attempt-111/input/m.idf",
+            ),
         ),
     )
     assert ws.resource_files == []

@@ -47,6 +47,7 @@ from unittest.mock import patch
 
 import pytest
 
+from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.services.run_workspace import MaterializedFile
 from validibot.validations.services.run_workspace import RunWorkspace
 
@@ -75,6 +76,18 @@ def _make_mock_docker_client():
     return mock_docker, mock_client
 
 
+def _file_identity(uri: str) -> FileIdentity:
+    """Create strict identity metadata for synthetic workspace files."""
+    return FileIdentity(
+        uri=uri,
+        size_bytes=0,
+        sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        storage_version=(
+            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        ),
+    )
+
+
 def _make_workspace(tmp_path: Path) -> RunWorkspace:
     """Construct a minimal RunWorkspace pointing at synthetic host paths.
 
@@ -98,6 +111,9 @@ def _make_workspace(tmp_path: Path) -> RunWorkspace:
             name="model.idf",
             host_path=host_input / "model.idf",
             container_uri=("file:///validibot/attempts/attempt-111/input/model.idf"),
+            identity=_file_identity(
+                "file:///validibot/attempts/attempt-111/input/model.idf"
+            ),
         ),
     )
 
@@ -380,6 +396,9 @@ class TestDinDPathTranslation:
                 container_uri=(
                     "file:///validibot/attempts/attempt-111/input/model.idf"
                 ),
+                identity=_file_identity(
+                    "file:///validibot/attempts/attempt-111/input/model.idf"
+                ),
             ),
         )
 
@@ -442,6 +461,9 @@ class TestDinDPathTranslation:
                 name="m.idf",
                 host_path=outside_path / "input" / "m.idf",
                 container_uri=("file:///validibot/attempts/attempt-111/input/m.idf"),
+                identity=_file_identity(
+                    "file:///validibot/attempts/attempt-111/input/m.idf"
+                ),
             ),
         )
         (outside_path / "input").mkdir()

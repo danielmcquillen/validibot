@@ -9,6 +9,46 @@ This page is the current developer-facing reference for the delivered bundle for
 - `validibot/validations/views/evidence.py` — serves the manifest and bundle download endpoints
 - `validibot-shared/validibot_shared/evidence/manifest.py` — shared Pydantic schema used by producers and verifiers
 
+## Submitted, executed, and produced bytes
+
+Evidence must describe what actually crossed the execution boundary, not just
+the storage location from which a backend was asked to read. A URI can remain
+the same while its content changes, so durable evidence is based on content
+identities and immutable execution context.
+
+Preprocessing means one run can legitimately involve several related byte
+identities. For an EnergyPlus template run, the useful mental model is:
+
+```text
+submitted template bytes A
+    → trusted parameter substitution
+executed model bytes B
+    → validator backend image C
+verified output bytes D
+    → evidence binds A, B, C, and D to one execution attempt
+```
+
+It would be misleading to record only A and imply that those bytes were sent
+directly to EnergyPlus. Mature execution evidence records the original and
+executed digests separately, describes the transformation between them, and
+binds the output and backend image to the same attempt.
+
+The current v1 manifest records the submitted-content digest in
+`payload_digests.input_sha256` and the canonical output-envelope digest in
+`payload_digests.output_envelope_sha256`. The execution contract now separately
+commits every backend input's exact size, SHA-256, and storage version, and the
+backend verifies those fields while streaming before execution. Strict output
+artifact references retain the backend-reported identity; local artifacts are
+also checked against their attempt-workspace bytes before indexing.
+
+Those execution-boundary identities are not yet projected into the v1 evidence
+manifest. Until the evidence-rewiring slice lands, `input_sha256` still means
+the bytes Django accepted at submission time and must not be described as the
+manifest's independent record of the bytes verified immediately before
+execution. The strict input envelope and attempt records carry that identity
+today; the future manifest revision will make it part of the portable evidence
+artifact.
+
 ## Current Bundle Format
 
 The bundle download is a deterministic `.tar.gz` built on demand. It is not currently cached to storage.
@@ -31,7 +71,7 @@ The manifest is the structured proof of:
 - which validator steps and validator digests were used;
 - which input schema applied;
 - which retention policy applied;
-- which SHA-256 payload digests identify the run input and, where retention permits, output.
+- which SHA-256 payload digests identify the submitted run input and, where retention permits, output.
 
 ### `README.txt`
 
@@ -187,7 +227,7 @@ The evidence manifest uses schema-specific digest names:
 
 The UI may describe the first value as the data hash. Older docs and model comments may use "content hash." In the evidence manifest and bundle, the canonical field name is `payload_digests.input_sha256`.
 
-The input digest is sourced from `Submission.checksum_sha256`, which is computed at upload/submit time and preserved when `Submission.purge_content()` deletes the actual bytes.
+The input digest is sourced from `Submission.checksum_sha256`, which is computed at upload/submit time and preserved when `Submission.purge_content()` deletes the actual bytes. It identifies the bytes Django accepted; the strict input envelope separately carries the backend-verified executed-byte identity described above.
 
 The output digest is sourced from `ValidationRun.output_hash`, populated before the manifest is stamped.
 
@@ -201,7 +241,7 @@ Current rules:
 - `payload_digests.output_envelope_sha256` is omitted for `DO_NOT_STORE`.
 - omitted fields are listed in `retention.redactions_applied`.
 
-For `DO_NOT_STORE`, the manifest still proves which exact input bytes were validated by hash, but the bundle does not include the input bytes and the UI/API must not expose them even if the async reaper has not deleted them yet.
+For `DO_NOT_STORE`, the manifest still preserves the digest of the exact bytes Django accepted, but the bundle does not include those bytes and the UI/API must not expose them even if the async reaper has not deleted them yet. The backend still verifies the strict per-file contract during execution; a later manifest revision will retain those verified identities in the portable evidence record.
 
 ## Run Source Attribution
 

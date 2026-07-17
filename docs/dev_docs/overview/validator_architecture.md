@@ -78,6 +78,10 @@ class ExecutionContext(BaseModel):
     callback_url: str | None     # Where to POST results (async mode)
     callback_id: str | None      # Unique ID for idempotent callbacks
     execution_bundle_uri: str    # Base URI for storing artifacts
+    execution_attempt_id: str    # Durable retry/attempt UUID
+    step_run_id: str             # Exact step execution being completed
+    attempt_contract_version: str
+    expected_output_uri: str     # Exact attempt-bound output identity
     timeout_seconds: int         # Maximum execution time
 
 class ValidationInputEnvelope(BaseModel):
@@ -131,15 +135,22 @@ class FMUInputEnvelope(ValidationInputEnvelope):
       "uri": "file:///data/files/model.idf",
       "mime_type": "application/vnd.energyplus.idf",
       "role": "primary-model",
-      "port_key": "primary_model"
+      "port_key": "primary_model",
+      "size_bytes": 5241,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "storage_version": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
   ],
   "resource_files": [
     {
       "id": "weather-resource-uuid",
+      "name": "weather.epw",
       "type": "energyplus_weather",
       "uri": "file:///data/files/weather.epw",
-      "port_key": "weather_file"
+      "port_key": "weather_file",
+      "size_bytes": 88902,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "storage_version": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     }
   ],
   "inputs": {
@@ -150,7 +161,11 @@ class FMUInputEnvelope(ValidationInputEnvelope):
   "context": {
     "callback_url": null,
     "callback_id": null,
-    "execution_bundle_uri": "file:///data/runs/550e8400/",
+    "execution_bundle_uri": "file:///data/runs/550e8400/attempts/64a12370/output/",
+    "execution_attempt_id": "64a12370-a404-4d37-bf87-cb1692b0af8d",
+    "step_run_id": "c1153cd8-80db-4dc4-8464-93b50a4f6e10",
+    "attempt_contract_version": "validibot.attempt.v1",
+    "expected_output_uri": "file:///data/runs/550e8400/attempts/64a12370/output/output.json",
     "timeout_seconds": 3600
   }
 }
@@ -197,8 +212,21 @@ The backend can continue to receive:
 
 ```json
 {
-  "input_files": [{ "role": "primary-model", "uri": "..." }],
-  "resource_files": [{ "type": "energyplus_weather", "uri": "..." }]
+  "input_files": [{
+    "role": "primary-model",
+    "uri": "...",
+    "size_bytes": 5241,
+    "sha256": "...",
+    "storage_version": "..."
+  }],
+  "resource_files": [{
+    "name": "weather.epw",
+    "type": "energyplus_weather",
+    "uri": "...",
+    "size_bytes": 88902,
+    "sha256": "...",
+    "storage_version": "..."
+  }]
 }
 ```
 
@@ -208,10 +236,11 @@ future upstream artifact without mutating the original payload.
 
 When a non-primary file port is bound to a submitted file, Django stores it as a
 `SubmissionInputFile` row keyed by workflow step and port. Dispatch then copies
-that file into the run bundle and passes the resulting URI to the envelope
-builder under the port key, for example `{"weather_file": "gs://..."}`. The
-primary submitted payload keeps using the historical `Submission` content/file
-fields and the `primary_file_uri` compatibility key.
+that file into the attempt bundle and passes its complete identity—URI, exact
+size, SHA-256, and provider storage version—to the envelope builder under the
+port key. The primary submitted payload keeps using the historical
+`Submission` content/file fields and the `primary_file_uri` internal key, but
+that key now maps to a strict identity object rather than a bare URI.
 
 Artifact-port resolution writes `ResolvedInputTrace` rows just like scalar input
 resolution. The snapshot records the selected submitted file, workflow
@@ -670,6 +699,69 @@ This document describes the **validator backend** interface — the external Doc
 
 The repository was renamed from `validibot-validators` → `validibot-validator-backends` in March 2026 to make this role unambiguous. The Python package and Docker image prefixes match. See [Terminology](terminology.md) for the full vocabulary.
 
+## Immutable execution boundary
+
+Treat each advanced-validator execution as a sealed, attempt-specific package,
+not as a collection of convenient storage paths. A URI tells a backend where
+to look; it does not prove which bytes will be there when the backend reads it.
+The useful trust statement is stronger:
+
+> This attempt verified and executed these exact input bytes, using this
+> validator contract and backend image, and produced this verified result.
+
+The conceptual flow is:
+
+```text
+trusted app chooses contract and expected identities
+    → materialise attempt-specific inputs
+    → stream and verify input size, digest, and storage version
+    → execute only the verified local files
+    → write one attempt-bound candidate output
+    → trusted app verifies output identity and schema
+    → process the domain verdict and construct evidence
+```
+
+Four values solve different parts of the identity problem:
+
+| Value | Why it is needed |
+|---|---|
+| Exact byte size | Bounds the transfer and detects short or unexpectedly long content |
+| SHA-256 | Identifies the exact content independently of its location |
+| Storage version | Pins a GCS generation, S3 version, or equivalent immutable object identity where available |
+| Execution attempt ID | Prevents a retry from accepting another attempt's input or stale output |
+
+These values are complementary. Hash verification detects changed bytes, but
+does not prevent a broadly privileged runtime from reading another run. A
+scoped mount or credential limits access, but does not prove that a mutable
+object still has its expected content. Validibot needs both integrity and
+isolation, and deployment diagnostics should report them separately.
+
+Output follows the same rule. Docker completion, an authenticated callback,
+or successful Cloud Run reconciliation only delivers a candidate result. The
+trusted output verifier selects the expected Pydantic class from Django's
+attempt state, bounds the raw result before parsing, and checks the run, step,
+attempt, validator, contract, canonical input-envelope digest, and exact output
+URI before the result reaches validator-specific processing. Untrusted output
+never gets to choose its own parser.
+
+Transport success and validation outcome are also separate. A correctly
+formed, identity-matching output can report that the submitted data failed its
+rules; that is an ordinary validation verdict. Missing, malformed, oversized,
+or identity-mismatched output is an execution-system error.
+
+The coordinated `validibot-shared` 0.16, backend 0.11, and Django application
+slice makes required file identity fields and streaming input verification
+current behavior. Django computes or resolves each input's exact size,
+SHA-256, and storage version before dispatch; every backend fetches the pinned
+version and verifies the streamed bytes before domain execution. Local output
+artifacts are also checked against the bytes in the attempt workspace before
+their strict `ArtifactRef` is persisted.
+
+Create-only provider semantics, evidence-manifest rewiring, and narrower
+storage capabilities remain subsequent slices. A digest mismatch therefore
+fails closed today, while the next slice prevents a conflicting overwrite from
+being created in the first place.
+
 ## Attempt-scoped isolation
 
 Before April 2026, the local Docker runner mounted the entire `DATA_STORAGE_ROOT` read-write into every validator backend runtime. A buggy or partner-authored backend could read other runs' inputs, mutate other runs' outputs, exhaust shared disk, or leak data between runs.
@@ -701,9 +793,10 @@ to a distinct workspace for every execution attempt.
 
 The container does **not** receive the global storage root, other run directories, Django media paths, database credentials, signing keys, Stripe/x402 credentials, or arbitrary host directories.
 
-### Envelope URI rewriting (no backend changes required)
+### Envelope identity rewriting
 
-The Docker dispatch path **rewrites three URI fields** in the input envelope so the container sees only container-visible paths:
+The Docker dispatch path materializes each input and rewrites its complete file
+identity so the container sees only container-visible paths:
 
 - `input_files[].uri` → the attempt's container input directory
 - `resource_files[].uri` → the attempt's container resource directory
@@ -711,8 +804,9 @@ The Docker dispatch path **rewrites three URI fields** in the input envelope so 
 
 The backends' existing artifact-upload logic composes
 `f"{execution_bundle_uri}/outputs"`, so artifacts automatically land below the
-correct attempt's output directory. **No validator-backend changes are
-required** — backends already resolve URIs through their storage client.
+correct attempt's output directory. Backend 0.11 additionally opens local files
+under the declared input root or downloads the exact GCS generation, verifying
+size and SHA-256 while streaming before the domain runner is called.
 
 Cloud Run keeps `gs://...` URIs, with the same
 `runs/<org>/<run>/attempts/<attempt>/` prefix shape.
@@ -739,7 +833,9 @@ Validibot uses the **presence and parseability of `output.json`** as the implici
 
 This makes the boundary between **"validator reported the user's data is bad"** (a `FAIL` result the user can act on) and **"the platform itself had a problem"** (an `ERROR` the platform owner needs to triage) determinable from on-disk state alone, without reading container logs.
 
-We do **not** add a separate `_status.json` file because doing so would require coordinated changes in `validibot-validator-backends`. The output envelope is already the artifact every backend produces; treating its presence/parseability as the sentinel is equivalent with zero coordination cost.
+We do **not** add a separate `_status.json` file. The attempt-bound output
+envelope is already the artifact every backend produces, and the trusted
+application verifier decides whether it is an acceptable completion sentinel.
 
 ### Hardening posture vs comparable systems
 

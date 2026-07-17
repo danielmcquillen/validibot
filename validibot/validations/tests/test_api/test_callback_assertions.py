@@ -136,6 +136,7 @@ class CallbackAssertionEvaluationTests(TestCase):
         class MockValidator:
             def __init__(self, validator_id):
                 self.id = validator_id
+                self.type = ValidationType.ENERGYPLUS
                 self.version = "1.0.0"
 
         resolved_validator_id = (

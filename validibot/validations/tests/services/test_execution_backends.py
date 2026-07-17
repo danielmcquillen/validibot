@@ -636,6 +636,59 @@ class TestDockerComposeExecutionBackend:
         assert response.error_message is None
         assert attempt.state == ExecutionAttemptState.UNKNOWN
 
+    @pytest.mark.django_db
+    def test_unverified_output_fails_the_claimed_attempt(self):
+        """A zero-exit container cannot complete without a verified envelope.
+
+        Container completion is only transport status.  Treating a missing or
+        mismatched ``output.json`` as a completed attempt would let untrusted
+        runtime output bypass the ADR's fail-closed result boundary.
+        """
+        request = _make_execution_request()
+        attempt = ExecutionAttemptFactory(
+            step_run=request.run.current_step_run,
+            state=ExecutionAttemptState.PENDING,
+        )
+        workspace = MagicMock()
+        workspace.execution_bundle_container_uri = "file:///validibot/output"
+        workspace.input_envelope_container_uri = "file:///validibot/input/input.json"
+        workspace.output_envelope_container_uri = "file:///validibot/output/output.json"
+        envelope = MagicMock()
+        envelope.model_dump_json.return_value = "{}"
+        runner_result = MagicMock(
+            succeeded=True,
+            execution_id="container-123",
+            duration_seconds=1.5,
+            validator_backend_image_digest="sha256:abc",
+        )
+
+        backend = DockerComposeExecutionBackend()
+        backend._runner = MagicMock()
+        backend._runner.is_available.return_value = True
+        backend._runner.run.return_value = runner_result
+
+        with (
+            patch.object(
+                backend,
+                "_build_workspace_and_envelope_kwargs",
+                return_value=(workspace, {}, {}),
+            ),
+            patch.object(backend, "build_input_envelope", return_value=envelope),
+            patch.object(
+                backend,
+                "_read_output_envelope_from_host",
+                return_value=None,
+            ),
+        ):
+            response = backend.execute(request)
+
+        attempt.refresh_from_db()
+        assert response.is_complete is True
+        assert response.output_envelope is None
+        assert "failed trusted" in (response.error_message or "")
+        assert attempt.state == ExecutionAttemptState.FAILED
+        assert attempt.last_error_code == "output_verification_failed"
+
     def test_check_status_exists(self):
         """Docker Compose backend should expose a ``check_status`` method.
 

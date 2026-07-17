@@ -225,6 +225,20 @@ class TestExecutionAttemptTransitions:
         assert "\x00" not in failed.last_error
         assert len(failed.last_error) == MAX_ERROR_LENGTH
 
+    def test_verified_output_identity_is_written_by_terminal_transition(self):
+        """Attempt evidence must retain the exact result URI and canonical digest."""
+        attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.RUNNING)
+
+        completed, _ = transition_execution_attempt(
+            attempt.id,
+            ExecutionAttemptState.COMPLETED,
+            output_envelope_uri="gs://bucket/runs/run-1/output.json",
+            output_envelope_sha256="a" * 64,
+        )
+
+        assert completed.output_envelope_uri == "gs://bucket/runs/run-1/output.json"
+        assert completed.output_envelope_sha256 == "a" * 64
+
 
 @pytest.mark.django_db
 class TestProviderExecutionIdentity:

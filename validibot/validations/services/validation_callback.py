@@ -22,7 +22,9 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from django.conf import settings
 from django.db import DatabaseError
@@ -44,7 +46,22 @@ from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.services.cloud_run.gcs_client import download_envelope
 from validibot.validations.services.cloud_run.gcs_client import parse_gcs_uri
+from validibot.validations.services.output_envelope_verifier import (
+    OutputEnvelopeVerificationError,
+)
+from validibot.validations.services.output_envelope_verifier import (
+    build_expected_output_envelope,
+)
+from validibot.validations.services.output_envelope_verifier import (
+    output_envelope_sha256,
+)
+from validibot.validations.services.output_envelope_verifier import (
+    verify_output_envelope,
+)
 from validibot.validations.services.validation_run import ValidationRunService
+
+if TYPE_CHECKING:
+    from validibot_shared.validations.envelopes import ValidationOutputEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -475,6 +492,8 @@ class ValidationCallbackService:
             attempt.pk,
             ExecutionAttemptState.COMPLETED,
             provider_finished_at=timezone.now(),
+            output_envelope_uri=callback.result_uri or "",
+            output_envelope_sha256=output_envelope_sha256(output_envelope),
         )
 
         self._mark_receipt_completed(callback, receipt, run)
@@ -630,35 +649,40 @@ class ValidationCallbackService:
             _CallbackProcessingError: On allowlist violation, download failure,
                 missing envelope class, or validator/run ID mismatch.
         """
-        from validibot.validations.validators.base.config import (
-            get_output_envelope_class,
-        )
-
         # Gate the untrusted result_uri BEFORE any GCS access.
         ValidationCallbackService._validate_result_uri_allowlist(
             callback.result_uri or "",
             run,
         )
 
-        envelope_class = get_output_envelope_class(
-            validator.validation_type,
-        )
-        if not envelope_class:
-            logger.error(
-                "No output envelope class registered for validator type: %s",
+        try:
+            expected = build_expected_output_envelope(
+                run=run,
+                validator=validator,
+            )
+        except OutputEnvelopeVerificationError as exc:
+            logger.warning(
+                "Cannot verify output for validator type %s: %s",
                 validator.validation_type,
+                exc.code,
             )
             raise _CallbackProcessingError(
                 status.HTTP_400_BAD_REQUEST,
-                f"No output envelope class registered for "
-                f"validator type: {validator.validation_type}",
-            )
+                exc.detail,
+            ) from exc
 
         try:
-            output_envelope = download_envelope(
-                callback.result_uri,
-                envelope_class,
-                max_bytes=getattr(settings, "VALIDATION_RESULT_MAX_BYTES", None),
+            output_envelope = cast(
+                "ValidationOutputEnvelope",
+                download_envelope(
+                    callback.result_uri,
+                    expected.envelope_class,
+                    max_bytes=getattr(
+                        settings,
+                        "VALIDATION_RESULT_MAX_BYTES",
+                        None,
+                    ),
+                ),
             )
         except Exception as exc:
             logger.exception("Failed to download output envelope")
@@ -671,33 +695,18 @@ class ValidationCallbackService:
                 "Failed to download output envelope.",
             ) from exc
 
-        # Verify the envelope belongs to the expected validator and run.
-        # We don't validate org/workflow because ValidationOutputEnvelope
-        # doesn't contain those fields — they're only in the input envelope.
-        # The run_id check is sufficient to match callback to run.
-        if str(output_envelope.validator.id) != str(validator.id):
+        try:
+            return verify_output_envelope(output_envelope, expected=expected)
+        except OutputEnvelopeVerificationError as exc:
             logger.warning(
-                "Envelope validator mismatch: envelope=%s expected=%s",
-                output_envelope.validator.id,
-                validator.id,
+                "Rejected callback output envelope for run %s: %s",
+                run.pk,
+                exc.code,
             )
             raise _CallbackProcessingError(
                 status.HTTP_400_BAD_REQUEST,
-                "Validator mismatch in output envelope",
-            )
-
-        if str(getattr(output_envelope, "run_id", "")) != str(run.id):
-            logger.warning(
-                "Envelope run mismatch: envelope=%s expected=%s",
-                getattr(output_envelope, "run_id", ""),
-                run.id,
-            )
-            raise _CallbackProcessingError(
-                status.HTTP_400_BAD_REQUEST,
-                "Run mismatch in output envelope",
-            )
-
-        return output_envelope
+                exc.detail,
+            ) from exc
 
     # ── Step 3: Complete the step via the processor ───────────────────
 

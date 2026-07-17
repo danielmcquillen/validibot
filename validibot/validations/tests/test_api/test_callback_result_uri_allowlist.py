@@ -104,6 +104,7 @@ class CallbackResultUriAllowlistTestCase(TestCase):
         mock_envelope.status = ValidationStatus.SUCCESS
         mock_envelope.validator = MagicMock()
         mock_envelope.validator.id = str(self.async_validator.id)
+        mock_envelope.validator.type = ValidationType.ENERGYPLUS
         mock_envelope.run_id = str(self.run.id)
         mock_envelope.timing = MagicMock()
         mock_envelope.timing.finished_at = None

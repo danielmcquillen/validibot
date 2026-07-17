@@ -183,6 +183,11 @@ class TestAttemptCallbackCompletion:
         )
         service = ValidationCallbackService()
         processing_result = MagicMock(step_status="PASSED")
+        output_envelope = MagicMock()
+        output_envelope.model_dump.return_value = {
+            "schema_version": "validibot.output.v1",
+            "run_id": str(run.pk),
+        }
 
         with (
             patch.object(
@@ -190,7 +195,11 @@ class TestAttemptCallbackCompletion:
                 "_resolve_active_step_run",
                 return_value=(attempt.step_run, MagicMock()),
             ),
-            patch.object(service, "_download_and_validate_envelope"),
+            patch.object(
+                service,
+                "_download_and_validate_envelope",
+                return_value=output_envelope,
+            ),
             patch.object(
                 service,
                 "_complete_step",
@@ -209,6 +218,8 @@ class TestAttemptCallbackCompletion:
         attempt.refresh_from_db()
         assert response.status_code == 200  # noqa: PLR2004
         assert attempt.state == ExecutionAttemptState.COMPLETED
+        assert attempt.output_envelope_uri == "gs://bucket/output.json"
+        assert len(attempt.output_envelope_sha256) == 64  # noqa: PLR2004
 
     def test_timeout_fences_attempt_before_provider_cancellation(self):
         """A late callback cannot win after the watchdog commits its decision."""

@@ -84,6 +84,7 @@ class CallbackIdempotencyTestCase(TestCase):
         # Validator info - must have string values (stored in JSONField)
         mock_envelope.validator = MagicMock()
         mock_envelope.validator.id = str(self.validator.id)
+        mock_envelope.validator.type = ValidationType.ENERGYPLUS
         mock_envelope.validator.version = "1.0.0"
         # Run/org/workflow identifiers
         mock_envelope.run_id = str(self.run.id)

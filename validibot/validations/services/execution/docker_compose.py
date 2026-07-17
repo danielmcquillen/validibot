@@ -32,7 +32,6 @@ Settings:
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from typing import TYPE_CHECKING
@@ -44,6 +43,18 @@ from validibot.core.storage import get_data_storage
 from validibot.validations.services.execution.base import ExecutionBackend
 from validibot.validations.services.execution.base import ExecutionRequest
 from validibot.validations.services.execution.base import ExecutionResponse
+from validibot.validations.services.output_envelope_verifier import (
+    OutputEnvelopeVerificationError,
+)
+from validibot.validations.services.output_envelope_verifier import (
+    build_expected_output_envelope,
+)
+from validibot.validations.services.output_envelope_verifier import (
+    output_envelope_sha256,
+)
+from validibot.validations.services.output_envelope_verifier import (
+    parse_and_verify_output_envelope,
+)
 from validibot.validations.services.runners import get_validator_runner
 
 if TYPE_CHECKING:
@@ -370,13 +381,8 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                     ),
                 )
 
-            # 8. Read the output envelope from the workspace.
-            output_envelope = self._read_output_envelope_from_host(
-                workspace.host_output_envelope_path,
-                expected_run=request.run,
-                expected_validator=request.validator,
-            )
-
+            # The provider completed, but the attempt is not successful until
+            # trusted output verification also succeeds.
             attempt, _ = transition_execution_attempt(
                 attempt.pk,
                 ExecutionAttemptState.RUNNING,
@@ -384,10 +390,45 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 provider_started_at=attempt.dispatch_started_at or timezone.now(),
                 backend_image_digest=result.validator_backend_image_digest,
             )
+
+            # 8. Read and verify the output envelope from the workspace.
+            output_envelope = self._read_output_envelope_from_host(
+                workspace.host_output_envelope_path,
+                expected_run=request.run,
+                expected_validator=request.validator,
+            )
+            if output_envelope is None:
+                error_msg = (
+                    "Validator completed but its output envelope failed trusted "
+                    "schema or identity verification."
+                )
+                transition_execution_attempt(
+                    attempt.pk,
+                    ExecutionAttemptState.FAILED,
+                    provider_finished_at=timezone.now(),
+                    last_error_code="output_verification_failed",
+                    last_error=error_msg,
+                    backend_image_digest=result.validator_backend_image_digest,
+                )
+                return ExecutionResponse(
+                    execution_id=result.execution_id or execution_id,
+                    is_complete=True,
+                    error_message=error_msg,
+                    input_uri=workspace.input_envelope_container_uri,
+                    output_uri=workspace.output_envelope_container_uri,
+                    execution_bundle_uri=workspace.execution_bundle_container_uri,
+                    duration_seconds=result.duration_seconds,
+                    validator_backend_image_digest=(
+                        result.validator_backend_image_digest
+                    ),
+                )
+
             transition_execution_attempt(
                 attempt.pk,
                 ExecutionAttemptState.COMPLETED,
                 provider_finished_at=timezone.now(),
+                output_envelope_uri=workspace.output_envelope_container_uri,
+                output_envelope_sha256=output_envelope_sha256(output_envelope),
                 backend_image_digest=result.validator_backend_image_digest,
             )
 
@@ -646,57 +687,23 @@ class DockerComposeExecutionBackend(ExecutionBackend):
 
             output_data = host_path.read_bytes()
 
-            output_dict = json.loads(output_data.decode("utf-8"))
-
-            # Select the output class from trusted validator configuration,
-            # never from the output document. A compromised container must not
-            # be able to choose its own parser by editing validator.type.
-            from validibot.validations.validators.base.config import (
-                get_output_envelope_class,
+            expected = build_expected_output_envelope(
+                run=expected_run,
+                validator=expected_validator,
+            )
+            output_envelope = parse_and_verify_output_envelope(
+                output_data,
+                expected=expected,
+                max_bytes=max_bytes,
             )
 
-            envelope_class = get_output_envelope_class(
-                expected_validator.validation_type,
+        except OutputEnvelopeVerificationError as exc:
+            logger.warning(
+                "Rejected output envelope at %s: %s",
+                host_path,
+                exc.code,
             )
-            if envelope_class is None:
-                logger.error(
-                    "No output envelope class registered for validator type: %s",
-                    expected_validator.validation_type,
-                )
-                return None
-
-            output_envelope = envelope_class.model_validate(output_dict)
-
-            actual_validator_type = getattr(
-                output_envelope.validator.type,
-                "value",
-                output_envelope.validator.type,
-            )
-            expected_validator_type = str(expected_validator.validation_type)
-            if str(actual_validator_type).upper() != expected_validator_type.upper():
-                logger.warning(
-                    "Output envelope validator type mismatch: envelope=%s expected=%s",
-                    actual_validator_type,
-                    expected_validator_type,
-                )
-                return None
-
-            if str(output_envelope.validator.id) != str(expected_validator.id):
-                logger.warning(
-                    "Output envelope validator mismatch: envelope=%s expected=%s",
-                    output_envelope.validator.id,
-                    expected_validator.id,
-                )
-                return None
-
-            if str(getattr(output_envelope, "run_id", "")) != str(expected_run.id):
-                logger.warning(
-                    "Output envelope run mismatch: envelope=%s expected=%s",
-                    getattr(output_envelope, "run_id", ""),
-                    expected_run.id,
-                )
-                return None
-
+            return None
         except Exception:
             logger.exception("Failed to read output envelope from %s", host_path)
             return None

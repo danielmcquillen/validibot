@@ -24,11 +24,17 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import CallbackReceipt
 from validibot.validations.services.execution_attempts import build_attempt_callback_id
+from validibot.validations.services.execution_attempts import (
+    build_callback_nonce_verifier,
+)
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
+
+TEST_CALLBACK_NONCE = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+WRONG_CALLBACK_NONCE = "Hh0cGxoZGBcWFRQTEhEQDw4NDAsKCQgHBgUEAwIBAAA"
 
 
 class CallbackIdempotencyTestCase(TestCase):
@@ -67,8 +73,12 @@ class CallbackIdempotencyTestCase(TestCase):
         self.attempt = ExecutionAttemptFactory(
             step_run=self.step_run,
             state="RUNNING",
+            callback_nonce_hash=build_callback_nonce_verifier(
+                TEST_CALLBACK_NONCE,
+            ),
         )
         self.callback_id = build_attempt_callback_id(self.attempt)
+        self.callback_nonce = TEST_CALLBACK_NONCE
 
         self.callback_url = "/api/v1/validation-callbacks/"
 
@@ -90,7 +100,7 @@ class CallbackIdempotencyTestCase(TestCase):
         mock_envelope.run_id = str(self.run.id)
         mock_envelope.step_run_id = str(self.step_run.pk)
         mock_envelope.execution_attempt_id = str(self.attempt.pk)
-        mock_envelope.attempt_contract_version = "validibot.attempt.v1"
+        mock_envelope.attempt_contract_version = "validibot.attempt.v2"
         mock_envelope.input_envelope_sha256 = self.attempt.input_envelope_sha256
         mock_envelope.output_uri = self.attempt.output_envelope_uri
         mock_envelope.org = MagicMock()
@@ -121,6 +131,7 @@ class CallbackIdempotencyTestCase(TestCase):
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
+            "callback_nonce": self.callback_nonce,
             "status": "success",
             "result_uri": "gs://bucket/output.json",
         }
@@ -165,6 +176,7 @@ class CallbackIdempotencyTestCase(TestCase):
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
+            "callback_nonce": self.callback_nonce,
             "status": "success",
             "result_uri": "gs://bucket/output.json",
         }
@@ -194,6 +206,7 @@ class CallbackIdempotencyTestCase(TestCase):
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
+            "callback_nonce": self.callback_nonce,
             "status": "success",
             "result_uri": "gs://bucket/output.json",
         }
@@ -224,6 +237,7 @@ class CallbackIdempotencyTestCase(TestCase):
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
+            "callback_nonce": self.callback_nonce,
             "status": "success",
             "result_uri": "gs://bucket/output.json",
         }
@@ -262,13 +276,45 @@ class CallbackIdempotencyTestCase(TestCase):
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")
+    def test_duplicate_requires_the_original_attempt_nonce(self, mock_download):
+        """A known callback ID must not expose a cached success without proof.
+
+        Receipt replay is an externally reachable path, so authentication must
+        happen before the idempotency shortcut as well as before storage reads.
+        """
+        mock_download.return_value = self._make_mock_envelope()
+        payload = {
+            "run_id": str(self.run.id),
+            "callback_id": self.callback_id,
+            "callback_nonce": self.callback_nonce,
+            "status": "success",
+            "result_uri": "gs://bucket/output.json",
+        }
+        first = self.client.post(self.callback_url, data=payload, format="json")
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+
+        mock_download.reset_mock()
+        payload["callback_nonce"] = WRONG_CALLBACK_NONCE
+        replay = self.client.post(self.callback_url, data=payload, format="json")
+
+        self.assertEqual(replay.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(replay.data["error"], "Invalid callback credentials")
+        mock_download.assert_not_called()
+        self.assertEqual(
+            CallbackReceipt.objects.filter(callback_id=self.callback_id).count(),
+            1,
+        )
+
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
     def test_callback_without_attempt_id_is_rejected(self, mock_download):
-        """A callback without durable attempt identity must never mutate a run."""
+        """The shared callback schema rejects missing attempt identity early."""
         mock_download.return_value = self._make_mock_envelope()
 
         payload = {
             "run_id": str(self.run.id),
             # No callback_id
+            "callback_nonce": self.callback_nonce,
             "status": "success",
             "result_uri": "gs://bucket/output.json",
         }
@@ -280,10 +326,7 @@ class CallbackIdempotencyTestCase(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(
-            response.data["error"],
-            "Callback does not identify a valid execution attempt",
-        )
+        self.assertEqual(response.data["error"], "Invalid callback payload")
 
         # No receipt created when callback_id is missing
         self.assertEqual(CallbackReceipt.objects.count(), 0)
@@ -306,6 +349,7 @@ class CallbackIdempotencyTestCase(TestCase):
         payload1 = {
             "run_id": str(self.run.id),
             "callback_id": callback_id_1,
+            "callback_nonce": self.callback_nonce,
             "status": "success",
             "result_uri": "gs://bucket/output1.json",
         }
@@ -331,6 +375,9 @@ class CallbackIdempotencyTestCase(TestCase):
         attempt2 = ExecutionAttemptFactory(
             step_run=step_run2,
             state="RUNNING",
+            callback_nonce_hash=build_callback_nonce_verifier(
+                TEST_CALLBACK_NONCE,
+            ),
             output_envelope_uri="gs://bucket/output2.json",
         )
 
@@ -351,6 +398,7 @@ class CallbackIdempotencyTestCase(TestCase):
         payload2 = {
             "run_id": str(run2.id),
             "callback_id": callback_id_2,
+            "callback_nonce": TEST_CALLBACK_NONCE,
             "status": "success",
             "result_uri": "gs://bucket/output2.json",
         }
@@ -373,6 +421,7 @@ class CallbackIdempotencyTestCase(TestCase):
         payload = {
             "run_id": str(self.run.id),
             "callback_id": str(uuid.uuid4()),
+            "callback_nonce": self.callback_nonce,
             "status": "success",
             "result_uri": "gs://bucket/output.json",
         }
@@ -408,6 +457,7 @@ class CallbackIdempotencyTestCase(TestCase):
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
+            "callback_nonce": self.callback_nonce,
             "status": "success",
             "result_uri": "gs://bucket/output.json",
         }
@@ -460,6 +510,7 @@ class CallbackIdempotencyTestCase(TestCase):
         payload = {
             "run_id": str(self.run.id),
             "callback_id": callback_id,
+            "callback_nonce": self.callback_nonce,
             "status": "success",
             "result_uri": "gs://bucket/output.json",
         }

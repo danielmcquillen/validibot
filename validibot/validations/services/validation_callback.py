@@ -5,9 +5,10 @@ Validator containers (EnergyPlus, FMU) POST a minimal callback payload to the
 worker-only callback endpoint when they complete. The callback handler:
 
 1. Validates the payload shape (Pydantic model from validibot_shared)
-2. Downloads the full output envelope from cloud storage
-3. Delegates to ValidationStepProcessor.complete_from_callback() for step completion
-4. Either dispatches a resume task (when more steps remain) or finalizes the run
+2. Authenticates the callback against its durable execution attempt
+3. Downloads the full output envelope from cloud storage
+4. Delegates to ValidationStepProcessor.complete_from_callback() for step completion
+5. Either dispatches a resume task (when more steps remain) or finalizes the run
 
 The public API view should be a thin wrapper around this service.
 
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from dataclasses import field
 from datetime import UTC
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -63,6 +65,8 @@ from validibot.validations.services.validation_run import ValidationRunService
 
 if TYPE_CHECKING:
     from validibot_shared.validations.envelopes import ValidationOutputEnvelope
+
+    from validibot.validations.models import ExecutionAttempt
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +119,17 @@ class _StepCompletionResult:
     output_envelope: Any  # typed as Any to avoid coupling to envelope base class
 
 
+@dataclass(frozen=True, slots=True)
+class _CallbackRequest:
+    """Normalized data shared by external callback and trusted recovery paths."""
+
+    run_id: str
+    callback_id: str
+    callback_nonce: str | None = field(repr=False)
+    status: ValidationStatus
+    result_uri: str
+
+
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
@@ -159,7 +174,8 @@ class ValidationCallbackService:
     (Docker Compose), the processor handles completion inline.
 
     Responsibilities:
-    - Validate callback payload and check idempotency
+    - Validate callback payload and authenticate its attempt nonce
+    - Check idempotency after authentication
     - Download output envelope from cloud storage
     - Delegate to ValidationStepProcessor.complete_from_callback()
     - Enqueue resume task (more steps) or finalize run (last step)
@@ -188,7 +204,14 @@ class ValidationCallbackService:
             # processes separately. This keeps the callback contract stable
             # across all validator types — the container doesn't need to
             # serialize its full output into the HTTP POST.
-            callback = ValidationCallback.model_validate(payload)
+            validated_callback = ValidationCallback.model_validate(payload)
+            callback = _CallbackRequest(
+                run_id=validated_callback.run_id,
+                callback_id=validated_callback.callback_id,
+                callback_nonce=validated_callback.callback_nonce,
+                status=validated_callback.status,
+                result_uri=validated_callback.result_uri,
+            )
 
             logger.info(
                 "Received callback for run %s with status %s (callback_id=%s)",
@@ -209,7 +232,11 @@ class ValidationCallbackService:
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            return self._process_with_idempotency_guard(callback, run)
+            return self._process_with_idempotency_guard(
+                callback,
+                run,
+                require_callback_nonce=True,
+            )
 
         except ValidationError:
             logger.warning("Invalid callback payload")
@@ -228,9 +255,41 @@ class ValidationCallbackService:
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    def process_reconciliation(
+        self,
+        *,
+        run: ValidationRun,
+        attempt: ExecutionAttempt,
+        callback_status: ValidationStatus,
+        result_uri: str,
+    ) -> Response:
+        """Recover trusted provider output without fabricating a raw nonce.
+
+        Reconciliation has already authenticated to the provider and resolved
+        the durable attempt. It reuses receipt fencing and the full output
+        verification pipeline, while only the worker API accepts untrusted
+        callback payloads and therefore requires the raw callback credential.
+        """
+        from validibot.validations.services.execution_attempts import (
+            build_attempt_callback_id,
+        )
+
+        callback = _CallbackRequest(
+            run_id=str(run.pk),
+            callback_id=build_attempt_callback_id(attempt),
+            callback_nonce=None,
+            status=callback_status,
+            result_uri=result_uri,
+        )
+        return self._process_with_idempotency_guard(
+            callback,
+            run,
+            require_callback_nonce=False,
+        )
+
     @staticmethod
     def _late_callback_response(
-        callback: ValidationCallback,
+        callback: _CallbackRequest,
         run: ValidationRun,
     ) -> Response:
         """Acknowledge output that arrived after the run became terminal."""
@@ -252,8 +311,10 @@ class ValidationCallbackService:
 
     def _process_with_idempotency_guard(
         self,
-        callback: ValidationCallback,
+        callback: _CallbackRequest,
         run: ValidationRun,
+        *,
+        require_callback_nonce: bool,
     ) -> Response:
         """
         Ensure idempotent processing for an attempt-bound callback.
@@ -263,14 +324,15 @@ class ValidationCallbackService:
         table as an idempotency ledger:
 
         1. Resolve the callback's execution attempt.
-        2. A new callback_id creates a PROCESSING receipt under a
+        2. Authenticate external delivery before reading any receipt or output.
+        3. A new callback_id creates a PROCESSING receipt under a
            row-level lock so no concurrent request can duplicate the work.
-        3. Existing receipt still PROCESSING → previous attempt crashed
+        4. Existing receipt still PROCESSING → previous attempt crashed
            mid-flight (or hit a transient error), so retry.
-        4. Existing receipt in a terminal state (COMPLETED or REJECTED) →
+        5. Existing receipt in a terminal state (COMPLETED or REJECTED) →
            already handled, return a cached 200 so Cloud Tasks stops retrying.
            A permanently REJECTED callback must not be retried forever.
-        5. Lock contention (another request holds the row lock) → return
+        6. Lock contention (another request holds the row lock) → return
            409 so Cloud Tasks retries later.
         """
         from validibot.validations.services.execution_attempts import (
@@ -290,6 +352,23 @@ class ValidationCallbackService:
                 {"error": "Callback does not identify a valid execution attempt"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if require_callback_nonce:
+            from validibot.validations.services.execution_attempts import (
+                verify_attempt_callback_nonce,
+            )
+
+            if not verify_attempt_callback_nonce(attempt, callback.callback_nonce):
+                logger.warning(
+                    "Rejected callback with invalid attempt credentials",
+                    extra={
+                        "run_id": str(run.pk),
+                        "attempt_id": str(attempt.pk),
+                    },
+                )
+                return Response(
+                    {"error": "Invalid callback credentials"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         try:
             with transaction.atomic():
                 receipt, receipt_created = self._get_or_create_receipt(
@@ -395,7 +474,7 @@ class ValidationCallbackService:
 
     @staticmethod
     def _get_or_create_receipt(
-        callback: ValidationCallback,
+        callback: _CallbackRequest,
         run: ValidationRun,
         attempt,
     ) -> tuple[CallbackReceipt, bool]:
@@ -426,7 +505,7 @@ class ValidationCallbackService:
     def _process_callback(
         self,
         *,
-        callback: ValidationCallback,
+        callback: _CallbackRequest,
         run: ValidationRun,
         receipt: CallbackReceipt,
         attempt,
@@ -633,7 +712,7 @@ class ValidationCallbackService:
 
     @staticmethod
     def _download_and_validate_envelope(
-        callback: ValidationCallback,
+        callback: _CallbackRequest,
         run: ValidationRun,
         validator,
         attempt,
@@ -983,7 +1062,7 @@ class ValidationCallbackService:
 
     @staticmethod
     def _mark_receipt_completed(
-        callback: ValidationCallback,
+        callback: _CallbackRequest,
         receipt: CallbackReceipt,
         run: ValidationRun,
     ) -> None:
@@ -1012,7 +1091,7 @@ class ValidationCallbackService:
 
     @staticmethod
     def _mark_receipt_rejected(
-        callback: ValidationCallback,
+        callback: _CallbackRequest,
         receipt: CallbackReceipt,
         run: ValidationRun,
     ) -> None:

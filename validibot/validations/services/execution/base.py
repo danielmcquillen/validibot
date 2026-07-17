@@ -249,6 +249,8 @@ class ExecutionBackend(ABC):
         *,
         callback_url: str | None = None,
         callback_id: str | None = None,
+        callback_nonce: str | None = None,
+        callback_nonce_commitment: str | None = None,
         execution_bundle_uri: str,
         input_file_uris: dict[str, FileIdentity],
         resource_uri_overrides: dict[str, FileIdentity] | None = None,
@@ -263,6 +265,9 @@ class ExecutionBackend(ABC):
             request: Execution request.
             callback_url: URL for async callbacks (None for sync backends).
             callback_id: Unique ID for callback deduplication.
+            callback_nonce: Per-attempt secret echoed only in the callback.
+            callback_nonce_commitment: Public commitment included in canonical
+                input-envelope hashing.
             execution_bundle_uri: URI of the execution bundle directory.
             input_file_uris: Map of file role to exact immutable file identity.
             resource_uri_overrides: Optional ``resource_id`` →
@@ -282,6 +287,8 @@ class ExecutionBackend(ABC):
             run=request.run,
             callback_url=callback_url or "",
             callback_id=callback_id or "",
+            callback_nonce=callback_nonce,
+            callback_nonce_commitment=callback_nonce_commitment,
             execution_bundle_uri=execution_bundle_uri,
             skip_callback=not self.is_async,  # Skip callback for sync backends
             input_file_uris=input_file_uris,

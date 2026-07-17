@@ -74,6 +74,8 @@ def build_energyplus_input_envelope(
     timestep_per_hour: int = 4,
     skip_callback: bool = False,
     input_files: list[InputFileItem] | None = None,
+    callback_nonce: str | None = None,
+    callback_nonce_commitment: str | None = None,
 ) -> EnergyPlusInputEnvelope:
     """
     Build an EnergyPlusInputEnvelope from Django validation run data.
@@ -102,6 +104,9 @@ def build_energyplus_input_envelope(
         resource_files: List of ResourceFileItem objects (weather files, etc.)
         callback_url: Django endpoint to POST results
         callback_id: Unique identifier for idempotent callback processing
+        callback_nonce: Per-attempt secret echoed only in the callback.
+        callback_nonce_commitment: Public commitment included in canonical
+            input-envelope hashing.
         execution_bundle_uri: Directory URI for this run's files
         timestep_per_hour: EnergyPlus timesteps (default: 4).
             NOTE: This value reaches the container envelope but the runner
@@ -171,6 +176,8 @@ def build_energyplus_input_envelope(
     # Build execution context
     execution_context = ExecutionContext(
         callback_id=callback_id,
+        callback_nonce=callback_nonce,
+        callback_nonce_commitment=callback_nonce_commitment,
         callback_url=callback_url,
         execution_bundle_uri=execution_bundle_uri,
         execution_attempt_id=execution_attempt_id,
@@ -1194,6 +1201,8 @@ def build_input_envelope(
     callback_id: str | None,
     execution_bundle_uri: str,
     *,
+    callback_nonce: str | None = None,
+    callback_nonce_commitment: str | None = None,
     skip_callback: bool = False,
     input_file_uris: dict[str, FileIdentity] | None = None,
     resource_uri_overrides: dict[str, FileIdentity] | None = None,
@@ -1208,6 +1217,9 @@ def build_input_envelope(
         run: ValidationRun Django model instance
         callback_url: Django callback endpoint URL
         callback_id: Unique identifier for idempotent callback processing
+        callback_nonce: Per-attempt secret echoed only in the callback.
+        callback_nonce_commitment: Public commitment included in canonical
+            input-envelope hashing.
         execution_bundle_uri: Directory URI for this attempt's files. For
             local Docker this is the attempt-specific container output path;
             for Cloud Run it is the attempt-specific ``gs://`` prefix.
@@ -1313,6 +1325,8 @@ def build_input_envelope(
                 resource_files=resource_files,
                 callback_url=callback_url,
                 callback_id=callback_id,
+                callback_nonce=callback_nonce,
+                callback_nonce_commitment=callback_nonce_commitment,
                 execution_bundle_uri=execution_bundle_uri,
                 execution_attempt_id=execution_attempt_id,
                 step_run_id=step_run_id,
@@ -1370,6 +1384,8 @@ def build_input_envelope(
             resource_files=resource_files,
             callback_url=callback_url,
             callback_id=callback_id,
+            callback_nonce=callback_nonce,
+            callback_nonce_commitment=callback_nonce_commitment,
             execution_bundle_uri=execution_bundle_uri,
             execution_attempt_id=execution_attempt_id,
             step_run_id=step_run_id,
@@ -1567,6 +1583,8 @@ def build_input_envelope(
         input_files = [fmu_file_item]
         context = ExecutionContext(
             callback_id=callback_id,
+            callback_nonce=callback_nonce,
+            callback_nonce_commitment=callback_nonce_commitment,
             callback_url=callback_url,
             execution_bundle_uri=execution_bundle_uri,
             execution_attempt_id=execution_attempt_id,
@@ -1652,6 +1670,8 @@ def build_input_envelope(
             inputs=shacl_inputs,
             callback_url=callback_url,
             callback_id=callback_id,
+            callback_nonce=callback_nonce,
+            callback_nonce_commitment=callback_nonce_commitment,
             execution_bundle_uri=execution_bundle_uri,
             execution_attempt_id=execution_attempt_id,
             step_run_id=step_run_id,
@@ -1717,6 +1737,8 @@ def build_input_envelope(
             inputs=schematron_inputs,
             callback_url=callback_url,
             callback_id=callback_id,
+            callback_nonce=callback_nonce,
+            callback_nonce_commitment=callback_nonce_commitment,
             execution_bundle_uri=execution_bundle_uri,
             execution_attempt_id=execution_attempt_id,
             step_run_id=step_run_id,

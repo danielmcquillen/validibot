@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from validibot_shared.canonicalization import compute_callback_nonce_commitment
 from validibot_shared.validations.envelopes import ValidationCallback
 from validibot_shared.validations.envelopes import ValidationStatus
 
@@ -22,13 +23,22 @@ from validibot.validations.services.cloud_run.launcher import (
 from validibot.validations.services.cloud_run.launcher import _attempt_execution_bundle
 from validibot.validations.services.cloud_run.launcher import _run_validator_job_safely
 from validibot.validations.services.create_only_storage import StorageConflictError
+from validibot.validations.services.execution_attempts import (
+    CallbackCredentialsAlreadyIssuedError,
+)
 from validibot.validations.services.execution_attempts import build_attempt_callback_id
 from validibot.validations.services.execution_attempts import (
     get_or_create_execution_attempt,
 )
+from validibot.validations.services.execution_attempts import (
+    issue_attempt_callback_credentials,
+)
 from validibot.validations.services.execution_attempts import resolve_callback_attempt
 from validibot.validations.services.execution_attempts import (
     transition_execution_attempt,
+)
+from validibot.validations.services.execution_attempts import (
+    verify_attempt_callback_nonce,
 )
 from validibot.validations.services.step_orchestrator import StepOrchestrator
 from validibot.validations.services.validation_callback import ValidationCallbackService
@@ -37,6 +47,8 @@ from validibot.validations.tests.factories import CallbackReceiptFactory
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
+
+TEST_CALLBACK_NONCE = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 
 
 @pytest.mark.django_db
@@ -109,6 +121,28 @@ class TestExecutionAttemptWriter:
             )
             is None
         )
+
+    def test_callback_credentials_are_issued_once_and_only_verifier_is_stored(self):
+        """An attempt must persist proof of the nonce without retaining it raw."""
+        attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.PENDING)
+
+        credentials = issue_attempt_callback_credentials(attempt)
+        attempt.refresh_from_db()
+
+        assert credentials.callback_id == build_attempt_callback_id(attempt)
+        assert credentials.callback_nonce not in attempt.callback_nonce_hash
+        assert credentials.callback_nonce not in repr(credentials)
+        assert credentials.callback_nonce_commitment == (
+            compute_callback_nonce_commitment(credentials.callback_nonce)
+        )
+        assert verify_attempt_callback_nonce(
+            attempt,
+            credentials.callback_nonce,
+        )
+        assert not verify_attempt_callback_nonce(attempt, TEST_CALLBACK_NONCE)
+
+        with pytest.raises(CallbackCredentialsAlreadyIssuedError):
+            issue_attempt_callback_credentials(attempt)
 
 
 @pytest.mark.django_db
@@ -282,6 +316,7 @@ class TestAttemptCallbackCompletion:
         callback = ValidationCallback(
             run_id=str(run.pk),
             callback_id=receipt.callback_id,
+            callback_nonce=TEST_CALLBACK_NONCE,
             status=ValidationStatus.SUCCESS,
             result_uri="gs://bucket/output.json",
         )

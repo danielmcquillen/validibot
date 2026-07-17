@@ -121,9 +121,9 @@ dependencies = [
   # 0.15.0 makes execution-attempt identity, the canonical input-envelope
   # digest, and the exact expected output URI mandatory across every advanced
   # validator input/output envelope.
-  # 0.16.0 requires every input, resource, output artifact, and ArtifactRef to
-  # carry its exact size, SHA-256, and immutable provider storage version.
-  "validibot-shared==0.16.0",
+  # 0.17.0 adds attempt-bound callback nonces and canonical public commitments
+  # to the strict file-identity contract introduced in 0.16.0.
+  "validibot-shared==0.17.0",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

@@ -39,6 +39,7 @@ class TestWorkerKeyAuthentication(TestCase):
             data={
                 "run_id": "00000000-0000-0000-0000-000000000000",
                 "callback_id": "test-callback-id",
+                "callback_nonce": ("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"),
                 "status": "success",
                 "result_uri": "gs://fake/output.json",
             },
@@ -129,6 +130,7 @@ class TestWorkerKeyAuthentication(TestCase):
             data={
                 "run_id": "00000000-0000-0000-0000-000000000000",
                 "callback_id": "test-callback-id",
+                "callback_nonce": ("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"),
                 "status": "success",
                 "result_uri": "gs://fake/output.json",
             },

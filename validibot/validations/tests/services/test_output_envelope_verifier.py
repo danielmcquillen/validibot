@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from validibot_shared.canonicalization import compute_callback_nonce_commitment
 from validibot_shared.canonicalization import sha256_hex_for_model
 from validibot_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
 from validibot_shared.validations.envelopes import ATTEMPT_CONTRACT_VERSION
@@ -50,7 +51,7 @@ def _expected() -> ExpectedOutputEnvelope:
         validator_type="ENERGYPLUS",
         step_run_id=STEP_RUN_ID,
         execution_attempt_id=ATTEMPT_ID,
-        attempt_contract_version="validibot.attempt.v1",
+        attempt_contract_version="validibot.attempt.v2",
         input_envelope_sha256=INPUT_SHA256,
         output_uri=OUTPUT_URI,
         envelope_class=EnergyPlusOutputEnvelope,
@@ -64,7 +65,7 @@ def _payload(**overrides) -> bytes:
         "run_id": RUN_ID,
         "step_run_id": STEP_RUN_ID,
         "execution_attempt_id": ATTEMPT_ID,
-        "attempt_contract_version": "validibot.attempt.v1",
+        "attempt_contract_version": "validibot.attempt.v2",
         "input_envelope_sha256": INPUT_SHA256,
         "output_uri": OUTPUT_URI,
         "validator": {
@@ -160,7 +161,7 @@ def test_output_cannot_change_its_validator_type() -> None:
         ),
         (
             "attempt_contract_version",
-            "validibot.attempt.v2",
+            "validibot.attempt.v1",
             "invalid_envelope",
         ),
         (
@@ -201,6 +202,7 @@ def test_verified_output_has_a_stable_canonical_digest() -> None:
 
 def test_shared_attempt_fixture_digest_matches_the_backend_contract() -> None:
     """Django dispatch hashing must match the literal pinned in every repo."""
+    callback_nonce = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
     envelope = ValidationInputEnvelope(
         run_id="run-fixture",
         validator={
@@ -233,10 +235,15 @@ def test_shared_attempt_fixture_digest_matches_the_backend_contract() -> None:
             "attempt_contract_version": ATTEMPT_CONTRACT_VERSION,
             "expected_output_uri": "gs://fixture/runs/run-fixture/output.json",
             "execution_bundle_uri": "gs://fixture/runs/run-fixture/",
-            "skip_callback": True,
+            "callback_url": "https://example.com/callback",
+            "callback_id": "execution-attempt-attempt-fixture",
+            "callback_nonce": callback_nonce,
+            "callback_nonce_commitment": compute_callback_nonce_commitment(
+                callback_nonce,
+            ),
         },
     )
 
     assert sha256_hex_for_model(envelope) == (
-        "e17c5dae05c58f4d6034806e3f5e7a7602013d03f27ec811a97a9fc49f9d88d5"
+        "a212b9aaad3aca508a88608d70fd75b5642a8c0e20876308887789dc5bbfb64d"
     )

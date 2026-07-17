@@ -62,7 +62,11 @@ if TYPE_CHECKING:
     from validibot.submissions.models import Submission
     from validibot.validations.models import Ruleset
     from validibot.validations.models import ValidationRun
+    from validibot.validations.models import ValidationStepRun
     from validibot.validations.models import Validator
+    from validibot.validations.services.execution_attempts import (
+        AttemptCallbackCredentials,
+    )
     from validibot.workflows.models import WorkflowStep
 
 logger = logging.getLogger(__name__)
@@ -279,14 +283,16 @@ class ProviderDispatchAmbiguousError(RuntimeError):
     """The provider call may have been accepted but returned no identity."""
 
 
-def _callback_id_for_step(step_run) -> str:
-    """Bind the callback to the step's one active execution attempt."""
+def _issue_callback_credentials_for_step(
+    step_run: ValidationStepRun,
+) -> AttemptCallbackCredentials:
+    """Issue callback credentials for the step's one active attempt."""
     from validibot.validations.services.execution_attempts import (
-        build_attempt_callback_id,
+        issue_attempt_callback_credentials,
     )
 
     attempt = _active_attempt_for_step(step_run)
-    return build_attempt_callback_id(attempt)
+    return issue_attempt_callback_credentials(attempt)
 
 
 def _run_validator_job_safely(
@@ -484,9 +490,9 @@ def launch_energyplus_validation(
             content_type=content_type,
         )
 
-        # 3. Build callback URL and idempotency key
+        # 3. Issue one callback credential set for this attempt.
         callback_url = build_validation_callback_url()
-        callback_id = _callback_id_for_step(current_step_run)
+        callback_credentials = _issue_callback_credentials_for_step(current_step_run)
 
         # 4. Build typed input envelope. The shared builder resolves declared
         # file ports when present and falls back to the historical
@@ -502,7 +508,9 @@ def launch_energyplus_validation(
         envelope = build_input_envelope(
             run=run,
             callback_url=callback_url,
-            callback_id=callback_id,
+            callback_id=callback_credentials.callback_id,
+            callback_nonce=callback_credentials.callback_nonce,
+            callback_nonce_commitment=(callback_credentials.callback_nonce_commitment),
             execution_bundle_uri=execution_bundle_uri,
             input_file_uris=input_file_uris,
         )
@@ -677,12 +685,7 @@ def launch_fmu_validation(
 
         callback_url = build_validation_callback_url()
 
-        # Generate deterministic idempotency key for callback deduplication.
-        # Using the step run ID ensures that retries use the same callback_id,
-        # allowing the callback receipt fencing to correctly identify and handle
-        # duplicate callbacks. Note: Job launch idempotency is handled by the
-        # check at step 0 above (checking step_run.output for existing job_name).
-        callback_id = _callback_id_for_step(current_step_run)
+        callback_credentials = _issue_callback_credentials_for_step(current_step_run)
 
         # Build envelope via the shared builder. This gets binding-aware
         # input resolution (StepInputBinding + resolve_path), proper
@@ -695,7 +698,9 @@ def launch_fmu_validation(
         envelope = build_input_envelope(
             run=run,
             callback_url=callback_url,
-            callback_id=callback_id,
+            callback_id=callback_credentials.callback_id,
+            callback_nonce=callback_credentials.callback_nonce,
+            callback_nonce_commitment=(callback_credentials.callback_nonce_commitment),
             execution_bundle_uri=execution_bundle_uri,
         )
 
@@ -879,9 +884,9 @@ def launch_shacl_validation(
                 uri=submission_uri,
             )
 
-        # 2. Callback + idempotency key.
+        # 2. Attempt-bound callback credentials.
         callback_url = build_validation_callback_url()
-        callback_id = _callback_id_for_step(current_step_run)
+        callback_credentials = _issue_callback_credentials_for_step(current_step_run)
 
         # 3. Build the typed envelope via the shared builder (SHACL branch reads
         # primary_file_uri from input_file_uris and resolves rulesets/assertions).
@@ -892,7 +897,9 @@ def launch_shacl_validation(
         envelope = build_input_envelope(
             run=run,
             callback_url=callback_url,
-            callback_id=callback_id,
+            callback_id=callback_credentials.callback_id,
+            callback_nonce=callback_credentials.callback_nonce,
+            callback_nonce_commitment=(callback_credentials.callback_nonce_commitment),
             execution_bundle_uri=execution_bundle_uri,
             input_file_uris={
                 "data_graph": submission_file,
@@ -1072,9 +1079,9 @@ def launch_schematron_validation(
                 uri=submission_uri,
             )
 
-        # 2. Callback + idempotency key.
+        # 2. Attempt-bound callback credentials.
         callback_url = build_validation_callback_url()
-        callback_id = _callback_id_for_step(current_step_run)
+        callback_credentials = _issue_callback_credentials_for_step(current_step_run)
 
         # 3. Build the typed envelope via the shared builder (the SCHEMATRON
         # branch resolves the rules text from the step's ruleset and ships
@@ -1086,7 +1093,9 @@ def launch_schematron_validation(
         envelope = build_input_envelope(
             run=run,
             callback_url=callback_url,
-            callback_id=callback_id,
+            callback_id=callback_credentials.callback_id,
+            callback_nonce=callback_credentials.callback_nonce,
+            callback_nonce_commitment=(callback_credentials.callback_nonce_commitment),
             execution_bundle_uri=execution_bundle_uri,
             input_file_uris={
                 "xml_document": submission_file,

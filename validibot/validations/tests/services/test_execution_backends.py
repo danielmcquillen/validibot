@@ -44,6 +44,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from validibot_shared.canonicalization import compute_callback_nonce_commitment
 from validibot_shared.validations.envelopes import ResourceFileItem
 from validibot_shared.validations.envelopes import SupportedMimeType
 
@@ -72,6 +73,11 @@ from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
+
+TEST_CALLBACK_NONCE = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+TEST_CALLBACK_NONCE_COMMITMENT = compute_callback_nonce_commitment(
+    TEST_CALLBACK_NONCE,
+)
 
 # ==============================================================================
 # Helpers
@@ -752,7 +758,7 @@ class TestDockerOutputEnvelopeReader:
                     "run_id": run_id or str(request.run.id),
                     "step_run_id": str(attempt.step_run_id),
                     "execution_attempt_id": str(attempt.pk),
-                    "attempt_contract_version": "validibot.attempt.v1",
+                    "attempt_contract_version": "validibot.attempt.v2",
                     "input_envelope_sha256": attempt.input_envelope_sha256,
                     "output_uri": attempt.output_envelope_uri,
                     "validator": {
@@ -912,6 +918,8 @@ class TestEnvelopeSkipCallback:
             ],
             callback_url="https://api.example.com/callbacks/",
             callback_id="cb-123",
+            callback_nonce=TEST_CALLBACK_NONCE,
+            callback_nonce_commitment=TEST_CALLBACK_NONCE_COMMITMENT,
             execution_bundle_uri="gs://bucket/runs/123/",
             execution_attempt_id="attempt-123",
             step_run_id="step-run-123",
@@ -957,6 +965,7 @@ class TestEnvelopeFileMetadata:
             resource_files=[_make_weather_resource()],
             callback_url="http://localhost/cb/",
             callback_id="cb-1",
+            skip_callback=True,
             execution_bundle_uri="file:///test/runs/1/",
             execution_attempt_id="attempt-1",
             step_run_id="step-run-1",
@@ -989,6 +998,7 @@ class TestEnvelopeFileMetadata:
             resource_files=[_make_weather_resource()],
             callback_url="http://localhost/cb/",
             callback_id="cb-1",
+            skip_callback=True,
             execution_bundle_uri="file:///test/runs/1/",
             execution_attempt_id="attempt-1",
             step_run_id="step-run-1",
@@ -1021,6 +1031,7 @@ class TestEnvelopeFileMetadata:
             ],
             callback_url="https://api.example.com/cb/",
             callback_id="cb-1",
+            skip_callback=True,
             execution_bundle_uri="gs://my-bucket/runs/org-1/run-2/",
             execution_attempt_id="attempt-1",
             step_run_id="step-run-1",
@@ -1051,6 +1062,7 @@ class TestEnvelopeFileMetadata:
             resource_files=[_make_weather_resource()],
             callback_url="http://localhost/cb/",
             callback_id="cb-1",
+            skip_callback=True,
             execution_bundle_uri="file:///test/runs/1/",
             execution_attempt_id="attempt-1",
             step_run_id="step-run-1",

@@ -18,10 +18,15 @@ from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationRun
 from validibot.validations.services.execution_attempts import build_attempt_callback_id
+from validibot.validations.services.execution_attempts import (
+    build_callback_nonce_verifier,
+)
 from validibot.validations.services.validation_callback import ValidationCallbackService
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
+
+TEST_CALLBACK_NONCE = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 
 
 @pytest.mark.django_db
@@ -50,6 +55,9 @@ class TestCallbackTerminalFencing:
         attempt = ExecutionAttemptFactory(
             step_run=step_run,
             state="RUNNING",
+            callback_nonce_hash=build_callback_nonce_verifier(
+                TEST_CALLBACK_NONCE,
+            ),
         )
         service = ValidationCallbackService()
 
@@ -58,6 +66,7 @@ class TestCallbackTerminalFencing:
                 payload={
                     "run_id": str(run.id),
                     "callback_id": build_attempt_callback_id(attempt),
+                    "callback_nonce": TEST_CALLBACK_NONCE,
                     "status": "success",
                     "result_uri": "gs://bucket/output.json",
                 }

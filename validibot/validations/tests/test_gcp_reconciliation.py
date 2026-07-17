@@ -17,6 +17,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 from django.test import override_settings
 from django.utils import timezone
+from validibot_shared.validations.envelopes import ValidationStatus
 
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
@@ -333,7 +334,7 @@ class TestMarkRunFailedFromGCP(SimpleTestCase):
 
 
 class TestReconcileRecoversLostCallback(SimpleTestCase):
-    """Test reconciliation recovers runs via synthetic callback."""
+    """Test reconciliation reuses completion without forging callback proof."""
 
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
     @patch(GCP_BACKEND_PATH)
@@ -353,7 +354,7 @@ class TestReconcileRecoversLostCallback(SimpleTestCase):
         mock_service = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_service.process.return_value = mock_response
+        mock_service.process_reconciliation.return_value = mock_response
         mock_callback_cls.return_value = mock_service
 
         run = _mock_run()
@@ -369,13 +370,14 @@ class TestReconcileRecoversLostCallback(SimpleTestCase):
             result = cmd._try_reconcile_gcp_run(run)
 
         assert result == "reconciled"
-        # Verify callback was called with correct payload
-        mock_service.process.assert_called_once()
-        call_kwargs = mock_service.process.call_args[1]
-        payload = call_kwargs["payload"]
-        assert payload["run_id"] == str(run.id)
-        assert payload["callback_id"] == (f"execution-attempt-{step_run.attempt.pk}")
-        assert payload["result_uri"] == "gs://bucket/runs/org/run-id/output.json"
+        # Trusted recovery passes the resolved attempt directly and does not
+        # invent an external callback nonce that reconciliation cannot know.
+        mock_service.process_reconciliation.assert_called_once_with(
+            run=run,
+            attempt=step_run.attempt,
+            callback_status=ValidationStatus.SUCCESS,
+            result_uri="gs://bucket/runs/org/run-id/output.json",
+        )
 
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
     @patch(GCP_BACKEND_PATH)
@@ -383,7 +385,7 @@ class TestReconcileRecoversLostCallback(SimpleTestCase):
     def test_reconcile_handles_callback_failure(
         self, mock_callback_cls, mock_backend_cls, mock_is_gcp
     ):
-        """Returns 'error' when the synthetic callback fails."""
+        """Trusted completion failures remain visible to the watchdog."""
         mock_backend = MagicMock()
         mock_backend.check_status.return_value = ExecutionResponse(
             execution_id="projects/p/locations/r/jobs/j/executions/e",
@@ -396,7 +398,7 @@ class TestReconcileRecoversLostCallback(SimpleTestCase):
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.data = {"error": "Internal server error"}
-        mock_service.process.return_value = mock_response
+        mock_service.process_reconciliation.return_value = mock_response
         mock_callback_cls.return_value = mock_service
 
         run = _mock_run()
@@ -596,7 +598,7 @@ class TestCommandHandle(SimpleTestCase):
         mock_service = MagicMock()
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_service.process.return_value = mock_response
+        mock_service.process_reconciliation.return_value = mock_response
         mock_callback_cls.return_value = mock_service
 
         run = _mock_run()
@@ -625,7 +627,7 @@ class TestCommandHandle(SimpleTestCase):
 
         output = out.getvalue()
         assert "Reconciled" in output
-        mock_service.process.assert_called_once()
+        mock_service.process_reconciliation.assert_called_once()
 
     @patch(f"{CMD_PATH}.ValidationRun")
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)

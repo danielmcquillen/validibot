@@ -7,14 +7,19 @@ dispatch code from inventing subtly different lifecycle rules.
 
 from __future__ import annotations
 
+import hmac
 import logging
+import secrets
 from dataclasses import dataclass
+from dataclasses import field
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
+from validibot_shared.canonicalization import compute_callback_nonce_commitment
 
 from validibot.core.textsafety import sanitize_plain_text
 from validibot.validations.constants import EXECUTION_ATTEMPT_ACTIVE_STATES
@@ -35,6 +40,10 @@ class InvalidExecutionAttemptTransitionError(ValueError):
     """A requested attempt state change violates the monotonic graph."""
 
 
+class CallbackCredentialsAlreadyIssuedError(RuntimeError):
+    """Callback credentials were already committed for this attempt."""
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderExecutionIdentity:
     """Provider address and workspace resolved from durable attempt storage."""
@@ -45,12 +54,89 @@ class ProviderExecutionIdentity:
     attempt: ExecutionAttempt
 
 
+@dataclass(frozen=True, slots=True)
+class AttemptCallbackCredentials:
+    """One-time callback values placed in an async attempt envelope.
+
+    The raw nonce is deliberately returned only to the caller constructing the
+    input envelope. Only its keyed verifier is persisted on ``ExecutionAttempt``.
+    """
+
+    callback_id: str
+    callback_nonce: str = field(repr=False)
+    callback_nonce_commitment: str
+
+
 ATTEMPT_CALLBACK_PREFIX = "execution-attempt-"
+CALLBACK_NONCE_VERIFIER_PREFIX = "hmac-sha256$"
+_CALLBACK_NONCE_HMAC_SALT = "validibot.validations.callback-nonce.v1"
+_CALLBACK_NONCE_BYTES = 32
 
 
 def build_attempt_callback_id(attempt: ExecutionAttempt) -> str:
     """Return the opaque callback id that binds delivery to one attempt."""
     return f"{ATTEMPT_CALLBACK_PREFIX}{attempt.pk}"
+
+
+def build_callback_nonce_verifier(callback_nonce: str) -> str:
+    """Build the keyed verifier stored for a raw callback nonce.
+
+    This verifier is intentionally distinct from the public commitment in the
+    canonical input envelope. The HMAC prevents a database-only compromise
+    from supplying a valid verifier for an attacker-chosen callback nonce.
+    """
+    if not callback_nonce:
+        msg = "Callback nonce cannot be empty"
+        raise ValueError(msg)
+    digest = salted_hmac(
+        _CALLBACK_NONCE_HMAC_SALT,
+        callback_nonce,
+        algorithm="sha256",
+    ).hexdigest()
+    return f"{CALLBACK_NONCE_VERIFIER_PREFIX}{digest}"
+
+
+def verify_attempt_callback_nonce(
+    attempt: ExecutionAttempt,
+    callback_nonce: str | None,
+) -> bool:
+    """Verify a callback nonce against an attempt without exposing its secret."""
+    stored_verifier = attempt.callback_nonce_hash
+    if not callback_nonce or not stored_verifier.startswith(
+        CALLBACK_NONCE_VERIFIER_PREFIX,
+    ):
+        return False
+    expected = build_callback_nonce_verifier(callback_nonce)
+    return hmac.compare_digest(stored_verifier, expected)
+
+
+def issue_attempt_callback_credentials(
+    attempt: ExecutionAttempt,
+) -> AttemptCallbackCredentials:
+    """Issue and durably bind one callback secret to an async attempt.
+
+    Issuance is a one-time operation. A second caller cannot rotate the nonce
+    after an input envelope may already have been materialized for this
+    attempt; it must converge on the existing launch or allocate a new attempt.
+    """
+    from validibot.validations.models import ExecutionAttempt
+
+    callback_nonce = secrets.token_urlsafe(_CALLBACK_NONCE_BYTES)
+    callback_nonce_hash = build_callback_nonce_verifier(callback_nonce)
+    updated = ExecutionAttempt.objects.filter(
+        pk=attempt.pk,
+        callback_nonce_hash="",
+    ).update(callback_nonce_hash=callback_nonce_hash)
+    if updated != 1:
+        raise CallbackCredentialsAlreadyIssuedError(
+            f"Execution attempt {attempt.pk} already has callback credentials",
+        )
+    attempt.callback_nonce_hash = callback_nonce_hash
+    return AttemptCallbackCredentials(
+        callback_id=build_attempt_callback_id(attempt),
+        callback_nonce=callback_nonce,
+        callback_nonce_commitment=compute_callback_nonce_commitment(callback_nonce),
+    )
 
 
 def resolve_callback_attempt(

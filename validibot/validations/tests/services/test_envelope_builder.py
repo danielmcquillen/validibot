@@ -24,6 +24,7 @@ from types import SimpleNamespace
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from validibot_shared.canonicalization import compute_callback_nonce_commitment
 from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 from validibot_shared.schematron.envelopes import SchematronInputEnvelope
 from validibot_shared.shacl.envelopes import SHACLInputEnvelope
@@ -74,6 +75,11 @@ from validibot.workflows.tests.factories import WorkflowStepResourceFactory
 
 pytestmark = pytest.mark.django_db
 
+TEST_CALLBACK_NONCE = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+TEST_CALLBACK_NONCE_COMMITMENT = compute_callback_nonce_commitment(
+    TEST_CALLBACK_NONCE,
+)
+
 
 # ==============================================================================
 # Helpers
@@ -123,6 +129,14 @@ def _build_test_input_envelope(
         key: value if isinstance(value, FileIdentity) else _file_identity(value)
         for key, value in (resource_uri_overrides or {}).items()
     }
+    if kwargs.get("callback_id"):
+        kwargs.setdefault("callback_nonce", TEST_CALLBACK_NONCE)
+        kwargs.setdefault(
+            "callback_nonce_commitment",
+            TEST_CALLBACK_NONCE_COMMITMENT,
+        )
+    else:
+        kwargs.setdefault("skip_callback", True)
     return _build_input_envelope(
         run,
         input_file_uris=input_files,
@@ -172,12 +186,18 @@ def _build_envelope(validator=None, **overrides) -> EnergyPlusInputEnvelope:
         "resource_files": [_make_weather_resource()],
         "callback_url": "https://api.example.com/callbacks/",
         "callback_id": "cb-test-123",
+        "callback_nonce": TEST_CALLBACK_NONCE,
+        "callback_nonce_commitment": TEST_CALLBACK_NONCE_COMMITMENT,
         "execution_bundle_uri": "gs://test-bucket/runs/run-123/",
         "execution_attempt_id": "attempt-123",
         "step_run_id": "step-run-123",
         "expected_output_uri": "gs://test-bucket/runs/run-123/output.json",
     }
     defaults.update(overrides)
+    if defaults["callback_id"] is None:
+        defaults["callback_nonce"] = None
+        defaults["callback_nonce_commitment"] = None
+        defaults["skip_callback"] = True
     return build_energyplus_input_envelope(**defaults)
 
 

@@ -38,6 +38,9 @@ from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.execution_attempts import build_attempt_callback_id
+from validibot.validations.services.execution_attempts import (
+    build_callback_nonce_verifier,
+)
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
@@ -47,6 +50,7 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 # Bucket the deployment is configured to read run bundles from. The allowlist
 # pins callback result URIs to this bucket; anything else must be rejected.
 ALLOWED_BUCKET = "validibot-validation-bucket"
+TEST_CALLBACK_NONCE = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 
 
 @override_settings(
@@ -94,6 +98,9 @@ class CallbackResultUriAllowlistTestCase(TestCase):
         self.attempt = ExecutionAttemptFactory(
             step_run=self.step_run,
             state="RUNNING",
+            callback_nonce_hash=build_callback_nonce_verifier(
+                TEST_CALLBACK_NONCE,
+            ),
         )
         self.callback_id = build_attempt_callback_id(self.attempt)
 
@@ -112,7 +119,7 @@ class CallbackResultUriAllowlistTestCase(TestCase):
         mock_envelope.run_id = str(self.run.id)
         mock_envelope.step_run_id = str(self.step_run.pk)
         mock_envelope.execution_attempt_id = str(self.attempt.pk)
-        mock_envelope.attempt_contract_version = "validibot.attempt.v1"
+        mock_envelope.attempt_contract_version = "validibot.attempt.v2"
         mock_envelope.input_envelope_sha256 = self.attempt.input_envelope_sha256
         mock_envelope.output_uri = self.attempt.output_envelope_uri
         mock_envelope.timing = MagicMock()
@@ -145,6 +152,7 @@ class CallbackResultUriAllowlistTestCase(TestCase):
             data={
                 "run_id": str(self.run.id),
                 "callback_id": self.callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": hostile_uri,
             },
@@ -173,6 +181,7 @@ class CallbackResultUriAllowlistTestCase(TestCase):
             data={
                 "run_id": str(self.run.id),
                 "callback_id": self.callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": other_attempt_uri,
             },
@@ -202,6 +211,7 @@ class CallbackResultUriAllowlistTestCase(TestCase):
             data={
                 "run_id": str(self.run.id),
                 "callback_id": self.callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": legit_uri,
             },

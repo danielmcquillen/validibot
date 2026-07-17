@@ -27,6 +27,9 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidationFinding
 from validibot.validations.services.execution_attempts import build_attempt_callback_id
+from validibot.validations.services.execution_attempts import (
+    build_callback_nonce_verifier,
+)
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
@@ -35,6 +38,8 @@ from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
+
+TEST_CALLBACK_NONCE = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 
 
 class CallbackAssertionEvaluationTests(TestCase):
@@ -89,6 +94,9 @@ class CallbackAssertionEvaluationTests(TestCase):
         self.attempt = ExecutionAttemptFactory(
             step_run=self.step_run,
             state="RUNNING",
+            callback_nonce_hash=build_callback_nonce_verifier(
+                TEST_CALLBACK_NONCE,
+            ),
             output_envelope_uri="gs://bucket/runs/output.json",
         )
         self.callback_id = build_attempt_callback_id(self.attempt)
@@ -153,7 +161,7 @@ class CallbackAssertionEvaluationTests(TestCase):
         mock_envelope.run_id = resolved_run_id
         mock_envelope.step_run_id = str(resolved_attempt.step_run_id)
         mock_envelope.execution_attempt_id = str(resolved_attempt.pk)
-        mock_envelope.attempt_contract_version = "validibot.attempt.v1"
+        mock_envelope.attempt_contract_version = "validibot.attempt.v2"
         mock_envelope.input_envelope_sha256 = resolved_attempt.input_envelope_sha256
         mock_envelope.output_uri = resolved_attempt.output_envelope_uri
         mock_envelope.timing = MockTiming()
@@ -199,6 +207,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             data={
                 "run_id": str(self.run.id),
                 "callback_id": callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": "gs://bucket/runs/output.json",
             },
@@ -250,6 +259,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             data={
                 "run_id": str(self.run.id),
                 "callback_id": callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": "gs://bucket/runs/output.json",
             },
@@ -315,6 +325,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             data={
                 "run_id": str(self.run.id),
                 "callback_id": callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": "gs://bucket/runs/output.json",
             },
@@ -393,6 +404,9 @@ class CallbackAssertionEvaluationTests(TestCase):
         system_attempt = ExecutionAttemptFactory(
             step_run=system_step_run,
             state="RUNNING",
+            callback_nonce_hash=build_callback_nonce_verifier(
+                TEST_CALLBACK_NONCE,
+            ),
             output_envelope_uri="gs://bucket/runs/output.json",
         )
 
@@ -415,6 +429,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             data={
                 "run_id": str(system_run.id),
                 "callback_id": callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": "gs://bucket/runs/output.json",
             },
@@ -471,6 +486,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             data={
                 "run_id": str(self.run.id),
                 "callback_id": callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": "gs://bucket/runs/output.json",
             },
@@ -521,6 +537,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             data={
                 "run_id": str(self.run.id),
                 "callback_id": callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": "gs://bucket/runs/output.json",
             },
@@ -578,6 +595,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             data={
                 "run_id": str(self.run.id),
                 "callback_id": callback_id,
+                "callback_nonce": TEST_CALLBACK_NONCE,
                 "status": "success",
                 "result_uri": "gs://bucket/runs/output.json",
             },

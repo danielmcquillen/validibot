@@ -8,8 +8,8 @@ status longer than a threshold and handles them.
 
 For GCP deployments, the command first attempts **reconciliation**: it queries
 the Cloud Run Jobs API to determine whether the job actually completed. If the
-job succeeded but the callback was lost, it recovers the run by constructing a
-synthetic callback and processing it through the normal callback pipeline. This
+job succeeded but the callback was lost, trusted reconciliation processes the
+durable attempt through the normal callback completion pipeline. This
 preserves validation results that would otherwise be lost.
 
 If reconciliation is not possible (non-GCP deployment or API errors), or the
@@ -367,7 +367,7 @@ class Command(BaseCommand):
             )
             return "error"
 
-        # Job succeeded — attempt to recover via synthetic callback
+        # Job succeeded — recover through the trusted completion entry point.
         if dry_run:
             self.stdout.write(
                 f"  [RECONCILE-OK] {run.id}: Cloud Run job succeeded, "
@@ -480,11 +480,11 @@ class Command(BaseCommand):
         attempt,
     ) -> str:
         """
-        Recover a completed GCP run by processing a synthetic callback.
+        Recover a completed GCP run through trusted reconciliation.
 
-        The Cloud Run Job succeeded but the callback was lost. We construct
-        a synthetic callback payload and process it through the normal
-        ValidationCallbackService pipeline, which handles:
+        The Cloud Run Job succeeded but the callback was lost. We pass the
+        already-resolved attempt through the normal ValidationCallbackService
+        completion pipeline, which handles:
         - Idempotency (via CallbackReceipt)
         - Envelope download
         - Finding persistence and assertion evaluation
@@ -506,21 +506,7 @@ class Command(BaseCommand):
             )
             return "error"
 
-        # Build a synthetic callback payload
         from validibot_shared.validations.envelopes import ValidationStatus
-
-        from validibot.validations.services.execution_attempts import (
-            build_attempt_callback_id,
-        )
-
-        callback_id = build_attempt_callback_id(attempt)
-
-        callback_payload = {
-            "run_id": str(run.id),
-            "callback_id": callback_id,
-            "status": ValidationStatus.SUCCESS,
-            "result_uri": result_uri,
-        }
 
         try:
             from validibot.validations.services.validation_callback import (
@@ -528,17 +514,22 @@ class Command(BaseCommand):
             )
 
             service = ValidationCallbackService()
-            response = service.process(payload=callback_payload)
+            response = service.process_reconciliation(
+                run=run,
+                attempt=attempt,
+                callback_status=ValidationStatus.SUCCESS,
+                result_uri=result_uri,
+            )
 
             if response.status_code == HTTPStatus.OK:
                 logger.info(
-                    "Successfully reconciled run %s via synthetic callback",
+                    "Successfully reconciled run %s via trusted recovery",
                     run.id,
                 )
                 return "reconciled"
 
             logger.warning(
-                "Synthetic callback returned status %d for run %s: %s",
+                "Trusted reconciliation returned status %d for run %s: %s",
                 response.status_code,
                 run.id,
                 response.data,
@@ -547,7 +538,7 @@ class Command(BaseCommand):
 
         except Exception:
             logger.exception(
-                "Failed to recover run %s via synthetic callback",
+                "Failed to recover run %s via trusted reconciliation",
                 run.id,
             )
             return "error"

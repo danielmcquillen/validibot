@@ -46,16 +46,18 @@ Used for Docker Compose deployments where validators run as local Docker contain
 
 ```
 1. Validator calls backend.execute(request)
-2. Backend writes input envelope to local storage (file:// URI)
-3. Backend spawns Docker container and waits for completion
-4. Backend reads output envelope from local storage
-5. Returns complete ExecutionResponse with results
+2. Backend creates ``runs/<org>/<run>/attempts/<attempt>/`` in local storage
+3. Backend mounts only that attempt's input (read-only) and output (read-write)
+4. Backend spawns the Docker container and waits for completion
+5. Backend verifies the attempt-bound output envelope
+6. Returns complete ExecutionResponse with results
 ```
 
 **Characteristics:**
 
 - Blocking call — validation completes before returning
 - Simple deployment — just Docker and shared volumes
+- Retry-safe — every execution attempt receives a fresh workspace
 - Resource limits enforced via Docker
 - Container cleanup handled by labels (Ryuk pattern)
 
@@ -65,7 +67,8 @@ Used for GCP deployments where validators run as Cloud Run Jobs.
 
 ```
 1. Validator calls backend.execute(request)
-2. Backend uploads input envelope to GCS (gs:// URI)
+2. Backend uploads inputs below
+   ``gs://<bucket>/runs/<org>/<run>/attempts/<attempt>/``
 3. Backend triggers Cloud Run Job (non-blocking)
 4. Returns ExecutionResponse with is_complete=False
 5. Container POSTs callback to Django when complete
@@ -76,6 +79,7 @@ Used for GCP deployments where validators run as Cloud Run Jobs.
 
 - Non-blocking — validation runs in background
 - Scalable — Cloud Run handles concurrency
+- Retry-safe — attempts never share an object prefix
 - Callback-based — results arrive via authenticated HTTP POST
 - IAM-secured — no shared secrets, Google-signed ID tokens
 
@@ -164,14 +168,14 @@ else:
 │  │  Django + Worker │    │  Validator Container            │    │
 │  │                  │    │  ($GCP_APP_NAME-validator-X)    │    │
 │  │  - Web app       │───▶│                                 │    │
-│  │  - Celery        │    │  Reads: file:///input           │    │
-│  │                  │◀───│  Writes: file:///output         │    │
+│  │  - Celery        │    │  Reads: attempt input mount     │    │
+│  │                  │◀───│  Writes: attempt output mount   │    │
 │  └──────────────────┘    └─────────────────────────────────┘    │
 │           │                         │                            │
 │           ▼                         ▼                            │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │              Shared Storage Volume                       │   │
-│  │              /app/storage (Docker volume)                │   │
+│  │  Worker storage volume                                   │   │
+│  │  validator sees only one attempt's input and output      │   │
 │  └──────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -199,13 +203,13 @@ By default, advanced validator containers run with **no network access** (`netwo
 
 - Containers cannot reach other services (web, database, redis)
 - Containers cannot access the internet
-- All I/O happens via the shared storage volume
+- All I/O happens through one attempt-specific pair of mounts
 
 This works because:
 
-1. Input files are written to the shared volume before the container starts
-2. The container reads inputs and writes outputs to the same volume
-3. The worker reads the output after the container exits
+1. Input files are materialized below the attempt's private workspace
+2. Docker exposes only that attempt's input and output directories
+3. The worker verifies the output after the container exits
 
 **When to enable network access:**
 

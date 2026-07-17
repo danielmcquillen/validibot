@@ -10,9 +10,9 @@ The tests assert two properties of the ``volumes`` dict the runner
 hands to the Docker SDK:
 
 1. **When a workspace is provided**, the dict contains exactly two
-   entries — the per-run ``input/`` directory mounted read-only at
-   ``/validibot/input``, and the per-run ``output/`` directory mounted
-   read-write at ``/validibot/output``. Nothing else; in particular,
+   entries — the per-attempt ``input/`` directory mounted read-only and the
+   per-attempt ``output/`` directory mounted read-write. Nothing else;
+   in particular,
    no entry for the global ``DATA_STORAGE_ROOT``.
 2. **When a workspace is not provided**, the runner falls back to the
    legacy global mount and logs a warning. This path remains for tests
@@ -47,8 +47,6 @@ from unittest.mock import patch
 
 import pytest
 
-from validibot.validations.services.run_workspace import CONTAINER_INPUT_DIR
-from validibot.validations.services.run_workspace import CONTAINER_OUTPUT_DIR
 from validibot.validations.services.run_workspace import MaterializedFile
 from validibot.validations.services.run_workspace import RunWorkspace
 
@@ -85,19 +83,21 @@ def _make_workspace(tmp_path: Path) -> RunWorkspace:
     real materialised files here — the tests assert on the *volumes
     dict* the runner builds, not on the contents of the dirs.
     """
-    host_input = tmp_path / "runs" / "org-1" / "run-aaa" / "input"
-    host_output = tmp_path / "runs" / "org-1" / "run-aaa" / "output"
+    attempt_dir = tmp_path / "runs" / "org-1" / "run-aaa" / "attempts" / "attempt-111"
+    host_input = attempt_dir / "input"
+    host_output = attempt_dir / "output"
     host_input.mkdir(parents=True, exist_ok=True)
     host_output.mkdir(parents=True, exist_ok=True)
     return RunWorkspace(
         run_id="run-aaa",
         org_id="org-1",
+        attempt_id="attempt-111",
         host_input_dir=host_input,
         host_output_dir=host_output,
         primary_file=MaterializedFile(
             name="model.idf",
             host_path=host_input / "model.idf",
-            container_uri=f"file://{CONTAINER_INPUT_DIR}/model.idf",
+            container_uri=("file:///validibot/attempts/attempt-111/input/model.idf"),
         ),
     )
 
@@ -107,7 +107,7 @@ def _make_workspace(tmp_path: Path) -> RunWorkspace:
 
 class TestWorkspaceMounts:
     """The volumes dict, when a workspace is provided, must mount only
-    the per-run input (ro) and output (rw) directories. Nothing else.
+    the per-attempt input (ro) and output (rw) directories. Nothing else.
     A regression here means we re-introduced cross-run filesystem
     visibility — exactly the bug Phase 1 exists to fix."""
 
@@ -135,7 +135,7 @@ class TestWorkspaceMounts:
 
         volumes = mock_client.containers.run.call_args[1]["volumes"]
         input_entry = volumes[str(workspace.host_input_dir)]
-        assert input_entry["bind"] == CONTAINER_INPUT_DIR
+        assert input_entry["bind"] == workspace.container_input_dir
         assert input_entry["mode"] == "ro", (
             "input/ must be read-only or the read-only invariant fails"
         )
@@ -164,7 +164,7 @@ class TestWorkspaceMounts:
 
         volumes = mock_client.containers.run.call_args[1]["volumes"]
         output_entry = volumes[str(workspace.host_output_dir)]
-        assert output_entry["bind"] == CONTAINER_OUTPUT_DIR
+        assert output_entry["bind"] == workspace.container_output_dir
         assert output_entry["mode"] == "rw"
 
     def test_no_global_storage_root_mount_when_workspace_provided(
@@ -365,17 +365,21 @@ class TestDinDPathTranslation:
 
         # Build a workspace whose host_input/host_output live under the
         # storage mount path that the worker sees.
-        worker_input = Path("/app/storage/runs/org-1/run-aaa/input")
-        worker_output = Path("/app/storage/runs/org-1/run-aaa/output")
+        worker_attempt = Path("/app/storage/runs/org-1/run-aaa/attempts/attempt-111")
+        worker_input = worker_attempt / "input"
+        worker_output = worker_attempt / "output"
         workspace = RunWorkspace(
             run_id="run-aaa",
             org_id="org-1",
+            attempt_id="attempt-111",
             host_input_dir=worker_input,
             host_output_dir=worker_output,
             primary_file=MaterializedFile(
                 name="model.idf",
                 host_path=worker_input / "model.idf",
-                container_uri=f"file://{CONTAINER_INPUT_DIR}/model.idf",
+                container_uri=(
+                    "file:///validibot/attempts/attempt-111/input/model.idf"
+                ),
             ),
         )
 
@@ -400,17 +404,19 @@ class TestDinDPathTranslation:
         volumes = mock_client.containers.run.call_args[1]["volumes"]
 
         expected_host_input = (
-            "/var/lib/docker/volumes/test_storage/_data/runs/org-1/run-aaa/input"
+            "/var/lib/docker/volumes/test_storage/_data/runs/org-1/run-aaa/"
+            "attempts/attempt-111/input"
         )
         expected_host_output = (
-            "/var/lib/docker/volumes/test_storage/_data/runs/org-1/run-aaa/output"
+            "/var/lib/docker/volumes/test_storage/_data/runs/org-1/run-aaa/"
+            "attempts/attempt-111/output"
         )
 
         # The worker-side path must NOT appear in the volumes dict —
         # if it did, the Docker daemon would try to bind a path that
         # doesn't exist outside the worker's mount namespace.
-        assert "/app/storage/runs/org-1/run-aaa/input" not in volumes
-        assert "/app/storage/runs/org-1/run-aaa/output" not in volumes
+        assert str(worker_input) not in volumes
+        assert str(worker_output) not in volumes
 
         assert expected_host_input in volumes
         assert volumes[expected_host_input]["mode"] == "ro"
@@ -429,12 +435,13 @@ class TestDinDPathTranslation:
         workspace = RunWorkspace(
             run_id="r",
             org_id="o",
+            attempt_id="attempt-111",
             host_input_dir=outside_path / "input",
             host_output_dir=outside_path / "output",
             primary_file=MaterializedFile(
                 name="m.idf",
                 host_path=outside_path / "input" / "m.idf",
-                container_uri=f"file://{CONTAINER_INPUT_DIR}/m.idf",
+                container_uri=("file:///validibot/attempts/attempt-111/input/m.idf"),
             ),
         )
         (outside_path / "input").mkdir()

@@ -253,10 +253,10 @@ def resolve_step_resources(
             workspace-aware path used by the local Docker dispatch:
             ``WorkflowStepResource.get_storage_uri()`` returns
             ``MEDIA_ROOT``-rooted host paths that are not visible inside
-            the per-run container, so the dispatch layer materialises
+            the attempt-scoped container, so the dispatch layer materialises
             each resource into the workspace and overrides the URI
             here to point at
-            ``file:///validibot/input/resources/<filename>``. Cloud Run
+            the resource below the attempt's container input path. Cloud Run
             leaves this argument as ``None`` and gets the original
             ``gs://`` URI from the model.
 
@@ -279,7 +279,7 @@ def resolve_step_resources(
             resource_type = sr.resource_type
 
         # Workspace-aware override: when the local Docker dispatch
-        # materialises the resource into the per-run workspace, it
+        # materialises the resource into the per-attempt workspace, it
         # supplies the container-visible URI here so the validator
         # backend resolves to the mounted path rather than the host
         # ``MEDIA_ROOT`` path that lives outside the container's mount
@@ -1112,18 +1112,18 @@ def build_input_envelope(
         run: ValidationRun Django model instance
         callback_url: Django callback endpoint URL
         callback_id: Unique identifier for idempotent callback processing
-        execution_bundle_uri: Directory URI for this run's files. For
-            the local Docker dispatch path, this is the container path
-            (``file:///validibot/output``); for Cloud Run it is the
-            per-job ``gs://`` prefix.
+        execution_bundle_uri: Directory URI for this attempt's files. For
+            local Docker this is the attempt-specific container output path;
+            for Cloud Run it is the attempt-specific ``gs://`` prefix.
         skip_callback: If True, container won't POST callback after completion.
             Used for synchronous execution where results are read directly.
         input_file_uris: Optional dict of file role to URI (e.g.,
-            ``{'primary_file_uri': 'file:///validibot/input/model.idf'}``).
+            ``{'primary_file_uri':
+            'file:///validibot/attempts/<attempt>/input/model.idf'}``).
             If provided, these override values from ``step.config``. Recognised
             roles: ``primary_file_uri`` (EnergyPlus model file),
             ``fmu_model_uri`` (FMU model file). Used by the local Docker
-            dispatch to point input files at the per-run mount path.
+            dispatch to point input files at the per-attempt mount path.
         resource_uri_overrides: Optional mapping of ``resource_id`` to
             a container-visible URI for resource files (weather data,
             FMU dependencies, etc.). Used by the local Docker dispatch

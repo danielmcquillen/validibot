@@ -11,8 +11,9 @@ result-substitution primitive.
 
 ``ValidationCallbackService._validate_result_uri_allowlist`` closes that gap:
 when ``GCS_VALIDATION_BUCKET`` is configured (the real async/GCS path), the
-``result_uri`` must be a ``gs://`` URI in that bucket and under the run's
-deterministic prefix ``runs/<org_id>/<run_id>/`` that the launcher writes.
+``result_uri`` must be a ``gs://`` URI in that bucket and under the attempt's
+deterministic prefix
+``runs/<org_id>/<run_id>/attempts/<attempt_id>/`` that the launcher writes.
 
 These tests matter because they pin the security boundary directly at the HTTP
 edge: a mismatching URI must be rejected *before* ``download_envelope`` is ever
@@ -22,6 +23,7 @@ must still flow through normally so we don't break real EnergyPlus/FMU callbacks
 
 from unittest.mock import MagicMock
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.test import TestCase
 from django.test import override_settings
@@ -54,7 +56,7 @@ ALLOWED_BUCKET = "validibot-validation-bucket"
 )
 class CallbackResultUriAllowlistTestCase(TestCase):
     """
-    Verify the callback handler pins ``result_uri`` to the run's own GCS prefix.
+    Verify the callback handler pins ``result_uri`` to the attempt's GCS prefix.
 
     We build a single async (EnergyPlus) step in RUNNING state — the exact shape
     that finishes via ``/api/v1/validation-callbacks/`` — and then exercise both
@@ -95,8 +97,10 @@ class CallbackResultUriAllowlistTestCase(TestCase):
         )
         self.callback_id = build_attempt_callback_id(self.attempt)
 
-        # The deterministic, per-run prefix the launcher writes bundles under.
-        self.run_prefix = f"runs/{self.run.org_id}/{self.run.id}"
+        # The deterministic attempt prefix the launcher writes bundles under.
+        self.attempt_prefix = (
+            f"runs/{self.run.org_id}/{self.run.id}/attempts/{self.attempt.pk}"
+        )
 
     def _make_mock_envelope(self) -> MagicMock:
         """Build a minimal valid output envelope for the happy-path call."""
@@ -120,7 +124,7 @@ class CallbackResultUriAllowlistTestCase(TestCase):
         return mock_envelope
 
     @patch("validibot.validations.services.validation_callback.download_envelope")
-    def test_result_uri_outside_run_prefix_is_rejected_without_gcs_access(
+    def test_result_uri_outside_attempt_prefix_is_rejected_without_gcs_access(
         self,
         mock_download,
     ):
@@ -155,16 +159,40 @@ class CallbackResultUriAllowlistTestCase(TestCase):
         self.assertEqual(self.run.status, ValidationRunStatus.RUNNING)
 
     @patch("validibot.validations.services.validation_callback.download_envelope")
-    def test_result_uri_within_run_prefix_is_accepted(self, mock_download):
+    def test_result_uri_for_another_attempt_is_rejected(self, mock_download):
+        """A same-run URI still fails when it names another attempt prefix."""
+        other_attempt_uri = (
+            f"gs://{ALLOWED_BUCKET}/runs/{self.run.org_id}/{self.run.id}/"
+            f"attempts/{uuid4()}/output.json"
+        )
+        self.attempt.output_envelope_uri = other_attempt_uri
+        self.attempt.save(update_fields=["output_envelope_uri"])
+
+        response = self.client.post(
+            self.callback_url,
+            data={
+                "run_id": str(self.run.id),
+                "callback_id": self.callback_id,
+                "status": "success",
+                "result_uri": other_attempt_uri,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_download.assert_not_called()
+
+    @patch("validibot.validations.services.validation_callback.download_envelope")
+    def test_result_uri_within_attempt_prefix_is_accepted(self, mock_download):
         """
-        A ``result_uri`` in the configured bucket under the run's own prefix passes.
+        A ``result_uri`` in the configured bucket under the attempt prefix passes.
 
         This guards against an over-eager allowlist breaking real EnergyPlus/FMU
-        callbacks: the legitimate per-run path must still flow through to
+        callbacks: the legitimate attempt path must still flow through to
         ``download_envelope`` and complete the run normally.
         """
         mock_download.return_value = self._make_mock_envelope()
-        legit_uri = f"gs://{ALLOWED_BUCKET}/{self.run_prefix}/output.json"
+        legit_uri = f"gs://{ALLOWED_BUCKET}/{self.attempt_prefix}/output.json"
         self.attempt.output_envelope_uri = legit_uri
         self.attempt.save(update_fields=["output_envelope_uri"])
         mock_download.return_value.output_uri = legit_uri

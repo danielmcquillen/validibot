@@ -1,10 +1,10 @@
-"""Tests for the per-run workspace builder.
+"""Tests for the per-attempt workspace builder.
 
-Covers ADR-2026-04-27 ``[trust-#4]`` Phase 1 Slice 1: the
-:class:`RunWorkspaceBuilder` materialises ``runs/<org>/<run>/{input,output}/``
-on the host with the right modes, copies the primary submission file and
-resource files into ``input/``, and exposes both host paths and
-container-visible URIs through the returned :class:`RunWorkspace`.
+Covers the ADR-2026-04-27 narrow-mount boundary plus ADR-2026-07-10's retry
+isolation: :class:`RunWorkspaceBuilder` materialises
+``runs/<org>/<run>/attempts/<attempt>/{input,output}/`` on the host with the
+right modes, copies the required files into ``input/``, and exposes matching
+attempt-specific container URIs through :class:`RunWorkspace`.
 
 What we're testing here, and why
 --------------------------------
@@ -37,9 +37,8 @@ import os
 import pytest
 
 from validibot.core.storage.local import LocalDataStorage
+from validibot.validations.services.run_workspace import CONTAINER_ATTEMPTS_DIR
 from validibot.validations.services.run_workspace import CONTAINER_GID
-from validibot.validations.services.run_workspace import CONTAINER_INPUT_DIR
-from validibot.validations.services.run_workspace import CONTAINER_OUTPUT_DIR
 from validibot.validations.services.run_workspace import CONTAINER_UID
 from validibot.validations.services.run_workspace import INPUT_DIR_MODE
 from validibot.validations.services.run_workspace import INPUT_FILE_MODE
@@ -95,6 +94,7 @@ class TestLayoutAndModes:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
@@ -111,6 +111,7 @@ class TestLayoutAndModes:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
@@ -133,6 +134,7 @@ class TestLayoutAndModes:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
             resource_files=[
@@ -161,6 +163,7 @@ class TestLayoutAndModes:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
@@ -196,6 +199,7 @@ class TestLayoutAndModes:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
@@ -225,6 +229,7 @@ class TestLayoutAndModes:
             ws = builder.build(
                 org_id="org-1",
                 run_id="run-aaa",
+                attempt_id="attempt-111",
                 primary_filename="model.idf",
                 primary_content=primary_content,
             )
@@ -253,6 +258,7 @@ class TestMaterialization:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
@@ -276,6 +282,7 @@ class TestMaterialization:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
             resource_files=[
@@ -308,6 +315,7 @@ class TestMaterialization:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
             resource_files=[
@@ -334,6 +342,7 @@ class TestMaterialization:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
             resource_files=[
@@ -355,6 +364,7 @@ class TestMaterialization:
             builder.build(
                 org_id="org-1",
                 run_id="run-aaa",
+                attempt_id="attempt-111",
                 primary_filename="model.idf",
                 primary_content=primary_content,
                 resource_files=[
@@ -366,26 +376,23 @@ class TestMaterialization:
             )
 
     def test_idempotent_rebuild_overwrites_input(self, builder, primary_content):
-        """Re-running the builder for the same run is allowed and
-        overwrites input contents. This matters for retries that run
-        preprocessing again (e.g. EnergyPlus template resolution might
-        produce different bytes on a second attempt with updated
-        signals). The output dir is left alone so a previous attempt's
-        artifacts remain inspectable for support."""
+        """Repeated preparation of the same unclaimed attempt is idempotent."""
         ws_first = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=b"version 1",
         )
-        # Pretend the previous run wrote some output we don't want to
-        # accidentally clobber.
+        # Preparation does not silently delete files already associated with
+        # the same attempt; lifecycle fencing prevents that attempt relaunching.
         leftover = ws_first.host_output_dir / "output.json"
         leftover.write_bytes(b"previous run output")
 
         ws_second = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=b"version 2",
         )
@@ -393,6 +400,30 @@ class TestMaterialization:
         assert ws_second.primary_file.host_path.read_bytes() == b"version 2"
         # The output dir contents are preserved across rebuilds.
         assert leftover.read_bytes() == b"previous run output"
+
+    def test_retry_uses_a_new_workspace(self, builder, primary_content):
+        """A retry cannot read or overwrite the prior attempt's output."""
+        first = builder.build(
+            org_id="org-1",
+            run_id="run-aaa",
+            attempt_id="attempt-111",
+            primary_filename="model.idf",
+            primary_content=primary_content,
+        )
+        first_output = first.host_output_dir / "output.json"
+        first_output.write_bytes(b"first attempt")
+
+        retry = builder.build(
+            org_id="org-1",
+            run_id="run-aaa",
+            attempt_id="attempt-222",
+            primary_filename="model.idf",
+            primary_content=primary_content,
+        )
+
+        assert retry.host_output_dir != first.host_output_dir
+        assert not retry.host_output_envelope_path.exists()
+        assert first_output.read_bytes() == b"first attempt"
 
 
 # ── Path-traversal safety ───────────────────────────────────────────────
@@ -427,6 +458,7 @@ class TestPathTraversalSafety:
             builder.build(
                 org_id="org-1",
                 run_id="run-aaa",
+                attempt_id="attempt-111",
                 primary_filename=bad_name,
                 primary_content=primary_content,
             )
@@ -457,11 +489,23 @@ class TestPathTraversalSafety:
             builder.build(
                 org_id="org-1",
                 run_id="run-aaa",
+                attempt_id="attempt-111",
                 primary_filename="model.idf",
                 primary_content=primary_content,
                 resource_files=[
                     ResourceFileSpec(filename=bad_name, source_path=src),
                 ],
+            )
+
+    def test_rejects_unsafe_attempt_identifier(self, builder, primary_content):
+        """Attempt identifiers cannot reshape the server-owned workspace path."""
+        with pytest.raises(RunWorkspaceError, match="Unsafe attempt_id"):
+            builder.build(
+                org_id="org-1",
+                run_id="run-aaa",
+                attempt_id="../other-attempt",
+                primary_filename="model.idf",
+                primary_content=primary_content,
             )
 
 
@@ -479,11 +523,13 @@ class TestContainerURIs:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
+        attempt_root = f"{CONTAINER_ATTEMPTS_DIR}/attempt-111"
         assert ws.input_envelope_container_uri == (
-            f"file://{CONTAINER_INPUT_DIR}/input.json"
+            f"file://{attempt_root}/input/input.json"
         )
 
     def test_output_envelope_uri_uses_container_output_path(
@@ -492,11 +538,13 @@ class TestContainerURIs:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
+        attempt_root = f"{CONTAINER_ATTEMPTS_DIR}/attempt-111"
         assert ws.output_envelope_container_uri == (
-            f"file://{CONTAINER_OUTPUT_DIR}/output.json"
+            f"file://{attempt_root}/output/output.json"
         )
 
     def test_execution_bundle_uri_is_the_output_directory(
@@ -506,26 +554,30 @@ class TestContainerURIs:
         ``validibot-validator-backends/.../energyplus/main.py`` composes
         ``f"{execution_bundle_uri}/outputs"`` for artifacts. Setting the
         bundle URI to the output dir means artifacts land at
-        ``/validibot/output/outputs/...`` automatically with no backend
+        the attempt's ``output/outputs/...`` directory with no backend
         changes — the entire reason this URI rewriting strategy works
         without coordinated backend releases."""
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
-        assert ws.execution_bundle_container_uri == f"file://{CONTAINER_OUTPUT_DIR}"
+        assert ws.execution_bundle_container_uri == (
+            f"file://{CONTAINER_ATTEMPTS_DIR}/attempt-111/output"
+        )
 
     def test_primary_file_container_uri_uses_input_path(self, builder, primary_content):
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
         assert ws.primary_file.container_uri == (
-            f"file://{CONTAINER_INPUT_DIR}/model.idf"
+            f"file://{CONTAINER_ATTEMPTS_DIR}/attempt-111/input/model.idf"
         )
 
     def test_resource_file_container_uri_uses_resources_subdir(
@@ -536,6 +588,7 @@ class TestContainerURIs:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
             resource_files=[
@@ -543,7 +596,7 @@ class TestContainerURIs:
             ],
         )
         assert ws.resource_files[0].container_uri == (
-            f"file://{CONTAINER_INPUT_DIR}/resources/weather.epw"
+            f"file://{CONTAINER_ATTEMPTS_DIR}/attempt-111/input/resources/weather.epw"
         )
 
 
@@ -552,9 +605,10 @@ class TestContainerURIs:
 
 class TestStorageRootIntegration:
     """The host paths returned by the workspace must live under
-    DATA_STORAGE_ROOT and follow the runs/<org>/<run>/ pattern that the
-    purge_expired_outputs sweeper expects. A drift here means the
-    sweeper silently skips the workspace and disks fill up."""
+    DATA_STORAGE_ROOT and follow the
+    runs/<org>/<run>/attempts/<attempt>/ pattern. The run parent must still
+    match the purge_expired_outputs sweeper. A drift here means the sweeper
+    silently skips the workspace and disks fill up."""
 
     def test_workspace_paths_live_under_storage_root(
         self, builder, storage, primary_content
@@ -562,11 +616,14 @@ class TestStorageRootIntegration:
         ws = builder.build(
             org_id="org-1",
             run_id="run-aaa",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
 
-        expected_base = storage.root / "runs" / "org-1" / "run-aaa"
+        expected_base = (
+            storage.root / "runs" / "org-1" / "run-aaa" / "attempts" / "attempt-111"
+        )
         assert ws.host_input_dir == expected_base / "input"
         assert ws.host_output_dir == expected_base / "output"
         assert ws.primary_file.host_path == expected_base / "input" / "model.idf"
@@ -580,6 +637,7 @@ class TestStorageRootIntegration:
         ws = builder.build(
             org_id="acme-corp",
             run_id="abc-123",
+            attempt_id="attempt-111",
             primary_filename="model.idf",
             primary_content=primary_content,
         )
@@ -609,11 +667,8 @@ def test_container_uid_and_gid_match_runner_user_setting():
 
 
 def test_container_paths_are_absolute_under_validibot():
-    """The fixed container paths form a public contract validator
-    backends rely on. Pinned here so any accidental rename surfaces in
-    a clear, single test failure rather than a runtime mount error."""
-    assert CONTAINER_INPUT_DIR == "/validibot/input"
-    assert CONTAINER_OUTPUT_DIR == "/validibot/output"
+    """The server-owned attempt root must remain an absolute container path."""
+    assert CONTAINER_ATTEMPTS_DIR == "/validibot/attempts"
 
 
 # ── RunWorkspace dataclass (manual constructor) ─────────────────────────
@@ -627,14 +682,17 @@ def test_run_workspace_can_be_constructed_directly(tmp_path):
     """
     ws = RunWorkspace(
         run_id="r",
+        attempt_id="attempt-111",
         org_id="o",
         host_input_dir=tmp_path / "in",
         host_output_dir=tmp_path / "out",
         primary_file=MaterializedFile(
             name="m.idf",
             host_path=tmp_path / "in" / "m.idf",
-            container_uri="file:///validibot/input/m.idf",
+            container_uri="file:///validibot/attempts/attempt-111/input/m.idf",
         ),
     )
     assert ws.resource_files == []
-    assert ws.input_envelope_container_uri == "file:///validibot/input/input.json"
+    assert ws.input_envelope_container_uri == (
+        "file:///validibot/attempts/attempt-111/input/input.json"
+    )

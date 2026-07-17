@@ -211,6 +211,11 @@ run with **no network access** for safety (they exchange files through a shared
 storage volume); uncomment `VALIDATOR_NETWORK` in the compose file only if a
 validator genuinely needs the internet.
 
+The worker keeps the full storage volume, but each validator container receives
+only one execution attempt's read-only input directory and writable output
+directory. Retries use a new workspace, so a failed attempt's files cannot
+satisfy or be overwritten by the retry.
+
 > ⚠️ Only run validator backend images you build and control yourself — they
 > execute with access to your validation data.
 

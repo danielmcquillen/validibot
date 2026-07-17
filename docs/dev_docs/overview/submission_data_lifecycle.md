@@ -6,10 +6,11 @@ For container interface details, see [Advanced Validator Interface](validator_ar
 
 ## The Execution Bundle
 
-Every advanced validation run creates an **execution bundle** — a directory in storage containing everything the container needs:
+Every advanced-validator execution attempt creates an **execution bundle** — a
+directory in storage containing everything the container needs:
 
 ```
-runs/{org_id}/{run_id}/
+runs/{org_id}/{run_id}/attempts/{attempt_id}/
 ├── input.json           # Input envelope (validator config, file URIs, callback info)
 ├── <submission file>    # Copy of the submission content (see below)
 ├── submitted/           # Extra submitted artifact-port files, keyed by port
@@ -25,7 +26,10 @@ For EnergyPlus, the primary model stays in `Submission.content` /
 extra file into the execution bundle and passes the bundle URI to the envelope
 builder by port key.
 
-The bundle path uses the org ID prefix for multi-tenant isolation. Both Docker Compose (`file://`) and GCP (`gs://`) backends follow this same structure.
+The bundle path includes both the org and a server-generated attempt UUID.
+Docker Compose and GCP use the same prefix shape; local Docker then separates
+the bundle into read-only ``input/`` and writable ``output/`` mounts. A retry
+gets a new attempt UUID and cannot reuse the earlier bundle.
 
 ## Why We Copy the Submission
 
@@ -47,8 +51,8 @@ The downside is storage duplication, especially on GCP where both the original a
 1. Celery worker receives validation task
 2. DockerComposeExecutionBackend.execute():
    a. Reads submission content from DB
-   b. Writes copy to file:///app/storage/runs/{org}/{run}/{filename}
-   c. Builds input envelope, writes to runs/{org}/{run}/input.json
+   b. Writes copy below runs/{org}/{run}/attempts/{attempt}/input/
+   c. Writes input.json to the attempt input directory
    d. Spawns Docker container (blocking)
    e. Container reads input, writes output.json
    f. Worker reads output.json, processes results
@@ -61,8 +65,8 @@ The downside is storage duplication, especially on GCP where both the original a
 1. Celery worker receives validation task
 2. GCPExecutionBackend.execute() → Cloud Run launcher:
    a. Reads submission content from DB
-   b. Uploads copy to gs://bucket/runs/{org}/{run}/model.epjson
-   c. Builds input envelope, uploads to gs://bucket/runs/{org}/{run}/input.json
+   b. Uploads copy to gs://bucket/runs/{org}/{run}/attempts/{attempt}/model.epjson
+   c. Uploads input.json to that attempt prefix
    d. Triggers Cloud Run Job (non-blocking)
    e. Returns immediately with pending status
 3. Container runs in Cloud Run, writes output to GCS
@@ -81,7 +85,7 @@ When `Submission.purge_content()` runs (triggered by retention expiration or `DO
 
 1. Deletes the original submission content (DB field and/or `input_file`)
 2. Calls `_delete_run_files(run)` for **every related validation run**
-3. `_delete_run_files()` calls `storage.delete_prefix(f"runs/{org_id}/{run_id}/")` which removes the entire execution bundle
+3. `_delete_run_files()` calls `storage.delete_prefix(f"runs/{org_id}/{run_id}/")`, which removes every attempt bundle for the run
 
 This is storage-agnostic — it works for both local filesystem and GCS.
 

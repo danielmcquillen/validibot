@@ -66,7 +66,7 @@ The worker is up but not processing tasks. Likely causes:
 1. **Docker socket unreachable from worker container.** The worker dispatches advanced validators by talking to Docker. Check `just self-hosted doctor` for `VB320` (Docker socket).
 2. **Validator image not built or present.** Run `just self-hosted validators`. If an image is missing, build it with `just self-hosted validator-build <name>` or trigger the relevant validator-image deployment path.
 3. **Validator manifest missing.** Less common; usually shows up in worker logs as a `ValidatorNotFound` error.
-4. **Storage permissions wrong.** The worker can't materialise the per-run workspace. Check `VB201`.
+4. **Storage permissions wrong.** The worker can't materialise the per-attempt workspace. Check `VB201`.
 
 ## "validator backend container exited but no result"
 

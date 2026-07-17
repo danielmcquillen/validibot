@@ -178,11 +178,12 @@ def delete_prefix(uri_prefix: str) -> int:
     """
     Delete every object under a ``gs://`` prefix and return the count deleted.
 
-    Validation run bundles are written here directly by the launcher to
-    ``gs://<GCS_VALIDATION_BUCKET>/runs/<org_id>/<run_id>/…`` — NOT through the
-    ``DataStorage`` abstraction (which prepends the ``private/`` prefix). So
-    purging a run's files has to delete from this same raw location, or the
-    objects leak in GCS while the run is marked purged.
+    Validation attempt bundles are written here directly by the launcher below
+    ``gs://<GCS_VALIDATION_BUCKET>/runs/<org_id>/<run_id>/attempts/<attempt_id>/``
+    — NOT through the ``DataStorage`` abstraction (which prepends the
+    ``private/`` prefix). Purging a run therefore deletes the parent run prefix
+    from this same raw location, or the objects leak in GCS while the run is
+    marked purged.
 
     Args:
         uri_prefix: A ``gs://bucket/prefix/`` URI. A trailing slash is appended

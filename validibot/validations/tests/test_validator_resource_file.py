@@ -434,7 +434,7 @@ class TestResolveStepResources:
     # ── Workspace-aware URI overrides ───────────────────────────────────
     #
     # The local Docker dispatch path materialises resource files into a
-    # per-run workspace and needs the envelope to reference the
+    # per-attempt workspace and needs the envelope to reference the
     # container-visible mount path, not the host MEDIA_ROOT path. The
     # ``resource_uri_overrides`` parameter is the rewriting hook. Cloud
     # Run leaves it unset and gets the original gs:// URIs unchanged.
@@ -443,7 +443,7 @@ class TestResolveStepResources:
         """When ``resource_uri_overrides`` contains an entry for a
         resource's id, that URI replaces the one ``get_storage_uri()``
         would have returned. This is what lets the local Docker dispatch
-        emit ``file:///validibot/input/resources/<filename>`` instead of
+        emit an attempt-specific ``file:///validibot/attempts/...`` URI instead of
         the host ``MEDIA_ROOT`` path that lives outside the container's
         mount namespace."""
         from validibot.validations.services.cloud_run.envelope_builder import (

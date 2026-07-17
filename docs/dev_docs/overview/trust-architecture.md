@@ -59,14 +59,15 @@ The web view, REST API, MCP helper API, and x402 run-creation path all consume t
 
 ### 3. Isolation invariant
 
-The validator receives only the run-scoped inputs and writable output location needed for that run.
+The validator receives only the attempt-scoped inputs and writable output
+location needed for that execution.
 
 **Where it's enforced:** **`RunWorkspaceBuilder`** at `validibot/validations/services/run_workspace.py`, plus envelope URI rewriting in the Docker dispatch path at `validibot/validations/services/execution/docker_compose.py`.
 
-The per-run workspace layout:
+The per-attempt workspace layout:
 
 ```text
-<DATA_STORAGE_ROOT>/runs/<org_id>/<run_id>/
+<DATA_STORAGE_ROOT>/runs/<org_id>/<run_id>/attempts/<attempt_id>/
   input/                       # mode 755 — readable by container UID 1000
     input.json                 # mode 644
     <original_filename>        # mode 644 — primary submission file
@@ -81,11 +82,13 @@ Container mounts:
 
 | Host path | Container path | Mode |
 |---|---|---|
-| `runs/<org_id>/<run_id>/input` | `/validibot/input` | read-only |
-| `runs/<org_id>/<run_id>/output` | `/validibot/output` | read-write |
+| `runs/<org>/<run>/attempts/<attempt>/input` | `/validibot/attempts/<attempt>/input` | read-only |
+| `runs/<org>/<run>/attempts/<attempt>/output` | `/validibot/attempts/<attempt>/output` | read-write |
 | (none) | `/tmp` | tmpfs (`size=2g,mode=1777`) |
 
-The container does **not** receive the global storage root, other run directories, Django media paths, database credentials, signing keys, Stripe/x402 credentials, or arbitrary host directories.
+The container does **not** receive the global storage root, other attempt or run
+directories, Django media paths, database credentials, signing keys,
+Stripe/x402 credentials, or arbitrary host directories.
 
 **Default container policy** (Phase 1):
 

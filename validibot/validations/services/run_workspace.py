@@ -1,22 +1,26 @@
-"""Per-run filesystem workspace for validator container execution.
+"""Per-attempt filesystem workspace for validator container execution.
 
-ADR-2026-04-27 ``[trust-#4]``: build a per-run workspace on the host with
+ADR-2026-04-27 ``[trust-#4]`` introduced a per-run workspace on the host with
 read-only inputs and a writable output directory, materialise only the files
 this run needs into ``input/``, and return container-visible paths so the
 input envelope and Docker runner share one source of truth for the
 host↔container path mapping.
+
+ADR-2026-07-10 tightens that boundary to one workspace per execution attempt.
+A retry receives a new directory and new container-visible URIs, so it cannot
+consume or overwrite the prior attempt's input, output envelope, or artifacts.
 
 Layout produced
 ---------------
 
 ::
 
-    <DATA_STORAGE_ROOT>/runs/<org_id>/<run_id>/
-      input/                       # mode 755 — readable by container UID 1000
-        <original_filename>        # mode 644 — primary submission file
-        resources/                 # mode 755
-          <resource_filename>      # mode 644
-      output/                      # owned 1000:1000, mode 770 (container-only)
+    <DATA_STORAGE_ROOT>/runs/<org_id>/<run_id>/attempts/<attempt_id>/
+      input/                         # mode 755 — readable by container UID 1000
+        <original_filename>          # mode 644 — primary submission file
+        resources/                   # mode 755
+          <resource_filename>        # mode 644
+      output/                        # owned 1000:1000, mode 770 (container-only)
         (initially empty; container writes ``output.json`` and ``outputs/``)
 
 Why this exists
@@ -29,8 +33,8 @@ inputs and outputs. Cross-tenant isolation rested on validator
 implementations being careful, not on the runtime boundary.
 
 After this change, the runner mounts only ``input/`` (read-only) and
-``output/`` (read-write) for each run. The workspace builder is the
-component responsible for materialising the per-run filesystem so the
+``output/`` (read-write) for each attempt. The workspace builder is the
+component responsible for materialising the attempt-specific filesystem so the
 runner has something narrow to mount.
 
 When in the lifecycle this runs
@@ -69,6 +73,8 @@ from dataclasses import field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from validibot.validations.services.attempt_paths import attempt_bundle_relpath
+
 if TYPE_CHECKING:
     from validibot.core.storage.local import LocalDataStorage
 
@@ -83,10 +89,10 @@ logger = logging.getLogger(__name__)
 CONTAINER_UID = 1000
 CONTAINER_GID = 1000
 
-# Fixed in-container paths. These form the public contract validator
-# backends rely on; see the ADR section 8 mounts table.
-CONTAINER_INPUT_DIR = "/validibot/input"
-CONTAINER_OUTPUT_DIR = "/validibot/output"
+# Each attempt receives a distinct path inside its container namespace as well
+# as on the host. Backends are URI-driven, so they need no knowledge of this
+# root; they read the exact input/output URIs from their environment/envelope.
+CONTAINER_ATTEMPTS_DIR = "/validibot/attempts"
 
 # Subdirectory under ``input/`` for workflow resource files (weather
 # files, FMU dependencies, etc.). Kept separate from the primary
@@ -116,7 +122,7 @@ OUTPUT_DIR_MODE_FALLBACK = 0o1777
 
 @dataclass(frozen=True)
 class MaterializedFile:
-    """A single file copied into the per-run workspace.
+    """A single file copied into the per-attempt workspace.
 
     Carries enough information for the envelope builder to emit a
     container-visible URI and for the runner to know the host path it
@@ -172,7 +178,7 @@ class ResourceFileSpec:
 
 @dataclass(frozen=True)
 class RunWorkspace:
-    """The materialised per-run filesystem workspace.
+    """The materialised per-attempt filesystem workspace.
 
     Carries both the host paths the runner needs to mount and the
     container-visible URIs the envelope embeds. Treating this as one
@@ -184,22 +190,22 @@ class RunWorkspace:
         run_id: The validation run's stable identifier.
         org_id: The organisation that owns the run; used in the host
             path for retention scoping.
-        host_input_dir: Absolute host path of ``input/``. Mounted into
-            the container as ``/validibot/input`` (read-only).
-        host_output_dir: Absolute host path of ``output/``. Mounted into
-            the container as ``/validibot/output`` (read-write).
+        attempt_id: The execution attempt's stable identifier. This is the
+            isolation boundary for retries.
+        host_input_dir: Absolute host path of ``input/``. Mounted at this
+            attempt's container input path (read-only).
+        host_output_dir: Absolute host path of ``output/``. Mounted at this
+            attempt's container output path (read-write).
         primary_file: The materialised submission file.
         resource_files: Materialised workflow resource files (weather
             files, FMU dependencies, etc.) inside ``input/resources/``.
-        container_input_dir: The container's view of ``input/``. Always
-            ``/validibot/input``; exposed for caller readability rather
-            than configurability.
-        container_output_dir: The container's view of ``output/``.
-            Always ``/validibot/output``; same rationale.
+        container_input_dir: Attempt-specific container view of ``input/``.
+        container_output_dir: Attempt-specific container view of ``output/``.
     """
 
     run_id: str
     org_id: str
+    attempt_id: str
 
     host_input_dir: Path
     host_output_dir: Path
@@ -207,8 +213,20 @@ class RunWorkspace:
     primary_file: MaterializedFile
     resource_files: list[MaterializedFile] = field(default_factory=list)
 
-    container_input_dir: str = CONTAINER_INPUT_DIR
-    container_output_dir: str = CONTAINER_OUTPUT_DIR
+    @property
+    def container_attempt_dir(self) -> str:
+        """Attempt-specific directory as the validator container sees it."""
+        return f"{CONTAINER_ATTEMPTS_DIR}/{self.attempt_id}"
+
+    @property
+    def container_input_dir(self) -> str:
+        """Read-only input mount for this attempt inside the container."""
+        return f"{self.container_attempt_dir}/input"
+
+    @property
+    def container_output_dir(self) -> str:
+        """Writable output mount for this attempt inside the container."""
+        return f"{self.container_attempt_dir}/output"
 
     @property
     def input_envelope_container_uri(self) -> str:
@@ -228,9 +246,8 @@ class RunWorkspace:
         ``validibot-validator-backends/validator_backends/energyplus/main.py``
         composes ``f"{execution_bundle_uri}/outputs"`` for artifacts and
         writes ``output.json`` directly under ``execution_bundle_uri``.
-        Setting this URI to ``file:///validibot/output`` therefore lands
-        artifacts at ``/validibot/output/outputs/...`` automatically and
-        requires zero changes in the backend repo.
+        Setting this URI to the attempt's output directory therefore lands
+        artifacts below that attempt's ``output/outputs/`` path automatically.
         """
         return f"file://{self.container_output_dir}"
 
@@ -256,11 +273,12 @@ class RunWorkspaceError(Exception):
 
 
 class RunWorkspaceBuilder:
-    """Materialise per-run workspace directories on the host.
+    """Materialise per-attempt workspace directories on the host.
 
     The builder owns three concerns:
 
-    1. **Layout** — create ``runs/<org>/<run>/{input,input/resources,output}/``.
+    1. **Layout** — create one
+       ``runs/<org>/<run>/attempts/<attempt>/{input,input/resources,output}/``.
     2. **Permissions** — set modes and (where possible) ownership so the
        container can write its outputs without the host needing
        world-writable bits.
@@ -279,8 +297,8 @@ class RunWorkspaceBuilder:
     Args:
         storage: A :class:`LocalDataStorage` used to resolve workspace
             paths under ``DATA_STORAGE_ROOT``. Cloud Run dispatch does
-            not use this builder — Cloud Run Jobs are naturally
-            run-scoped via per-job GCS prefixes.
+            not use this builder — Cloud Run Jobs use the same canonical
+            attempt path through their GCS prefixes.
     """
 
     def __init__(self, storage: LocalDataStorage) -> None:
@@ -293,22 +311,24 @@ class RunWorkspaceBuilder:
         *,
         org_id: str,
         run_id: str,
+        attempt_id: str,
         primary_filename: str,
         primary_content: bytes,
         resource_files: list[ResourceFileSpec] | None = None,
     ) -> RunWorkspace:
         """Materialise the workspace and return the access object.
 
-        Idempotent within reason — if the workspace already exists, this
-        re-writes the input files (in case preprocessing produced different
-        content) but preserves the output directory's contents. That
-        matters for retries that need to inspect a previous attempt's
-        output.
+        Idempotent within one attempt — if preparation is repeated before the
+        attempt is claimed, this rewrites its input files but preserves its
+        output directory. A retry has a new ``attempt_id`` and therefore a
+        separate workspace whose output directory starts empty.
 
         Args:
             org_id: Organisation id used in the host path.
             run_id: Run identifier used in the host path. Must be
                 filesystem-safe (UUIDs are; arbitrary slugs may not be).
+            attempt_id: Execution-attempt identifier used in both host and
+                container paths.
             primary_filename: Name to give the submission file inside
                 ``input/``. Must not contain path separators or
                 ``..`` segments.
@@ -336,7 +356,14 @@ class RunWorkspaceBuilder:
         for res in resource_files:
             self._reject_path_traversal(res.filename, label="resource filename")
 
-        base_relpath = f"runs/{org_id}/{run_id}"
+        try:
+            base_relpath = attempt_bundle_relpath(
+                org_id=org_id,
+                run_id=run_id,
+                attempt_id=attempt_id,
+            ).as_posix()
+        except ValueError as exc:
+            raise RunWorkspaceError(str(exc)) from exc
         base_dir = self._storage._resolve_path(base_relpath)
         input_dir = base_dir / "input"
         resources_dir = input_dir / RESOURCES_SUBDIR
@@ -354,6 +381,9 @@ class RunWorkspaceBuilder:
         resources_dir.chmod(INPUT_DIR_MODE)
         self._set_output_permissions(output_dir)
 
+        container_attempt_dir = f"{CONTAINER_ATTEMPTS_DIR}/{attempt_id}"
+        container_input_dir = f"{container_attempt_dir}/input"
+
         # Materialise the primary file.
         primary_host_path = input_dir / primary_filename
         primary_host_path.write_bytes(primary_content)
@@ -362,7 +392,7 @@ class RunWorkspaceBuilder:
         primary = MaterializedFile(
             name=primary_filename,
             host_path=primary_host_path,
-            container_uri=f"file://{CONTAINER_INPUT_DIR}/{primary_filename}",
+            container_uri=f"file://{container_input_dir}/{primary_filename}",
         )
 
         # Materialise resource files. Each one is copied as bytes rather
@@ -386,14 +416,14 @@ class RunWorkspaceBuilder:
                     name=res.filename,
                     host_path=target,
                     container_uri=(
-                        f"file://{CONTAINER_INPUT_DIR}/{RESOURCES_SUBDIR}/{res.filename}"
+                        f"file://{container_input_dir}/{RESOURCES_SUBDIR}/{res.filename}"
                     ),
                     resource_id=res.resource_id,
                 ),
             )
 
         logger.debug(
-            "Materialised workspace at %s (1 primary + %d resources)",
+            "Materialised attempt workspace at %s (1 primary + %d resources)",
             base_dir,
             len(materialised_resources),
         )
@@ -401,6 +431,7 @@ class RunWorkspaceBuilder:
         return RunWorkspace(
             run_id=run_id,
             org_id=org_id,
+            attempt_id=attempt_id,
             host_input_dir=input_dir,
             host_output_dir=output_dir,
             primary_file=primary,
@@ -471,9 +502,8 @@ class RunWorkspaceBuilder:
 
 
 __all__ = [
+    "CONTAINER_ATTEMPTS_DIR",
     "CONTAINER_GID",
-    "CONTAINER_INPUT_DIR",
-    "CONTAINER_OUTPUT_DIR",
     "CONTAINER_UID",
     "INPUT_DIR_MODE",
     "INPUT_FILE_MODE",

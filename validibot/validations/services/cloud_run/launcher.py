@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from django.conf import settings
@@ -31,6 +33,7 @@ from validibot_shared.canonicalization import sha256_hex_for_model
 
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
+from validibot.validations.services.attempt_paths import attempt_bundle_relpath
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_input_envelope,
 )
@@ -62,6 +65,77 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 VALIDATION_CALLBACK_PATH = "/api/v1/validation-callbacks/"
+
+
+@dataclass(frozen=True, slots=True)
+class AttemptExecutionBundle:
+    """Storage locations reserved for one execution attempt.
+
+    ``local_dir`` is populated only for the local asynchronous development
+    path. Production Cloud Run dispatch uses the GCS URI and leaves it unset.
+    """
+
+    execution_bundle_uri: str
+    input_envelope_uri: str
+    local_dir: Path | None
+
+    @property
+    def is_gcs(self) -> bool:
+        """Return whether this bundle uses Google Cloud Storage."""
+        return self.execution_bundle_uri.startswith("gs://")
+
+
+def _active_attempt_for_step(step_run):
+    """Return the step's active attempt or fail before storage preparation."""
+    from validibot.validations.services.execution_attempts import (
+        get_active_execution_attempt,
+    )
+
+    attempt = get_active_execution_attempt(step_run)
+    if attempt is None:
+        msg = f"Validation step {step_run.pk} has no active execution attempt"
+        raise RuntimeError(msg)
+    return attempt
+
+
+def _attempt_execution_bundle(
+    *,
+    run,
+    step_run,
+    require_gcs: bool = False,
+) -> AttemptExecutionBundle:
+    """Derive the canonical storage prefix for the step's active attempt.
+
+    Each retry has a new attempt UUID and therefore receives a new physical
+    prefix. Run-level retention remains unchanged because all attempt bundles
+    stay below ``runs/<org>/<run>/``.
+    """
+    attempt = _active_attempt_for_step(step_run)
+    relpath = attempt_bundle_relpath(
+        org_id=str(run.org_id),
+        run_id=str(run.pk),
+        attempt_id=str(attempt.pk),
+    )
+    bucket = getattr(settings, "GCS_VALIDATION_BUCKET", "")
+    if bucket:
+        execution_bundle_uri = f"gs://{bucket}/{relpath.as_posix()}"
+        return AttemptExecutionBundle(
+            execution_bundle_uri=execution_bundle_uri,
+            input_envelope_uri=f"{execution_bundle_uri}/input.json",
+            local_dir=None,
+        )
+
+    if require_gcs:
+        msg = "GCS_VALIDATION_BUCKET is required for this Cloud Run validator"
+        raise RuntimeError(msg)
+
+    local_dir = Path(settings.MEDIA_ROOT) / "files" / Path(*relpath.parts)
+    local_dir.mkdir(parents=True, exist_ok=True)
+    return AttemptExecutionBundle(
+        execution_bundle_uri=str(local_dir),
+        input_envelope_uri=str(local_dir / "input.json"),
+        local_dir=local_dir,
+    )
 
 
 def _resolve_cloud_run_job_name(validation_type: str) -> str:
@@ -207,14 +281,8 @@ def _callback_id_for_step(step_run) -> str:
     from validibot.validations.services.execution_attempts import (
         build_attempt_callback_id,
     )
-    from validibot.validations.services.execution_attempts import (
-        get_active_execution_attempt,
-    )
 
-    attempt = get_active_execution_attempt(step_run)
-    if attempt is None:
-        msg = f"Validation step {step_run.pk} has no active execution attempt"
-        raise RuntimeError(msg)
+    attempt = _active_attempt_for_step(step_run)
     return build_attempt_callback_id(attempt)
 
 
@@ -384,13 +452,15 @@ def launch_energyplus_validation(
         if already_launched:
             return already_launched
 
-        # 1. Build GCS paths
-        org_id = str(run.org.id)
-        run_id = str(run.id)
-        execution_bundle_uri = (
-            f"gs://{settings.GCS_VALIDATION_BUCKET}/runs/{org_id}/{run_id}"
+        # 1. Derive the GCS prefix for this exact execution attempt. Retries
+        # receive a different prefix even though they belong to the same run.
+        bundle = _attempt_execution_bundle(
+            run=run,
+            step_run=current_step_run,
+            require_gcs=True,
         )
-        input_envelope_uri = f"{execution_bundle_uri}/input.json"
+        execution_bundle_uri = bundle.execution_bundle_uri
+        input_envelope_uri = bundle.input_envelope_uri
 
         # 2. Upload submission file to GCS.
         # After preprocessing, submission.get_content() returns the resolved
@@ -595,21 +665,12 @@ def launch_fmu_validation(
         # checks for step-level FMU resources first, then falls back to
         # the library validator's FMU model.
 
-        org_id = str(run.org.id)
-        run_id = str(run.id)
-        if settings.GCS_VALIDATION_BUCKET:
-            execution_bundle_uri = (
-                f"gs://{settings.GCS_VALIDATION_BUCKET}/runs/{org_id}/{run_id}"
-            )
-            input_envelope_uri = f"{execution_bundle_uri}/input.json"
-        else:
-            # Local dev: store under media/files/runs/<org>/<run>/input.json
-            from pathlib import Path
-
-            base_dir = Path(settings.MEDIA_ROOT) / "files" / "runs" / org_id / run_id
-            base_dir.mkdir(parents=True, exist_ok=True)
-            execution_bundle_uri = str(base_dir)
-            input_envelope_uri = str(base_dir / "input.json")
+        bundle = _attempt_execution_bundle(
+            run=run,
+            step_run=current_step_run,
+        )
+        execution_bundle_uri = bundle.execution_bundle_uri
+        input_envelope_uri = bundle.input_envelope_uri
 
         callback_url = build_validation_callback_url()
 
@@ -639,8 +700,6 @@ def launch_fmu_validation(
         if input_envelope_uri.startswith("gs://"):
             upload_envelope(envelope, input_envelope_uri)
         else:
-            from pathlib import Path
-
             upload_envelope_local(envelope, Path(input_envelope_uri))
 
         # Trigger Cloud Run Job directly via Jobs API.
@@ -778,27 +837,24 @@ def launch_shacl_validation(
         if already_launched:
             return already_launched
 
-        org_id = str(run.org.id)
-        run_id = str(run.id)
-        if settings.GCS_VALIDATION_BUCKET:
-            execution_bundle_uri = (
-                f"gs://{settings.GCS_VALIDATION_BUCKET}/runs/{org_id}/{run_id}"
-            )
-            input_envelope_uri = f"{execution_bundle_uri}/input.json"
+        bundle = _attempt_execution_bundle(
+            run=run,
+            step_run=current_step_run,
+        )
+        execution_bundle_uri = bundle.execution_bundle_uri
+        input_envelope_uri = bundle.input_envelope_uri
+        if bundle.is_gcs:
             submission_uri = f"{execution_bundle_uri}/submission.rdf"
             is_gcs = True
             local_submission_path = None
         else:
-            # Local dev: store under media/files/runs/<org>/<run>/ for the
-            # local-async test path (the normal self-hosted path uses the
-            # synchronous Docker backend, not this launcher).
-            from pathlib import Path
-
-            base_dir = Path(settings.MEDIA_ROOT) / "files" / "runs" / org_id / run_id
-            base_dir.mkdir(parents=True, exist_ok=True)
-            execution_bundle_uri = str(base_dir)
-            input_envelope_uri = str(base_dir / "input.json")
-            local_submission_path = base_dir / "submission.rdf"
+            # The local-async development path uses the same attempt layout as
+            # production GCS. Normal self-hosting uses the synchronous Docker
+            # backend instead of this launcher.
+            if bundle.local_dir is None:
+                msg = "Local attempt bundle did not provide a filesystem path"
+                raise RuntimeError(msg)  # noqa: TRY301
+            local_submission_path = bundle.local_dir / "submission.rdf"
             submission_uri = f"file://{local_submission_path}"
             is_gcs = False
 
@@ -841,8 +897,6 @@ def launch_shacl_validation(
         if is_gcs:
             upload_envelope(envelope, input_envelope_uri)
         else:
-            from pathlib import Path
-
             upload_envelope_local(envelope, Path(input_envelope_uri))
 
         # 5. Trigger the Cloud Run Job. Job name comes from ValidatorConfig.
@@ -973,27 +1027,23 @@ def launch_schematron_validation(
         if already_launched:
             return already_launched
 
-        org_id = str(run.org.id)
-        run_id = str(run.id)
-        if settings.GCS_VALIDATION_BUCKET:
-            execution_bundle_uri = (
-                f"gs://{settings.GCS_VALIDATION_BUCKET}/runs/{org_id}/{run_id}"
-            )
-            input_envelope_uri = f"{execution_bundle_uri}/input.json"
+        bundle = _attempt_execution_bundle(
+            run=run,
+            step_run=current_step_run,
+        )
+        execution_bundle_uri = bundle.execution_bundle_uri
+        input_envelope_uri = bundle.input_envelope_uri
+        if bundle.is_gcs:
             submission_uri = f"{execution_bundle_uri}/submission.xml"
             is_gcs = True
             local_submission_path = None
         else:
-            # Local dev: store under media/files/runs/<org>/<run>/ for the
-            # local-async test path (the normal self-hosted path uses the
-            # synchronous Docker backend, not this launcher).
-            from pathlib import Path
-
-            base_dir = Path(settings.MEDIA_ROOT) / "files" / "runs" / org_id / run_id
-            base_dir.mkdir(parents=True, exist_ok=True)
-            execution_bundle_uri = str(base_dir)
-            input_envelope_uri = str(base_dir / "input.json")
-            local_submission_path = base_dir / "submission.xml"
+            # Local asynchronous development mirrors the production
+            # attempt-specific layout under MEDIA_ROOT.
+            if bundle.local_dir is None:
+                msg = "Local attempt bundle did not provide a filesystem path"
+                raise RuntimeError(msg)  # noqa: TRY301
+            local_submission_path = bundle.local_dir / "submission.xml"
             submission_uri = f"file://{local_submission_path}"
             is_gcs = False
 
@@ -1037,8 +1087,6 @@ def launch_schematron_validation(
         if is_gcs:
             upload_envelope(envelope, input_envelope_uri)
         else:
-            from pathlib import Path
-
             upload_envelope_local(envelope, Path(input_envelope_uri))
 
         # 5. Trigger the Cloud Run Job. Job name comes from ValidatorConfig,

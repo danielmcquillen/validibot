@@ -205,20 +205,20 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         """
         Execute a validation synchronously via Docker.
 
-        Dispatch builds a per-run workspace on the host, materialises
+        Dispatch builds a per-attempt workspace on the host, materialises
         only the files this run needs into ``input/``, rewrites
         envelope URIs to container paths, and runs the container
-        against per-run mounts. No validator backend changes are
+        against attempt-scoped mounts. No validator backend changes are
         required — backends are URI-driven and resolve the
         container-visible URIs directly.
 
         Steps:
 
-        1. Build the per-run workspace (input/, output/, materialised
+        1. Build the per-attempt workspace (input/, output/, materialised
            primary file + resource files).
         2. Build the input envelope with container-visible URIs.
         3. Write the envelope into the workspace's input directory.
-        4. Run the validator container with per-run mounts.
+        4. Run the validator container with per-attempt mounts.
         5. Read the output envelope from the workspace's output
            directory.
 
@@ -263,10 +263,13 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             )
 
         try:
-            # 1. Build the per-run workspace and the envelope override
+            # 1. Build the per-attempt workspace and the envelope override
             # kwargs that point envelope URIs at container paths.
             workspace, input_file_uris, resource_uri_overrides = (
-                self._build_workspace_and_envelope_kwargs(request)
+                self._build_workspace_and_envelope_kwargs(
+                    request,
+                    attempt_id=str(attempt.pk),
+                )
             )
 
             # 2. Build callback URL and ID (unused for sync, but the
@@ -286,7 +289,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
 
             # 4. Write the envelope into the workspace's input
             # directory. The container will read it through the
-            # read-only ``/validibot/input`` mount.
+            # read-only attempt input mount.
             envelope_json = envelope.model_dump_json(indent=2)
             input_envelope_sha256 = sha256_hex_for_model(envelope)
             workspace.host_input_envelope_path.write_bytes(
@@ -325,7 +328,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 workspace.output_envelope_container_uri,
             )
 
-            # 6. Run the container with per-run mounts. Trust ADR
+            # 6. Run the container with per-attempt mounts. Trust ADR
             # Phase 5 Session C — pass through ``trust_tier`` from
             # the validator row so the runner can apply tier-aware
             # hardening for partner-authored backends. Tier-1 is the
@@ -501,8 +504,10 @@ class DockerComposeExecutionBackend(ExecutionBackend):
     def _build_workspace_and_envelope_kwargs(
         self,
         request: ExecutionRequest,
+        *,
+        attempt_id: str,
     ) -> tuple[object, dict[str, str], dict[str, str]]:
-        """Build the per-run workspace and the envelope override kwargs.
+        """Build the per-attempt workspace and the envelope override kwargs.
 
         Materialises the primary submission file plus every workflow
         step resource the envelope will reference (weather files for
@@ -514,7 +519,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
           builder reads.
         - ``resource_uri_overrides``: ``resource_id`` →
           container-visible URI, used by the EnergyPlus envelope to
-          point ``ResourceFileItem.uri`` at the per-run mount instead
+          point ``ResourceFileItem.uri`` at the attempt-scoped mount instead
           of the host ``MEDIA_ROOT`` path.
 
         The translation is local-Docker-specific: it expects every
@@ -620,6 +625,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         workspace = builder.build(
             org_id=str(request.org_id),
             run_id=str(request.run_id),
+            attempt_id=attempt_id,
             primary_filename=primary_filename,
             primary_content=primary_bytes,
             resource_files=resource_specs,
@@ -667,7 +673,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
     ) -> ValidationOutputEnvelope | None:
         """Read and parse the output envelope from a host path.
 
-        The container writes ``output.json`` into ``/validibot/output``
+        The container writes ``output.json`` into its attempt output mount,
         which the host sees at ``workspace.host_output_envelope_path``.
         We read it directly from disk rather than through the storage
         abstraction because the workspace already knows its host path

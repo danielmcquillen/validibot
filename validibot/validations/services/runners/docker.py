@@ -296,9 +296,9 @@ class DockerValidatorRunner(ValidatorRunner):
             timeout_seconds: Maximum execution time (uses default if None)
             run_id: Validation run ID for labeling (enables orphan cleanup)
             validator_slug: Validator slug for labeling
-            workspace: Per-run workspace produced by
+            workspace: Per-attempt workspace produced by
                 :class:`RunWorkspaceBuilder`. When provided, the container
-                receives only run-scoped mounts (input ro, output rw)
+                receives only attempt-scoped mounts (input ro, output rw)
                 instead of the legacy global ``DATA_STORAGE_ROOT`` mount.
                 Required for cross-run isolation; when omitted the runner
                 falls back to the legacy mount and logs a warning so the
@@ -340,7 +340,7 @@ class DockerValidatorRunner(ValidatorRunner):
 
         # Build volume mounts for storage access.
         #
-        # When a workspace is provided, mount only the per-run input
+        # When a workspace is provided, mount only the per-attempt input
         # (read-only) and output (read-write) directories instead of
         # the entire ``DATA_STORAGE_ROOT``. This is the runtime
         # boundary that prevents a buggy or compromised validator from
@@ -549,9 +549,9 @@ class DockerValidatorRunner(ValidatorRunner):
                 except Exception as cleanup_err:
                     logger.debug("Could not remove container: %s", cleanup_err)
 
-    # ── Per-run mount strategy ──────────────────────────────────────────
+    # ── Per-attempt mount strategy ──────────────────────────────────────
     #
-    # When a workspace is provided, ``run()`` mounts only the per-run
+    # When a workspace is provided, ``run()`` mounts only the per-attempt
     # input directory (read-only) and output directory (read-write) into
     # the container. This is the runtime boundary that prevents one
     # validator from accessing another run's files. When no workspace is

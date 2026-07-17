@@ -27,6 +27,7 @@ from validibot.validations.constants import ArtifactKind
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.tests.factories import ArtifactFactory
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 
@@ -55,6 +56,7 @@ def _setup_run_with_owner_access():
 def _create_artifact(run, **overrides):
     """Create a representative step artifact for ``run``."""
 
+    container_output_path = overrides.pop("container_output_path", "")
     payload_hash = hashlib.sha256(b"artifact-payload").hexdigest()
     step_run = ValidationStepRunFactory(
         validation_run=run,
@@ -76,6 +78,12 @@ def _create_artifact(run, **overrides):
         "retention_class": "store_30_days",
         "storage_uri": "gs://private-validibot-artifacts/runs/output.html",
     }
+    if container_output_path:
+        attempt = ExecutionAttemptFactory(step_run=step_run)
+        defaults["storage_uri"] = (
+            f"file:///validibot/attempts/{attempt.pk}/output/"
+            f"{container_output_path.lstrip('/')}"
+        )
     defaults.update(overrides)
     return ArtifactFactory(**defaults)
 
@@ -237,11 +245,22 @@ class ArtifactDownloadViewTests(TestCase):
         payload = b"workspace artifact"
         digest = hashlib.sha256(payload).hexdigest()
         with TemporaryDirectory() as data_root:
+            with self.settings(DATA_STORAGE_ROOT=data_root):
+                artifact = _create_artifact(
+                    run,
+                    container_output_path="outputs/report.txt",
+                    content_type="text/plain",
+                    sha256=digest,
+                    size_bytes=len(payload),
+                )
+            attempt = artifact.step_run.execution_attempts.get()
             workspace_file = (
                 Path(data_root)
                 / "runs"
                 / str(run.org_id)
                 / str(run.pk)
+                / "attempts"
+                / str(attempt.pk)
                 / "output"
                 / "outputs"
                 / "report.txt"
@@ -249,14 +268,6 @@ class ArtifactDownloadViewTests(TestCase):
             workspace_file.parent.mkdir(parents=True)
             workspace_file.write_bytes(payload)
             with self.settings(DATA_STORAGE_ROOT=data_root):
-                artifact = _create_artifact(
-                    run,
-                    storage_uri="file:///validibot/output/outputs/report.txt",
-                    content_type="text/plain",
-                    sha256=digest,
-                    size_bytes=len(payload),
-                )
-
                 self.client.force_login(user)
                 response = self.client.get(
                     reverse(
@@ -269,6 +280,45 @@ class ArtifactDownloadViewTests(TestCase):
                 assert _streaming_body(response) == payload
                 assert response["X-Validibot-Artifact-Sha256"] == digest
                 assert "report.txt" in response["Content-Disposition"]
+
+    def test_container_output_uri_rejects_another_runs_attempt(self):
+        """An artifact URI cannot use another run's attempt as a path oracle."""
+        user, run = _setup_run_with_owner_access()
+        foreign_attempt = ExecutionAttemptFactory()
+        payload = b"must not be served"
+
+        with TemporaryDirectory() as data_root:
+            exposed_if_unchecked = (
+                Path(data_root)
+                / "runs"
+                / str(run.org_id)
+                / str(run.pk)
+                / "attempts"
+                / str(foreign_attempt.pk)
+                / "output"
+                / "outputs"
+                / "secret.txt"
+            )
+            exposed_if_unchecked.parent.mkdir(parents=True)
+            exposed_if_unchecked.write_bytes(payload)
+            artifact = _create_artifact(
+                run,
+                storage_uri=(
+                    f"file:///validibot/attempts/{foreign_attempt.pk}/"
+                    "output/outputs/secret.txt"
+                ),
+            )
+
+            with self.settings(DATA_STORAGE_ROOT=data_root):
+                self.client.force_login(user)
+                response = self.client.get(
+                    reverse(
+                        "validations:artifact_download",
+                        kwargs={"pk": run.pk, "artifact_pk": artifact.pk},
+                    ),
+                )
+
+        assert response.status_code == HTTPStatus.NOT_FOUND
 
     def test_missing_storage_backed_file_returns_404(self):
         """A stale Django file-storage reference should fail closed with 404."""

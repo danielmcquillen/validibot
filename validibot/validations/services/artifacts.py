@@ -297,10 +297,11 @@ def _infer_kind(*, role: str, media_type: str, name: str) -> str:
 def _sha256_for_artifact(artifact: Artifact) -> str:
     """Compute SHA-256 when an artifact resolves to locally available bytes.
 
-    Local validator envelopes address outputs through their container mount
-    (``file:///validibot/output/...``). The web and worker processes see those
-    same bytes under the run workspace instead, so use the canonical download
-    resolver rather than treating the container URI as a host path.
+    Local validator envelopes address outputs through their attempt-specific
+    container mount (``file:///validibot/attempts/<attempt>/output/...``). The
+    web and worker processes see those same bytes under the host attempt
+    workspace, so use the canonical download resolver rather than treating the
+    container URI as a host path.
     """
 
     from validibot.validations.services.artifact_display import (

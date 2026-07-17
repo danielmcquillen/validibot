@@ -152,11 +152,11 @@ class ValidatorRunner(ABC):
                 (implementation-specific default if None)
             run_id: Validation run ID for tracking/labeling purposes
             validator_slug: Validator slug for tracking/labeling purposes
-            workspace: Optional per-run workspace
+            workspace: Optional per-attempt workspace
                 (:class:`~validibot.validations.services.run_workspace.RunWorkspace`)
-                used by sync runners to derive per-run mounts instead of
+                used by sync runners to derive attempt-scoped mounts instead of
                 a global storage mount. Async runners (Cloud Run Jobs)
-                ignore this parameter and rely on per-job ``gs://``
+                ignore this parameter and rely on per-attempt ``gs://``
                 prefixes for isolation. Typed as ``object`` here to
                 keep the base ``runners`` package independent of the
                 ``run_workspace`` module; concrete sync runners narrow

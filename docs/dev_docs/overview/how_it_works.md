@@ -172,6 +172,11 @@ For validator steps, the processor pattern provides a clean separation of concer
    )
    ```
 
+   Container-based validators receive one storage workspace per execution
+   attempt. Local Docker uses narrow read-only input and writable output mounts;
+   Cloud Run uses a distinct GCS prefix. A retry therefore cannot reuse the
+   previous attempt's input or output path.
+
 3. **Result Processing**: The validator returns a `ValidationResult` object
    - `passed`: Boolean (True/False) or None for async
    - `issues`: List of ValidationIssue objects with details

@@ -267,7 +267,7 @@ class ExecutionBackend(ABC):
             resource_uri_overrides: Optional ``resource_id`` →
                 container-visible URI mapping. Used by the local Docker
                 dispatch to point resource files in the envelope at the
-                per-run mount instead of host ``MEDIA_ROOT`` paths.
+                per-attempt mount instead of host ``MEDIA_ROOT`` paths.
                 Cloud Run leaves this as ``None`` and the envelope
                 keeps ``gs://`` URIs.
 

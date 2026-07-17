@@ -19,6 +19,7 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.services.cloud_run.launcher import (
     ProviderDispatchAmbiguousError,
 )
+from validibot.validations.services.cloud_run.launcher import _attempt_execution_bundle
 from validibot.validations.services.cloud_run.launcher import _run_validator_job_safely
 from validibot.validations.services.execution_attempts import build_attempt_callback_id
 from validibot.validations.services.execution_attempts import (
@@ -107,6 +108,83 @@ class TestExecutionAttemptWriter:
             )
             is None
         )
+
+
+@pytest.mark.django_db
+class TestAttemptExecutionBundlePaths:
+    """Prove every dispatch target is derived from the durable attempt UUID."""
+
+    def test_gcs_bundle_is_nested_below_the_active_attempt(self, settings):
+        """Cloud Run must not write envelopes into the mutable run root."""
+        settings.GCS_VALIDATION_BUCKET = "validation-bucket"
+        attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.PENDING)
+        run = attempt.step_run.validation_run
+
+        bundle = _attempt_execution_bundle(
+            run=run,
+            step_run=attempt.step_run,
+        )
+
+        expected = (
+            f"gs://validation-bucket/runs/{run.org_id}/{run.pk}/attempts/{attempt.pk}"
+        )
+        assert bundle.execution_bundle_uri == expected
+        assert bundle.input_envelope_uri == f"{expected}/input.json"
+        assert bundle.local_dir is None
+
+    def test_retry_receives_a_distinct_gcs_prefix(self, settings):
+        """A new attempt must not reuse the failed attempt's object prefix."""
+        settings.GCS_VALIDATION_BUCKET = "validation-bucket"
+        first = ExecutionAttemptFactory(state=ExecutionAttemptState.PENDING)
+        first_bundle = _attempt_execution_bundle(
+            run=first.step_run.validation_run,
+            step_run=first.step_run,
+        )
+        transition_execution_attempt(first.pk, ExecutionAttemptState.FAILED)
+        retry, created = get_or_create_execution_attempt(
+            first.step_run,
+            runner_type=first.runner_type,
+        )
+
+        retry_bundle = _attempt_execution_bundle(
+            run=retry.step_run.validation_run,
+            step_run=retry.step_run,
+        )
+
+        assert created is True
+        assert first_bundle.execution_bundle_uri != retry_bundle.execution_bundle_uri
+        assert str(first.pk) in first_bundle.execution_bundle_uri
+        assert str(retry.pk) in retry_bundle.execution_bundle_uri
+
+    def test_local_async_bundle_uses_the_same_attempt_layout(
+        self,
+        settings,
+        tmp_path,
+    ):
+        """Local asynchronous development must preserve production path shape."""
+        settings.GCS_VALIDATION_BUCKET = ""
+        settings.MEDIA_ROOT = tmp_path
+        attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.PENDING)
+        run = attempt.step_run.validation_run
+
+        bundle = _attempt_execution_bundle(
+            run=run,
+            step_run=attempt.step_run,
+        )
+
+        expected = (
+            tmp_path
+            / "files"
+            / "runs"
+            / str(run.org_id)
+            / str(run.pk)
+            / "attempts"
+            / str(attempt.pk)
+        )
+        assert bundle.local_dir == expected
+        assert bundle.execution_bundle_uri == str(expected)
+        assert bundle.input_envelope_uri == str(expected / "input.json")
+        assert expected.is_dir()
 
 
 @pytest.mark.django_db

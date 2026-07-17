@@ -27,6 +27,7 @@ from validibot.validations.services.artifacts import build_step_artifact_refs
 from validibot.validations.services.artifacts import register_output_artifacts
 from validibot.validations.services.path_resolution import resolve_step_input
 from validibot.validations.services.run_context import RunContextBuilder
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import StepInputBindingFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
@@ -133,19 +134,22 @@ class TestStepArtifactRegistration:
     ):
         """Local container URIs must produce durable evidence hashes.
 
-        Validator containers refer to their output mount as
-        ``/validibot/output``. Hashing matters because evidence manifests and
-        download responses rely on the indexed digest, not merely file size.
+        Validator containers refer to their attempt-bound output mount.
+        Hashing matters because evidence manifests and download responses rely
+        on the indexed digest, not merely file size.
         """
 
         settings.DATA_STORAGE_ROOT = str(tmp_path)
         step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        attempt = ExecutionAttemptFactory(step_run=step_run)
         payload = b"validator report bytes"
         report_path = (
             tmp_path
             / "runs"
             / str(step_run.validation_run.org_id)
             / str(step_run.validation_run_id)
+            / "attempts"
+            / str(attempt.pk)
             / "output"
             / "outputs"
             / "report.txt"
@@ -161,7 +165,10 @@ class TestStepArtifactRegistration:
                         name="report.txt",
                         type="report",
                         mime_type="text/plain",
-                        uri="file:///validibot/output/outputs/report.txt",
+                        uri=(
+                            f"file:///validibot/attempts/{attempt.pk}/"
+                            "output/outputs/report.txt"
+                        ),
                         size_bytes=len(payload),
                     ),
                 ],

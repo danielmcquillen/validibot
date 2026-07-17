@@ -670,16 +670,17 @@ This document describes the **validator backend** interface — the external Doc
 
 The repository was renamed from `validibot-validators` → `validibot-validator-backends` in March 2026 to make this role unambiguous. The Python package and Docker image prefixes match. See [Terminology](terminology.md) for the full vocabulary.
 
-## Run-scoped isolation
+## Attempt-scoped isolation
 
 Before April 2026, the local Docker runner mounted the entire `DATA_STORAGE_ROOT` read-write into every validator backend runtime. A buggy or partner-authored backend could read other runs' inputs, mutate other runs' outputs, exhaust shared disk, or leak data between runs.
 
-Validibot replaced that with a per-run workspace.
+Validibot first replaced that with a per-run workspace, then tightened retries
+to a distinct workspace for every execution attempt.
 
-### Per-run workspace layout
+### Per-attempt workspace layout
 
 ```text
-<DATA_STORAGE_ROOT>/runs/<org_id>/<run_id>/
+<DATA_STORAGE_ROOT>/runs/<org_id>/<run_id>/attempts/<attempt_id>/
   input/                       # mode 755 — readable by container UID 1000
     input.json                 # mode 644
     <original_filename>        # mode 644 — primary submission file
@@ -694,8 +695,8 @@ Validibot replaced that with a per-run workspace.
 
 | Host path | Container path | Mode |
 |---|---|---|
-| `runs/<org_id>/<run_id>/input` | `/validibot/input` | read-only |
-| `runs/<org_id>/<run_id>/output` | `/validibot/output` | read-write |
+| `runs/<org>/<run>/attempts/<attempt>/input` | `/validibot/attempts/<attempt>/input` | read-only |
+| `runs/<org>/<run>/attempts/<attempt>/output` | `/validibot/attempts/<attempt>/output` | read-write |
 | (none) | `/tmp` | tmpfs (`size=2g,mode=1777`) |
 
 The container does **not** receive the global storage root, other run directories, Django media paths, database credentials, signing keys, Stripe/x402 credentials, or arbitrary host directories.
@@ -704,17 +705,25 @@ The container does **not** receive the global storage root, other run directorie
 
 The Docker dispatch path **rewrites three URI fields** in the input envelope so the container sees only container-visible paths:
 
-- `input_files[].uri` → `file:///validibot/input/<filename>`
-- `resource_files[].uri` → `file:///validibot/input/resources/<filename>`
-- `context.execution_bundle_uri` → `file:///validibot/output`
+- `input_files[].uri` → the attempt's container input directory
+- `resource_files[].uri` → the attempt's container resource directory
+- `context.execution_bundle_uri` → the attempt's container output directory
 
-Setting `execution_bundle_uri` to `file:///validibot/output` causes the backends' existing artifact-upload logic (which composes `f"{execution_bundle_uri}/outputs"`) to land artifacts at `/validibot/output/outputs/...`. **No validator-backend changes required** — backends already resolve URIs through their storage client.
+The backends' existing artifact-upload logic composes
+`f"{execution_bundle_uri}/outputs"`, so artifacts automatically land below the
+correct attempt's output directory. **No validator-backend changes are
+required** — backends already resolve URIs through their storage client.
 
-The Cloud Run dispatch path is unchanged: it keeps `gs://...` URIs because each Cloud Run Job has its own GCS prefix and is naturally run-scoped.
+Cloud Run keeps `gs://...` URIs, with the same
+`runs/<org>/<run>/attempts/<attempt>/` prefix shape.
 
 ### Workspace materialisation runs after preprocessing
 
-Some advanced validators (notably EnergyPlus) preprocess the submission in-memory — for example, EnergyPlus template resolution rewrites `submission.content` and `submission.original_filename` before dispatch. The run-workspace builder must therefore run **after** the validator's `validate()` preprocessing has completed, i.e. inside `ExecutionBackend.execute()`.
+Some advanced validators (notably EnergyPlus) preprocess the submission
+in-memory. For example, EnergyPlus template resolution rewrites
+`submission.content` and `submission.original_filename` before dispatch. The
+attempt-workspace builder must therefore run **after** the validator's
+`validate()` preprocessing has completed, inside `ExecutionBackend.execute()`.
 
 ### The implicit sentinel: how completion is detected
 

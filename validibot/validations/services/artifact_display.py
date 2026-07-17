@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 from validibot.core.storage.local import LocalDataStorage
 from validibot.core.utils import reverse_with_org
-from validibot.validations.services.run_workspace import CONTAINER_OUTPUT_DIR
+from validibot.validations.services.run_workspace import CONTAINER_ATTEMPTS_DIR
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
@@ -218,8 +218,10 @@ def resolve_local_artifact_path(artifact: Artifact) -> Path | None:
 
     * ``file://<DATA_STORAGE_ROOT>/...`` for files already addressed by the
       worker's local storage root.
-    * ``file:///validibot/output/...`` for container-visible output paths,
-      mapped back into the owning run's workspace output directory.
+    * ``file:///validibot/attempts/<attempt>/output/...`` for
+      container-visible output paths, mapped back into the owning attempt's
+      workspace after verifying that the attempt belongs to the artifact's
+      step/run.
 
     Other schemes are intentionally unsupported here; remote object storage
     needs a signed-download strategy rather than raw URI exposure.
@@ -245,19 +247,45 @@ def _resolve_container_output_path(
     artifact: Artifact,
     path: Path,
 ) -> Path | None:
-    """Map a container ``/validibot/output`` URI to the run workspace."""
+    """Map an attempt-bound container output URI to its host workspace."""
 
-    container_output_path = Path(CONTAINER_OUTPUT_DIR)
-    if not _is_relative_to(path, container_output_path):
+    container_attempts_path = Path(CONTAINER_ATTEMPTS_DIR)
+    if not _is_relative_to(path, container_attempts_path):
         return None
 
-    relative = path.relative_to(container_output_path)
+    relative = path.relative_to(container_attempts_path)
+    if len(relative.parts) < 3:  # noqa: PLR2004
+        return None
+    attempt_id, output_dirname, *artifact_parts = relative.parts
+    if (
+        output_dirname != "output"
+        or not artifact_parts
+        or any(part in {"", ".", ".."} for part in artifact_parts)
+    ):
+        return None
+
+    if artifact.step_run_id:
+        attempt_matches = artifact.step_run.execution_attempts.filter(
+            pk=attempt_id,
+        ).exists()
+    else:
+        from validibot.validations.models import ExecutionAttempt
+
+        attempt_matches = ExecutionAttempt.objects.filter(
+            pk=attempt_id,
+            step_run__validation_run_id=artifact.validation_run_id,
+        ).exists()
+    if not attempt_matches:
+        return None
+
     storage_path = (
         Path("runs")
         / str(artifact.org_id)
         / str(artifact.validation_run_id)
+        / "attempts"
+        / attempt_id
         / "output"
-        / relative
+        / Path(*artifact_parts)
     )
     return _resolve_storage_path(storage_path)
 

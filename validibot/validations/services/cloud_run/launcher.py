@@ -45,6 +45,8 @@ from validibot.validations.services.cloud_run.job_client import (
 )
 from validibot.validations.services.cloud_run.job_client import get_job_configured_image
 from validibot.validations.services.cloud_run.job_client import run_validator_job
+from validibot.validations.services.create_only_storage import create_local_bytes
+from validibot.validations.services.create_only_storage import create_local_directory
 from validibot.validations.services.file_identity import local_bytes_identity
 from validibot.validations.services.image_policy import ValidatorBackendImagePolicy
 from validibot.validations.services.image_policy import enforce_image_policy
@@ -131,7 +133,7 @@ def _attempt_execution_bundle(
         raise RuntimeError(msg)
 
     local_dir = Path(settings.MEDIA_ROOT) / "files" / Path(*relpath.parts)
-    local_dir.mkdir(parents=True, exist_ok=True)
+    create_local_directory(local_dir)
     return AttemptExecutionBundle(
         execution_bundle_uri=str(local_dir),
         input_envelope_uri=str(local_dir / "input.json"),
@@ -871,7 +873,7 @@ def launch_shacl_validation(
                 content_type="text/plain",
             )
         else:
-            local_submission_path.write_bytes(content_bytes)
+            create_local_bytes(local_submission_path, content_bytes)
             submission_file = local_bytes_identity(
                 content=content_bytes,
                 uri=submission_uri,
@@ -1064,7 +1066,7 @@ def launch_schematron_validation(
                 content_type="application/xml",
             )
         else:
-            local_submission_path.write_bytes(content_bytes)
+            create_local_bytes(local_submission_path, content_bytes)
             submission_file = local_bytes_identity(
                 content=content_bytes,
                 uri=submission_uri,

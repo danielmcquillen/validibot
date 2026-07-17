@@ -41,6 +41,7 @@ from django.utils import timezone
 from validibot_shared.canonicalization import sha256_hex_for_model
 
 from validibot.core.storage import get_data_storage
+from validibot.validations.services.create_only_storage import create_local_bytes
 from validibot.validations.services.execution.base import ExecutionBackend
 from validibot.validations.services.execution.base import ExecutionRequest
 from validibot.validations.services.execution.base import ExecutionResponse
@@ -294,10 +295,11 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             # read-only attempt input mount.
             envelope_json = envelope.model_dump_json(indent=2)
             input_envelope_sha256 = sha256_hex_for_model(envelope)
-            workspace.host_input_envelope_path.write_bytes(
+            create_local_bytes(
+                workspace.host_input_envelope_path,
                 envelope_json.encode("utf-8"),
+                mode=0o644,
             )
-            workspace.host_input_envelope_path.chmod(0o644)
 
             logger.info(
                 "Wrote input envelope for run %s to %s",

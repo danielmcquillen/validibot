@@ -749,18 +749,17 @@ formed, identity-matching output can report that the submitted data failed its
 rules; that is an ordinary validation verdict. Missing, malformed, oversized,
 or identity-mismatched output is an execution-system error.
 
-The coordinated `validibot-shared` 0.16, backend 0.11, and Django application
-slice makes required file identity fields and streaming input verification
-current behavior. Django computes or resolves each input's exact size,
-SHA-256, and storage version before dispatch; every backend fetches the pinned
-version and verifies the streamed bytes before domain execution. Local output
-artifacts are also checked against the bytes in the attempt workspace before
-their strict `ArtifactRef` is persisted.
+The coordinated `validibot-shared` 0.16, backend 0.12, and Django application
+slices make required file identities, streaming verification, and create-only
+attempt publication current behavior. Django computes or resolves each input's
+exact size, SHA-256, and storage version before dispatch; every backend fetches
+the pinned version and verifies the streamed bytes before domain execution.
+Local output artifacts are checked against the bytes in the attempt workspace
+before their strict `ArtifactRef` is persisted.
 
-Create-only provider semantics, evidence-manifest rewiring, and narrower
-storage capabilities remain subsequent slices. A digest mismatch therefore
-fails closed today, while the next slice prevents a conflicting overwrite from
-being created in the first place.
+Evidence-manifest rewiring and narrower storage capabilities remain subsequent
+slices. Identity mismatches and attempts to reuse a committed storage identity
+now both fail closed.
 
 ## Attempt-scoped isolation
 
@@ -804,12 +803,26 @@ identity so the container sees only container-visible paths:
 
 The backends' existing artifact-upload logic composes
 `f"{execution_bundle_uri}/outputs"`, so artifacts automatically land below the
-correct attempt's output directory. Backend 0.11 additionally opens local files
+correct attempt's output directory. Backend 0.12 additionally opens local files
 under the declared input root or downloads the exact GCS generation, verifying
-size and SHA-256 while streaming before the domain runner is called.
+size and SHA-256 while streaming before the domain runner is called, and
+publishes outputs without replacing an existing attempt object.
 
 Cloud Run keeps `gs://...` URIs, with the same
 `runs/<org>/<run>/attempts/<attempt>/` prefix shape.
+
+### Create-only attempt publication
+
+An attempt UUID names one publication, not a mutable workspace. Local dispatch
+reserves the attempt directory exclusively and publishes input files through a
+temporary sibling plus an atomic no-replace link. Cloud dispatch uploads input
+files and `input.json` with GCS `if_generation_match=0`. Backend 0.12 applies
+the corresponding rule to local and GCS outputs.
+
+This rule deliberately rejects an identical replay as well as conflicting
+bytes. Duplicate delivery therefore cannot silently replace attempt state; an
+explicit retry must allocate a new execution-attempt UUID and receives a new
+local directory or GCS prefix.
 
 ### Workspace materialisation runs after preprocessing
 

@@ -21,6 +21,7 @@ from validibot.validations.services.cloud_run.launcher import (
 )
 from validibot.validations.services.cloud_run.launcher import _attempt_execution_bundle
 from validibot.validations.services.cloud_run.launcher import _run_validator_job_safely
+from validibot.validations.services.create_only_storage import StorageConflictError
 from validibot.validations.services.execution_attempts import build_attempt_callback_id
 from validibot.validations.services.execution_attempts import (
     get_or_create_execution_attempt,
@@ -185,6 +186,22 @@ class TestAttemptExecutionBundlePaths:
         assert bundle.execution_bundle_uri == str(expected)
         assert bundle.input_envelope_uri == str(expected / "input.json")
         assert expected.is_dir()
+
+    def test_local_async_bundle_rejects_duplicate_attempt_preparation(
+        self,
+        settings,
+        tmp_path,
+    ):
+        """A redelivered local dispatch must not reuse an existing bundle."""
+        settings.GCS_VALIDATION_BUCKET = ""
+        settings.MEDIA_ROOT = tmp_path
+        attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.PENDING)
+        run = attempt.step_run.validation_run
+
+        _attempt_execution_bundle(run=run, step_run=attempt.step_run)
+
+        with pytest.raises(StorageConflictError, match="already exists"):
+            _attempt_execution_bundle(run=run, step_run=attempt.step_run)
 
 
 @pytest.mark.django_db

@@ -608,7 +608,7 @@ class TestDockerComposeExecutionBackend:
         assert "not available" in response.error_message
 
     @pytest.mark.django_db
-    def test_exception_after_dispatch_becomes_unknown_not_failed(self):
+    def test_exception_after_dispatch_becomes_unknown_not_failed(self, tmp_path):
         """A lost Docker response must not authorize automatic container replay.
 
         Even though self-hosted execution is normally synchronous, the worker
@@ -625,6 +625,8 @@ class TestDockerComposeExecutionBackend:
         workspace.execution_bundle_container_uri = "file:///bundle"
         workspace.input_envelope_container_uri = "file:///bundle/input.json"
         workspace.output_envelope_container_uri = "file:///bundle/output.json"
+        workspace.host_input_envelope_path = tmp_path / "input" / "input.json"
+        workspace.host_input_envelope_path.parent.mkdir()
         envelope = MagicMock()
         envelope.model_dump_json.return_value = "{}"
         envelope.model_dump.return_value = {}
@@ -650,7 +652,7 @@ class TestDockerComposeExecutionBackend:
         assert attempt.state == ExecutionAttemptState.UNKNOWN
 
     @pytest.mark.django_db
-    def test_unverified_output_fails_the_claimed_attempt(self):
+    def test_unverified_output_fails_the_claimed_attempt(self, tmp_path):
         """A zero-exit container cannot complete without a verified envelope.
 
         Container completion is only transport status.  Treating a missing or
@@ -666,6 +668,8 @@ class TestDockerComposeExecutionBackend:
         workspace.execution_bundle_container_uri = "file:///validibot/output"
         workspace.input_envelope_container_uri = "file:///validibot/input/input.json"
         workspace.output_envelope_container_uri = "file:///validibot/output/output.json"
+        workspace.host_input_envelope_path = tmp_path / "input" / "input.json"
+        workspace.host_input_envelope_path.parent.mkdir()
         envelope = MagicMock()
         envelope.model_dump_json.return_value = "{}"
         envelope.model_dump.return_value = {}

@@ -22,14 +22,17 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from google.api_core.exceptions import PreconditionFailed
 from pydantic import BaseModel
 
 from validibot.validations.services.cloud_run.gcs_client import download_envelope
 from validibot.validations.services.cloud_run.gcs_client import get_gcs_file_identity
 from validibot.validations.services.cloud_run.gcs_client import parse_gcs_uri
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope
+from validibot.validations.services.cloud_run.gcs_client import upload_envelope_local
 from validibot.validations.services.cloud_run.gcs_client import upload_file
 from validibot.validations.services.cloud_run.gcs_client import upload_file_from_path
+from validibot.validations.services.create_only_storage import StorageConflictError
 
 
 def test_parse_gcs_uri():
@@ -105,6 +108,49 @@ def test_upload_envelope(mock_storage_client):
     assert "test_field" in uploaded_json
     assert "hello" in uploaded_json
     assert "42" in uploaded_json
+    assert call_args.kwargs == {
+        "content_type": "application/json",
+        "if_generation_match": 0,
+    }
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_upload_envelope_maps_generation_conflict_to_provider_neutral_error(
+    mock_storage_client,
+):
+    """A pre-existing GCS object must become the shared create-only conflict."""
+
+    class TestModel(BaseModel):
+        value: str
+
+    mock_blob = MagicMock()
+    mock_blob.upload_from_string.side_effect = PreconditionFailed("object exists")
+    mock_storage_client.return_value.bucket.return_value.blob.return_value = mock_blob
+
+    with pytest.raises(
+        StorageConflictError,
+        match=r"gs://test-bucket/input\.json",
+    ):
+        upload_envelope(
+            TestModel(value="new"),
+            "gs://test-bucket/input.json",
+        )
+
+
+def test_upload_envelope_local_rejects_replay_and_preserves_first_bytes(tmp_path):
+    """Local async envelopes must follow the same create-only rule as GCS."""
+
+    class TestModel(BaseModel):
+        value: str
+
+    destination = tmp_path / "attempt" / "input.json"
+    upload_envelope_local(TestModel(value="first"), destination)
+    first_bytes = destination.read_bytes()
+
+    with pytest.raises(StorageConflictError, match="already exists"):
+        upload_envelope_local(TestModel(value="second"), destination)
+
+    assert destination.read_bytes() == first_bytes
 
 
 @patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
@@ -124,6 +170,7 @@ def test_upload_file_returns_exact_bytes_and_gcs_generation(mock_storage_client)
     mock_blob.upload_from_string.assert_called_once_with(
         content_bytes,
         content_type="text/plain",
+        if_generation_match=0,
     )
     assert identity.uri == "gs://test-bucket/inputs/model.txt"
     assert identity.size_bytes == len(content_bytes)
@@ -151,6 +198,7 @@ def test_upload_file_from_path_returns_source_hash_and_generation(
     mock_blob.upload_from_filename.assert_called_once_with(
         str(source),
         content_type="application/octet-stream",
+        if_generation_match=0,
     )
     assert identity.size_bytes == source.stat().st_size
     assert identity.sha256 == hashlib.sha256(source.read_bytes()).hexdigest()

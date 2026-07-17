@@ -9,7 +9,7 @@ attempt-specific container URIs through :class:`RunWorkspace`.
 What we're testing here, and why
 --------------------------------
 
-Three concerns each have their own block of tests:
+Four concerns each have their own block of tests:
 
 1. **Layout and modes.** Inputs are read-only-ish (mode 755 on dirs, 644 on
    files); output is writable by the container UID. These are the
@@ -28,6 +28,10 @@ Three concerns each have their own block of tests:
    :class:`RunWorkspace`. If the URI helpers drift from the runner's
    mount paths, every advanced run breaks with "file not found." The
    helpers are simple but high-leverage; we lock the strings explicitly.
+
+4. **Create-only attempt identity.** A durable attempt UUID is allowed one
+   workspace. Duplicate preparation conflicts without replacing the first
+   input or output, while an explicit retry receives a fresh workspace.
 """
 
 from __future__ import annotations
@@ -376,8 +380,8 @@ class TestMaterialization:
                 ],
             )
 
-    def test_idempotent_rebuild_overwrites_input(self, builder, primary_content):
-        """Repeated preparation of the same unclaimed attempt is idempotent."""
+    def test_rebuild_of_same_attempt_is_a_conflict(self, builder, primary_content):
+        """Duplicate preparation must preserve the first attempt's exact state."""
         ws_first = builder.build(
             org_id="org-1",
             run_id="run-aaa",
@@ -385,22 +389,50 @@ class TestMaterialization:
             primary_filename="model.idf",
             primary_content=b"version 1",
         )
-        # Preparation does not silently delete files already associated with
-        # the same attempt; lifecycle fencing prevents that attempt relaunching.
         leftover = ws_first.host_output_dir / "output.json"
         leftover.write_bytes(b"previous run output")
 
-        ws_second = builder.build(
-            org_id="org-1",
-            run_id="run-aaa",
-            attempt_id="attempt-111",
-            primary_filename="model.idf",
-            primary_content=b"version 2",
-        )
+        with pytest.raises(RunWorkspaceError, match="already exists"):
+            builder.build(
+                org_id="org-1",
+                run_id="run-aaa",
+                attempt_id="attempt-111",
+                primary_filename="model.idf",
+                primary_content=b"version 2",
+            )
 
-        assert ws_second.primary_file.host_path.read_bytes() == b"version 2"
-        # The output dir contents are preserved across rebuilds.
+        assert ws_first.primary_file.host_path.read_bytes() == b"version 1"
         assert leftover.read_bytes() == b"previous run output"
+
+    def test_duplicate_resource_destinations_fail_before_materialisation(
+        self,
+        builder,
+        storage,
+        primary_content,
+        tmp_path,
+    ):
+        """Case-only name collisions must not leave a partial attempt workspace."""
+        first = tmp_path / "first.epw"
+        second = tmp_path / "second.epw"
+        first.write_bytes(b"first")
+        second.write_bytes(b"second")
+
+        with pytest.raises(RunWorkspaceError, match="Duplicate resource"):
+            builder.build(
+                org_id="org-1",
+                run_id="run-aaa",
+                attempt_id="attempt-111",
+                primary_filename="model.idf",
+                primary_content=primary_content,
+                resource_files=[
+                    ResourceFileSpec(filename="Weather.epw", source_path=first),
+                    ResourceFileSpec(filename="weather.epw", source_path=second),
+                ],
+            )
+
+        assert not (
+            storage.root / "runs" / "org-1" / "run-aaa" / "attempts" / "attempt-111"
+        ).exists()
 
     def test_retry_uses_a_new_workspace(self, builder, primary_content):
         """A retry cannot read or overwrite the prior attempt's output."""
@@ -461,6 +493,23 @@ class TestPathTraversalSafety:
                 run_id="run-aaa",
                 attempt_id="attempt-111",
                 primary_filename=bad_name,
+                primary_content=primary_content,
+            )
+
+    @pytest.mark.parametrize("reserved_name", ["input.json", "INPUT.JSON", "resources"])
+    def test_rejects_primary_names_reserved_by_workspace_layout(
+        self,
+        builder,
+        primary_content,
+        reserved_name,
+    ):
+        """A submission cannot replace the envelope or resources directory."""
+        with pytest.raises(RunWorkspaceError, match="Reserved primary"):
+            builder.build(
+                org_id="org-1",
+                run_id="run-aaa",
+                attempt_id="attempt-111",
+                primary_filename=reserved_name,
                 primary_content=primary_content,
             )
 

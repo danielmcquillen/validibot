@@ -4,14 +4,22 @@ Google Cloud Storage client for validation envelopes.
 This module provides functions to upload and download validation envelopes
 to/from GCS. It's a thin, focused wrapper around google-cloud-storage.
 
+Attempt uploads are create-only: GCS writes use a generation-zero precondition
+and local development writes use the provider-neutral atomic helper. Reusing
+an already-published identity raises the same ``StorageConflictError`` in both
+environments.
+
 Design: Simple functions that do one thing well. No stateful client objects.
 """
 
 from pathlib import Path
 
+from google.api_core.exceptions import PreconditionFailed
 from google.cloud import storage
 from pydantic import BaseModel
 
+from validibot.validations.services.create_only_storage import StorageConflictError
+from validibot.validations.services.create_only_storage import create_local_bytes
 from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.services.file_identity import local_bytes_identity
 from validibot.validations.services.file_identity import local_file_identity
@@ -74,7 +82,8 @@ def upload_envelope(
 
     Raises:
         ValueError: If URI is invalid
-        google.cloud.exceptions.GoogleCloudError: If upload fails
+        StorageConflictError: If the destination object already exists.
+        google.cloud.exceptions.GoogleCloudError: If another upload error occurs.
 
     Example:
         >>> from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
@@ -92,10 +101,14 @@ def upload_envelope(
     json_data = envelope.model_dump_json(indent=2)
 
     # Upload to GCS
-    blob.upload_from_string(
-        json_data,
-        content_type="application/json",
-    )
+    try:
+        blob.upload_from_string(
+            json_data,
+            content_type="application/json",
+            if_generation_match=0,
+        )
+    except PreconditionFailed as exc:
+        raise _gcs_create_conflict(uri) from exc
 
 
 def upload_envelope_local(envelope: BaseModel, path: Path) -> None:
@@ -105,9 +118,14 @@ def upload_envelope_local(envelope: BaseModel, path: Path) -> None:
     Args:
         envelope: Pydantic model instance
         path: Filesystem path to write
+
+    Raises:
+        StorageConflictError: If the destination path already exists.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(envelope.model_dump_json(indent=2))
+    create_local_bytes(
+        path,
+        envelope.model_dump_json(indent=2).encode("utf-8"),
+    )
 
 
 def download_envelope(
@@ -227,7 +245,8 @@ def upload_file_from_path(
     Raises:
         FileNotFoundError: If local file doesn't exist
         ValueError: If URI is invalid
-        google.cloud.exceptions.GoogleCloudError: If upload fails
+        StorageConflictError: If the destination object already exists.
+        google.cloud.exceptions.GoogleCloudError: If another upload error occurs.
 
     Example:
         >>> from pathlib import Path
@@ -251,10 +270,14 @@ def upload_file_from_path(
     source_identity = local_file_identity(path=local_path, uri=uri)
 
     # Upload file
-    blob.upload_from_filename(
-        str(local_path),
-        content_type=content_type,
-    )
+    try:
+        blob.upload_from_filename(
+            str(local_path),
+            content_type=content_type,
+            if_generation_match=0,
+        )
+    except PreconditionFailed as exc:
+        raise _gcs_create_conflict(uri) from exc
     generation = _uploaded_generation(blob=blob, uri=uri)
     return FileIdentity(
         uri=uri,
@@ -279,7 +302,8 @@ def upload_file(
 
     Raises:
         ValueError: If URI is invalid
-        google.cloud.exceptions.GoogleCloudError: If upload fails
+        StorageConflictError: If the destination object already exists.
+        google.cloud.exceptions.GoogleCloudError: If another upload error occurs.
 
     Example:
         >>> content = b"Building data..."
@@ -300,10 +324,14 @@ def upload_file(
     source_identity = local_bytes_identity(content=content_bytes, uri=uri)
 
     # Upload the exact bytes whose identity is returned to the envelope writer.
-    blob.upload_from_string(
-        content_bytes,
-        content_type=content_type,
-    )
+    try:
+        blob.upload_from_string(
+            content_bytes,
+            content_type=content_type,
+            if_generation_match=0,
+        )
+    except PreconditionFailed as exc:
+        raise _gcs_create_conflict(uri) from exc
     generation = _uploaded_generation(blob=blob, uri=uri)
     return FileIdentity(
         uri=uri,
@@ -349,6 +377,11 @@ def _uploaded_generation(*, blob, uri: str) -> str:
         msg = f"GCS did not return an object generation after uploading {uri}"
         raise ValueError(msg)
     return str(blob.generation)
+
+
+def _gcs_create_conflict(uri: str) -> StorageConflictError:
+    """Return the provider-neutral error for a failed generation-zero write."""
+    return StorageConflictError(f"Create-only storage identity already exists: {uri}")
 
 
 def download_file(

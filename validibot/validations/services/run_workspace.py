@@ -74,6 +74,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from validibot.validations.services.attempt_paths import attempt_bundle_relpath
+from validibot.validations.services.create_only_storage import StorageConflictError
+from validibot.validations.services.create_only_storage import create_local_bytes
+from validibot.validations.services.create_only_storage import create_local_directory
+from validibot.validations.services.create_only_storage import create_local_file
 from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.services.file_identity import local_file_identity
 
@@ -101,6 +105,7 @@ CONTAINER_ATTEMPTS_DIR = "/validibot/attempts"
 # submission file so resource-name collisions with the primary filename
 # cannot happen, and so the runner can deny writes to it specifically.
 RESOURCES_SUBDIR = "resources"
+RESERVED_INPUT_NAMES = frozenset({"input.json", RESOURCES_SUBDIR})
 
 # Permission bits for input dirs (read+exec for everyone, write for owner)
 # and input files (read for everyone, write for owner). The container
@@ -323,10 +328,9 @@ class RunWorkspaceBuilder:
     ) -> RunWorkspace:
         """Materialise the workspace and return the access object.
 
-        Idempotent within one attempt — if preparation is repeated before the
-        attempt is claimed, this rewrites its input files but preserves its
-        output directory. A retry has a new ``attempt_id`` and therefore a
-        separate workspace whose output directory starts empty.
+        Create-only within one attempt. Repeated preparation of the same
+        attempt is a conflict, even if the bytes match; a retry receives a new
+        ``attempt_id`` and therefore a separate empty workspace.
 
         Args:
             org_id: Organisation id used in the host path.
@@ -358,8 +362,24 @@ class RunWorkspaceBuilder:
         # Validate filenames *before* touching the filesystem so a bad
         # name doesn't leave half-built directories around.
         self._reject_path_traversal(primary_filename, label="primary_filename")
+        if primary_filename.casefold() in RESERVED_INPUT_NAMES:
+            msg = f"Reserved primary input filename: {primary_filename!r}"
+            raise RunWorkspaceError(msg)
+
+        resource_destinations: set[str] = set()
         for res in resource_files:
             self._reject_path_traversal(res.filename, label="resource filename")
+            destination_key = res.filename.casefold()
+            if destination_key in resource_destinations:
+                msg = f"Duplicate resource destination filename: {res.filename!r}"
+                raise RunWorkspaceError(msg)
+            resource_destinations.add(destination_key)
+            if not res.source_path.is_file():
+                msg = (
+                    f"Resource file source does not exist or is not a file: "
+                    f"{res.source_path} (filename={res.filename})"
+                )
+                raise RunWorkspaceError(msg)
 
         try:
             base_relpath = attempt_bundle_relpath(
@@ -374,13 +394,17 @@ class RunWorkspaceBuilder:
         resources_dir = input_dir / RESOURCES_SUBDIR
         output_dir = base_dir / "output"
 
-        # Create the directory skeleton with the right permissions
-        # up-front so the chmod doesn't have to run twice (mkdir, then
-        # chmod). The mode argument to ``mkdir`` is masked by the
-        # process umask; we re-chmod afterwards to be explicit.
-        input_dir.mkdir(parents=True, exist_ok=True)
-        resources_dir.mkdir(parents=True, exist_ok=True)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Reserve the attempt root exactly once, then create its fixed
+        # child layout. Explicit chmod calls make the final modes independent
+        # of the process umask.
+        try:
+            create_local_directory(base_dir)
+        except StorageConflictError as exc:
+            msg = f"Execution attempt workspace already exists: {base_dir}"
+            raise RunWorkspaceError(msg) from exc
+        input_dir.mkdir()
+        resources_dir.mkdir()
+        output_dir.mkdir()
 
         input_dir.chmod(INPUT_DIR_MODE)
         resources_dir.chmod(INPUT_DIR_MODE)
@@ -391,8 +415,11 @@ class RunWorkspaceBuilder:
 
         # Materialise the primary file.
         primary_host_path = input_dir / primary_filename
-        primary_host_path.write_bytes(primary_content)
-        primary_host_path.chmod(INPUT_FILE_MODE)
+        create_local_bytes(
+            primary_host_path,
+            primary_content,
+            mode=INPUT_FILE_MODE,
+        )
 
         primary_container_uri = f"file://{container_input_dir}/{primary_filename}"
         primary = MaterializedFile(
@@ -405,22 +432,24 @@ class RunWorkspaceBuilder:
             ),
         )
 
-        # Materialise resource files. Each one is copied as bytes rather
-        # than via :func:`shutil.copy` so the builder works the same way
-        # against any source path (Django-uploaded media, test fixtures,
-        # signed-URL downloads if a future caller pre-stages content
-        # itself).
+        # Materialise resources through the same atomic create-only helper as
+        # the primary file. This keeps Django-uploaded media and test fixture
+        # sources on one publication path without inheriting source modes.
         materialised_resources: list[MaterializedFile] = []
         for res in resource_files:
-            if not res.source_path.exists():
+            target = resources_dir / res.filename
+            try:
+                create_local_file(
+                    res.source_path,
+                    target,
+                    mode=INPUT_FILE_MODE,
+                )
+            except FileNotFoundError as exc:
                 msg = (
-                    f"Resource file source does not exist: "
+                    f"Resource file source disappeared during materialisation: "
                     f"{res.source_path} (filename={res.filename})"
                 )
-                raise RunWorkspaceError(msg)
-            target = resources_dir / res.filename
-            target.write_bytes(res.source_path.read_bytes())
-            target.chmod(INPUT_FILE_MODE)
+                raise RunWorkspaceError(msg) from exc
             container_uri = (
                 f"file://{container_input_dir}/{RESOURCES_SUBDIR}/{res.filename}"
             )
@@ -521,6 +550,7 @@ __all__ = [
     "INPUT_FILE_MODE",
     "OUTPUT_DIR_MODE_FALLBACK",
     "OUTPUT_DIR_MODE_OWNED",
+    "RESERVED_INPUT_NAMES",
     "RESOURCES_SUBDIR",
     "MaterializedFile",
     "ResourceFileSpec",

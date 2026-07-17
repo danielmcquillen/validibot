@@ -118,7 +118,10 @@ dependencies = [
   # 0.13.0 adds shared ArtifactRef/FilePortContract schemas and optional
   # port_key fields on envelope file/resource items for the artifact-port
   # workflow-engine slice.
-  "validibot-shared==0.14.0",
+  # 0.15.0 makes execution-attempt identity, the canonical input-envelope
+  # digest, and the exact expected output URI mandatory across every advanced
+  # validator input/output envelope.
+  "validibot-shared==0.15.0",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

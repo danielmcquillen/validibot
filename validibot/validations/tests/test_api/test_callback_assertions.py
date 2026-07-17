@@ -89,6 +89,7 @@ class CallbackAssertionEvaluationTests(TestCase):
         self.attempt = ExecutionAttemptFactory(
             step_run=self.step_run,
             state="RUNNING",
+            output_envelope_uri="gs://bucket/runs/output.json",
         )
         self.callback_id = build_attempt_callback_id(self.attempt)
 
@@ -99,6 +100,7 @@ class CallbackAssertionEvaluationTests(TestCase):
         messages: list | None = None,
         validator_id: str | None = None,
         run_id: str | None = None,
+        attempt=None,
     ) -> MagicMock:
         """
         Create a mock EnergyPlus output envelope for the async validator callback.
@@ -143,11 +145,17 @@ class CallbackAssertionEvaluationTests(TestCase):
             str(validator_id) if validator_id is not None else str(self.validator.id)
         )
         resolved_run_id = str(run_id) if run_id is not None else str(self.run.id)
+        resolved_attempt = attempt or self.attempt
 
         mock_envelope = MagicMock()
         mock_envelope.status = ValidationStatus.SUCCESS
         mock_envelope.validator = MockValidator(resolved_validator_id)
         mock_envelope.run_id = resolved_run_id
+        mock_envelope.step_run_id = str(resolved_attempt.step_run_id)
+        mock_envelope.execution_attempt_id = str(resolved_attempt.pk)
+        mock_envelope.attempt_contract_version = "validibot.attempt.v1"
+        mock_envelope.input_envelope_sha256 = resolved_attempt.input_envelope_sha256
+        mock_envelope.output_uri = resolved_attempt.output_envelope_uri
         mock_envelope.timing = MockTiming()
         mock_envelope.messages = messages or []
         mock_envelope.outputs = MockOutputs()
@@ -385,6 +393,7 @@ class CallbackAssertionEvaluationTests(TestCase):
         system_attempt = ExecutionAttemptFactory(
             step_run=system_step_run,
             state="RUNNING",
+            output_envelope_uri="gs://bucket/runs/output.json",
         )
 
         mock_message = MagicMock()
@@ -397,6 +406,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             messages=[mock_message],
             validator_id=system_validator.id,
             run_id=system_run.id,
+            attempt=system_attempt,
         )
 
         callback_id = build_attempt_callback_id(system_attempt)

@@ -16,10 +16,12 @@ from typing import cast
 from pydantic import BaseModel
 from pydantic import ValidationError
 from validibot_shared.canonicalization import sha256_hex_for_model
+from validibot_shared.validations.envelopes import ATTEMPT_CONTRACT_VERSION
 
 if TYPE_CHECKING:
     from validibot_shared.validations.envelopes import ValidationOutputEnvelope
 
+    from validibot.validations.models import ExecutionAttempt
     from validibot.validations.models import ValidationRun
     from validibot.validations.models import Validator
 
@@ -40,6 +42,11 @@ class ExpectedOutputEnvelope:
     run_id: str
     validator_id: str
     validator_type: str
+    step_run_id: str
+    execution_attempt_id: str
+    attempt_contract_version: str
+    input_envelope_sha256: str
+    output_uri: str
     envelope_class: type[ValidationOutputEnvelope]
 
 
@@ -47,6 +54,7 @@ def build_expected_output_envelope(
     *,
     run: ValidationRun,
     validator: Validator,
+    attempt: ExecutionAttempt,
 ) -> ExpectedOutputEnvelope:
     """Build expected output identity exclusively from trusted Django state."""
     from validibot.validations.validators.base.config import get_output_envelope_class
@@ -57,10 +65,21 @@ def build_expected_output_envelope(
             "missing_envelope_class",
             "No output envelope class is registered for the expected validator.",
         )
+    if not attempt.input_envelope_sha256 or not attempt.output_envelope_uri:
+        raise OutputEnvelopeVerificationError(
+            "incomplete_attempt_contract",
+            "The execution attempt is missing its committed input digest "
+            "or output URI.",
+        )
     return ExpectedOutputEnvelope(
         run_id=str(run.pk),
         validator_id=str(validator.pk),
         validator_type=_normalise_validator_type(validator.validation_type),
+        step_run_id=str(attempt.step_run_id),
+        execution_attempt_id=str(attempt.pk),
+        attempt_contract_version=ATTEMPT_CONTRACT_VERSION,
+        input_envelope_sha256=attempt.input_envelope_sha256,
+        output_uri=attempt.output_envelope_uri,
         envelope_class=cast("type[ValidationOutputEnvelope]", envelope_class),
     )
 
@@ -116,6 +135,42 @@ def verify_output_envelope(
             "validator_type_mismatch",
             "Validator type mismatch in output envelope.",
         )
+
+    identity_checks = (
+        (
+            "step_run_id",
+            expected.step_run_id,
+            "step_run_mismatch",
+            "Step run mismatch in output envelope.",
+        ),
+        (
+            "execution_attempt_id",
+            expected.execution_attempt_id,
+            "execution_attempt_mismatch",
+            "Execution attempt mismatch in output envelope.",
+        ),
+        (
+            "attempt_contract_version",
+            expected.attempt_contract_version,
+            "attempt_contract_version_mismatch",
+            "Execution-attempt contract version mismatch in output envelope.",
+        ),
+        (
+            "input_envelope_sha256",
+            expected.input_envelope_sha256,
+            "input_envelope_digest_mismatch",
+            "Input envelope digest mismatch in output envelope.",
+        ),
+        (
+            "output_uri",
+            expected.output_uri,
+            "output_uri_mismatch",
+            "Output URI mismatch in output envelope.",
+        ),
+    )
+    for field_name, trusted_value, error_code, detail in identity_checks:
+        if str(getattr(envelope, field_name, "")) != trusted_value:
+            raise OutputEnvelopeVerificationError(error_code, detail)
 
     return envelope
 

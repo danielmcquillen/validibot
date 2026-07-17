@@ -144,6 +144,11 @@ class LxmlContainerBackend:
         )
         envelope = SchematronOutputEnvelope(
             run_id=str(request.run.id),
+            step_run_id=str(request.run.current_step_run.pk),
+            execution_attempt_id="attempt-1",
+            attempt_contract_version="validibot.attempt.v1",
+            input_envelope_sha256="a" * 64,
+            output_uri="file:///tmp/output.json",
             validator={
                 "id": str(request.validator.id),
                 "type": ValidatorType.SCHEMATRON,

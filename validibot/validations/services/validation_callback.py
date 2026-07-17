@@ -453,6 +453,7 @@ class ValidationCallbackService:
                 callback,
                 run,
                 validator,
+                attempt,
             )
             result = self._complete_step(run, step_run, output_envelope)
             self._finalize_or_resume(run, result)
@@ -632,6 +633,7 @@ class ValidationCallbackService:
         callback: ValidationCallback,
         run: ValidationRun,
         validator,
+        attempt,
     ):
         """
         Download the output envelope from GCS and verify it matches expectations.
@@ -649,6 +651,12 @@ class ValidationCallbackService:
             _CallbackProcessingError: On allowlist violation, download failure,
                 missing envelope class, or validator/run ID mismatch.
         """
+        if (callback.result_uri or "") != attempt.output_envelope_uri:
+            raise _CallbackProcessingError(
+                status.HTTP_400_BAD_REQUEST,
+                "result_uri does not match the execution attempt",
+            )
+
         # Gate the untrusted result_uri BEFORE any GCS access.
         ValidationCallbackService._validate_result_uri_allowlist(
             callback.result_uri or "",
@@ -659,6 +667,7 @@ class ValidationCallbackService:
             expected = build_expected_output_envelope(
                 run=run,
                 validator=validator,
+                attempt=attempt,
             )
         except OutputEnvelopeVerificationError as exc:
             logger.warning(

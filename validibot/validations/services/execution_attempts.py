@@ -222,6 +222,7 @@ def transition_execution_attempt(
     provider_execution_id: str | None = None,
     execution_bundle_uri: str | None = None,
     input_envelope_uri: str | None = None,
+    input_envelope_sha256: str | None = None,
     output_envelope_uri: str | None = None,
     output_envelope_sha256: str | None = None,
     backend_image_digest: str | None = None,
@@ -307,6 +308,11 @@ def transition_execution_attempt(
             ),
             "input_envelope_uri": (
                 input_envelope_uri[:2048] if input_envelope_uri is not None else None
+            ),
+            "input_envelope_sha256": (
+                input_envelope_sha256[:64]
+                if input_envelope_sha256 is not None
+                else None
             ),
             "output_envelope_uri": (
                 output_envelope_uri[:2048] if output_envelope_uri is not None else None

@@ -88,6 +88,11 @@ class CallbackIdempotencyTestCase(TestCase):
         mock_envelope.validator.version = "1.0.0"
         # Run/org/workflow identifiers
         mock_envelope.run_id = str(self.run.id)
+        mock_envelope.step_run_id = str(self.step_run.pk)
+        mock_envelope.execution_attempt_id = str(self.attempt.pk)
+        mock_envelope.attempt_contract_version = "validibot.attempt.v1"
+        mock_envelope.input_envelope_sha256 = self.attempt.input_envelope_sha256
+        mock_envelope.output_uri = self.attempt.output_envelope_uri
         mock_envelope.org = MagicMock()
         mock_envelope.org.id = str(self.org.id)
         mock_envelope.workflow = MagicMock()
@@ -293,6 +298,9 @@ class CallbackIdempotencyTestCase(TestCase):
         mock_download.return_value = self._make_mock_envelope()
 
         callback_id_1 = self.callback_id
+        self.attempt.output_envelope_uri = "gs://bucket/output1.json"
+        self.attempt.save(update_fields=["output_envelope_uri"])
+        mock_download.return_value.output_uri = self.attempt.output_envelope_uri
 
         # First callback
         payload1 = {
@@ -320,11 +328,19 @@ class CallbackIdempotencyTestCase(TestCase):
             workflow_step=workflow_step2,
             status=StepStatus.RUNNING,
         )
-        attempt2 = ExecutionAttemptFactory(step_run=step_run2, state="RUNNING")
+        attempt2 = ExecutionAttemptFactory(
+            step_run=step_run2,
+            state="RUNNING",
+            output_envelope_uri="gs://bucket/output2.json",
+        )
 
         # Update mock envelope for run2
         mock_envelope2 = self._make_mock_envelope()
         mock_envelope2.run_id = str(run2.id)
+        mock_envelope2.step_run_id = str(step_run2.pk)
+        mock_envelope2.execution_attempt_id = str(attempt2.pk)
+        mock_envelope2.input_envelope_sha256 = attempt2.input_envelope_sha256
+        mock_envelope2.output_uri = attempt2.output_envelope_uri
         mock_envelope2.org.id = str(self.org.id)
         mock_envelope2.workflow.step_id = str(workflow_step2.id)
         mock_download.return_value = mock_envelope2

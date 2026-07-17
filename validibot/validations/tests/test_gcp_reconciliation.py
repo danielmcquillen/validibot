@@ -76,6 +76,11 @@ def _mock_step_run(*, output=None):
     attempt.pk = uuid.uuid4()
     attempt.provider_execution_id = provider_data.get("execution_name", "")
     attempt.execution_bundle_uri = provider_data.get("execution_bundle_uri", "")
+    attempt.output_envelope_uri = (
+        f"{attempt.execution_bundle_uri.rstrip('/')}/output.json"
+        if attempt.execution_bundle_uri
+        else ""
+    )
     attempt.runner_type = "google_cloud_run"
     active_attempt = attempt if attempt.provider_execution_id else None
     active_queryset = (

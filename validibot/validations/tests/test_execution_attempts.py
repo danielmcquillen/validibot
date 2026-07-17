@@ -239,6 +239,20 @@ class TestExecutionAttemptTransitions:
         assert completed.output_envelope_uri == "gs://bucket/runs/run-1/output.json"
         assert completed.output_envelope_sha256 == "a" * 64
 
+    def test_dispatch_commits_input_digest_and_expected_output_uri(self):
+        """Dispatch must persist the contract before any provider can return."""
+        attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.PENDING)
+
+        dispatching, _ = transition_execution_attempt(
+            attempt.id,
+            ExecutionAttemptState.DISPATCHING,
+            input_envelope_sha256="a" * 64,
+            output_envelope_uri="gs://bucket/runs/run-1/output.json",
+        )
+
+        assert dispatching.input_envelope_sha256 == "a" * 64
+        assert dispatching.output_envelope_uri == "gs://bucket/runs/run-1/output.json"
+
 
 @pytest.mark.django_db
 class TestProviderExecutionIdentity:

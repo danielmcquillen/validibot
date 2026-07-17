@@ -101,6 +101,7 @@ class CallbackCompletionTestCase(TestCase):
             step_run=self.step_run2,
             state="RUNNING",
             execution_bundle_uri="gs://bucket/runs/org/run",
+            output_envelope_uri="gs://bucket/runs/output.json",
         )
 
         ValidationFindingFactory(
@@ -124,6 +125,11 @@ class CallbackCompletionTestCase(TestCase):
         mock_envelope.validator.type = ValidationType.ENERGYPLUS
         mock_envelope.validator.version = "1.0.0"
         mock_envelope.run_id = str(self.run.id)
+        mock_envelope.step_run_id = str(self.step_run2.pk)
+        mock_envelope.execution_attempt_id = str(self.attempt.pk)
+        mock_envelope.attempt_contract_version = "validibot.attempt.v1"
+        mock_envelope.input_envelope_sha256 = self.attempt.input_envelope_sha256
+        mock_envelope.output_uri = self.attempt.output_envelope_uri
         mock_envelope.org = MagicMock()
         mock_envelope.org.id = str(self.org.id)
         mock_envelope.workflow = MagicMock()

@@ -106,6 +106,11 @@ class CallbackResultUriAllowlistTestCase(TestCase):
         mock_envelope.validator.id = str(self.async_validator.id)
         mock_envelope.validator.type = ValidationType.ENERGYPLUS
         mock_envelope.run_id = str(self.run.id)
+        mock_envelope.step_run_id = str(self.step_run.pk)
+        mock_envelope.execution_attempt_id = str(self.attempt.pk)
+        mock_envelope.attempt_contract_version = "validibot.attempt.v1"
+        mock_envelope.input_envelope_sha256 = self.attempt.input_envelope_sha256
+        mock_envelope.output_uri = self.attempt.output_envelope_uri
         mock_envelope.timing = MagicMock()
         mock_envelope.timing.finished_at = None
         mock_envelope.messages = []
@@ -128,6 +133,8 @@ class CallbackResultUriAllowlistTestCase(TestCase):
         would have already issued an arbitrary GCS read on its service account.
         """
         hostile_uri = "gs://some-other-victim-bucket/runs/evil/output.json"
+        self.attempt.output_envelope_uri = hostile_uri
+        self.attempt.save(update_fields=["output_envelope_uri"])
 
         response = self.client.post(
             self.callback_url,
@@ -158,6 +165,9 @@ class CallbackResultUriAllowlistTestCase(TestCase):
         """
         mock_download.return_value = self._make_mock_envelope()
         legit_uri = f"gs://{ALLOWED_BUCKET}/{self.run_prefix}/output.json"
+        self.attempt.output_envelope_uri = legit_uri
+        self.attempt.save(update_fields=["output_envelope_uri"])
+        mock_download.return_value.output_uri = legit_uri
 
         response = self.client.post(
             self.callback_url,

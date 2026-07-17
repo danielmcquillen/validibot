@@ -126,6 +126,8 @@ class TestCloudRunDispatchAmbiguity:
             job_name="validator-job",
             input_uri="gs://bucket/input.json",
             execution_bundle_uri="gs://bucket/bundle",
+            input_envelope_sha256="a" * 64,
+            output_envelope_uri="gs://bucket/bundle/output.json",
         )
 
         attempt.refresh_from_db()
@@ -134,6 +136,8 @@ class TestCloudRunDispatchAmbiguity:
         assert attempt.provider_execution_id == mock_run_job.return_value
         assert attempt.provider_job_name == "validator-job"
         assert attempt.execution_bundle_uri == "gs://bucket/bundle"
+        assert attempt.input_envelope_sha256 == "a" * 64
+        assert attempt.output_envelope_uri == "gs://bucket/bundle/output.json"
 
     @patch("validibot.validations.services.cloud_run.launcher.run_validator_job")
     def test_ambiguous_provider_error_is_never_relaunched(self, mock_run_job):
@@ -147,6 +151,8 @@ class TestCloudRunDispatchAmbiguity:
             "job_name": "validator-job",
             "input_uri": "gs://bucket/input.json",
             "execution_bundle_uri": "gs://bucket/bundle",
+            "input_envelope_sha256": "a" * 64,
+            "output_envelope_uri": "gs://bucket/bundle/output.json",
         }
 
         with pytest.raises(ProviderDispatchAmbiguousError):
@@ -168,7 +174,10 @@ class TestAttemptCallbackCompletion:
 
     def test_verified_callback_terminally_completes_its_attempt(self):
         """Successful output processing closes the same attempt named in delivery."""
-        attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.RUNNING)
+        attempt = ExecutionAttemptFactory(
+            state=ExecutionAttemptState.RUNNING,
+            output_envelope_uri="gs://bucket/output.json",
+        )
         run = attempt.step_run.validation_run
         receipt = CallbackReceiptFactory(
             callback_id=build_attempt_callback_id(attempt),

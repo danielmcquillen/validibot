@@ -615,6 +615,7 @@ class TestDockerComposeExecutionBackend:
         workspace.output_envelope_container_uri = "file:///bundle/output.json"
         envelope = MagicMock()
         envelope.model_dump_json.return_value = "{}"
+        envelope.model_dump.return_value = {}
 
         backend = DockerComposeExecutionBackend()
         backend._runner = MagicMock()
@@ -655,6 +656,7 @@ class TestDockerComposeExecutionBackend:
         workspace.output_envelope_container_uri = "file:///validibot/output/output.json"
         envelope = MagicMock()
         envelope.model_dump_json.return_value = "{}"
+        envelope.model_dump.return_value = {}
         runner_result = MagicMock(
             succeeded=True,
             execution_id="container-123",
@@ -719,6 +721,7 @@ class TestDockerOutputEnvelopeReader:
         self,
         tmp_path,
         request: ExecutionRequest,
+        attempt,
         *,
         validator_type: str = "ENERGYPLUS",
         validator_id: str | None = None,
@@ -731,6 +734,11 @@ class TestDockerOutputEnvelopeReader:
                 {
                     "schema_version": "validibot.output.v1",
                     "run_id": run_id or str(request.run.id),
+                    "step_run_id": str(attempt.step_run_id),
+                    "execution_attempt_id": str(attempt.pk),
+                    "attempt_contract_version": "validibot.attempt.v1",
+                    "input_envelope_sha256": attempt.input_envelope_sha256,
+                    "output_uri": attempt.output_envelope_uri,
                     "validator": {
                         "id": validator_id or str(request.validator.id),
                         "type": validator_type,
@@ -752,12 +760,18 @@ class TestDockerOutputEnvelopeReader:
     def test_reads_output_with_trusted_validator_class(self, tmp_path):
         """Valid output should parse through the validator's configured class."""
         request = _make_execution_request()
-        output_path = self._write_energyplus_output(tmp_path, request)
+        attempt = ExecutionAttemptFactory(
+            step_run=request.run.current_step_run,
+            input_envelope_sha256="a" * 64,
+            output_envelope_uri="file:///validibot/output/output.json",
+        )
+        output_path = self._write_energyplus_output(tmp_path, request, attempt)
 
         envelope = DockerComposeExecutionBackend()._read_output_envelope_from_host(
             output_path,
             expected_run=request.run,
             expected_validator=request.validator,
+            expected_attempt=attempt,
         )
 
         assert envelope is not None
@@ -767,9 +781,15 @@ class TestDockerOutputEnvelopeReader:
     def test_rejects_output_validator_type_mismatch(self, tmp_path):
         """The output document must not choose its own parser via validator.type."""
         request = _make_execution_request()
+        attempt = ExecutionAttemptFactory(
+            step_run=request.run.current_step_run,
+            input_envelope_sha256="a" * 64,
+            output_envelope_uri="file:///validibot/output/output.json",
+        )
         output_path = self._write_energyplus_output(
             tmp_path,
             request,
+            attempt,
             validator_type="FMU",
         )
 
@@ -777,6 +797,7 @@ class TestDockerOutputEnvelopeReader:
             output_path,
             expected_run=request.run,
             expected_validator=request.validator,
+            expected_attempt=attempt,
         )
 
         assert envelope is None
@@ -784,7 +805,12 @@ class TestDockerOutputEnvelopeReader:
     def test_rejects_oversized_output_before_reading(self, tmp_path, settings):
         """Local Docker output parsing must enforce the result-size cap too."""
         request = _make_execution_request()
-        output_path = self._write_energyplus_output(tmp_path, request)
+        attempt = ExecutionAttemptFactory(
+            step_run=request.run.current_step_run,
+            input_envelope_sha256="a" * 64,
+            output_envelope_uri="file:///validibot/output/output.json",
+        )
+        output_path = self._write_energyplus_output(tmp_path, request, attempt)
         output_path.write_bytes(b"x" * 128)
         settings.VALIDATION_RESULT_MAX_BYTES = 64
 
@@ -792,6 +818,7 @@ class TestDockerOutputEnvelopeReader:
             output_path,
             expected_run=request.run,
             expected_validator=request.validator,
+            expected_attempt=attempt,
         )
 
         assert envelope is None
@@ -839,6 +866,9 @@ class TestEnvelopeSkipCallback:
             callback_url="http://localhost:8000/callbacks/",
             callback_id="cb-123",
             execution_bundle_uri="file:///test/runs/123/",
+            execution_attempt_id="attempt-123",
+            step_run_id="step-run-123",
+            expected_output_uri="file:///test/runs/123/output.json",
             skip_callback=True,
         )
 
@@ -867,6 +897,9 @@ class TestEnvelopeSkipCallback:
             callback_url="https://api.example.com/callbacks/",
             callback_id="cb-123",
             execution_bundle_uri="gs://bucket/runs/123/",
+            execution_attempt_id="attempt-123",
+            step_run_id="step-run-123",
+            expected_output_uri="gs://bucket/runs/123/output.json",
             skip_callback=False,
         )
 
@@ -909,6 +942,9 @@ class TestEnvelopeFileMetadata:
             callback_url="http://localhost/cb/",
             callback_id="cb-1",
             execution_bundle_uri="file:///test/runs/1/",
+            execution_attempt_id="attempt-1",
+            step_run_id="step-run-1",
+            expected_output_uri="file:///test/runs/1/output.json",
         )
 
         model_file = envelope.input_files[0]
@@ -938,6 +974,9 @@ class TestEnvelopeFileMetadata:
             callback_url="http://localhost/cb/",
             callback_id="cb-1",
             execution_bundle_uri="file:///test/runs/1/",
+            execution_attempt_id="attempt-1",
+            step_run_id="step-run-1",
+            expected_output_uri="file:///test/runs/1/output.json",
         )
 
         model_file = envelope.input_files[0]
@@ -967,6 +1006,9 @@ class TestEnvelopeFileMetadata:
             callback_url="https://api.example.com/cb/",
             callback_id="cb-1",
             execution_bundle_uri="gs://my-bucket/runs/org-1/run-2/",
+            execution_attempt_id="attempt-1",
+            step_run_id="step-run-1",
+            expected_output_uri="gs://my-bucket/runs/org-1/run-2/output.json",
         )
 
         model_file = envelope.input_files[0]
@@ -994,6 +1036,9 @@ class TestEnvelopeFileMetadata:
             callback_url="http://localhost/cb/",
             callback_id="cb-1",
             execution_bundle_uri="file:///test/runs/1/",
+            execution_attempt_id="attempt-1",
+            step_run_id="step-run-1",
+            expected_output_uri="file:///test/runs/1/output.json",
         )
 
         model_file = envelope.input_files[0]

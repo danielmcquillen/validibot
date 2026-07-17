@@ -22,6 +22,7 @@ from validibot_shared.fmu.envelopes import FMUInputs
 from validibot_shared.fmu.envelopes import FMUSimulationConfig
 from validibot_shared.shacl.envelopes import build_shacl_input_envelope
 from validibot_shared.shacl.envelopes import mime_type_for_rdf_format
+from validibot_shared.validations.envelopes import ATTEMPT_CONTRACT_VERSION
 from validibot_shared.validations.envelopes import ExecutionContext
 from validibot_shared.validations.envelopes import InputFileItem
 from validibot_shared.validations.envelopes import OrganizationInfo
@@ -65,6 +66,9 @@ def build_energyplus_input_envelope(
     callback_url: str,
     callback_id: str | None,
     execution_bundle_uri: str,
+    execution_attempt_id: str,
+    step_run_id: str,
+    expected_output_uri: str,
     timestep_per_hour: int = 4,
     skip_callback: bool = False,
     input_files: list[InputFileItem] | None = None,
@@ -162,6 +166,10 @@ def build_energyplus_input_envelope(
         callback_id=callback_id,
         callback_url=callback_url,
         execution_bundle_uri=execution_bundle_uri,
+        execution_attempt_id=execution_attempt_id,
+        step_run_id=step_run_id,
+        attempt_contract_version=ATTEMPT_CONTRACT_VERSION,
+        expected_output_uri=expected_output_uri,
         skip_callback=skip_callback,
     )
 
@@ -1147,6 +1155,18 @@ def build_input_envelope(
         msg = f"No active step run found for ValidationRun {run.id}"
         raise ValueError(msg)
 
+    from validibot.validations.services.execution_attempts import (
+        get_active_execution_attempt,
+    )
+
+    execution_attempt = get_active_execution_attempt(current_step_run)
+    if execution_attempt is None:
+        msg = f"Step run {current_step_run.pk} has no active execution attempt"
+        raise ValueError(msg)
+    execution_attempt_id = str(execution_attempt.pk)
+    step_run_id = str(current_step_run.pk)
+    expected_output_uri = f"{execution_bundle_uri.rstrip('/')}/output.json"
+
     step = current_step_run.workflow_step
     validator = step.validator
     if not validator:
@@ -1198,6 +1218,9 @@ def build_input_envelope(
                 callback_url=callback_url,
                 callback_id=callback_id,
                 execution_bundle_uri=execution_bundle_uri,
+                execution_attempt_id=execution_attempt_id,
+                step_run_id=step_run_id,
+                expected_output_uri=expected_output_uri,
                 timestep_per_hour=timestep_per_hour,
                 skip_callback=skip_callback,
             )
@@ -1253,6 +1276,9 @@ def build_input_envelope(
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
+            execution_attempt_id=execution_attempt_id,
+            step_run_id=step_run_id,
+            expected_output_uri=expected_output_uri,
             timestep_per_hour=timestep_per_hour,
             skip_callback=skip_callback,
         )
@@ -1455,6 +1481,10 @@ def build_input_envelope(
             callback_id=callback_id,
             callback_url=callback_url,
             execution_bundle_uri=execution_bundle_uri,
+            execution_attempt_id=execution_attempt_id,
+            step_run_id=step_run_id,
+            attempt_contract_version=ATTEMPT_CONTRACT_VERSION,
+            expected_output_uri=expected_output_uri,
             skip_callback=skip_callback,
         )
         return FMUInputEnvelope(
@@ -1532,6 +1562,9 @@ def build_input_envelope(
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
+            execution_attempt_id=execution_attempt_id,
+            step_run_id=step_run_id,
+            expected_output_uri=expected_output_uri,
             skip_callback=skip_callback,
         )
         if data_graph_item is not None:
@@ -1591,6 +1624,9 @@ def build_input_envelope(
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
+            execution_attempt_id=execution_attempt_id,
+            step_run_id=step_run_id,
+            expected_output_uri=expected_output_uri,
             skip_callback=skip_callback,
         )
         if xml_document_item is not None:

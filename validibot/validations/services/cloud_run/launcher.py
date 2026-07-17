@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.utils import timezone
+from validibot_shared.canonicalization import sha256_hex_for_model
 
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
@@ -225,6 +226,8 @@ def _run_validator_job_safely(
     job_name: str,
     input_uri: str,
     execution_bundle_uri: str,
+    input_envelope_sha256: str,
+    output_envelope_uri: str,
 ) -> str:
     """Launch once and preserve provider-acceptance ambiguity explicitly.
 
@@ -259,6 +262,8 @@ def _run_validator_job_safely(
         provider_job_name=job_name,
         execution_bundle_uri=execution_bundle_uri,
         input_envelope_uri=input_uri,
+        input_envelope_sha256=input_envelope_sha256,
+        output_envelope_uri=output_envelope_uri,
     )
     if not claimed:
         if attempt.state == ExecutionAttemptState.RUNNING and (
@@ -496,6 +501,8 @@ def launch_energyplus_validation(
             job_name=job_name,
             input_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
+            input_envelope_sha256=sha256_hex_for_model(envelope),
+            output_envelope_uri=str(envelope.context.expected_output_uri),
         )
 
         # 6.5. Resolve validator backend image digest from the
@@ -687,6 +694,8 @@ def launch_fmu_validation(
             job_name=job_name,
             input_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
+            input_envelope_sha256=sha256_hex_for_model(envelope),
+            output_envelope_uri=str(envelope.context.expected_output_uri),
         )
 
         # Resolve validator backend image digest from the Execution's
@@ -881,6 +890,8 @@ def launch_shacl_validation(
             job_name=job_name,
             input_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
+            input_envelope_sha256=sha256_hex_for_model(envelope),
+            output_envelope_uri=str(envelope.context.expected_output_uri),
         )
 
         backend_image_digest = get_execution_image_digest(execution_name)
@@ -1074,6 +1085,8 @@ def launch_schematron_validation(
             job_name=job_name,
             input_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
+            input_envelope_sha256=sha256_hex_for_model(envelope),
+            output_envelope_uri=str(envelope.context.expected_output_uri),
         )
 
         backend_image_digest = get_execution_image_digest(execution_name)

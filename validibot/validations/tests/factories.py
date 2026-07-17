@@ -240,6 +240,8 @@ class ExecutionAttemptFactory(DjangoModelFactory):
     attempt_number = 1
     state = ExecutionAttemptState.PENDING
     runner_type = "docker"
+    input_envelope_sha256 = "a" * 64
+    output_envelope_uri = "gs://bucket/output.json"
 
 
 class ValidationFindingFactory(DjangoModelFactory):

@@ -11,7 +11,11 @@ from __future__ import annotations
 import json
 
 import pytest
+from validibot_shared.canonicalization import sha256_hex_for_model
 from validibot_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
+from validibot_shared.validations.envelopes import ATTEMPT_CONTRACT_VERSION
+from validibot_shared.validations.envelopes import ValidationInputEnvelope
+from validibot_shared.validations.envelopes import ValidatorType
 
 from validibot.validations.services.output_envelope_verifier import (
     ExpectedOutputEnvelope,
@@ -31,6 +35,10 @@ from validibot.validations.services.output_envelope_verifier import (
 
 RUN_ID = "run-123"
 VALIDATOR_ID = "validator-456"
+STEP_RUN_ID = "step-run-789"
+ATTEMPT_ID = "attempt-012"
+INPUT_SHA256 = "a" * 64
+OUTPUT_URI = "gs://bucket/runs/run-123/output.json"
 
 
 def _expected() -> ExpectedOutputEnvelope:
@@ -39,6 +47,11 @@ def _expected() -> ExpectedOutputEnvelope:
         run_id=RUN_ID,
         validator_id=VALIDATOR_ID,
         validator_type="ENERGYPLUS",
+        step_run_id=STEP_RUN_ID,
+        execution_attempt_id=ATTEMPT_ID,
+        attempt_contract_version="validibot.attempt.v1",
+        input_envelope_sha256=INPUT_SHA256,
+        output_uri=OUTPUT_URI,
         envelope_class=EnergyPlusOutputEnvelope,
     )
 
@@ -48,6 +61,11 @@ def _payload(**overrides) -> bytes:
     data = {
         "schema_version": "validibot.output.v1",
         "run_id": RUN_ID,
+        "step_run_id": STEP_RUN_ID,
+        "execution_attempt_id": ATTEMPT_ID,
+        "attempt_contract_version": "validibot.attempt.v1",
+        "input_envelope_sha256": INPUT_SHA256,
+        "output_uri": OUTPUT_URI,
         "validator": {
             "id": VALIDATOR_ID,
             "type": "ENERGYPLUS",
@@ -130,6 +148,42 @@ def test_output_cannot_change_its_validator_type() -> None:
     assert exc.value.code == "validator_type_mismatch"
 
 
+@pytest.mark.parametrize(
+    ("field_name", "wrong_value", "expected_code"),
+    [
+        ("step_run_id", "another-step", "step_run_mismatch"),
+        (
+            "execution_attempt_id",
+            "another-attempt",
+            "execution_attempt_mismatch",
+        ),
+        (
+            "attempt_contract_version",
+            "validibot.attempt.v2",
+            "invalid_envelope",
+        ),
+        (
+            "input_envelope_sha256",
+            "b" * 64,
+            "input_envelope_digest_mismatch",
+        ),
+        ("output_uri", "gs://bucket/other/output.json", "output_uri_mismatch"),
+    ],
+)
+def test_output_must_echo_every_committed_attempt_identity(
+    field_name: str,
+    wrong_value: str,
+    expected_code: str,
+) -> None:
+    """A stale, redirected, or differently-versioned output must fail closed."""
+    with pytest.raises(OutputEnvelopeVerificationError) as exc:
+        parse_and_verify_output_envelope(
+            _payload(**{field_name: wrong_value}),
+            expected=_expected(),
+        )
+    assert exc.value.code == expected_code
+
+
 def test_parsed_callback_envelope_uses_the_same_identity_checks() -> None:
     """Callback downloads must pass the same verifier as local raw bytes."""
     envelope = EnergyPlusOutputEnvelope.model_validate_json(_payload())
@@ -142,3 +196,34 @@ def test_verified_output_has_a_stable_canonical_digest() -> None:
     pretty_payload = json.dumps(json.loads(_payload()), indent=4).encode("utf-8")
     pretty = EnergyPlusOutputEnvelope.model_validate_json(pretty_payload)
     assert output_envelope_sha256(compact) == output_envelope_sha256(pretty)
+
+
+def test_shared_attempt_fixture_digest_matches_the_backend_contract() -> None:
+    """Django dispatch hashing must match the literal pinned in every repo."""
+    envelope = ValidationInputEnvelope(
+        run_id="run-fixture",
+        validator={
+            "id": "validator-fixture",
+            "type": ValidatorType.FMU,
+            "version": "1",
+        },
+        org={"id": "org-fixture", "name": "Fixture Org"},
+        workflow={
+            "id": "workflow-fixture",
+            "step_id": "step-fixture",
+            "step_name": "Fixture Step",
+        },
+        inputs={"alpha": 1},
+        context={
+            "execution_attempt_id": "attempt-fixture",
+            "step_run_id": "step-run-fixture",
+            "attempt_contract_version": ATTEMPT_CONTRACT_VERSION,
+            "expected_output_uri": "gs://fixture/runs/run-fixture/output.json",
+            "execution_bundle_uri": "gs://fixture/runs/run-fixture/",
+            "skip_callback": True,
+        },
+    )
+
+    assert sha256_hex_for_model(envelope) == (
+        "0f4f7cd8b38a79dbc2c4ac66c1ed602cb4db59665d52b6df73cd409bdaf765c7"
+    )

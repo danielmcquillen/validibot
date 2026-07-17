@@ -101,6 +101,11 @@ def _envelope(
 ) -> SchematronOutputEnvelope:
     return SchematronOutputEnvelope(
         run_id="run-1",
+        step_run_id="step-run-1",
+        execution_attempt_id="attempt-1",
+        attempt_contract_version="validibot.attempt.v1",
+        input_envelope_sha256="a" * 64,
+        output_uri="gs://bucket/run-1/output.json",
         validator={"id": "v1", "type": ValidatorType.SCHEMATRON, "version": "1"},
         status=status,
         timing={},

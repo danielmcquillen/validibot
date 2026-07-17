@@ -498,15 +498,13 @@ class Command(BaseCommand):
         Returns:
             "reconciled" on success, "error" on failure.
         """
-        if not execution_bundle_uri:
+        result_uri = attempt.output_envelope_uri
+        if not result_uri:
             logger.warning(
-                "Cannot recover run %s: its attempt has no execution bundle URI",
+                "Cannot recover run %s: its attempt has no committed output URI",
                 run.id,
             )
             return "error"
-
-        # Derive the output envelope URI from the bundle URI
-        result_uri = f"{execution_bundle_uri.rstrip('/')}/output.json"
 
         # Build a synthetic callback payload
         from validibot_shared.validations.envelopes import ValidationStatus

@@ -56,6 +56,7 @@ from validibot.validations.services.cloud_run.envelope_builder import (
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_input_envelope,
 )
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepInputBindingFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
@@ -73,6 +74,13 @@ pytestmark = pytest.mark.django_db
 # ==============================================================================
 # Helpers
 # ==============================================================================
+
+
+def _create_step_run_with_attempt(**kwargs):
+    """Create the active step run and its immutable execution identity."""
+    step_run = ValidationStepRunFactory(**kwargs)
+    ExecutionAttemptFactory(step_run=step_run)
+    return step_run
 
 
 def _make_weather_resource(
@@ -113,6 +121,9 @@ def _build_envelope(validator=None, **overrides) -> EnergyPlusInputEnvelope:
         "callback_url": "https://api.example.com/callbacks/",
         "callback_id": "cb-test-123",
         "execution_bundle_uri": "gs://test-bucket/runs/run-123/",
+        "execution_attempt_id": "attempt-123",
+        "step_run_id": "step-run-123",
+        "expected_output_uri": "gs://test-bucket/runs/run-123/output.json",
     }
     defaults.update(overrides)
     return build_energyplus_input_envelope(**defaults)
@@ -140,7 +151,7 @@ def _build_fmu_run(*, submission_content: str = "{}"):
         org=step.workflow.org,
         submission=submission,
     )
-    ValidationStepRunFactory(
+    _create_step_run_with_attempt(
         validation_run=run,
         workflow_step=step,
         step_order=step.order,
@@ -253,7 +264,7 @@ def _build_shacl_data_graph_run(
         org=step.workflow.org,
         submission=submission,
     )
-    ValidationStepRunFactory(
+    _create_step_run_with_attempt(
         validation_run=run,
         workflow_step=step,
         step_order=step.order,
@@ -325,7 +336,7 @@ def _build_schematron_xml_document_run():
         org=step.workflow.org,
         submission=submission,
     )
-    ValidationStepRunFactory(
+    _create_step_run_with_attempt(
         validation_run=run,
         workflow_step=step,
         step_order=step.order,
@@ -358,7 +369,7 @@ def _build_energyplus_file_port_run():
         org=step.workflow.org,
         submission=submission,
     )
-    ValidationStepRunFactory(
+    _create_step_run_with_attempt(
         validation_run=run,
         workflow_step=step,
         step_order=step.order,
@@ -1663,7 +1674,7 @@ class TestFMUFilePortMaterialization:
             org=step.workflow.org,
             submission=submission,
         )
-        ValidationStepRunFactory(
+        _create_step_run_with_attempt(
             validation_run=run,
             workflow_step=step,
             step_order=step.order,
@@ -1709,7 +1720,7 @@ class TestFMUFilePortMaterialization:
             org=step.workflow.org,
             submission=submission,
         )
-        ValidationStepRunFactory(
+        _create_step_run_with_attempt(
             validation_run=run,
             workflow_step=step,
             step_order=step.order,

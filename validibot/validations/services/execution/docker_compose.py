@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.utils import timezone
+from validibot_shared.canonicalization import sha256_hex_for_model
 
 from validibot.core.storage import get_data_storage
 from validibot.validations.services.execution.base import ExecutionBackend
@@ -287,6 +288,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             # directory. The container will read it through the
             # read-only ``/validibot/input`` mount.
             envelope_json = envelope.model_dump_json(indent=2)
+            input_envelope_sha256 = sha256_hex_for_model(envelope)
             workspace.host_input_envelope_path.write_bytes(
                 envelope_json.encode("utf-8"),
             )
@@ -303,6 +305,8 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 ExecutionAttemptState.DISPATCHING,
                 execution_bundle_uri=workspace.execution_bundle_container_uri,
                 input_envelope_uri=workspace.input_envelope_container_uri,
+                input_envelope_sha256=input_envelope_sha256,
+                output_envelope_uri=workspace.output_envelope_container_uri,
             )
             if not claimed:
                 return ExecutionResponse(
@@ -396,6 +400,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 workspace.host_output_envelope_path,
                 expected_run=request.run,
                 expected_validator=request.validator,
+                expected_attempt=attempt,
             )
             if output_envelope is None:
                 error_msg = (
@@ -658,6 +663,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         *,
         expected_run,
         expected_validator,
+        expected_attempt,
     ) -> ValidationOutputEnvelope | None:
         """Read and parse the output envelope from a host path.
 
@@ -690,6 +696,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             expected = build_expected_output_envelope(
                 run=expected_run,
                 validator=expected_validator,
+                attempt=expected_attempt,
             )
             output_envelope = parse_and_verify_output_envelope(
                 output_data,

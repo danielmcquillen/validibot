@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -10,6 +11,29 @@ from django.conf import settings as django_settings
 from django.db import models
 from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
+
+
+class StorageCapabilityMode(StrEnum):
+    """Effective storage mechanism exposed to one validator execution.
+
+    These values are operator-facing and appear in the stable doctor JSON
+    document. They describe what the runtime can actually use, not merely the
+    backing store named in Django settings.
+    """
+
+    LOCAL_ATTEMPT_MOUNT = "local_attempt_mount"
+    GCS_GENERATION = "gcs_generation"
+    S3_CONDITIONAL = "s3_conditional"
+    SERVER_MEDIATED_BROKER = "server_mediated_broker"
+    UNSUPPORTED = "unsupported"
+
+
+class RuntimeStorageIsolation(StrEnum):
+    """Confidentiality boundary provided to one validator execution."""
+
+    ATTEMPT_SCOPED = "attempt_scoped"
+    REDUCED_SHARED_RUNTIME_IDENTITY = "reduced_shared_runtime_identity"
+    UNSUPPORTED = "unsupported"
 
 
 class ValidationRunStatus(TextChoices):

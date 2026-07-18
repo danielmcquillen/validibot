@@ -19,9 +19,9 @@ on. Specifically:
 
 3. The JSON output matches the ``validibot.doctor.v1`` schema shape:
    ``schema_version``, ``validibot_version``, ``target``, ``stage``,
-   ``ran_at``, ``summary``, ``checks``. Each check row has ``id``,
-   ``category``, ``name``, ``status``, ``message``, ``details``, and
-   ``fix_hint``.
+   ``storage_capability``, ``ran_at``, ``summary``, ``checks``. Each check row
+   has ``id``, ``category``, ``name``, ``status``, ``message``, ``details``,
+   and ``fix_hint``.
 
 4. The exit code semantics are right: ``error``/``fatal`` always
    fail; ``warn`` fails only with ``--strict``; ``ok``/``info``/
@@ -78,6 +78,7 @@ EXPECTED_TOP_LEVEL_KEYS = frozenset(
         "target",
         "stage",
         "provider",
+        "storage_capability",
         "ran_at",
         "summary",
         "checks",
@@ -87,6 +88,22 @@ EXPECTED_TOP_LEVEL_KEYS = frozenset(
 # Per-check fields. Same v1 contract; same migration rule.
 EXPECTED_CHECK_KEYS = frozenset(
     {"id", "category", "name", "status", "message", "details", "fix_hint"},
+)
+
+EXPECTED_STORAGE_CAPABILITY_KEYS = frozenset(
+    {
+        "mode",
+        "isolation",
+        "data_storage_backend",
+        "validator_runner",
+        "integrity_enforced",
+        "create_only_writes",
+        "immutable_reads",
+        "attempt_scoped_authority",
+        "summary",
+        "limitations",
+        "operator_action",
+    },
 )
 
 
@@ -510,6 +527,66 @@ class DoctorTargetGcpTests(TestCase):
     def test_gcp_target_in_json_output(self):
         result, _ = _run_doctor()
         self.assertEqual(result["target"], "gcp")
+
+
+class DoctorStorageCapabilityTests(TestCase):
+    """Verify VB205 and its structured storage-capability projection.
+
+    Reachable storage is not necessarily attempt-isolated storage. These tests
+    keep the doctor honest about the difference so operators and support tools
+    do not mistake exact-byte verification for cross-attempt confidentiality.
+    """
+
+    @override_settings(DATA_STORAGE_BACKEND="local", VALIDATOR_RUNNER="docker")
+    def test_local_docker_reports_attempt_scoped_mode(self):
+        """Per-attempt Docker mounts report full attempt-scoped authority."""
+        result, _ = _run_doctor()
+
+        capability = result["storage_capability"]
+        self.assertEqual(set(capability), EXPECTED_STORAGE_CAPABILITY_KEYS)
+        self.assertEqual(capability["mode"], "local_attempt_mount")
+        self.assertEqual(capability["isolation"], "attempt_scoped")
+        self.assertTrue(capability["integrity_enforced"])
+        self.assertTrue(capability["attempt_scoped_authority"])
+
+        check = next(check for check in result["checks"] if check["id"] == "VB205")
+        self.assertEqual(check["status"], "ok")
+        self.assertIn("local_attempt_mount", check["message"])
+
+    @override_settings(
+        DATA_STORAGE_BACKEND="gcs",
+        VALIDATOR_RUNNER="google_cloud_run",
+    )
+    def test_gcs_reports_integrity_with_reduced_isolation_warning(self):
+        """Shared Cloud Run identity is never described as attempt-scoped."""
+        command = Command()
+        command._check_storage_capability()
+
+        report = command.storage_capability
+        self.assertIsNotNone(report)
+        self.assertEqual(report.mode.value, "gcs_generation")
+        self.assertTrue(report.integrity_enforced)
+        self.assertFalse(report.attempt_scoped_authority)
+
+        check = next(result for result in command.results if result.id == "VB205")
+        self.assertEqual(check.status, CheckStatus.WARN)
+        self.assertIn("reduced_shared_runtime_identity", check.message)
+        self.assertIn("integrity", check.details)
+
+    @override_settings(DATA_STORAGE_BACKEND="s3", VALIDATOR_RUNNER="aws_batch")
+    def test_unproven_s3_semantics_fail_closed(self):
+        """Selecting S3 does not manufacture a conditional-write guarantee."""
+        command = Command()
+        command._check_storage_capability()
+
+        report = command.storage_capability
+        self.assertIsNotNone(report)
+        self.assertEqual(report.mode.value, "unsupported")
+        self.assertFalse(report.integrity_enforced)
+
+        check = next(result for result in command.results if result.id == "VB205")
+        self.assertEqual(check.status, CheckStatus.ERROR)
+        self.assertIn("capability-tested", check.message)
 
 
 class DoctorProviderOverlayTests(TestCase):

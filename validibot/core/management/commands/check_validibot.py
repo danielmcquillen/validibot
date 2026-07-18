@@ -68,6 +68,10 @@ from django.core.management.base import BaseCommand
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from validibot.validations.services.storage_capabilities import (
+        StorageCapabilityReport,
+    )
+
 logger = logging.getLogger(__name__)
 
 MIN_SECRET_KEY_LENGTH = 32
@@ -201,6 +205,7 @@ class Command(BaseCommand):
         self.target: str | None = None
         self.stage: str | None = None
         self.provider: str | None = None
+        self.storage_capability: StorageCapabilityReport | None = None
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -290,6 +295,7 @@ class Command(BaseCommand):
             ("Migrations", self._check_migrations),
             ("Cache", self._check_cache),
             ("Storage", self._check_storage),
+            ("Validator Storage Capability", self._check_storage_capability),
             ("Site Configuration", self._check_site),
             ("Roles & Permissions", self._check_roles_permissions),
             ("Validators", self._check_validators),
@@ -664,6 +670,59 @@ class Command(BaseCommand):
                 CheckStatus.ERROR,
                 f"Storage check failed: {e}",
             )
+
+    def _check_storage_capability(self) -> None:
+        """Report the effective validator I/O integrity and isolation mode.
+
+        This check is intentionally separate from the generic storage
+        reachability check above. Being able to list a bucket or write a local
+        directory does not prove that one validator execution receives only its
+        own bytes. VB205 describes the paired data-storage + runner contract and
+        keeps integrity claims separate from cross-attempt confidentiality.
+        """
+        from validibot.validations.constants import RuntimeStorageIsolation
+        from validibot.validations.services.storage_capabilities import (
+            get_storage_capability_report,
+        )
+
+        report = get_storage_capability_report()
+        self.storage_capability = report
+
+        if report.isolation is RuntimeStorageIsolation.ATTEMPT_SCOPED:
+            status = CheckStatus.OK
+        elif (
+            report.isolation is RuntimeStorageIsolation.REDUCED_SHARED_RUNTIME_IDENTITY
+        ):
+            status = CheckStatus.WARN
+        else:
+            status = CheckStatus.ERROR
+
+        details = "\n".join(
+            [
+                f"Data storage backend: {report.data_storage_backend}",
+                f"Validator runner: {report.validator_runner}",
+                f"Integrity enforced: {str(report.integrity_enforced).lower()}",
+                f"Create-only writes: {str(report.create_only_writes).lower()}",
+                f"Immutable reads: {str(report.immutable_reads).lower()}",
+                (
+                    "Attempt-scoped authority: "
+                    f"{str(report.attempt_scoped_authority).lower()}"
+                ),
+                *[f"Limitation: {item}" for item in report.limitations],
+            ],
+        )
+        self._add_result(
+            "VB205",
+            "storage",
+            "Validator storage capability",
+            status,
+            (
+                f"mode={report.mode.value}; "
+                f"isolation={report.isolation.value}. {report.summary}"
+            ),
+            details=details,
+            fix_hint=report.operator_action,
+        )
 
     # =========================================================================
     # Site Configuration Checks (VB8xx)
@@ -2117,6 +2176,12 @@ class Command(BaseCommand):
               "target": "self_hosted" | "gcp" | "local_docker_compose" | "test",
               "stage": "dev" | "staging" | "prod" | null,
               "provider": "digitalocean" | null,
+              "storage_capability": {
+                "mode": "local_attempt_mount" | "gcs_generation" | ...,
+                "isolation": "attempt_scoped" |
+                  "reduced_shared_runtime_identity" | "unsupported",
+                ...
+              } | null,
               "ran_at": "<ISO 8601 UTC timestamp>",
               "summary": {
                 "ok": int, "info": int, "warn": int,
@@ -2153,6 +2218,11 @@ class Command(BaseCommand):
             "target": self.target,
             "stage": self.stage,
             "provider": self.provider,
+            "storage_capability": (
+                self.storage_capability.as_dict()
+                if self.storage_capability is not None
+                else None
+            ),
             "ran_at": datetime.now(tz=UTC).isoformat(),
             "summary": {
                 status.value: sum(1 for r in self.results if r.status == status)

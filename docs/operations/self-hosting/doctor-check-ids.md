@@ -162,6 +162,36 @@ self-hosted setup uses local filesystem.
 **Trigger:** Storage backend is configured and accessible.
 **Fix:** No action — this is the success case.
 
+### `VB205` Validator storage capability and isolation
+**Severity:** ok for local per-attempt mounts; warn for generation-pinned GCS
+with a shared runtime identity; error for unsupported or unproven combinations
+**Trigger:** Always emitted. Doctor pairs `DATA_STORAGE_BACKEND` with
+`VALIDATOR_RUNNER` and reports the effective validator I/O mode separately from
+ordinary storage reachability.
+
+The JSON output includes a matching top-level `storage_capability` object. Its
+`integrity_enforced` field answers whether the runtime verifies exact immutable
+bytes. Its `attempt_scoped_authority` field answers the different question:
+whether a compromised validator is prevented from reaching another attempt.
+
+- `local_attempt_mount` + `attempt_scoped`: Docker receives one attempt's input
+  mount read-only and output mount read-write. This is the supported
+  self-hosted mode.
+- `gcs_generation` + `reduced_shared_runtime_identity`: generation-pinned reads,
+  generation-zero writes, size, and SHA-256 protect integrity, but the current
+  Cloud Run job service account may still have access beyond one attempt.
+- `unsupported`: S3/S3-compatible conditional and version semantics have not
+  yet been implemented and capability-tested, or the configured runner/storage
+  pair has no verified contract. Doctor fails closed instead of inferring
+  safety from a provider label.
+
+**Fix:** For self-hosting, use local data storage with the Docker runner. For
+GCP, treat the warning as an honest reduced-isolation state until
+attempt-scoped runtime credentials or a server-mediated broker are available.
+Do not use an S3 or custom storage path for external validators until its
+conditional writes, immutable reads, and runtime scope are implemented and
+tested.
+
 ---
 
 ## VB3xx — Docker and containers

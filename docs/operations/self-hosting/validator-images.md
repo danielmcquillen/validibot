@@ -115,10 +115,12 @@ Policy values:
 
 ## Run-scoped isolation
 
-Every validator backend runtime gets:
+The supported self-hosted Docker path gives every validator backend runtime:
 
-- a per-run input directory mounted **read-only** at `/validibot/input`;
-- a per-run output directory mounted **read-write** at `/validibot/output`;
+- a per-attempt input directory mounted **read-only** at
+  `/validibot/attempts/<attempt-id>/input`;
+- a per-attempt output directory mounted **read-write** at
+  `/validibot/attempts/<attempt-id>/output`;
 - a tmpfs at `/tmp` for scratch work;
 - nothing else from the host.
 
@@ -133,7 +135,15 @@ Default container policy:
 - container labels for cleanup;
 - image pinned by digest when policy is `digest` or `signed-digest`.
 
-A buggy or compromised validator backend cannot read other runs' inputs, mutate other runs' outputs, exhaust shared disk, or leak data between runs. See [Security Hardening](security-hardening.md) for the architectural rationale.
+A buggy or compromised validator backend on this local path cannot read another
+attempt's input mount or mutate another attempt's output mount. Run
+`just self-hosted doctor --json` and inspect `storage_capability` (also reported
+as `VB205`) to confirm the effective mode. Object-store deployments are not
+automatically equivalent: current GCS execution verifies generations, sizes,
+and SHA-256 hashes but still reports reduced isolation while validator jobs use
+a shared runtime identity. S3-compatible storage remains unsupported until its
+conditional and version semantics are capability-tested. See
+[Security Hardening](security-hardening.md) for the architectural rationale.
 
 ## Optional hardening
 

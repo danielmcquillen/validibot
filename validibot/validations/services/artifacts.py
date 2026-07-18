@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import unquote
 from urllib.parse import urlparse
 
+from django.conf import settings
 from validibot_shared.validations.artifacts import ARTIFACT_REF_SCHEMA_VERSION
 from validibot_shared.validations.artifacts import ArtifactRef
 
@@ -25,6 +26,7 @@ from validibot.validations.models import Artifact
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.services import artifact_ports
+from validibot.validations.services.attempt_paths import validate_attempt_gcs_uri
 from validibot.validations.services.file_identity import local_file_identity
 
 CONTRACT_KEY_PATTERN = re.compile(r"[^a-z0-9_]+")
@@ -54,6 +56,12 @@ def register_output_artifacts(
     )
     raw_outputs = getattr(output_envelope, "raw_outputs", None)
     manifest_uri = getattr(raw_outputs, "manifest_uri", "") if raw_outputs else ""
+    _validate_gcs_output_uris(
+        step_run=step_run,
+        output_envelope=output_envelope,
+        envelope_artifacts=envelope_artifacts,
+        manifest_uri=str(manifest_uri or ""),
+    )
 
     seen: set[str] = set()
     refs: list[dict[str, Any]] = []
@@ -136,6 +144,59 @@ def register_output_artifacts(
         refs.append(build_artifact_ref(artifact).model_dump(mode="json"))
 
     return refs
+
+
+def _validate_gcs_output_uris(
+    *,
+    step_run: ValidationStepRun,
+    output_envelope: Any,
+    envelope_artifacts: list[Any],
+    manifest_uri: str,
+) -> None:
+    """Keep backend-reported GCS objects inside their trusted attempt prefix.
+
+    The callback verifier authenticates the output envelope itself, but each
+    artifact URI remains backend-controlled data within that envelope. When the
+    deployment uses GCS, every indexed artifact and raw-output manifest must be
+    in the configured validation bucket below the exact execution attempt that
+    produced the envelope.
+
+    Raises:
+        ValueError: If the envelope omits a trusted attempt identity or any URI
+            escapes that attempt's canonical GCS prefix.
+    """
+    expected_bucket = getattr(settings, "GCS_VALIDATION_BUCKET", "")
+    if not expected_bucket:
+        return
+
+    attempt_id = str(getattr(output_envelope, "execution_attempt_id", "") or "")
+    if not attempt_id:
+        msg = "Output artifacts do not identify an execution attempt for this step"
+        raise ValueError(msg)
+    attempt = step_run.execution_attempts.filter(pk=attempt_id).first()
+    if attempt is None:
+        msg = "Output artifacts do not identify an execution attempt for this step"
+        raise ValueError(msg)
+
+    uris = [
+        ("output artifact", str(getattr(artifact, "uri", "") or ""))
+        for artifact in envelope_artifacts
+    ]
+    if manifest_uri:
+        uris.append(("raw-output manifest", manifest_uri))
+
+    for label, uri in uris:
+        try:
+            validate_attempt_gcs_uri(
+                uri,
+                expected_bucket=expected_bucket,
+                org_id=str(step_run.validation_run.org_id),
+                run_id=str(step_run.validation_run_id),
+                attempt_id=str(attempt.pk),
+            )
+        except ValueError as exc:
+            msg = f"{label.capitalize()} URI is outside its execution-attempt prefix"
+            raise ValueError(msg) from exc
 
 
 def _output_artifact_ports_for_step_run(

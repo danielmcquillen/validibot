@@ -46,9 +46,8 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
-from validibot.validations.services.attempt_paths import attempt_bundle_relpath
+from validibot.validations.services.attempt_paths import validate_attempt_gcs_uri
 from validibot.validations.services.cloud_run.gcs_client import download_envelope
-from validibot.validations.services.cloud_run.gcs_client import parse_gcs_uri
 from validibot.validations.services.output_envelope_verifier import (
     OutputEnvelopeVerificationError,
 )
@@ -675,40 +674,22 @@ class ValidationCallbackService:
             return
 
         try:
-            bucket_name, blob_path = parse_gcs_uri(result_uri)
-        except ValueError:
-            # Not a gs:// URI (or malformed) — never legitimate on the GCS
-            # callback path. Reject without echoing the attacker-controlled URI.
-            logger.warning(
-                "Callback result_uri is not a valid gs:// URI for run %s",
-                run.id,
+            validate_attempt_gcs_uri(
+                result_uri,
+                expected_bucket=expected_bucket,
+                org_id=str(run.org_id),
+                run_id=str(run.id),
+                attempt_id=str(attempt.pk),
             )
-            raise _CallbackProcessingError(
-                status.HTTP_400_BAD_REQUEST,
-                "Invalid result_uri",
-            ) from None
-
-        expected_relpath = attempt_bundle_relpath(
-            org_id=str(run.org_id),
-            run_id=str(run.id),
-            attempt_id=str(attempt.pk),
-        )
-        expected_prefix = f"{expected_relpath.as_posix()}/"
-
-        if bucket_name != expected_bucket or not blob_path.startswith(
-            expected_prefix,
-        ):
+        except ValueError:
             logger.warning(
-                "Callback result_uri outside allowlist for run %s: "
-                "bucket=%s prefix expected under %s",
+                "Callback result_uri outside the attempt allowlist for run %s",
                 run.id,
-                bucket_name,
-                expected_prefix,
             )
             raise _CallbackProcessingError(
                 status.HTTP_400_BAD_REQUEST,
                 "result_uri is not permitted for this execution attempt",
-            )
+            ) from None
 
     @staticmethod
     def _download_and_validate_envelope(

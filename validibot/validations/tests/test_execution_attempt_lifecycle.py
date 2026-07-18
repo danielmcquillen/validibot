@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from django.test import override_settings
 from validibot_shared.canonicalization import compute_callback_nonce_commitment
 from validibot_shared.validations.envelopes import ValidationCallback
 from validibot_shared.validations.envelopes import ValidationStatus
@@ -21,6 +22,12 @@ from validibot.validations.services.cloud_run.launcher import (
     ProviderDispatchAmbiguousError,
 )
 from validibot.validations.services.cloud_run.launcher import _attempt_execution_bundle
+from validibot.validations.services.cloud_run.launcher import (
+    _dispatch_cloud_run_validation,
+)
+from validibot.validations.services.cloud_run.launcher import (
+    _enforce_cloud_run_job_image_policy,
+)
 from validibot.validations.services.cloud_run.launcher import _run_validator_job_safely
 from validibot.validations.services.create_only_storage import StorageConflictError
 from validibot.validations.services.execution_attempts import (
@@ -236,6 +243,113 @@ class TestAttemptExecutionBundlePaths:
 
         with pytest.raises(StorageConflictError, match="already exists"):
             _attempt_execution_bundle(run=run, step_run=attempt.step_run)
+
+
+@pytest.mark.django_db
+class TestCloudRunSharedDispatch:
+    """Keep common image-policy and attempt-dispatch mechanics on one path."""
+
+    @override_settings(
+        VALIDATOR_BACKEND_IMAGE_POLICY="digest",
+        GCP_PROJECT_ID="project",
+        GCP_REGION="region",
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher.get_job_configured_image",
+        return_value=None,
+    )
+    def test_strict_policy_requires_a_discoverable_job_image(self, mock_get_image):
+        """Strict deployments must stop before dispatch when image lookup fails."""
+        with pytest.raises(RuntimeError, match="Refusing to launch under strict"):
+            _enforce_cloud_run_job_image_policy("validator-job")
+
+        mock_get_image.assert_called_once_with(
+            project_id="project",
+            region="region",
+            job_name="validator-job",
+        )
+
+    @override_settings(
+        VALIDATOR_BACKEND_IMAGE_POLICY="tag",
+        GCP_PROJECT_ID="project",
+        GCP_REGION="region",
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher.get_job_configured_image",
+        return_value=None,
+    )
+    def test_tag_policy_allows_best_effort_image_discovery(self, mock_get_image):
+        """Community tag policy remains launchable if image lookup is unavailable."""
+        _enforce_cloud_run_job_image_policy("validator-job")
+        mock_get_image.assert_called_once()
+
+    @patch("validibot.validations.services.cloud_run.launcher._mark_step_run_running")
+    @patch(
+        "validibot.validations.services.cloud_run.launcher.get_execution_image_digest",
+        return_value="registry/image@sha256:" + "b" * 64,
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher._run_validator_job_safely",
+        return_value="projects/p/locations/r/executions/e-1",
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher."
+        "_enforce_cloud_run_job_image_policy",
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher."
+        "build_input_evidence_snapshot",
+        return_value={"attempt_contract_version": "validibot.attempt.v2"},
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher.sha256_hex_for_model",
+        return_value="a" * 64,
+    )
+    def test_dispatch_commits_evidence_and_captures_image_once(
+        self,
+        mock_sha256,
+        mock_build_evidence,
+        mock_policy,
+        mock_run_job,
+        mock_get_digest,
+        mock_mark_running,
+    ):
+        """All validator launchers share one durable evidence-to-running sequence."""
+        step_run = MagicMock(pk="step-run-1")
+        envelope = MagicMock()
+        envelope.context.expected_output_uri = "gs://bucket/attempt/output.json"
+        submission = MagicMock()
+        step = MagicMock()
+
+        execution_name, image_digest = _dispatch_cloud_run_validation(
+            step_run=step_run,
+            job_name="validator-job",
+            input_envelope_uri="gs://bucket/attempt/input.json",
+            execution_bundle_uri="gs://bucket/attempt",
+            envelope=envelope,
+            submission=submission,
+            step=step,
+        )
+
+        assert execution_name == "projects/p/locations/r/executions/e-1"
+        assert image_digest == "registry/image@sha256:" + "b" * 64
+        mock_policy.assert_called_once_with("validator-job")
+        mock_sha256.assert_called_once_with(envelope)
+        mock_build_evidence.assert_called_once_with(
+            envelope,
+            submission=submission,
+            step=step,
+        )
+        assert mock_run_job.call_args.kwargs["input_envelope_sha256"] == "a" * 64
+        assert mock_run_job.call_args.kwargs["input_evidence_snapshot"] == {
+            "attempt_contract_version": "validibot.attempt.v2",
+        }
+        mock_get_digest.assert_called_once_with(execution_name)
+        mock_mark_running.assert_called_once_with(
+            step_run,
+            image_digest=image_digest,
+            provider_execution_id=execution_name,
+        )
 
 
 @pytest.mark.django_db

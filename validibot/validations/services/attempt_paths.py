@@ -9,6 +9,7 @@ attempt's files.
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+from urllib.parse import urlparse
 
 ATTEMPTS_SUBDIR = "attempts"
 
@@ -54,6 +55,52 @@ def attempt_bundle_relpath(
     )
 
 
+def validate_attempt_gcs_uri(
+    uri: str,
+    *,
+    expected_bucket: str,
+    org_id: str,
+    run_id: str,
+    attempt_id: str,
+) -> None:
+    """Require a GCS object URI to stay inside one execution-attempt prefix.
+
+    Validator containers control callback and output-artifact URI strings. This
+    helper rebuilds the only permitted object prefix from trusted database
+    identities, preventing one attempt from referring to another run, attempt,
+    organization, or bucket.
+
+    Args:
+        uri: Candidate ``gs://`` object URI.
+        expected_bucket: Deployment-owned validation bucket.
+        org_id: Trusted organization identifier.
+        run_id: Trusted validation-run identifier.
+        attempt_id: Trusted execution-attempt identifier.
+
+    Raises:
+        ValueError: If the URI is malformed or escapes the expected prefix.
+    """
+    parsed = urlparse(uri)
+    blob_path = parsed.path.removeprefix("/")
+    expected_relpath = attempt_bundle_relpath(
+        org_id=org_id,
+        run_id=run_id,
+        attempt_id=attempt_id,
+    )
+    expected_prefix = f"{expected_relpath.as_posix()}/"
+    if (
+        parsed.scheme != "gs"
+        or parsed.netloc != expected_bucket
+        or not blob_path
+        or not blob_path.startswith(expected_prefix)
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        msg = "GCS URI is outside the permitted execution-attempt prefix"
+        raise ValueError(msg)
+
+
 def _validate_leaf_component(value: str, *, label: str) -> None:
     """Reject values that could escape or reshape the attempt prefix."""
     if (
@@ -68,4 +115,8 @@ def _validate_leaf_component(value: str, *, label: str) -> None:
         raise ValueError(msg)
 
 
-__all__ = ["ATTEMPTS_SUBDIR", "attempt_bundle_relpath"]
+__all__ = [
+    "ATTEMPTS_SUBDIR",
+    "attempt_bundle_relpath",
+    "validate_attempt_gcs_uri",
+]

@@ -31,6 +31,7 @@ These tests verify:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from django.test import Client
 from django.test import TestCase
@@ -2228,6 +2229,16 @@ class TestSignalMappingCreateModalClose(TestCase):
 # The promote output view toggles signal_name on a StepIODefinition
 # to make a validator output available in the s.* namespace for
 # downstream steps.
+
+
+def test_step_inputs_partial_uses_non_leaking_template_comments():
+    """The HTMx input partial must not render multiline short-comment text."""
+    template_path = (
+        Path(__file__).resolve().parents[2]
+        / "templates/workflows/partials/step_inputs_table.html"
+    )
+
+    assert "{#" not in template_path.read_text(encoding="utf-8")
 
 
 class TestPromoteOutputView(TestCase):

@@ -144,6 +144,142 @@ class TestStepArtifactRegistration:
         assert refs[0]["producer_step_key"] == step.step_key
         assert refs[0]["uri"] == artifact.storage_uri
 
+    def test_accepts_gcs_artifact_and_manifest_inside_verified_attempt(
+        self,
+        settings,
+    ):
+        """Trusted GCS output references remain indexable for normal callbacks."""
+        settings.GCS_VALIDATION_BUCKET = "validation"
+        step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        attempt = ExecutionAttemptFactory(step_run=step_run)
+        prefix = (
+            f"gs://validation/runs/{step_run.validation_run.org_id}/"
+            f"{step_run.validation_run_id}/attempts/{attempt.pk}"
+        )
+
+        refs = register_output_artifacts(
+            step_run=step_run,
+            output_envelope=SimpleNamespace(
+                execution_attempt_id=str(attempt.pk),
+                artifacts=[
+                    _validation_artifact(
+                        name="report.html",
+                        type="report",
+                        mime_type="text/html",
+                        uri=f"{prefix}/output/report.html",
+                        size_bytes=123,
+                    ),
+                ],
+                raw_outputs=SimpleNamespace(
+                    manifest_uri=f"{prefix}/output/manifest.json",
+                ),
+            ),
+        )
+
+        assert refs[0]["uri"] == f"{prefix}/output/report.html"
+        assert Artifact.objects.get(step_run=step_run).manifest_uri == (
+            f"{prefix}/output/manifest.json"
+        )
+
+    @pytest.mark.parametrize(
+        "hostile_uri",
+        [
+            "gs://other/runs/org/run/attempts/attempt/report.html",
+            "gs://validation/runs/other-org/run/attempts/attempt/report.html",
+        ],
+    )
+    def test_rejects_gcs_artifact_outside_verified_attempt(
+        self,
+        settings,
+        hostile_uri,
+    ):
+        """A backend cannot index an artifact from another bucket or org."""
+        settings.GCS_VALIDATION_BUCKET = "validation"
+        step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        attempt = ExecutionAttemptFactory(step_run=step_run)
+
+        with pytest.raises(ValueError, match="artifact URI is outside"):
+            register_output_artifacts(
+                step_run=step_run,
+                output_envelope=SimpleNamespace(
+                    execution_attempt_id=str(attempt.pk),
+                    artifacts=[
+                        _validation_artifact(
+                            name="report.html",
+                            type="report",
+                            mime_type="text/html",
+                            uri=hostile_uri,
+                            size_bytes=123,
+                        ),
+                    ],
+                    raw_outputs=None,
+                ),
+            )
+
+        assert not Artifact.objects.filter(step_run=step_run).exists()
+
+    def test_rejects_gcs_manifest_outside_verified_attempt(self, settings):
+        """A raw-output manifest cannot redirect readers outside its attempt."""
+        settings.GCS_VALIDATION_BUCKET = "validation"
+        step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        attempt = ExecutionAttemptFactory(step_run=step_run)
+        prefix = (
+            f"gs://validation/runs/{step_run.validation_run.org_id}/"
+            f"{step_run.validation_run_id}/attempts/{attempt.pk}"
+        )
+
+        with pytest.raises(ValueError, match="manifest URI is outside"):
+            register_output_artifacts(
+                step_run=step_run,
+                output_envelope=SimpleNamespace(
+                    execution_attempt_id=str(attempt.pk),
+                    artifacts=[
+                        _validation_artifact(
+                            name="report.html",
+                            type="report",
+                            mime_type="text/html",
+                            uri=f"{prefix}/output/report.html",
+                            size_bytes=123,
+                        ),
+                    ],
+                    raw_outputs=SimpleNamespace(
+                        manifest_uri="gs://validation/runs/other/run/manifest.json",
+                    ),
+                ),
+            )
+
+        assert not Artifact.objects.filter(step_run=step_run).exists()
+
+    def test_rejects_gcs_artifact_bound_to_another_steps_attempt(self, settings):
+        """Envelope identity cannot borrow a valid attempt owned by another step."""
+        settings.GCS_VALIDATION_BUCKET = "validation"
+        step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        other_attempt = ExecutionAttemptFactory()
+        prefix = (
+            f"gs://validation/runs/{step_run.validation_run.org_id}/"
+            f"{step_run.validation_run_id}/attempts/{other_attempt.pk}"
+        )
+
+        with pytest.raises(ValueError, match="attempt for this step"):
+            register_output_artifacts(
+                step_run=step_run,
+                output_envelope=SimpleNamespace(
+                    execution_attempt_id=str(other_attempt.pk),
+                    artifacts=[
+                        _validation_artifact(
+                            name="report.html",
+                            type="report",
+                            mime_type="text/html",
+                            uri=f"{prefix}/output/report.html",
+                            size_bytes=123,
+                        ),
+                    ],
+                    raw_outputs=None,
+                ),
+            )
+
+        assert not Artifact.objects.filter(step_run=step_run).exists()
+
     def test_hashes_container_output_uri_through_run_workspace(
         self,
         settings,

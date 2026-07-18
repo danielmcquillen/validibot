@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from validibot.validations.services.attempt_paths import attempt_bundle_relpath
+from validibot.validations.services.attempt_paths import validate_attempt_gcs_uri
 
 
 def test_attempt_bundle_relpath_includes_the_attempt_boundary():
@@ -61,3 +62,37 @@ def test_attempt_bundle_relpath_rejects_unsafe_components(field_name, bad_value)
 
     with pytest.raises(ValueError, match=f"Unsafe {field_name}"):
         attempt_bundle_relpath(**values)
+
+
+def test_validate_attempt_gcs_uri_accepts_an_object_inside_the_attempt():
+    """A backend may reference objects produced below its own attempt bundle."""
+    validate_attempt_gcs_uri(
+        "gs://validation/runs/org-1/run-1/attempts/attempt-1/output/report.pdf",
+        expected_bucket="validation",
+        org_id="org-1",
+        run_id="run-1",
+        attempt_id="attempt-1",
+    )
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "gs://other/runs/org-1/run-1/attempts/attempt-1/output.json",
+        "gs://validation/runs/org-2/run-1/attempts/attempt-1/output.json",
+        "gs://validation/runs/org-1/run-1/attempts/attempt-2/output.json",
+        "https://validation/runs/org-1/run-1/attempts/attempt-1/output.json",
+        "gs://validation/runs/org-1/run-1/attempts/attempt-1",
+        "gs://validation/runs/org-1/run-1/attempts/attempt-1/output.json?generation=1",
+    ],
+)
+def test_validate_attempt_gcs_uri_rejects_objects_outside_the_attempt(uri):
+    """Bucket, hierarchy, boundary, scheme, and immutable URI shape are pinned."""
+    with pytest.raises(ValueError, match="outside the permitted"):
+        validate_attempt_gcs_uri(
+            uri,
+            expected_bucket="validation",
+            org_id="org-1",
+            run_id="run-1",
+            attempt_id="attempt-1",
+        )

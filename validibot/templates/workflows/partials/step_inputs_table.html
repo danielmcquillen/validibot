@@ -127,13 +127,14 @@ Context:
                   <span class="text-muted">--</span>
                 {% endif %}
               </td>
-              {# ── Copy to Signal column ─────────────────────────────── #}
-              {# Symmetric input/output promotion per ADR-2026-05-22b.    #}
-              {# workflow_step_promote_step_io handles both INPUT and     #}
-              {# OUTPUT StepIODefinitions; the view dispatches the       #}
-              {# write to either the in-row promoted_signal_name         #}
-              {# (step-owned rows) or to a WorkflowStepIOPromotion       #}
-              {# overlay row (validator-owned catalog rows).             #}
+              {% comment %}
+                Copy to Signal column.
+                Symmetric input/output promotion per ADR-2026-05-22b.
+                workflow_step_promote_step_io handles both INPUT and OUTPUT
+                StepIODefinitions; the view dispatches the write to either the
+                in-row promoted_signal_name (step-owned rows) or to a
+                WorkflowStepIOPromotion overlay row (validator-owned catalog rows).
+              {% endcomment %}
               <td>
                 {% if input.io_definition and can_manage_workflow %}
                   {% if input.signal_name %}
@@ -185,12 +186,14 @@ Context:
               </td>
               <td class="text-end text-nowrap">
                 {% if input.io_definition and not input.validator_managed %}
-                  {# Author-editable inputs (FMU model variables, EnergyPlus
-                   template variables) get auto-link + edit affordances.
-                   Validator-managed inputs (parser-extracted facts, other
-                   source_kind=INTERNAL entries) skip these — they have
-                   no payload binding to edit, so the controls would
-                   either no-op or confuse the author. Per ADR-2026-05-22b. #}
+                  {% comment %}
+                    Author-editable inputs (FMU model variables, EnergyPlus
+                    template variables) get auto-link + edit affordances.
+                    Validator-managed inputs (parser-extracted facts, other
+                    source_kind=INTERNAL entries) skip these — they have no
+                    payload binding to edit, so the controls would either no-op
+                    or confuse the author. Per ADR-2026-05-22b.
+                  {% endcomment %}
                   {% if not input.source_data_path %}
                     <button type="button"
                             class="btn btn-sm btn-outline-primary me-1"
@@ -234,4 +237,6 @@ Context:
     </p>
   {% endif %}
 </div>
-{# end #inputs-table-container — HTMx refresh wrapper for input promotion. #}
+{% comment %}
+  End #inputs-table-container — HTMx refresh wrapper for input promotion.
+{% endcomment %}

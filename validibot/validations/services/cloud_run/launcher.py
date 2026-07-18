@@ -398,6 +398,96 @@ def _run_validator_job_safely(
     return execution_name
 
 
+def _enforce_cloud_run_job_image_policy(job_name: str) -> None:
+    """Fail closed when a Cloud Run Job image violates deployment policy.
+
+    Tag policy keeps configured-image discovery best-effort for community
+    deployments. Digest and signed-digest policies require both a successful
+    lookup and a compliant immutable image reference before dispatch.
+    """
+    policy = get_current_policy()
+    configured_image = get_job_configured_image(
+        project_id=settings.GCP_PROJECT_ID,
+        region=settings.GCP_REGION,
+        job_name=job_name,
+    )
+    if policy != ValidatorBackendImagePolicy.TAG and configured_image is None:
+        logger.warning(
+            "Refusing to trigger Cloud Run Job %s: image lookup failed "
+            "under strict policy '%s'",
+            job_name,
+            policy.value,
+        )
+        msg = (
+            f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires verifying "
+            f"the Cloud Run Job's configured image, but the lookup for "
+            f"'{job_name}' returned no image. Refusing to launch under strict "
+            "policy. Check that the job exists, its service account can inspect "
+            "it, and GCP_PROJECT_ID / GCP_REGION are correct."
+        )
+        raise RuntimeError(msg)
+
+    if not configured_image:
+        return
+
+    policy_result = enforce_image_policy(configured_image)
+    if policy_result.should_proceed:
+        return
+
+    logger.warning(
+        "Refusing to trigger Cloud Run Job %s: %s",
+        job_name,
+        policy_result.message,
+    )
+    msg = (
+        f"Cloud Run Job '{job_name}' violates VALIDATOR_BACKEND_IMAGE_POLICY: "
+        f"{policy_result.message}"
+    )
+    raise RuntimeError(msg)
+
+
+def _dispatch_cloud_run_validation(
+    *,
+    step_run: ValidationStepRun,
+    job_name: str,
+    input_envelope_uri: str,
+    execution_bundle_uri: str,
+    envelope,
+    submission: Submission,
+    step: WorkflowStep,
+) -> tuple[str, str | None]:
+    """Apply common launch policy, durable dispatch, and digest capture.
+
+    Validator-specific launchers remain responsible for materializing inputs,
+    building their typed envelope, and mapping domain errors. This helper owns
+    the shared trust-boundary mechanics that must evolve in lockstep.
+    """
+    _enforce_cloud_run_job_image_policy(job_name)
+    logger.info("Triggering Cloud Run Job: %s", job_name)
+    execution_name = _run_validator_job_safely(
+        step_run=step_run,
+        project_id=settings.GCP_PROJECT_ID,
+        region=settings.GCP_REGION,
+        job_name=job_name,
+        input_uri=input_envelope_uri,
+        execution_bundle_uri=execution_bundle_uri,
+        input_envelope_sha256=sha256_hex_for_model(envelope),
+        input_evidence_snapshot=build_input_evidence_snapshot(
+            envelope,
+            submission=submission,
+            step=step,
+        ),
+        output_envelope_uri=str(envelope.context.expected_output_uri),
+    )
+    backend_image_digest = get_execution_image_digest(execution_name)
+    _mark_step_run_running(
+        step_run,
+        image_digest=backend_image_digest,
+        provider_execution_id=execution_name,
+    )
+    return execution_name, backend_image_digest
+
+
 def _ambiguous_dispatch_result() -> ValidationResult:
     """Keep the workflow pending until reconciliation or operator action."""
     return ValidationResult(
@@ -545,81 +635,14 @@ def launch_energyplus_validation(
         # can't drift — see _resolve_cloud_run_job_name.
         job_name = _resolve_cloud_run_job_name("ENERGYPLUS")
 
-        # Refuse to launch when the Job's configured image violates
-        # VALIDATOR_BACKEND_IMAGE_POLICY.
-        #
-        # Behaviour by policy:
-        # - ``tag`` (default community): if the lookup succeeds, the
-        #   policy permits anything; if the lookup fails, we proceed
-        #   (best-effort capture is the right default at this tier).
-        # - ``digest`` / ``signed-digest`` (strict): the lookup
-        #   succeeding AND the configured image satisfying the
-        #   policy are both required. A lookup failure here means
-        #   we can't *verify* the configured image — under strict
-        #   intent that's a launch-blocking configuration error,
-        #   not a "let's hope for the best" fallback.
-        policy = get_current_policy()
-        configured_image = get_job_configured_image(
-            project_id=settings.GCP_PROJECT_ID,
-            region=settings.GCP_REGION,
-            job_name=job_name,
-        )
-        if policy != ValidatorBackendImagePolicy.TAG and configured_image is None:
-            msg = (
-                f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires "
-                f"verifying the Cloud Run Job's configured image, but the "
-                f"lookup for '{job_name}' returned no image. Refusing to "
-                f"launch under strict policy. Check that the Cloud Run Job "
-                f"exists, the service account has run.viewer / run.developer "
-                f"on it, and GCP_PROJECT_ID / GCP_REGION are correct."
-            )
-            logger.warning(
-                "Refusing to trigger Cloud Run Job %s: image lookup failed "
-                "under strict policy '%s'",
-                job_name,
-                policy.value,
-            )
-            raise RuntimeError(msg)  # noqa: TRY301
-        if configured_image:
-            policy_result = enforce_image_policy(configured_image)
-            if not policy_result.should_proceed:
-                logger.warning(
-                    "Refusing to trigger Cloud Run Job %s: %s",
-                    job_name,
-                    policy_result.message,
-                )
-                msg = (
-                    f"Cloud Run Job '{job_name}' violates "
-                    f"VALIDATOR_BACKEND_IMAGE_POLICY: {policy_result.message}"
-                )
-                raise RuntimeError(msg)  # noqa: TRY301
-
-        logger.info("Triggering Cloud Run Job: %s", job_name)
-        execution_name = _run_validator_job_safely(
+        execution_name, backend_image_digest = _dispatch_cloud_run_validation(
             step_run=current_step_run,
-            project_id=settings.GCP_PROJECT_ID,
-            region=settings.GCP_REGION,
             job_name=job_name,
-            input_uri=input_envelope_uri,
+            input_envelope_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
-            input_envelope_sha256=sha256_hex_for_model(envelope),
-            input_evidence_snapshot=build_input_evidence_snapshot(
-                envelope,
-                submission=submission,
-                step=step,
-            ),
-            output_envelope_uri=str(envelope.context.expected_output_uri),
-        )
-
-        # 6.5. Resolve validator backend image digest from the
-        # Execution's metadata (Trust ADR Phase 5 Session A) and mark
-        # the step as RUNNING. Digest capture is best-effort: if the
-        # lookup fails, we still mark RUNNING and proceed.
-        backend_image_digest = get_execution_image_digest(execution_name)
-        _mark_step_run_running(
-            current_step_run,
-            image_digest=backend_image_digest,
-            provider_execution_id=execution_name,
+            envelope=envelope,
+            submission=submission,
+            step=step,
         )
         logger.info(
             "Marked step run %s as RUNNING for run %s (image digest: %s)",
@@ -742,73 +765,14 @@ def launch_fmu_validation(
         # can't drift — see _resolve_cloud_run_job_name.
         job_name = _resolve_cloud_run_job_name("FMU")
 
-        # Trust ADR Phase 5 Session B + 2026-05-03 review (P2 #3):
-        # same policy gate as the EnergyPlus path, with the same
-        # fail-closed-under-strict-policy rule. See that branch for
-        # the full rationale.
-        policy = get_current_policy()
-        configured_image = get_job_configured_image(
-            project_id=settings.GCP_PROJECT_ID,
-            region=settings.GCP_REGION,
-            job_name=job_name,
-        )
-        if policy != ValidatorBackendImagePolicy.TAG and configured_image is None:
-            msg = (
-                f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires "
-                f"verifying the Cloud Run Job's configured image, but the "
-                f"lookup for '{job_name}' returned no image. Refusing to "
-                f"launch under strict policy."
-            )
-            logger.warning(
-                "Refusing to trigger Cloud Run Job %s: image lookup failed "
-                "under strict policy '%s'",
-                job_name,
-                policy.value,
-            )
-            raise RuntimeError(msg)  # noqa: TRY301
-        if configured_image:
-            policy_result = enforce_image_policy(configured_image)
-            if not policy_result.should_proceed:
-                logger.warning(
-                    "Refusing to trigger Cloud Run Job %s: %s",
-                    job_name,
-                    policy_result.message,
-                )
-                msg = (
-                    f"Cloud Run Job '{job_name}' violates "
-                    f"VALIDATOR_BACKEND_IMAGE_POLICY: {policy_result.message}"
-                )
-                raise RuntimeError(msg)  # noqa: TRY301
-
-        execution_name = _run_validator_job_safely(
+        execution_name, _ = _dispatch_cloud_run_validation(
             step_run=current_step_run,
-            project_id=settings.GCP_PROJECT_ID,
-            region=settings.GCP_REGION,
             job_name=job_name,
-            input_uri=input_envelope_uri,
+            input_envelope_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
-            input_envelope_sha256=sha256_hex_for_model(envelope),
-            input_evidence_snapshot=build_input_evidence_snapshot(
-                envelope,
-                submission=submission,
-                step=step,
-            ),
-            output_envelope_uri=str(envelope.context.expected_output_uri),
-        )
-
-        # Resolve validator backend image digest from the Execution's
-        # metadata (Trust ADR Phase 5 Session A) before marking RUNNING.
-        # Best-effort: failures yield None and the field stays empty.
-        backend_image_digest = get_execution_image_digest(execution_name)
-
-        # Mark step run as RUNNING
-        # Note: run.status and run.started_at are already set by
-        # execute_workflow_steps() when the run transitions from PENDING
-        # to RUNNING. We only need to mark the step run as running here.
-        _mark_step_run_running(
-            current_step_run,
-            image_digest=backend_image_digest,
-            provider_execution_id=execution_name,
+            envelope=envelope,
+            submission=submission,
+            step=step,
         )
 
         stats = {
@@ -948,62 +912,14 @@ def launch_shacl_validation(
         # 5. Trigger the Cloud Run Job. Job name comes from ValidatorConfig.
         job_name = _resolve_cloud_run_job_name("SHACL")
 
-        # Same image-policy gate as the EnergyPlus/FMU paths (fail-closed under
-        # strict policy when the configured image can't be verified).
-        policy = get_current_policy()
-        configured_image = get_job_configured_image(
-            project_id=settings.GCP_PROJECT_ID,
-            region=settings.GCP_REGION,
-            job_name=job_name,
-        )
-        if policy != ValidatorBackendImagePolicy.TAG and configured_image is None:
-            msg = (
-                f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires "
-                f"verifying the Cloud Run Job's configured image, but the "
-                f"lookup for '{job_name}' returned no image. Refusing to launch."
-            )
-            logger.warning(
-                "Refusing to trigger Cloud Run Job %s: image lookup failed "
-                "under strict policy '%s'",
-                job_name,
-                policy.value,
-            )
-            raise RuntimeError(msg)  # noqa: TRY301
-        if configured_image:
-            policy_result = enforce_image_policy(configured_image)
-            if not policy_result.should_proceed:
-                logger.warning(
-                    "Refusing to trigger Cloud Run Job %s: %s",
-                    job_name,
-                    policy_result.message,
-                )
-                msg = (
-                    f"Cloud Run Job '{job_name}' violates "
-                    f"VALIDATOR_BACKEND_IMAGE_POLICY: {policy_result.message}"
-                )
-                raise RuntimeError(msg)  # noqa: TRY301
-
-        execution_name = _run_validator_job_safely(
+        execution_name, _ = _dispatch_cloud_run_validation(
             step_run=current_step_run,
-            project_id=settings.GCP_PROJECT_ID,
-            region=settings.GCP_REGION,
             job_name=job_name,
-            input_uri=input_envelope_uri,
+            input_envelope_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
-            input_envelope_sha256=sha256_hex_for_model(envelope),
-            input_evidence_snapshot=build_input_evidence_snapshot(
-                envelope,
-                submission=submission,
-                step=step,
-            ),
-            output_envelope_uri=str(envelope.context.expected_output_uri),
-        )
-
-        backend_image_digest = get_execution_image_digest(execution_name)
-        _mark_step_run_running(
-            current_step_run,
-            image_digest=backend_image_digest,
-            provider_execution_id=execution_name,
+            envelope=envelope,
+            submission=submission,
+            step=step,
         )
 
         stats = {
@@ -1154,60 +1070,14 @@ def launch_schematron_validation(
         # gated by the same image policy as the other advanced launchers.
         job_name = _resolve_cloud_run_job_name("SCHEMATRON")
 
-        policy = get_current_policy()
-        configured_image = get_job_configured_image(
-            project_id=settings.GCP_PROJECT_ID,
-            region=settings.GCP_REGION,
-            job_name=job_name,
-        )
-        if policy != ValidatorBackendImagePolicy.TAG and configured_image is None:
-            msg = (
-                f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires "
-                f"verifying the Cloud Run Job's configured image, but the "
-                f"lookup for '{job_name}' returned no image. Refusing to launch."
-            )
-            logger.warning(
-                "Refusing to trigger Cloud Run Job %s: image lookup failed "
-                "under strict policy '%s'",
-                job_name,
-                policy.value,
-            )
-            raise RuntimeError(msg)  # noqa: TRY301
-        if configured_image:
-            policy_result = enforce_image_policy(configured_image)
-            if not policy_result.should_proceed:
-                logger.warning(
-                    "Refusing to trigger Cloud Run Job %s: %s",
-                    job_name,
-                    policy_result.message,
-                )
-                msg = (
-                    f"Cloud Run Job '{job_name}' violates "
-                    f"VALIDATOR_BACKEND_IMAGE_POLICY: {policy_result.message}"
-                )
-                raise RuntimeError(msg)  # noqa: TRY301
-
-        execution_name = _run_validator_job_safely(
+        execution_name, _ = _dispatch_cloud_run_validation(
             step_run=current_step_run,
-            project_id=settings.GCP_PROJECT_ID,
-            region=settings.GCP_REGION,
             job_name=job_name,
-            input_uri=input_envelope_uri,
+            input_envelope_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
-            input_envelope_sha256=sha256_hex_for_model(envelope),
-            input_evidence_snapshot=build_input_evidence_snapshot(
-                envelope,
-                submission=submission,
-                step=step,
-            ),
-            output_envelope_uri=str(envelope.context.expected_output_uri),
-        )
-
-        backend_image_digest = get_execution_image_digest(execution_name)
-        _mark_step_run_running(
-            current_step_run,
-            image_digest=backend_image_digest,
-            provider_execution_id=execution_name,
+            envelope=envelope,
+            submission=submission,
+            step=step,
         )
 
         stats = {

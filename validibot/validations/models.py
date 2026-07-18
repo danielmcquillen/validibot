@@ -3269,6 +3269,14 @@ class ExecutionAttempt(TimeStampedModel):
     execution_bundle_uri = models.CharField(max_length=2048, blank=True, default="")
     input_envelope_uri = models.CharField(max_length=2048, blank=True, default="")
     input_envelope_sha256 = models.CharField(max_length=64, blank=True, default="")
+    input_evidence_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_(
+            "URI-free strict input identities and source relationships committed "
+            "with the attempt. Never contains callback credentials."
+        ),
+    )
     output_envelope_uri = models.CharField(max_length=2048, blank=True, default="")
     output_envelope_sha256 = models.CharField(max_length=64, blank=True, default="")
     backend_image_ref = models.CharField(max_length=512, blank=True, default="")

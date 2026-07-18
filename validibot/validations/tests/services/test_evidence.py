@@ -41,6 +41,7 @@ from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import EnvelopeChannel
+from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
@@ -53,6 +54,7 @@ from validibot.validations.models import RunEvidenceArtifactAvailability
 from validibot.validations.services.evidence import EvidenceManifestBuilder
 from validibot.validations.services.evidence import stamp_evidence_manifest
 from validibot.validations.tests.factories import ArtifactFactory
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
@@ -196,6 +198,96 @@ class TestBuildManifest:
         # ``executed_at`` is the ISO 8601 form of run.ended_at — string
         # rather than datetime so canonical JSON is byte-stable.
         assert manifest.executed_at == run.ended_at.isoformat()
+
+    def test_build_projects_attempt_bound_execution_identity(self):
+        """Manifest evidence binds verified files and envelopes to one attempt."""
+        workflow = WorkflowFactory(input_retention=SubmissionRetention.STORE_30_DAYS)
+        step = WorkflowStepFactory(workflow=workflow)
+        run = _completed_run(workflow=workflow)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+            status=StepStatus.PASSED,
+        )
+        attempt = ExecutionAttemptFactory(
+            step_run=step_run,
+            state=ExecutionAttemptState.COMPLETED,
+            runner_type="cloud_run_job",
+            provider_execution_id="execution-1",
+            input_envelope_sha256="c" * 64,
+            output_envelope_sha256="d" * 64,
+            backend_image_digest="registry/backend@sha256:" + "e" * 64,
+            input_evidence_snapshot={
+                "attempt_contract_version": "validibot.attempt.v2",
+                "input_files": [
+                    {
+                        "channel": "input_files",
+                        "name": "generated.idf",
+                        "role": "primary-model",
+                        "port_key": "primary_model",
+                        "size_bytes": 321,
+                        "sha256": "b" * 64,
+                        "storage_version": "sha256:" + "b" * 64,
+                    },
+                ],
+                "input_relationships": [
+                    {
+                        "source_kind": "submission",
+                        "source_id": str(run.submission_id),
+                        "source_name": "parameters.json",
+                        "source_size_bytes": 100,
+                        "source_sha256": "a" * 64,
+                        "target_channel": "input_files",
+                        "target_name": "generated.idf",
+                        "target_port_key": "primary_model",
+                        "target_sha256": "b" * 64,
+                        "relationship": "transformed",
+                        "transformation": "energyplus-template-substitution.v1",
+                    },
+                ],
+            },
+        )
+
+        manifest = EvidenceManifestBuilder.build(run)
+
+        record = manifest.execution_attempts[0]
+        assert record.execution_attempt_id == str(attempt.pk)
+        assert record.step_run_id == str(step_run.pk)
+        assert record.input_envelope_sha256 == "c" * 64
+        assert record.output_envelope_sha256 == "d" * 64
+        assert record.inputs_verified is True
+        assert record.input_files[0].storage_version == "sha256:" + "b" * 64
+        assert record.input_relationships[0].source_sha256 == "a" * 64
+        assert record.input_relationships[0].target_sha256 == "b" * 64
+
+    def test_build_redacts_attempt_output_digest_without_losing_verification(self):
+        """DO_NOT_STORE hides output identity but retains confirmed input evidence."""
+        workflow = WorkflowFactory(input_retention=SubmissionRetention.DO_NOT_STORE)
+        step = WorkflowStepFactory(workflow=workflow)
+        run = _completed_run(workflow=workflow)
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+            status=StepStatus.PASSED,
+        )
+        ExecutionAttemptFactory(
+            step_run=step_run,
+            state=ExecutionAttemptState.COMPLETED,
+            input_envelope_sha256="c" * 64,
+            output_envelope_sha256="d" * 64,
+            input_evidence_snapshot={
+                "attempt_contract_version": "validibot.attempt.v2",
+                "input_files": [],
+                "input_relationships": [],
+            },
+        )
+
+        record = EvidenceManifestBuilder.build(run).execution_attempts[0]
+
+        assert record.output_envelope_sha256 is None
+        assert record.inputs_verified is True
 
     def test_build_captures_workflow_contract_snapshot(self):
         """Every CONTRACT_FIELD value lives on manifest.workflow_contract."""
@@ -460,6 +552,7 @@ class TestBuildManifestArtifactLineage:
             storage_uri="gs://validibot-private/runs/run-1/model.epjson",
             size_bytes=456,
             sha256="a" * 64,
+            storage_version="42",
             role="generated-model",
             data_format="energyplus_epjson",
         )
@@ -484,6 +577,7 @@ class TestBuildManifestArtifactLineage:
                     "filename": "model.epjson",
                     "uri": artifact.storage_uri,
                     "sha256": "a" * 64,
+                    "storage_version": "42",
                 },
             },
         )
@@ -495,10 +589,12 @@ class TestBuildManifestArtifactLineage:
         assert produced.producer_step_key == "build_model"
         assert produced.contract_key == "generated_model"
         assert produced.sha256 == "a" * 64
+        assert produced.storage_version == "42"
         binding = manifest.artifact_input_bindings[0]
         assert binding.source_artifact_id == str(artifact.pk)
         assert binding.producer_step_key == "build_model"
         assert binding.producer_contract_key == "generated_model"
+        assert binding.source_storage_version == "42"
         edge = manifest.artifact_lineage_edges[0]
         assert edge.source_artifact_id == str(artifact.pk)
         assert edge.source_step_key == "build_model"

@@ -57,6 +57,7 @@ from validibot.validations.services.evidence import EvidenceManifestBuilder
 from validibot.validations.services.runners.docker import (
     _resolve_container_image_digest,
 )
+from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -574,3 +575,23 @@ class TestMarkStepRunRunningPersistsDigest:
         step_run.refresh_from_db()
         assert step_run.validator_backend_image_digest == ""
         assert step_run.status == StepStatus.RUNNING
+
+    def test_writes_digest_to_the_matching_execution_attempt(self):
+        """Attempt evidence must identify the image used by that exact retry."""
+        from validibot.validations.services.cloud_run.launcher import (
+            _mark_step_run_running,
+        )
+
+        attempt = ExecutionAttemptFactory(
+            provider_execution_id="projects/p/locations/r/executions/e-1",
+        )
+        digest = "gcr.io/example/backend@sha256:" + "6" * 64
+
+        _mark_step_run_running(
+            attempt.step_run,
+            image_digest=digest,
+            provider_execution_id=attempt.provider_execution_id,
+        )
+
+        attempt.refresh_from_db()
+        assert attempt.backend_image_digest == digest

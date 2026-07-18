@@ -242,15 +242,22 @@ class TestExecutionAttemptTransitions:
     def test_dispatch_commits_input_digest_and_expected_output_uri(self):
         """Dispatch must persist the contract before any provider can return."""
         attempt = ExecutionAttemptFactory(state=ExecutionAttemptState.PENDING)
+        input_evidence_snapshot = {
+            "attempt_contract_version": "validibot.attempt.v2",
+            "input_files": [],
+            "input_relationships": [],
+        }
 
         dispatching, _ = transition_execution_attempt(
             attempt.id,
             ExecutionAttemptState.DISPATCHING,
             input_envelope_sha256="a" * 64,
+            input_evidence_snapshot=input_evidence_snapshot,
             output_envelope_uri="gs://bucket/runs/run-1/output.json",
         )
 
         assert dispatching.input_envelope_sha256 == "a" * 64
+        assert dispatching.input_evidence_snapshot == input_evidence_snapshot
         assert dispatching.output_envelope_uri == "gs://bucket/runs/run-1/output.json"
 
 

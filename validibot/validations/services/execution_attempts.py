@@ -295,6 +295,55 @@ def resolve_provider_execution_identity(
     )
 
 
+def record_execution_attempt_backend_image_digest(
+    *,
+    step_run_id: UUID | str,
+    provider_execution_id: str,
+    backend_image_digest: str,
+) -> bool:
+    """Bind a resolved provider image digest to its concrete attempt once.
+
+    Cloud Run exposes the resolved image only after dispatch returns its
+    provider execution id. Matching on both the logical step and that provider
+    id avoids copying a later retry's image identity onto an earlier attempt.
+
+    Returns:
+        ``True`` when the digest was first persisted, otherwise ``False``.
+    """
+    from validibot.validations.models import ExecutionAttempt
+
+    if not provider_execution_id or not backend_image_digest:
+        return False
+    normalized_digest = backend_image_digest[:256]
+    with transaction.atomic():
+        attempt = (
+            ExecutionAttempt.objects.select_for_update()
+            .filter(
+                step_run_id=step_run_id,
+                provider_execution_id=provider_execution_id,
+            )
+            .first()
+        )
+        if attempt is None:
+            logger.warning(
+                "Could not bind backend image digest: provider execution %s "
+                "was not found for step run %s",
+                provider_execution_id,
+                step_run_id,
+            )
+            return False
+        if attempt.backend_image_digest:
+            if attempt.backend_image_digest != normalized_digest:
+                logger.error(
+                    "Refused conflicting backend image digest for execution attempt %s",
+                    attempt.pk,
+                )
+            return False
+        attempt.backend_image_digest = normalized_digest
+        attempt.save(update_fields=["backend_image_digest", "modified"])
+    return True
+
+
 def transition_execution_attempt(
     attempt_id: UUID | str,
     target: str | ExecutionAttemptState,
@@ -309,6 +358,7 @@ def transition_execution_attempt(
     execution_bundle_uri: str | None = None,
     input_envelope_uri: str | None = None,
     input_envelope_sha256: str | None = None,
+    input_evidence_snapshot: dict | None = None,
     output_envelope_uri: str | None = None,
     output_envelope_sha256: str | None = None,
     backend_image_digest: str | None = None,
@@ -398,6 +448,11 @@ def transition_execution_attempt(
             "input_envelope_sha256": (
                 input_envelope_sha256[:64]
                 if input_envelope_sha256 is not None
+                else None
+            ),
+            "input_evidence_snapshot": (
+                dict(input_evidence_snapshot)
+                if input_evidence_snapshot is not None
                 else None
             ),
             "output_envelope_uri": (

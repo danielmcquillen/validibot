@@ -45,6 +45,9 @@ from validibot.validations.services.create_only_storage import create_local_byte
 from validibot.validations.services.execution.base import ExecutionBackend
 from validibot.validations.services.execution.base import ExecutionRequest
 from validibot.validations.services.execution.base import ExecutionResponse
+from validibot.validations.services.execution_evidence import (
+    build_input_evidence_snapshot,
+)
 from validibot.validations.services.output_envelope_verifier import (
     OutputEnvelopeVerificationError,
 )
@@ -313,6 +316,11 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 execution_bundle_uri=workspace.execution_bundle_container_uri,
                 input_envelope_uri=workspace.input_envelope_container_uri,
                 input_envelope_sha256=input_envelope_sha256,
+                input_evidence_snapshot=build_input_evidence_snapshot(
+                    envelope,
+                    submission=request.submission,
+                    step=request.step,
+                ),
                 output_envelope_uri=workspace.output_envelope_container_uri,
             )
             if not claimed:

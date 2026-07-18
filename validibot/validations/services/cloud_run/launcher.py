@@ -47,6 +47,9 @@ from validibot.validations.services.cloud_run.job_client import get_job_configur
 from validibot.validations.services.cloud_run.job_client import run_validator_job
 from validibot.validations.services.create_only_storage import create_local_bytes
 from validibot.validations.services.create_only_storage import create_local_directory
+from validibot.validations.services.execution_evidence import (
+    build_input_evidence_snapshot,
+)
 from validibot.validations.services.file_identity import local_bytes_identity
 from validibot.validations.services.image_policy import ValidatorBackendImagePolicy
 from validibot.validations.services.image_policy import enforce_image_policy
@@ -256,7 +259,12 @@ def _check_already_launched(step_run) -> ValidationResult | None:
     return None
 
 
-def _mark_step_run_running(step_run, *, image_digest: str | None = None) -> None:
+def _mark_step_run_running(
+    step_run,
+    *,
+    image_digest: str | None = None,
+    provider_execution_id: str = "",
+) -> None:
     """Mark a step run as RUNNING with the current timestamp.
 
     Trust ADR Phase 5 Session A — when ``image_digest`` is provided,
@@ -277,6 +285,16 @@ def _mark_step_run_running(step_run, *, image_digest: str | None = None) -> None
         step_run.validator_backend_image_digest = image_digest
         update_fields.append("validator_backend_image_digest")
     step_run.save(update_fields=update_fields)
+    if image_digest and provider_execution_id:
+        from validibot.validations.services.execution_attempts import (
+            record_execution_attempt_backend_image_digest,
+        )
+
+        record_execution_attempt_backend_image_digest(
+            step_run_id=step_run.pk,
+            provider_execution_id=provider_execution_id,
+            backend_image_digest=image_digest,
+        )
 
 
 class ProviderDispatchAmbiguousError(RuntimeError):
@@ -304,6 +322,7 @@ def _run_validator_job_safely(
     input_uri: str,
     execution_bundle_uri: str,
     input_envelope_sha256: str,
+    input_evidence_snapshot: dict,
     output_envelope_uri: str,
 ) -> str:
     """Launch once and preserve provider-acceptance ambiguity explicitly.
@@ -340,6 +359,7 @@ def _run_validator_job_safely(
         execution_bundle_uri=execution_bundle_uri,
         input_envelope_uri=input_uri,
         input_envelope_sha256=input_envelope_sha256,
+        input_evidence_snapshot=input_evidence_snapshot,
         output_envelope_uri=output_envelope_uri,
     )
     if not claimed:
@@ -583,6 +603,11 @@ def launch_energyplus_validation(
             input_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
             input_envelope_sha256=sha256_hex_for_model(envelope),
+            input_evidence_snapshot=build_input_evidence_snapshot(
+                envelope,
+                submission=submission,
+                step=step,
+            ),
             output_envelope_uri=str(envelope.context.expected_output_uri),
         )
 
@@ -594,6 +619,7 @@ def launch_energyplus_validation(
         _mark_step_run_running(
             current_step_run,
             image_digest=backend_image_digest,
+            provider_execution_id=execution_name,
         )
         logger.info(
             "Marked step run %s as RUNNING for run %s (image digest: %s)",
@@ -762,6 +788,11 @@ def launch_fmu_validation(
             input_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
             input_envelope_sha256=sha256_hex_for_model(envelope),
+            input_evidence_snapshot=build_input_evidence_snapshot(
+                envelope,
+                submission=submission,
+                step=step,
+            ),
             output_envelope_uri=str(envelope.context.expected_output_uri),
         )
 
@@ -777,6 +808,7 @@ def launch_fmu_validation(
         _mark_step_run_running(
             current_step_run,
             image_digest=backend_image_digest,
+            provider_execution_id=execution_name,
         )
 
         stats = {
@@ -959,11 +991,20 @@ def launch_shacl_validation(
             input_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
             input_envelope_sha256=sha256_hex_for_model(envelope),
+            input_evidence_snapshot=build_input_evidence_snapshot(
+                envelope,
+                submission=submission,
+                step=step,
+            ),
             output_envelope_uri=str(envelope.context.expected_output_uri),
         )
 
         backend_image_digest = get_execution_image_digest(execution_name)
-        _mark_step_run_running(current_step_run, image_digest=backend_image_digest)
+        _mark_step_run_running(
+            current_step_run,
+            image_digest=backend_image_digest,
+            provider_execution_id=execution_name,
+        )
 
         stats = {
             "job_status": CloudRunJobStatus.PENDING,
@@ -1154,11 +1195,20 @@ def launch_schematron_validation(
             input_uri=input_envelope_uri,
             execution_bundle_uri=execution_bundle_uri,
             input_envelope_sha256=sha256_hex_for_model(envelope),
+            input_evidence_snapshot=build_input_evidence_snapshot(
+                envelope,
+                submission=submission,
+                step=step,
+            ),
             output_envelope_uri=str(envelope.context.expected_output_uri),
         )
 
         backend_image_digest = get_execution_image_digest(execution_name)
-        _mark_step_run_running(current_step_run, image_digest=backend_image_digest)
+        _mark_step_run_running(
+            current_step_run,
+            image_digest=backend_image_digest,
+            provider_execution_id=execution_name,
+        )
 
         stats = {
             "job_status": CloudRunJobStatus.PENDING,

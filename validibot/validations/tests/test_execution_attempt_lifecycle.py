@@ -256,6 +256,11 @@ class TestCloudRunDispatchAmbiguity:
             input_uri="gs://bucket/input.json",
             execution_bundle_uri="gs://bucket/bundle",
             input_envelope_sha256="a" * 64,
+            input_evidence_snapshot={
+                "attempt_contract_version": "validibot.attempt.v2",
+                "input_files": [],
+                "input_relationships": [],
+            },
             output_envelope_uri="gs://bucket/bundle/output.json",
         )
 
@@ -266,6 +271,9 @@ class TestCloudRunDispatchAmbiguity:
         assert attempt.provider_job_name == "validator-job"
         assert attempt.execution_bundle_uri == "gs://bucket/bundle"
         assert attempt.input_envelope_sha256 == "a" * 64
+        assert attempt.input_evidence_snapshot["attempt_contract_version"] == (
+            "validibot.attempt.v2"
+        )
         assert attempt.output_envelope_uri == "gs://bucket/bundle/output.json"
 
     @patch("validibot.validations.services.cloud_run.launcher.run_validator_job")
@@ -281,6 +289,11 @@ class TestCloudRunDispatchAmbiguity:
             "input_uri": "gs://bucket/input.json",
             "execution_bundle_uri": "gs://bucket/bundle",
             "input_envelope_sha256": "a" * 64,
+            "input_evidence_snapshot": {
+                "attempt_contract_version": "validibot.attempt.v2",
+                "input_files": [],
+                "input_relationships": [],
+            },
             "output_envelope_uri": "gs://bucket/bundle/output.json",
         }
 

@@ -33,21 +33,23 @@ directly to EnergyPlus. Mature execution evidence records the original and
 executed digests separately, describes the transformation between them, and
 binds the output and backend image to the same attempt.
 
-The current v1 manifest records the submitted-content digest in
-`payload_digests.input_sha256` and the canonical output-envelope digest in
-`payload_digests.output_envelope_sha256`. The execution contract now separately
-commits every backend input's exact size, SHA-256, and storage version, and the
-backend verifies those fields while streaming before execution. Strict output
-artifact references retain the backend-reported identity; local artifacts are
-also checked against their attempt-workspace bytes before indexing.
+The v1 manifest keeps the submitted-content digest in
+`payload_digests.input_sha256` and also projects strict runtime evidence under
+`execution_attempts`. Each attempt record binds the canonical input envelope,
+provider execution, backend image, and retention-permitted output envelope to
+the exact input/resource file sizes, SHA-256 digests, and storage versions that
+the backend was required to verify while streaming.
 
-Those execution-boundary identities are not yet projected into the v1 evidence
-manifest. Until the evidence-rewiring slice lands, `input_sha256` still means
-the bytes Django accepted at submission time and must not be described as the
-manifest's independent record of the bytes verified immediately before
-execution. The strict input envelope and attempt records carry that identity
-today; the future manifest revision will make it part of the portable evidence
-artifact.
+`execution_attempts[].input_relationships` makes preprocessing honest. A
+direct input is recorded as `identical`; generated EnergyPlus input records
+both the original parameter submission and workflow template as
+`transformed` sources of the executed model. The projection is deliberately
+URI-free and never stores callback nonces or other live capabilities.
+
+`inputs_verified` is true only after trusted completion supplied a verified
+output envelope. Failed or interrupted attempts may still appear so auditors
+can see what was committed for a retry, but their declared files are not
+misrepresented as successfully verified.
 
 ## Current Bundle Format
 
@@ -69,6 +71,10 @@ The manifest is the structured proof of:
 - which run completed;
 - which workflow version and contract were used;
 - which validator steps and validator digests were used;
+- which strict execution attempts, providers, backend images, and verified
+  input files were used;
+- how original or workflow-resource bytes relate to transformed execution
+  inputs;
 - which input schema applied;
 - which retention policy applied;
 - which SHA-256 payload digests identify the submitted run input and, where retention permits, output.
@@ -163,6 +169,9 @@ Public schema symbols:
 - `StepValidatorRecord` — per-step validator identity and digests
 - `ManifestRetentionInfo` — retention class and redactions applied
 - `ManifestPayloadDigests` — input/output SHA-256 digests
+- `ManifestExecutionInput` — URI-free identity of one strict runtime input
+- `ManifestInputRelationship` — original-to-executed byte relationship
+- `ManifestExecutionAttempt` — attempt, provider, envelope, image, and input evidence
 - `SCHEMA_VERSION` — `"validibot.evidence.v1"`
 
 The current manifest shape is top-level, not nested under `run`, `workflow`, or `submission` objects.
@@ -198,6 +207,36 @@ The current manifest shape is top-level, not nested under `run`, `workflow`, or 
       "validator_backend_image_digest": null
     }
   ],
+  "execution_attempts": [
+    {
+      "execution_attempt_id": "2c0c8780-aed8-47d1-bd7d-a9b83589d712",
+      "step_run_id": "29ab683a-8506-4a17-952a-27d88ab906ec",
+      "attempt_number": 1,
+      "state": "COMPLETED",
+      "runner_type": "cloud_run_job",
+      "provider_execution_id": "projects/example/locations/australia-southeast1/executions/job-abc",
+      "attempt_contract_version": "validibot.attempt.v2",
+      "input_envelope_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "output_envelope_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "backend_image_digest": "ghcr.io/example/backend@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "inputs_verified": true,
+      "input_files": [
+        {
+          "channel": "input_files",
+          "name": "model.idf",
+          "role": "primary-model",
+          "resource_type": "",
+          "port_key": "primary_model",
+          "resource_id": "",
+          "media_type": "application/vnd.energyplus.idf",
+          "size_bytes": 1234,
+          "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "storage_version": "1749836212345678"
+        }
+      ],
+      "input_relationships": []
+    }
+  ],
   "input_schema": {
     "type": "object"
   },
@@ -227,7 +266,7 @@ The evidence manifest uses schema-specific digest names:
 
 The UI may describe the first value as the data hash. Older docs and model comments may use "content hash." In the evidence manifest and bundle, the canonical field name is `payload_digests.input_sha256`.
 
-The input digest is sourced from `Submission.checksum_sha256`, which is computed at upload/submit time and preserved when `Submission.purge_content()` deletes the actual bytes. It identifies the bytes Django accepted; the strict input envelope separately carries the backend-verified executed-byte identity described above.
+The input digest is sourced from `Submission.checksum_sha256`, which is computed at upload/submit time and preserved when `Submission.purge_content()` deletes the actual bytes. It identifies the bytes Django accepted. When an advanced validator ran, `execution_attempts[].input_files` separately identifies the strict execution-boundary bytes and `input_relationships` explains whether they were identical or transformed.
 
 The output digest is sourced from `ValidationRun.output_hash`, populated before the manifest is stamped.
 
@@ -241,7 +280,7 @@ Current rules:
 - `payload_digests.output_envelope_sha256` is omitted for `DO_NOT_STORE`.
 - omitted fields are listed in `retention.redactions_applied`.
 
-For `DO_NOT_STORE`, the manifest still preserves the digest of the exact bytes Django accepted, but the bundle does not include those bytes and the UI/API must not expose them even if the async reaper has not deleted them yet. The backend still verifies the strict per-file contract during execution; a later manifest revision will retain those verified identities in the portable evidence record.
+For `DO_NOT_STORE`, the manifest still preserves the digest of the exact bytes Django accepted and the URI-free strict input identities. The bundle does not include those bytes and the UI/API must not expose them even if the async reaper has not deleted them yet. Attempt output-envelope digests are redacted under the same output-hash rule, while `inputs_verified` still records whether trusted completion crossed the strict input-verification boundary.
 
 ## Run Source Attribution
 
@@ -336,7 +375,7 @@ logs/
 credentials/
 ```
 
-Those members are not part of the current delivered bundle. Adding them requires a focused retention review because raw inputs, outputs, logs, and file names may carry user content. Until then, the manifest's payload digests are the evidence of payload identity.
+Those members are not part of the current delivered bundle. Adding them requires a focused retention review because raw inputs, outputs, logs, and file names may carry user content. Until then, the manifest's payload digests, execution-attempt records, and artifact lineage are the portable evidence of byte identity.
 
 ## Audit Findings
 

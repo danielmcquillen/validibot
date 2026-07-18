@@ -67,12 +67,16 @@ from validibot_shared.evidence import SCHEMA_VERSION
 from validibot_shared.evidence import EvidenceManifest
 from validibot_shared.evidence import ManifestArtifactInputBinding
 from validibot_shared.evidence import ManifestArtifactLineageEdge
+from validibot_shared.evidence import ManifestExecutionAttempt
+from validibot_shared.evidence import ManifestExecutionInput
+from validibot_shared.evidence import ManifestInputRelationship
 from validibot_shared.evidence import ManifestPayloadDigests
 from validibot_shared.evidence import ManifestProducedArtifact
 from validibot_shared.evidence import ManifestRetentionInfo
 from validibot_shared.evidence import StepValidatorRecord
 
 from validibot.core.filesafety import sha256_hexdigest
+from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.services.evidence_retention import RetentionPolicy
 from validibot.workflows.services.contract_snapshot import (
     build_workflow_contract_snapshot,
@@ -119,6 +123,7 @@ def _build_produced_artifact_records(
                 data_format=artifact.data_format,
                 size_bytes=artifact.size_bytes if artifact.size_bytes >= 0 else None,
                 sha256=artifact.sha256,
+                storage_version=artifact.storage_version,
                 manifest_sha256=artifact.manifest_sha256,
                 producer_validator_type=artifact.producer_validator_type,
                 producer_validator_version=artifact.producer_validator_version,
@@ -267,6 +272,9 @@ def _source_details(
         "source_data_format": "",
         "source_size_bytes": None,
         "source_sha256": "",
+        "source_storage_version": str(
+            (snapshot or {}).get("storage_version") or "",
+        ),
         "producer_step_key": "",
         "producer_contract_key": "",
     }
@@ -358,6 +366,7 @@ def _source_details(
                         artifact.size_bytes if artifact.size_bytes >= 0 else None
                     ),
                     "source_sha256": artifact.sha256,
+                    "source_storage_version": artifact.storage_version,
                     "producer_step_key": step.step_key if step else "",
                     "producer_contract_key": artifact.contract_key,
                 },
@@ -370,6 +379,9 @@ def _source_details(
                     "source_data_format": str(artifact_ref.get("data_format") or ""),
                     "source_size_bytes": artifact_ref.get("size_bytes"),
                     "source_sha256": str(artifact_ref.get("sha256") or ""),
+                    "source_storage_version": str(
+                        artifact_ref.get("storage_version") or "",
+                    ),
                     "producer_step_key": str(
                         artifact_ref.get("producer_step_key") or "",
                     ),
@@ -457,6 +469,78 @@ def _filename_from_uri(uri: str) -> str:
     parsed = urlparse(uri)
     path = parsed.path if parsed.scheme else uri
     return Path(unquote(path)).name
+
+
+def _build_execution_attempt_records(
+    run: ValidationRun,
+    *,
+    include_output_hash: bool,
+) -> list[ManifestExecutionAttempt]:
+    """Project committed attempt snapshots into portable execution evidence.
+
+    Attempts created before the launch-time snapshot shipped are omitted. Their
+    digest alone cannot reconstruct verified per-file identities without
+    rereading a storage URI, which this evidence path deliberately refuses to do.
+    """
+    from validibot.validations.models import ExecutionAttempt
+
+    records: list[ManifestExecutionAttempt] = []
+    attempts = (
+        ExecutionAttempt.objects.filter(step_run__validation_run=run)
+        .exclude(input_envelope_sha256="")
+        .select_related("step_run")
+        .order_by("step_run__step_order", "attempt_number", "pk")
+    )
+    for attempt in attempts:
+        snapshot = attempt.input_evidence_snapshot
+        if not isinstance(snapshot, dict):
+            continue
+        attempt_contract_version = str(
+            snapshot.get("attempt_contract_version") or "",
+        )
+        raw_input_files = snapshot.get("input_files")
+        raw_relationships = snapshot.get("input_relationships")
+        if (
+            not attempt_contract_version
+            or not isinstance(raw_input_files, list)
+            or not isinstance(raw_relationships, list)
+        ):
+            continue
+
+        input_files = [
+            ManifestExecutionInput.model_validate(item) for item in raw_input_files
+        ]
+        input_relationships = [
+            ManifestInputRelationship.model_validate(item) for item in raw_relationships
+        ]
+        inputs_verified = attempt.state == ExecutionAttemptState.COMPLETED and bool(
+            attempt.output_envelope_sha256
+        )
+        records.append(
+            ManifestExecutionAttempt(
+                execution_attempt_id=str(attempt.pk),
+                step_run_id=str(attempt.step_run_id),
+                attempt_number=attempt.attempt_number,
+                state=str(attempt.state),
+                runner_type=attempt.runner_type,
+                provider_execution_id=attempt.provider_execution_id,
+                attempt_contract_version=attempt_contract_version,
+                input_envelope_sha256=attempt.input_envelope_sha256,
+                output_envelope_sha256=(
+                    attempt.output_envelope_sha256
+                    if include_output_hash and attempt.output_envelope_sha256
+                    else None
+                ),
+                backend_image_digest=(
+                    attempt.backend_image_digest
+                    or attempt.step_run.validator_backend_image_digest
+                ),
+                inputs_verified=inputs_verified,
+                input_files=input_files,
+                input_relationships=input_relationships,
+            ),
+        )
+    return records
 
 
 class EvidenceManifestBuilder:
@@ -563,6 +647,12 @@ class EvidenceManifestBuilder:
         artifact_input_bindings, artifact_lineage_edges = (
             _build_artifact_input_lineage_records(run)
         )
+        execution_attempts = _build_execution_attempt_records(
+            run,
+            include_output_hash=RetentionPolicy.includes_output_hash(
+                retention_class,
+            ),
+        )
 
         # The schema's ``executed_at`` is a string (ISO 8601 UTC) so
         # the canonical-JSON byte sequence is stable across Python
@@ -604,6 +694,7 @@ class EvidenceManifestBuilder:
             "input_schema": workflow.input_schema or None,
             "retention": retention,
             "payload_digests": payload_digests,
+            "execution_attempts": execution_attempts,
         }
         if "source" in EvidenceManifest.model_fields:
             manifest_kwargs["source"] = (run.source or None) or None

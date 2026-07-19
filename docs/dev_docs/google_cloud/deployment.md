@@ -82,7 +82,7 @@ just gcp init-stage prod     # For production environment
 This command creates (example for dev):
 
 - Service account (web/worker): `$GCP_APP_NAME-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
-- Service account (validators): `$GCP_APP_NAME-validator-dev@PROJECT.iam.gserviceaccount.com` (least-privilege: storage + worker callback only)
+- Service account (validators): `$GCP_APP_NAME-validator-dev@PROJECT.iam.gserviceaccount.com` (worker callback/capability renewal only; no ambient storage role)
 - Cloud SQL instance: `$GCP_APP_NAME-db-dev` (db-f1-micro tier for dev, db-g1-small for staging; prod currently defaults to db-f1-micro—bump before real traffic)
 - Database `validibot` and user `validibot_user` with generated password
 - Cloud Tasks queue: `$GCP_APP_NAME-validation-queue-dev`

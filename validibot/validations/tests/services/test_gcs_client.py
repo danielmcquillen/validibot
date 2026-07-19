@@ -25,6 +25,7 @@ import pytest
 from google.api_core.exceptions import PreconditionFailed
 from pydantic import BaseModel
 
+from validibot.validations.services.cloud_run.gcs_client import copy_gcs_file_generation
 from validibot.validations.services.cloud_run.gcs_client import download_envelope
 from validibot.validations.services.cloud_run.gcs_client import get_gcs_file_identity
 from validibot.validations.services.cloud_run.gcs_client import parse_gcs_uri
@@ -223,6 +224,46 @@ def test_get_gcs_file_identity_combines_durable_hash_with_object_metadata(
     assert identity.size_bytes == 42  # noqa: PLR2004
     assert identity.sha256 == digest
     assert identity.storage_version == "1700000000000002"
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_copy_generation_pins_source_and_creates_destination_only(
+    mock_storage_client,
+):
+    """Attempt staging must copy one generation without replacing stale output."""
+    client = MagicMock()
+    source_bucket = MagicMock()
+    destination_bucket = MagicMock()
+    source_blob = MagicMock()
+    copied_blob = MagicMock(size=42, generation=1700000000000003)
+    client.bucket.side_effect = [source_bucket, destination_bucket]
+    source_bucket.blob.return_value = source_blob
+    source_bucket.copy_blob.return_value = copied_blob
+    mock_storage_client.return_value = client
+
+    identity = copy_gcs_file_generation(
+        source_uri="gs://assets/weather.epw",
+        source_generation="1700000000000002",
+        destination_uri="gs://validation/runs/attempt/weather.epw",
+        expected_size_bytes=42,
+        expected_sha256="c" * 64,
+    )
+
+    source_bucket.blob.assert_called_once_with(
+        "weather.epw",
+        generation=1700000000000002,
+    )
+    source_bucket.copy_blob.assert_called_once_with(
+        source_blob,
+        destination_bucket,
+        new_name="runs/attempt/weather.epw",
+        preserve_acl=False,
+        source_generation=1700000000000002,
+        if_source_generation_match=1700000000000002,
+        if_generation_match=0,
+    )
+    assert identity.storage_version == "1700000000000003"
+    assert identity.sha256 == "c" * 64
 
 
 @patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")

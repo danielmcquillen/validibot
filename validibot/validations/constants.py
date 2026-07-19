@@ -23,6 +23,7 @@ class StorageCapabilityMode(StrEnum):
 
     LOCAL_ATTEMPT_MOUNT = "local_attempt_mount"
     GCS_GENERATION = "gcs_generation"
+    GCS_DOWNSCOPED_TOKEN = "gcs_downscoped_token"  # noqa: S105
     S3_CONDITIONAL = "s3_conditional"
     SERVER_MEDIATED_BROKER = "server_mediated_broker"
     UNSUPPORTED = "unsupported"

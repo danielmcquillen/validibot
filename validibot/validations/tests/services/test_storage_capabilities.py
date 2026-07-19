@@ -34,6 +34,8 @@ def test_local_docker_capability_is_attempt_scoped():
 @override_settings(
     DATA_STORAGE_BACKEND="gcs",
     VALIDATOR_RUNNER="google_cloud_run",
+    GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=False,
+    GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=False,
 )
 def test_gcs_capability_separates_integrity_from_confidentiality():
     """Generation checks stay true while shared IAM is labelled reduced isolation."""
@@ -46,6 +48,55 @@ def test_gcs_capability_separates_integrity_from_confidentiality():
     assert report.immutable_reads is True
     assert report.attempt_scoped_authority is False
     assert "shared runtime service account" in report.limitations[0]
+
+
+@override_settings(
+    DATA_STORAGE_BACKEND="gcs",
+    VALIDATOR_RUNNER="google_cloud_run",
+    GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=True,
+    GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=False,
+)
+def test_downscoped_token_stays_reduced_until_ambient_access_is_removed():
+    """Narrow client code cannot compensate for a broad metadata identity."""
+    report = get_storage_capability_report()
+
+    assert report.mode is StorageCapabilityMode.GCS_DOWNSCOPED_TOKEN
+    assert report.isolation is RuntimeStorageIsolation.REDUCED_SHARED_RUNTIME_IDENTITY
+    assert report.attempt_scoped_authority is False
+    assert "bypass" in report.limitations[0]
+
+
+@override_settings(
+    DATA_STORAGE_BACKEND="gcs",
+    VALIDATOR_RUNNER="google_cloud_run",
+    GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=True,
+    GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=True,
+)
+def test_downscoped_token_is_attempt_scoped_after_ambient_access_removal():
+    """Prefix token plus storage-free runtime identity establishes isolation."""
+    report = get_storage_capability_report()
+
+    assert report.mode is StorageCapabilityMode.GCS_DOWNSCOPED_TOKEN
+    assert report.isolation is RuntimeStorageIsolation.ATTEMPT_SCOPED
+    assert report.integrity_enforced is True
+    assert report.create_only_writes is True
+    assert report.immutable_reads is True
+    assert report.attempt_scoped_authority is True
+
+
+@override_settings(
+    DATA_STORAGE_BACKEND="gcs",
+    VALIDATOR_RUNNER="google_cloud_run",
+    GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=False,
+    GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=True,
+)
+def test_storage_free_runtime_without_token_delivery_fails_closed():
+    """Removing ambient IAM before enabling token transport is not runnable."""
+    report = get_storage_capability_report()
+
+    assert report.mode is StorageCapabilityMode.UNSUPPORTED
+    assert report.isolation is RuntimeStorageIsolation.UNSUPPORTED
+    assert report.attempt_scoped_authority is False
 
 
 @override_settings(DATA_STORAGE_BACKEND="s3", VALIDATOR_RUNNER="aws_batch")

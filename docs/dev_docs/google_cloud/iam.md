@@ -14,7 +14,7 @@ This document covers how Validibot uses Google Cloud IAM (Identity and Access Ma
 We use two types of service accounts per environment:
 
 - **Web/Worker SA** (`$GCP_APP_NAME-cloudrun-{stage}`) - Used by Cloud Run web and worker services. Has broad access to run the Django application.
-- **Validator SA** (`$GCP_APP_NAME-validator-{stage}`) - Used by validator Cloud Run Jobs (EnergyPlus, FMU). Least-privilege: only storage access and worker callback permission.
+- **Validator SA** (`$GCP_APP_NAME-validator-{stage}`) - Used by validator Cloud Run Jobs. It can invoke the worker for callbacks/capability renewal but has no ambient storage role.
 
 This ensures:
 
@@ -60,7 +60,6 @@ This ensures:
 
 | Role | Scope | Purpose |
 | ---- | ----- | ------- |
-| `roles/storage.objectAdmin` | Stage bucket | Read inputs, write outputs |
 | `roles/run.invoker` | Worker service | POST callbacks with results |
 
 The validator SA deliberately does **not** have:
@@ -69,8 +68,14 @@ The validator SA deliberately does **not** have:
 - `cloudsql.client` (no database access)
 - `cloudtasks.enqueuer` (no task queue access)
 - KMS roles (no credential signing)
+- any project, bucket, or managed-folder storage role
 
-This limits the blast radius if a validator container is compromised by a malicious user-provided model (IDF, FMU, etc.).
+Django issues a short-lived Credential Access Boundary token for one attempt.
+The token exposes only the `roles/storage.objectViewer` and
+`roles/storage.objectCreator` permission ceilings below that attempt prefix;
+because it has no delete permission, it cannot replace an existing object.
+This prevents a compromised validator processing a malicious IDF, FMU, RDF, or
+XML document from reading another attempt through its metadata identity.
 
 ### MCP Service Account
 
@@ -134,6 +139,21 @@ The `just gcp validator-deploy` command additionally grants:
 
 - `validibot_job_runner` on the job to the main SA (so web/worker can trigger it)
 - `roles/run.invoker` on the worker service to the validator SA (so the job can POST callbacks)
+
+After capability-aware images and Django are deployed, remove historical
+validator storage bindings with:
+
+```bash
+cd /Users/danielmcquillen/projects/validibot/validibot
+just gcp validator-storage-isolation prod
+```
+
+That recipe removes the known legacy bindings and rejects remaining direct
+predefined `roles/storage*` bindings. Before setting
+`GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`, also require the
+provider negative probes to deny effective metadata-identity access; inherited,
+group, primitive, or custom-role grants are not proven absent by a static role
+name scan.
 
 ## Application Default Credentials (ADC)
 

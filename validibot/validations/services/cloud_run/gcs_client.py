@@ -369,6 +369,68 @@ def get_gcs_file_identity(*, uri: str, sha256: str) -> FileIdentity:
     )
 
 
+def copy_gcs_file_generation(
+    *,
+    source_uri: str,
+    source_generation: str,
+    destination_uri: str,
+    expected_size_bytes: int,
+    expected_sha256: str,
+) -> FileIdentity:
+    """Copy one exact GCS generation to a create-only attempt identity.
+
+    Server-side copy avoids routing reusable resources through Django memory.
+    The generation precondition pins the source bytes and generation zero pins
+    the destination to first publication. The validator later verifies the
+    copied bytes against ``expected_sha256`` while streaming them.
+    """
+    try:
+        generation = int(source_generation)
+    except (TypeError, ValueError) as exc:
+        msg = f"GCS storage version must be a numeric generation: {source_generation!r}"
+        raise ValueError(msg) from exc
+    if generation <= 0:
+        msg = f"GCS generation must be positive: {generation}"
+        raise ValueError(msg)
+
+    source_bucket_name, source_blob_path = parse_gcs_uri(source_uri)
+    destination_bucket_name, destination_blob_path = parse_gcs_uri(destination_uri)
+    client = storage.Client()
+    source_bucket = client.bucket(source_bucket_name)
+    destination_bucket = client.bucket(destination_bucket_name)
+    source_blob = source_bucket.blob(source_blob_path, generation=generation)
+    try:
+        copied = source_bucket.copy_blob(
+            source_blob,
+            destination_bucket,
+            new_name=destination_blob_path,
+            preserve_acl=False,
+            source_generation=generation,
+            if_source_generation_match=generation,
+            if_generation_match=0,
+        )
+    except PreconditionFailed as exc:
+        raise _gcs_create_conflict(destination_uri) from exc
+
+    if copied.generation is None or copied.size is None:
+        copied.reload()
+    if copied.generation is None or copied.size is None:
+        msg = f"GCS copy returned incomplete identity metadata: {destination_uri}"
+        raise ValueError(msg)
+    if int(copied.size) != expected_size_bytes:
+        msg = (
+            f"Copied GCS object size mismatch for {destination_uri}: expected "
+            f"{expected_size_bytes}, got {copied.size}"
+        )
+        raise ValueError(msg)
+    return FileIdentity(
+        uri=destination_uri,
+        size_bytes=expected_size_bytes,
+        sha256=expected_sha256,
+        storage_version=str(copied.generation),
+    )
+
+
 def _uploaded_generation(*, blob, uri: str) -> str:
     """Return the immutable generation assigned to a completed GCS upload."""
     if blob.generation is None:

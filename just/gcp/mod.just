@@ -2960,27 +2960,24 @@ init-stage stage: _require-gcp-config
         --quiet >/dev/null 2>&1 || echo "   (public prefix IAM already configured)"
     echo "   Public prefix configured (public/ is publicly readable, private/ is protected)"
 
-    # Grant validator SA storage access on the bucket, SCOPED to the run-bundle
-    # prefix via an IAM Condition. Validators only ever read inputs from and
-    # write outputs to gs://$STORAGE_BUCKET/runs/<org>/<run>/ (the launcher's
-    # execution-bundle layout), so we restrict objectAdmin to objects under
-    # runs/ instead of the whole bucket. Without the condition a compromised
-    # validator container (which processes attacker-controlled models) could
-    # read/write/delete unrelated public/ and private/ objects across every
-    # org. This mirrors the public/ IAM Condition above.
-    #
-    # NOTE: the condition gates object-level get/create/delete; it does NOT
-    # grant bucket-level storage.objects.list, which validators don't need
-    # (they operate on exact URIs from the input envelope). Operators upgrading
-    # from a previous unconditional grant should remove the old binding — it
-    # keeps granting bucket-wide access until explicitly deleted.
-    gcloud storage buckets add-iam-policy-binding "gs://$STORAGE_BUCKET" \
+    # Validator jobs deliberately receive NO ambient GCS role. Django passes a
+    # short-lived Credential Access Boundary token at execution time, limited
+    # to one attempt prefix and to object read/create permissions. Remove both
+    # historical bindings so compromised container code cannot bypass that
+    # token by using the Cloud Run metadata identity directly.
+    gcloud storage buckets remove-iam-policy-binding "gs://$STORAGE_BUCKET" \
+        --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
+        --role="roles/storage.objectAdmin" \
+        --condition=None \
+        --project={{gcp_project}} \
+        --quiet >/dev/null 2>&1 || true
+    gcloud storage buckets remove-iam-policy-binding "gs://$STORAGE_BUCKET" \
         --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
         --role="roles/storage.objectAdmin" \
         --condition="expression=resource.name.startsWith(\"projects/_/buckets/$STORAGE_BUCKET/objects/runs/\"),title=validator-runs-prefix-only" \
         --project={{gcp_project}} \
-        --quiet >/dev/null
-    echo "   Granted objectAdmin on $STORAGE_BUCKET/runs/ to validator SA (prefix-scoped)"
+        --quiet >/dev/null 2>&1 || true
+    echo "   Validator SA has no direct storage role (attempt tokens are issued at runtime)"
     echo ""
 
     # Step 7: Ensure the credential-signing key exists, then grant access.
@@ -3623,6 +3620,60 @@ validators-deploy-all stage: _require-gcp-config
     just gcp validator-deploy fmu {{stage}}
     just gcp validator-deploy shacl {{stage}}
     just gcp validator-deploy schematron {{stage}}
+
+# Remove historical ambient GCS access after capability-aware validator images
+# and Django have both been deployed. This recipe is deliberately separate from
+# validator-deploy so the dependency-order rollout cannot strand old images.
+# Usage: just gcp validator-storage-isolation dev|staging|prod
+[arg('stage', pattern='dev|staging|prod')]
+validator-storage-isolation stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        STORAGE_BUCKET="${APP_NAME}-storage"
+        VALIDATOR_SA_EMAIL="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
+    else
+        STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
+        VALIDATOR_SA_EMAIL="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+    fi
+
+    echo "Removing historical validator storage bindings..."
+    gcloud storage buckets remove-iam-policy-binding "gs://$STORAGE_BUCKET" \
+        --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
+        --role="roles/storage.objectAdmin" \
+        --condition=None \
+        --project={{gcp_project}} \
+        --quiet >/dev/null 2>&1 || true
+    gcloud storage buckets remove-iam-policy-binding "gs://$STORAGE_BUCKET" \
+        --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
+        --role="roles/storage.objectAdmin" \
+        --condition="expression=resource.name.startsWith(\"projects/_/buckets/$STORAGE_BUCKET/objects/runs/\"),title=validator-runs-prefix-only" \
+        --project={{gcp_project}} \
+        --quiet >/dev/null 2>&1 || true
+
+    PROJECT_STORAGE_ROLES=$(gcloud projects get-iam-policy {{gcp_project}} \
+        --flatten="bindings[].members" \
+        --filter="bindings.members=serviceAccount:$VALIDATOR_SA_EMAIL AND bindings.role:roles/storage" \
+        --format="value(bindings.role)" 2>/dev/null || true)
+    BUCKET_STORAGE_ROLES=$(gcloud storage buckets get-iam-policy "gs://$STORAGE_BUCKET" \
+        --flatten="bindings[].members" \
+        --filter="bindings.members=serviceAccount:$VALIDATOR_SA_EMAIL AND bindings.role:roles/storage" \
+        --format="value(bindings.role)" 2>/dev/null || true)
+    if [ -n "$PROJECT_STORAGE_ROLES" ] || [ -n "$BUCKET_STORAGE_ROLES" ]; then
+        echo "ERROR: validator service account still has storage roles:"
+        printf '%s\n%s\n' "$PROJECT_STORAGE_ROLES" "$BUCKET_STORAGE_ROLES" | sed '/^$/d'
+        echo "Remove those bindings before declaring runtime storage isolation complete."
+        exit 1
+    fi
+
+    echo "Verified: $VALIDATOR_SA_EMAIL has no direct predefined roles/storage* binding"
+    echo "on the project or stage bucket. Before asserting isolation, also run the"
+    echo "provider negative probes for effective access (including inherited, group,"
+    echo "primitive, and custom-role grants)."
+    echo "Only after those probes pass, set both deployment flags and redeploy Django:"
+    echo "  GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true"
+    echo "  GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true"
 
 # =============================================================================
 # Validator Assets Management

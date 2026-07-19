@@ -12,6 +12,7 @@ Validibot uses a single GCS bucket with prefix-based separation:
 |--------|--------|----------|
 | `public/` | Public (via IAM condition) | User avatars, workflow images |
 | `private/` | Private (service account only) | Validation submissions, artifacts, reports |
+| `runs/` | Private (Django + attempt tokens) | Attempt input envelopes, staged inputs, validator outputs |
 
 ## Bucket Configuration
 
@@ -40,11 +41,16 @@ gcloud storage buckets add-iam-policy-binding gs://BUCKET \
     --role="roles/storage.objectViewer" \
     --condition='expression=resource.name.startsWith("projects/_/buckets/BUCKET/objects/public/"),title=public-prefix-only'
 
-# Service account gets full access
+# Django web/worker service account gets full access
 gcloud storage buckets add-iam-policy-binding gs://BUCKET \
     --member="serviceAccount:SA@PROJECT.iam.gserviceaccount.com" \
     --role="roles/storage.objectAdmin"
 ```
+
+Do not grant that role to the validator Cloud Run service account. Validator
+jobs receive a short-lived, attempt-prefix Credential Access Boundary token at
+dispatch. Run `just gcp validator-storage-isolation <stage>` to remove and
+verify historical validator bindings after the coordinated rollout.
 
 ## Django Configuration
 
@@ -84,7 +90,10 @@ This pulls in `google-cloud-storage` automatically.
 
 ### Cloud Run
 
-Authentication happens automatically via the service account attached to the Cloud Run service. No credentials file needed - `django-storages` uses Application Default Credentials (ADC).
+The Django web/worker service uses its attached service account through ADC.
+Validator jobs deliberately do not: the launcher injects an explicit short-lived
+token limited to one attempt prefix, and the backend refuses an out-of-prefix
+URI before making a GCS request.
 
 ### Local Development
 

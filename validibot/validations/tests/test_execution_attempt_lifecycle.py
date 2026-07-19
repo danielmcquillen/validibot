@@ -351,6 +351,78 @@ class TestCloudRunSharedDispatch:
             provider_execution_id=execution_name,
         )
 
+    @override_settings(
+        GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=True,
+        GCP_PROJECT_ID="project",
+        GCP_REGION="region",
+        WORKER_URL="https://worker.example",
+    )
+    @patch("validibot.validations.services.cloud_run.launcher._mark_step_run_running")
+    @patch(
+        "validibot.validations.services.cloud_run.launcher.get_execution_image_digest",
+        return_value=None,
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher._run_validator_job_safely",
+        return_value="projects/p/locations/r/executions/e-1",
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher."
+        "_enforce_cloud_run_job_image_policy",
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.gcs_runtime_capabilities."
+        "issue_attempt_gcs_runtime_capability",
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher."
+        "build_input_evidence_snapshot",
+        return_value={"attempt_contract_version": "validibot.attempt.v2"},
+    )
+    @patch(
+        "validibot.validations.services.cloud_run.launcher.sha256_hex_for_model",
+        return_value="a" * 64,
+    )
+    def test_dispatch_delivers_new_attempt_capability_to_provider(
+        self,
+        mock_sha256,
+        mock_build_evidence,
+        issue_capability,
+        mock_policy,
+        mock_run_job,
+        mock_get_digest,
+        mock_mark_running,
+    ):
+        """Enabled rollout must bind one freshly issued token to this dispatch."""
+        capability = MagicMock(name="attempt_gcs_capability")
+        issue_capability.return_value = capability
+        envelope = MagicMock()
+        envelope.context.expected_output_uri = "gs://bucket/attempt/output.json"
+
+        _dispatch_cloud_run_validation(
+            step_run=MagicMock(pk="step-run-1"),
+            job_name="validator-job",
+            input_envelope_uri="gs://bucket/attempt/input.json",
+            execution_bundle_uri="gs://bucket/attempt",
+            envelope=envelope,
+            submission=MagicMock(),
+            step=MagicMock(),
+        )
+
+        issue_capability.assert_called_once_with(
+            execution_bundle_uri="gs://bucket/attempt",
+            project_id="project",
+            refresh_url=(
+                "https://worker.example/api/v1/validation-storage-capabilities/refresh/"
+            ),
+        )
+        assert mock_run_job.call_args.kwargs["gcs_capability"] is capability
+        mock_policy.assert_called_once_with("validator-job")
+        mock_get_digest.assert_called_once_with("projects/p/locations/r/executions/e-1")
+        mock_mark_running.assert_called_once()
+        mock_sha256.assert_called_once_with(envelope)
+        mock_build_evidence.assert_called_once()
+
 
 @pytest.mark.django_db
 class TestCloudRunDispatchAmbiguity:

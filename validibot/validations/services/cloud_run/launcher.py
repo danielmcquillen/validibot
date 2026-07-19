@@ -75,6 +75,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 VALIDATION_CALLBACK_PATH = "/api/v1/validation-callbacks/"
+VALIDATION_STORAGE_CAPABILITY_REFRESH_PATH = (
+    "/api/v1/validation-storage-capabilities/refresh/"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +245,28 @@ def build_validation_callback_url() -> str:
     return f"{base_url.rstrip('/')}{VALIDATION_CALLBACK_PATH}"
 
 
+def build_validation_storage_capability_refresh_url() -> str:
+    """Build the worker-only endpoint used to renew a bounded GCS token."""
+    callback_url = build_validation_callback_url()
+    return callback_url.removesuffix(VALIDATION_CALLBACK_PATH) + (
+        VALIDATION_STORAGE_CAPABILITY_REFRESH_PATH
+    )
+
+
+def _prepare_attempt_capability_envelope(envelope, *, execution_bundle_uri: str):
+    """Stage all GCS reads into one prefix when capability rollout is enabled."""
+    if not getattr(settings, "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED", False):
+        return envelope
+    from validibot.validations.services.cloud_run.gcs_runtime_capabilities import (
+        prepare_envelope_for_attempt_capability,
+    )
+
+    return prepare_envelope_for_attempt_capability(
+        envelope,
+        execution_bundle_uri=execution_bundle_uri,
+    )
+
+
 def _check_already_launched(step_run) -> ValidationResult | None:
     """Return a pending result if a job was already launched, else None."""
     existing_output = step_run.output or {}
@@ -324,6 +349,7 @@ def _run_validator_job_safely(
     input_envelope_sha256: str,
     input_evidence_snapshot: dict,
     output_envelope_uri: str,
+    gcs_capability=None,
 ) -> str:
     """Launch once and preserve provider-acceptance ambiguity explicitly.
 
@@ -377,6 +403,7 @@ def _run_validator_job_safely(
             region=region,
             job_name=job_name,
             input_uri=input_uri,
+            gcs_capability=gcs_capability,
         )
     except Exception as exc:
         transition_execution_attempt(
@@ -464,6 +491,18 @@ def _dispatch_cloud_run_validation(
     """
     _enforce_cloud_run_job_image_policy(job_name)
     logger.info("Triggering Cloud Run Job: %s", job_name)
+    gcs_capability = None
+    if getattr(settings, "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED", False):
+        from validibot.validations.services.cloud_run.gcs_runtime_capabilities import (
+            issue_attempt_gcs_runtime_capability,
+        )
+
+        gcs_capability = issue_attempt_gcs_runtime_capability(
+            execution_bundle_uri=execution_bundle_uri,
+            project_id=settings.GCP_PROJECT_ID,
+            refresh_url=build_validation_storage_capability_refresh_url(),
+        )
+
     execution_name = _run_validator_job_safely(
         step_run=step_run,
         project_id=settings.GCP_PROJECT_ID,
@@ -478,6 +517,7 @@ def _dispatch_cloud_run_validation(
             step=step,
         ),
         output_envelope_uri=str(envelope.context.expected_output_uri),
+        gcs_capability=gcs_capability,
     )
     backend_image_digest = get_execution_image_digest(execution_name)
     _mark_step_run_running(
@@ -624,6 +664,10 @@ def launch_energyplus_validation(
             execution_bundle_uri=execution_bundle_uri,
             input_file_uris=input_file_uris,
         )
+        envelope = _prepare_attempt_capability_envelope(
+            envelope,
+            execution_bundle_uri=execution_bundle_uri,
+        )
 
         # 5. Upload envelope to GCS
         logger.info("Uploading input envelope to %s", input_envelope_uri)
@@ -750,6 +794,10 @@ def launch_fmu_validation(
             callback_id=callback_credentials.callback_id,
             callback_nonce=callback_credentials.callback_nonce,
             callback_nonce_commitment=(callback_credentials.callback_nonce_commitment),
+            execution_bundle_uri=execution_bundle_uri,
+        )
+        envelope = _prepare_attempt_capability_envelope(
+            envelope,
             execution_bundle_uri=execution_bundle_uri,
         )
 
@@ -901,6 +949,10 @@ def launch_shacl_validation(
                 "data_graph": submission_file,
                 "primary_file_uri": submission_file,
             },
+        )
+        envelope = _prepare_attempt_capability_envelope(
+            envelope,
+            execution_bundle_uri=execution_bundle_uri,
         )
 
         # 4. Upload the input envelope.
@@ -1058,6 +1110,10 @@ def launch_schematron_validation(
                 "xml_document": submission_file,
                 "primary_file_uri": submission_file,
             },
+        )
+        envelope = _prepare_attempt_capability_envelope(
+            envelope,
+            execution_bundle_uri=execution_bundle_uri,
         )
 
         # 4. Upload the input envelope.

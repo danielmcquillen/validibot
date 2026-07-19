@@ -26,8 +26,9 @@ sequenceDiagram
     participant Job as Validator Job (SA)
 
     Web->>JobsAPI: jobs.run (web SA)
-    JobsAPI-->>Job: Start job with env VALIDIBOT_INPUT_URI
-    Job->>Job: Download input.json + files from GCS
+    JobsAPI-->>Job: Start job with input URI + short-lived attempt token
+    Job->>Job: Read/create only below one attempt GCS prefix
+    Job->>Worker: Renew token with callback nonce if still active
     Job->>Worker: Callback with result_uri (ID token from job SA)
     Worker->>Worker: Verify ID token + persist results
 ```
@@ -35,7 +36,7 @@ sequenceDiagram
 IAM roles involved:
 
 - **Web/Worker service account** (`$GCP_APP_NAME-cloudrun-{stage}`): Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `VALIDIBOT_INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
-- **Validator job service account** (`$GCP_APP_NAME-validator-{stage}`): Dedicated least-privilege SA used by validator Cloud Run Jobs. Has `roles/storage.objectAdmin` on the stage bucket (read inputs, write outputs) and `roles/run.invoker` on `$GCP_APP_NAME-worker` (for callbacks). Does **not** have access to secrets, Cloud SQL, Cloud Tasks, or KMS.
+- **Validator job service account** (`$GCP_APP_NAME-validator-{stage}`): Dedicated runtime SA used by validator Cloud Run Jobs. It has `roles/run.invoker` on `$GCP_APP_NAME-worker` for callbacks and token renewal, but **no project or bucket storage role**. Django supplies a short-lived Credential Access Boundary token limited to one attempt prefix and the `roles/storage.objectViewer` + `roles/storage.objectCreator` permission ceiling.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
 
 ### Custom IAM Role
@@ -49,7 +50,7 @@ The standard `roles/run.invoker` role only includes `run.jobs.run`, but triggeri
 
 This role is automatically granted by the `just gcp validator-deploy` command.
 
-Why env + GCS pointer: Cloud Run Jobs only accept per-run overrides via env/command; we keep large envelopes in GCS and pass a small `VALIDIBOT_INPUT_URI` env so the request stays small and the job can fetch full inputs at runtime.
+Why env + GCS pointer: Cloud Run Jobs only accept per-run overrides via env/command; we keep large envelopes in GCS and pass the input URI plus its short-lived attempt token as execution overrides. Cloud Run documents that environment values are visible to project viewers, so treat execution-view permission as privileged. The token is still bounded to one attempt and a short lifetime, is never logged or persisted by Validibot, and cannot delete or replace an existing object.
 
 Status tracking: We record the Cloud Run execution name and a `job_status` using `CloudRunJobStatus` (PENDING/RUNNING/SUCCEEDED/FAILED/CANCELLED) in launch stats for observability and fallback polling; run/step lifecycle still uses `ValidationRunStatus`/`StepStatus`.
 
@@ -75,6 +76,7 @@ The launcher generates a unique `callback_id` for each job execution and puts it
    - Tag Cloud Run Jobs with labels: `validator=<name>,revision=<backend_git_sha>`
    - Backend images carry OCI labels such as `org.opencontainers.image.version` and `org.opencontainers.image.revision`
    - Callback client mints an ID token via metadata server; Django callback view 404s on non-worker.
+   - Validator SA has no ambient GCS role; token renewal requires the attempt callback nonce and an active durable attempt.
 
 To populate `WORKER_URL` for a stage, fetch the worker service URL and add it to the stage env file:
 
@@ -116,12 +118,12 @@ just gcp validators-deploy-all dev
 2. **Pushes** to Artifact Registry at `$GCP_REGION-docker.pkg.dev/project-xxx/validibot/`
 3. **Deploys** the Cloud Run Job with:
    - Stage-appropriate job name (`$GCP_APP_NAME-validator-backend-energyplus-dev` for dev, `$GCP_APP_NAME-validator-backend-energyplus` for prod). The same name the runtime resolves at dispatch time via `ValidatorConfig.cloud_run_job_name`.
-   - Dedicated validator service account (`$GCP_APP_NAME-validator-dev@...` for dev)
+   - Dedicated validator service account (`$GCP_APP_NAME-validator-dev@...` for dev) with no ambient storage role
    - Memory (4Gi), CPU (2), timeout (1 hour), no retries
    - Labels for tracking (`validator=energyplus,stage=dev,version=abc123`)
 4. **Grants IAM permissions**:
    - Adds custom `validibot_job_runner` role to the main SA so the web/worker service can trigger the job with env overrides
-   - Grants `roles/run.invoker` on the worker service to the validator SA so the job can POST callbacks
+   - Grants `roles/run.invoker` on the worker service to the validator SA so the job can POST callbacks and renew an active attempt token
 
 ### Viewing logs and job status
 
@@ -159,12 +161,13 @@ When Django triggers a validator Cloud Run Job execution, it passes:
 
 | Source                        | Data                             | Example                                                                     |
 | ----------------------------- | -------------------------------- | --------------------------------------------------------------------------- |
-| `VALIDIBOT_INPUT_URI` env var | GCS path to input envelope       | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/input.json`             |
+| `VALIDIBOT_INPUT_URI` env var | GCS path to input envelope       | `gs://$GCP_APP_NAME-storage-dev/runs/org/run/attempts/attempt/input.json`             |
+| Capability env overrides | Short-lived token, expiry, allowed attempt prefix, refresh URL | Values are generated per execution and must never be logged |
 | Input envelope                | `context.callback_url`           | `https://$GCP_APP_NAME-worker-dev-xxx.run.app/api/v1/validation-callbacks/` |
 | Input envelope                | `context.execution_bundle_uri`   | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/`                       |
 | Input envelope                | Input file URIs (IDF, EPW, etc.) | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/model.idf`              |
 
-The validator reads the input envelope, downloads files from the provided GCS URIs, runs the simulation, uploads outputs to the execution bundle URI, and POSTs results to the callback URL.
+Before launch, Django copies exact generations of any reusable resource or upstream artifact into the attempt prefix. The validator then reads the input envelope, verifies those files while streaming, creates outputs below the same prefix, and POSTs results to the callback URL. If the first token expires, the backend presents the callback nonce to the worker; terminal attempts cannot renew.
 
 ### Stage isolation
 
@@ -172,7 +175,31 @@ Stage isolation is enforced by:
 
 1. **Django** creates envelopes with stage-appropriate bucket names and callback URLs
 2. **Service accounts** - each stage's validator job uses a stage-specific SA that only has access to its own buckets
-3. **GCS bucket permissions** - `$GCP_APP_NAME-cloudrun-dev` can only access `$GCP_APP_NAME-storage-dev`, not prod buckets
+3. **GCS bucket permissions** - the Django service identity can access its stage bucket; the validator identity cannot. Its injected token is limited to one stage-bucket attempt prefix.
+
+## Attempt-capability rollout
+
+Roll out in dependency order so old containers are never stranded without their
+historical storage identity:
+
+1. Publish and deploy capability-aware validator backend images.
+2. Deploy Django with `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true` and
+   `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=false`. Doctor
+   remains WARN because container code could still fall back to ambient IAM.
+3. Remove and verify the validator SA's direct predefined storage bindings:
+
+   ```bash
+   cd /Users/danielmcquillen/projects/validibot/validibot
+   just gcp validator-storage-isolation prod
+   ```
+
+4. Run the provider negative probes and confirm the metadata identity cannot
+   read, list, create, overwrite, or delete stage-bucket objects. This separate
+   check is required because static `roles/storage*` inspection does not prove
+   the absence of inherited, group, primitive, or custom-role permissions.
+5. Set `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`, sync the
+   stage secret, redeploy Django, and run doctor. `VB205` becomes OK only when
+   both flags are true.
 
 ### Deploy-time environment variables
 

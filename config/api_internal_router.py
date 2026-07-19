@@ -19,6 +19,9 @@ from validibot.core.api.scheduled_tasks import SendPeriodicEmailsView
 from validibot.tracking.api.log_event import LogTrackingEventView
 from validibot.validations.api.callbacks import ValidationCallbackView
 from validibot.validations.api.execute import ExecuteValidationRunView
+from validibot.validations.api.storage_capabilities import (
+    ValidationStorageCapabilityRefreshView,
+)
 
 app_name = "api-internal"
 urlpatterns = [
@@ -42,6 +45,11 @@ urlpatterns = [
         "validation-callbacks/",
         ValidationCallbackView.as_view(),
         name="validation-callbacks",
+    ),
+    path(
+        "validation-storage-capabilities/refresh/",
+        ValidationStorageCapabilityRefreshView.as_view(),
+        name="validation-storage-capability-refresh",
     ),
     # Scheduled tasks (from Cloud Scheduler)
     path(

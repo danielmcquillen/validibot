@@ -27,6 +27,10 @@ from validibot.validations.constants import CloudRunJobStatus
 if TYPE_CHECKING:
     from google.api_core.operation import Operation
 
+    from validibot.validations.services.cloud_run.gcs_runtime_capabilities import (
+        AttemptGCSRuntimeCapability,
+    )
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,6 +40,7 @@ def run_validator_job(
     region: str,
     job_name: str,
     input_uri: str,
+    gcs_capability: AttemptGCSRuntimeCapability | None = None,
 ) -> str:
     """
     Start a Cloud Run Job for validation (non-blocking).
@@ -82,6 +87,15 @@ def run_validator_job(
 
     client = run_v2.JobsClient()
 
+    environment = [
+        run_v2.EnvVar(name="VALIDIBOT_INPUT_URI", value=input_uri),
+    ]
+    if gcs_capability is not None:
+        environment.extend(
+            run_v2.EnvVar(name=name, value=value)
+            for name, value in gcs_capability.as_environment().items()
+        )
+
     request = run_v2.RunJobRequest(
         name=job_path,
         overrides=run_v2.RunJobRequest.Overrides(
@@ -90,9 +104,7 @@ def run_validator_job(
                     # Cloud Run Jobs only lets us pass run-time inputs via env
                     # overrides (no CLI args). We keep the rest of the contract
                     # in GCS (input_uri) to avoid large payloads in requests.
-                    env=[
-                        run_v2.EnvVar(name="VALIDIBOT_INPUT_URI", value=input_uri),
-                    ],
+                    env=environment,
                 ),
             ],
         ),

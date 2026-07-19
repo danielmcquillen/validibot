@@ -215,6 +215,23 @@ class TestVerdict:
         problem = next(p for p in verdict["problems"] if p["code"] == "migration_head")
         assert "workflows" in problem["ahead_apps"]
 
+    def test_refuses_backup_from_removed_migration_tail(self):
+        """Restore must stop before importing a database the reset cannot upgrade."""
+        cmd = VerifyCommand()
+        backup_head = cmd._current_migration_head()
+        backup_head["validations"] = "0070_standardize_step_io_terminology"
+        manifest = _manifest(migration_head=backup_head)
+
+        verdict = cmd._check(manifest)
+
+        assert verdict["status"] == "REFUSED"
+        problem = next(
+            item for item in verdict["problems"] if item["code"] == "migration_reset"
+        )
+        assert problem["incompatible_migrations"] == [
+            "validations.0070_standardize_step_io_terminology"
+        ]
+
     def test_refuses_on_newer_cross_major_backup(self):
         """Backup from a newer major than current code is refused."""
         cmd = VerifyCommand()

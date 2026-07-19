@@ -12,6 +12,7 @@ environments.
 Design: Simple functions that do one thing well. No stateful client objects.
 """
 
+import hashlib
 from pathlib import Path
 
 from google.api_core.exceptions import PreconditionFailed
@@ -20,6 +21,7 @@ from pydantic import BaseModel
 
 from validibot.validations.services.create_only_storage import StorageConflictError
 from validibot.validations.services.create_only_storage import create_local_bytes
+from validibot.validations.services.file_identity import FILE_IDENTITY_CHUNK_SIZE
 from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.services.file_identity import local_bytes_identity
 from validibot.validations.services.file_identity import local_file_identity
@@ -369,6 +371,63 @@ def get_gcs_file_identity(*, uri: str, sha256: str) -> FileIdentity:
     )
 
 
+def hash_gcs_file_generation(*, uri: str, storage_version: str) -> FileIdentity:
+    """Stream and hash one exact GCS generation using trusted credentials.
+
+    Output artifact metadata originates in the validator container and cannot
+    be attested merely because its shape is valid. This reader pins both the
+    blob identity and every ranged read to the claimed generation, then
+    computes SHA-256 in the trusted Django process without buffering the whole
+    artifact in memory.
+
+    Args:
+        uri: GCS object URI whose bytes must be verified.
+        storage_version: Decimal GCS generation reported by the output envelope.
+
+    Returns:
+        The identity recomputed from provider bytes and metadata.
+
+    Raises:
+        ValueError: If the generation is invalid, provider metadata is
+            incomplete, or the streamed byte count disagrees with GCS metadata.
+    """
+    generation = _positive_gcs_generation(storage_version, uri=uri)
+    bucket_name, blob_path = parse_gcs_uri(uri)
+    client = storage.Client()
+    blob = client.bucket(bucket_name).blob(blob_path, generation=generation)
+    blob.reload(if_generation_match=generation)
+    if blob.generation is None or blob.size is None:
+        msg = f"GCS object metadata is incomplete for output artifact: {uri}"
+        raise ValueError(msg)
+    if int(blob.generation) != generation:
+        msg = f"GCS returned an unexpected generation for output artifact: {uri}"
+        raise ValueError(msg)
+
+    digest = hashlib.sha256()
+    size_bytes = 0
+    with blob.open(
+        "rb",
+        chunk_size=FILE_IDENTITY_CHUNK_SIZE,
+        if_generation_match=generation,
+    ) as source:
+        while chunk := source.read(FILE_IDENTITY_CHUNK_SIZE):
+            size_bytes += len(chunk)
+            digest.update(chunk)
+
+    if size_bytes != int(blob.size):
+        msg = (
+            f"GCS output artifact size changed while hashing {uri}: metadata "
+            f"reported {blob.size}, streamed {size_bytes}"
+        )
+        raise ValueError(msg)
+    return FileIdentity(
+        uri=uri,
+        size_bytes=size_bytes,
+        sha256=digest.hexdigest(),
+        storage_version=str(generation),
+    )
+
+
 def copy_gcs_file_generation(
     *,
     source_uri: str,
@@ -384,14 +443,7 @@ def copy_gcs_file_generation(
     the destination to first publication. The validator later verifies the
     copied bytes against ``expected_sha256`` while streaming them.
     """
-    try:
-        generation = int(source_generation)
-    except (TypeError, ValueError) as exc:
-        msg = f"GCS storage version must be a numeric generation: {source_generation!r}"
-        raise ValueError(msg) from exc
-    if generation <= 0:
-        msg = f"GCS generation must be positive: {generation}"
-        raise ValueError(msg)
+    generation = _positive_gcs_generation(source_generation, uri=source_uri)
 
     source_bucket_name, source_blob_path = parse_gcs_uri(source_uri)
     destination_bucket_name, destination_blob_path = parse_gcs_uri(destination_uri)
@@ -439,6 +491,22 @@ def _uploaded_generation(*, blob, uri: str) -> str:
         msg = f"GCS did not return an object generation after uploading {uri}"
         raise ValueError(msg)
     return str(blob.generation)
+
+
+def _positive_gcs_generation(storage_version: str, *, uri: str) -> int:
+    """Return a positive provider generation or reject an unpinned object."""
+    try:
+        generation = int(storage_version)
+    except (TypeError, ValueError) as exc:
+        msg = (
+            f"GCS storage version must be a numeric generation for {uri}: "
+            f"{storage_version!r}"
+        )
+        raise ValueError(msg) from exc
+    if generation <= 0:
+        msg = f"GCS generation must be positive for {uri}: {generation}"
+        raise ValueError(msg)
+    return generation
 
 
 def _gcs_create_conflict(uri: str) -> StorageConflictError:

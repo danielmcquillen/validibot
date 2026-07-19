@@ -23,17 +23,38 @@ from validibot.validations.constants import ResourceFileType
 class ArtifactPortLike(Protocol):
     """Minimal StepIODefinition shape used by artifact-port validators."""
 
-    contract_key: str
-    role: str | None
-    resource_type: str | None
-    data_format: str | None
-    media_type: str | None
-    accepted_data_formats: list[str] | None
-    accepted_media_types: list[str] | None
-    allowed_source_scopes: list[str] | None
-    metadata: dict | None
-    min_items: int | None
-    max_items: int | None
+    @property
+    def contract_key(self) -> str: ...
+
+    @property
+    def role(self) -> str | None: ...
+
+    @property
+    def resource_type(self) -> str | None: ...
+
+    @property
+    def data_format(self) -> str | None: ...
+
+    @property
+    def media_type(self) -> str | None: ...
+
+    @property
+    def accepted_data_formats(self) -> list[str] | None: ...
+
+    @property
+    def accepted_media_types(self) -> list[str] | None: ...
+
+    @property
+    def allowed_source_scopes(self) -> list[str] | None: ...
+
+    @property
+    def metadata(self) -> dict | None: ...
+
+    @property
+    def min_items(self) -> int | None: ...
+
+    @property
+    def max_items(self) -> int | None: ...
 
 
 def validate_source_scope(port: ArtifactPortLike, source_scope: str) -> None:
@@ -201,7 +222,7 @@ def validate_file_uri(*, port: ArtifactPortLike, uri: str) -> None:
 def _validate_role(
     *,
     port: ArtifactPortLike,
-    observed_role: str,
+    observed_role: str | None,
     source_description: str,
 ) -> None:
     """Validate an envelope item role when the port declares one."""

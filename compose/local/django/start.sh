@@ -5,6 +5,7 @@ set -o nounset
 
 # Only the main web container runs migrations
 # Other containers (worker, scheduler) skip this to avoid race conditions
+python manage.py check_migration_history
 python manage.py migrate --noinput
 
 # Run the complete first-install sequence only when its versioned completion

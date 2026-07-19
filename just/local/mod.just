@@ -157,7 +157,7 @@ djshell:
 # Applies any pending database migrations
 [no-cd]
 migrate:
-    docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py migrate'
+    docker compose {{local_compose_env_args}} -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py check_migration_history && {{_db_url}} python manage.py migrate'
 
 # Run a Django management command in the container
 # Usage: just local manage createsuperuser

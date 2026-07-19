@@ -164,7 +164,11 @@ just gcp deploy-all <stage>
 `just gcp deploy-all <stage>` already runs migrations and the complete guarded
 initializer before deploying services. A fresh database receives site/default
 data, validators and Step I/O, help content, and bundled validator resources.
-No separate first-install command is required.
+Before writing schema changes, the migration job runs the read-only
+`check_migration_history` preflight. It refuses a database that records one of
+the deliberately removed pre-2026-07-16 migration tails instead of attempting
+duplicate operations over that older schema. No separate first-install command
+is required.
 
 For recovery, `just gcp migrate <stage>` reruns migration preparation and
 `just gcp setup-data <stage>` explicitly refreshes every initialized data

@@ -20,5 +20,20 @@ Keep these points in mind during deployment and maintenance.
 ## Common Issues
 
 - **Cold starts**: Cloud Run scales to zero by default. First request after idle may take 2-3 seconds. Set `--min-instances=1` if this is a problem.
-- **Migrations**: `just gcp deploy-all` runs migrations automatically as part of its dependency chain, so a separate `just gcp migrate` step is normally not needed. If you ran the deploy with `GCP_SKIP_MIGRATE=1` (the hotfix escape hatch), remember to run `just gcp migrate <stage>` manually before the new code starts serving traffic.
+- **Migrations**: `just gcp deploy-all` runs `check_migration_history` before migrations and refuses databases that still record the deliberately removed pre-2026-07-16 migration tails. This guard is read-only and runs before schema changes. A separate `just gcp migrate` step is normally unnecessary. If you used `GCP_SKIP_MIGRATE=1`, run `just gcp migrate <stage>` before the new code serves traffic; do not bypass a reset-history refusal.
 - **Scheduled jobs**: If Cloud Scheduler jobs return 404, verify the worker service is deployed and `APP_ROLE=worker` is set.
+
+## Current-schema reset refusal
+
+The 2026-07-16 pre-launch cleanup replaced several long migration tails without
+declaring a Django squash. `python manage.py check_migration_history` detects
+databases that recorded those deleted tails. It is read-only and must run
+before `migrate`; all managed deployment recipes do this automatically.
+
+If it refuses, do not use `migrate --fake` and do not delete rows from
+`django_migrations` to silence it. First preserve a database backup. For a
+disposable local/dev database, provision a fresh empty database and let the
+normal bootstrap build the current schema. For staging, production, or any
+database whose records matter, stop and design an explicit export/rebuild or
+one-off bridge migration before changing the database. The guard deliberately
+does not automate that destructive decision.

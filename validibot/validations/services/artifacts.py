@@ -15,7 +15,7 @@ from urllib.parse import unquote
 from urllib.parse import urlparse
 
 from django.conf import settings
-from validibot_shared.validations.artifacts import ARTIFACT_REF_SCHEMA_VERSION
+from validibot_shared.validations.artifacts import ArtifactKind as ArtifactRefKind
 from validibot_shared.validations.artifacts import ArtifactRef
 
 from validibot.validations.constants import ArtifactKind
@@ -27,6 +27,7 @@ from validibot.validations.models import StepIODefinition
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.services import artifact_ports
 from validibot.validations.services.attempt_paths import validate_attempt_gcs_uri
+from validibot.validations.services.cloud_run.gcs_client import hash_gcs_file_generation
 from validibot.validations.services.file_identity import local_file_identity
 
 CONTRACT_KEY_PATTERN = re.compile(r"[^a-z0-9_]+")
@@ -49,6 +50,9 @@ def register_output_artifacts(
         return []
 
     validator = step_run.workflow_step.validator
+    if validator is None:
+        msg = "Output artifacts require a validator-backed workflow step"
+        raise ValueError(msg)
     declared_ports = _output_artifact_ports_for_step_run(step_run)
     _validate_declared_output_artifact_counts(
         ports=declared_ports,
@@ -99,7 +103,7 @@ def register_output_artifacts(
             artifact_kind = _infer_kind(role=role, media_type=media_type, name=name)
             metadata_source = "output_envelope"
 
-        _verify_local_artifact_identity(
+        _verify_output_artifact_identity(
             step_run=step_run,
             uri=uri,
             size_bytes=size_bytes,
@@ -217,7 +221,9 @@ def _output_artifact_ports_for_step_run(
             direction=StepIODirection.OUTPUT,
             io_medium=StepIOMedium.ARTIFACT,
             envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
-        ),
+        )
+        if step.validator is not None
+        else [],
     )
     return ports
 
@@ -291,15 +297,15 @@ def build_step_artifact_refs(step_run: ValidationStepRun) -> dict[str, Any]:
 def build_artifact_ref(artifact: Artifact) -> ArtifactRef:
     """Build the canonical v1 reference object for an artifact row."""
 
-    uri = artifact.storage_uri or artifact.file.name
+    uri = artifact.storage_uri or artifact.file.name or ""
     filename = _filename_from_uri(uri) or artifact.label
     step_run_id = str(artifact.step_run_id or "")
     producer_step_key = ""
-    if artifact.workflow_step_id:
-        producer_step_key = artifact.workflow_step.step_key or ""
+    workflow_step = artifact.workflow_step
+    if workflow_step is not None:
+        producer_step_key = workflow_step.step_key or ""
 
     return ArtifactRef(
-        schema_version=ARTIFACT_REF_SCHEMA_VERSION,
         artifact_id=str(artifact.pk),
         run_id=str(artifact.validation_run_id),
         step_run_id=step_run_id,
@@ -307,7 +313,7 @@ def build_artifact_ref(artifact: Artifact) -> ArtifactRef:
         contract_key=artifact.contract_key,
         name=artifact.label,
         role=artifact.role,
-        kind=artifact.kind,
+        kind=ArtifactRefKind(artifact.kind),
         media_type=artifact.content_type,
         data_format=artifact.data_format,
         filename=filename,
@@ -362,7 +368,7 @@ def _infer_kind(*, role: str, media_type: str, name: str) -> str:
     return ArtifactKind.FILE
 
 
-def _verify_local_artifact_identity(
+def _verify_output_artifact_identity(
     *,
     step_run: ValidationStepRun,
     uri: str,
@@ -370,8 +376,21 @@ def _verify_local_artifact_identity(
     sha256: str,
     storage_version: str,
 ) -> None:
-    """Verify local artifact bytes before persisting their strict reference."""
-    if urlparse(uri).scheme != "file":
+    """Verify provider bytes before persisting a strict artifact reference."""
+    scheme = urlparse(uri).scheme
+    expected_bucket = getattr(settings, "GCS_VALIDATION_BUCKET", "")
+    if scheme == "gs" and expected_bucket:
+        actual = hash_gcs_file_generation(
+            uri=uri,
+            storage_version=storage_version,
+        )
+        expected = (size_bytes, sha256, storage_version)
+        observed = (actual.size_bytes, actual.sha256, actual.storage_version)
+        if observed != expected:
+            msg = f"GCS output artifact identity does not match stored bytes: {uri}"
+            raise ValueError(msg)
+        return
+    if scheme != "file":
         return
 
     from validibot.validations.services.artifact_display import (

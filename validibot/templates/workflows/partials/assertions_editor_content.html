@@ -62,9 +62,11 @@ Context:
         </div>
         {% include 'workflows/partials/components/assertion_group.html' with stage="output" label=_("Output assertions") assertions=assertion_groups.output empty_label=_("No output assertions yet.") %}
         {% if validator.validation_type == "SHACL" and assertion_groups.output %}
-          {# SHACL runs graph (SPARQL) checks in one isolated pass, then
-             expression checks; findings group by type, so the move controls
-             order within each type rather than interleaving across them. #}
+          {% comment %}
+            SHACL runs graph (SPARQL) checks in one isolated pass, then
+            expression checks; findings group by type, so the move controls
+            order within each type rather than interleaving across them.
+          {% endcomment %}
           <p class="small text-muted mt-1 mb-0">
             {% trans "Graph and expression checks run in separate passes — ordering applies within each type." %}
           </p>

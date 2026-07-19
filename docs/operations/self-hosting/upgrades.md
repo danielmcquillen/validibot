@@ -19,13 +19,21 @@ The full upgrade lifecycle:
 5. **Step 1/7: Backup** — manifested backup; the rollback insurance policy
 6. **Step 2/7: Git checkout target** — switch the working tree to the version tag
 7. **Step 3/7: Build images** — `docker compose build`
-8. **Step 4/7: Run migrations** — Django `migrate --noinput` in a one-off container
+8. **Step 4/7: Check history and run migrations** — the read-only `check_migration_history` guard runs before Django `migrate --noinput` in a one-off container
 9. **Step 5/7: Restart services** — `docker compose up -d`
 10. **Step 6/7: Post-flight doctor** — verify the upgrade landed cleanly
 11. **Step 7/7: Post-flight smoke-test** — end-to-end validation through the new code
 12. **Write upgrade report** — `backups/upgrades/<target>/report.json`
 
 If any pre-flight gate refuses, no destructive work happens. If a step fails partway through, re-running picks up where it left off (every step is idempotent).
+
+The migration-history guard specifically protects installations created before
+the deliberate 2026-07-16 current-schema reset. Those migration tails were
+removed rather than squashed, so current code cannot safely replay its new tail
+over a database that recorded the old one. If the guard refuses, do not fake
+migrations. Preserve a backup and contact support for the explicit rebuild
+path. Fresh installations and databases already carrying the current-schema
+markers pass automatically.
 
 ## Pre-flight gates: refuse early, refuse loudly
 
@@ -90,7 +98,7 @@ Every step in the upgrade is naturally idempotent:
 | Backup | Skipped on retry only if `--no-backup` (re-runs create a new backup, harmless) |
 | Git checkout | No-op if HEAD is already at the target |
 | Docker build | Layer cache makes re-runs essentially free |
-| Migrate | Django's `migrate --noinput` is naturally idempotent |
+| Migrate | The history guard refuses incompatible reset-era databases; Django's `migrate --noinput` is idempotent after that check passes |
 | Restart | `docker compose up -d` no-ops on services with unchanged images |
 | Doctor / smoke-test | Read-only |
 | Report write | Overwritten on success |

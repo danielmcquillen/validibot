@@ -184,6 +184,7 @@ _wait-web:
 # this is what creates the Claude Desktop + MCP confidential client
 # rows that make OAuth actually work.
 bootstrap: check-env build _wait-web
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py check_migration_history
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py initialize_validibot --if-needed
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py ensure_oidc_clients
@@ -281,6 +282,7 @@ deploy-prebuilt: pull up
 
 # Run database migrations
 migrate:
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py check_migration_history
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py migrate --noinput
 
 # Refresh every application-data concern required after migrations.
@@ -1355,6 +1357,8 @@ _run-restore path:
     # touching data. Idempotent — re-runs safely.
     echo "Step 3/5: Applying any newer migrations..."
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web \
+        python manage.py check_migration_history
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web \
         python manage.py migrate --noinput
     echo ""
 
@@ -1689,6 +1693,8 @@ _run-upgrade args:
     # no-ops if everything is already current.
     echo "Step 4/7: Running migrations..."
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} up -d postgres redis >/dev/null 2>&1 || true
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} run --rm \
+        web python manage.py check_migration_history
     docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} run --rm \
         web python manage.py migrate --noinput
     echo "  ✓ Migrations applied."

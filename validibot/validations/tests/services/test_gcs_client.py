@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from validibot.validations.services.cloud_run.gcs_client import copy_gcs_file_generation
 from validibot.validations.services.cloud_run.gcs_client import download_envelope
 from validibot.validations.services.cloud_run.gcs_client import get_gcs_file_identity
+from validibot.validations.services.cloud_run.gcs_client import hash_gcs_file_generation
 from validibot.validations.services.cloud_run.gcs_client import parse_gcs_uri
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope_local
@@ -224,6 +225,53 @@ def test_get_gcs_file_identity_combines_durable_hash_with_object_metadata(
     assert identity.size_bytes == 42  # noqa: PLR2004
     assert identity.sha256 == digest
     assert identity.storage_version == "1700000000000002"
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_hash_gcs_file_generation_recomputes_exact_provider_bytes(
+    mock_storage_client,
+):
+    """Cloud evidence must use bytes read from the claimed GCS generation."""
+    payload = b"trusted provider bytes"
+    reader = MagicMock()
+    reader.read.side_effect = [payload[:8], payload[8:], b""]
+    mock_blob = MagicMock(size=len(payload), generation=1700000000000004)
+    mock_blob.open.return_value.__enter__.return_value = reader
+    mock_bucket = mock_storage_client.return_value.bucket.return_value
+    mock_bucket.blob.return_value = mock_blob
+
+    identity = hash_gcs_file_generation(
+        uri="gs://validation/runs/attempt/report.bin",
+        storage_version="1700000000000004",
+    )
+
+    mock_bucket.blob.assert_called_once_with(
+        "runs/attempt/report.bin",
+        generation=1700000000000004,
+    )
+    mock_blob.reload.assert_called_once_with(
+        if_generation_match=1700000000000004,
+    )
+    mock_blob.open.assert_called_once_with(
+        "rb",
+        chunk_size=1024 * 1024,
+        if_generation_match=1700000000000004,
+    )
+    assert identity.size_bytes == len(payload)
+    assert identity.sha256 == hashlib.sha256(payload).hexdigest()
+    assert identity.storage_version == "1700000000000004"
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_hash_gcs_file_generation_rejects_invalid_generation(mock_storage_client):
+    """A mutable or provider-ambiguous GCS output cannot enter evidence."""
+    with pytest.raises(ValueError, match="must be a numeric generation"):
+        hash_gcs_file_generation(
+            uri="gs://validation/runs/attempt/report.bin",
+            storage_version="latest",
+        )
+
+    mock_storage_client.assert_not_called()
 
 
 @patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")

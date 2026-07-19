@@ -104,6 +104,10 @@ owns site/default data, validators and Step I/O, help content, and bundled
 validator resources. There are no separate migration, setup-data, help-sync,
 weather-seed, or scheduler commands in the first-time flow. You can still run
 `just gcp migrate dev` or `just gcp setup-data dev` explicitly for recovery.
+Every managed migration path first runs `python manage.py
+check_migration_history`. A pre-reset migration-history refusal is a hard stop:
+back up the database and rebuild it through the documented cutover path rather
+than forcing `migrate` over an incompatible schema.
 
 After that, verify the environment, then repeat the same process for `staging` or `prod` as needed.
 

@@ -39,8 +39,9 @@ ongoing development.
 2. Create a feature branch from `main`
 3. Make your changes
 4. Ensure tests pass: `just local test`
-5. Ensure code is formatted: `uv run ruff check`
-6. Submit a pull request
+5. Ensure production type debt has not increased: `just typecheck`
+6. Ensure code is formatted: `uv run ruff check`
+7. Submit a pull request
 
 ### Code Style
 

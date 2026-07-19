@@ -757,6 +757,13 @@ the pinned version and verifies the streamed bytes before domain execution.
 Local output artifacts are checked against the bytes in the attempt workspace
 before their strict `ArtifactRef` is persisted.
 
+`ArtifactRef` construction is intentionally limited to artifacts created and
+schema-validated during the current run. The application does not rebuild
+references by sweeping historical `Artifact` rows. Before adding an evidence
+rebuild, admin export, or other historical traversal, audit legacy rows for
+non-empty `sha256` and `storage_version` values (or backfill them) so the strict
+reference schema cannot encounter incomplete pre-contract data.
+
 Evidence-manifest rewiring and narrower storage capabilities remain subsequent
 slices. Identity mismatches and attempts to reuse a committed storage identity
 now both fail closed.

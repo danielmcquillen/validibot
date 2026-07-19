@@ -56,7 +56,7 @@ bottlenecks, concurrency bugs, and end-to-end data flow issues.
 | Changed cloud integration code (GCS, Cloud Run) | `just local test-integration` |
 | Changed Celery tasks or worker code | `just local test-e2e` |
 | Changed EnergyPlus validator or template pipeline | `just local-cloud e2e-tests` |
-| Before opening a PR | `pytest` + `pre-commit run --all-files` |
+| Before opening a PR | `pytest` + `just typecheck` + `pre-commit run --all-files` |
 | Verifying a deployed environment | `just local test-e2e` with env vars pointing at staging |
 
 ## Running the test suite
@@ -78,6 +78,21 @@ pytest validibot/validations/tests/test_models.py -v
 E2E and integration tests are excluded from the default `pytest` run via
 `norecursedirs` in `pyproject.toml`. Each has its own `just` recipe documented
 in its dedicated guide.
+
+## Type-checking baseline
+
+Run `just typecheck` to execute the same production-code mypy guard as CI. The
+project still has historical Django typing debt, recorded in
+`scripts/mypy_baseline.json` by file and error code. Existing counts may fall,
+but a new category or an increase fails. After intentionally fixing existing
+diagnostics, ratchet the allowance downward with:
+
+```bash
+uv run python scripts/check_mypy_baseline.py --update
+```
+
+Do not update the baseline merely to make a new diagnostic pass; fix the new
+error unless the team has consciously accepted additional debt.
 
 ## Detailed guides
 

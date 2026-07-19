@@ -12,7 +12,9 @@ fails closed on any of:
    the schema has tables / columns the ORM can't model, which
    cascades into runtime errors and possible data loss.  Operators
    must upgrade the deployment first, then restore.
-3. **Cross-major Validibot version jump** — boring self-hosting
+3. **Pre-reset migration history** — a backup created from the deliberately
+   removed July 2026 migration tails cannot be migrated by current code.
+4. **Cross-major Validibot version jump** — boring self-hosting
    ADR AC #16 forbids cross-major-version restores.  Operators
    route through documented intermediate releases.
 
@@ -43,12 +45,14 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.core.management.base import CommandError
 from django.db import connection
+from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.recorder import MigrationRecorder
 from pydantic import ValidationError
 
 from validibot.core.backup_manifest import BACKUP_MANIFEST_SCHEMA_VERSION
 from validibot.core.backup_manifest import BackupManifest
 from validibot.core.deployment import get_validibot_runtime_version
+from validibot.core.migration_safety import incompatible_reset_migrations
 
 # Exit codes — operators / CI can branch on these.  Plain non-zero
 # would require parsing stderr, which is fragile.
@@ -222,7 +226,30 @@ class Command(BaseCommand):
                 },
             )
 
-        # 3. Cross-major version mismatch.  If we can parse both
+        # 3. Deliberately removed pre-reset migration tails. A legacy
+        # migration may compare as merely "behind" in another app, but
+        # current-schema migrations cannot safely replay over its tables.
+        known_migrations = MigrationLoader(
+            None,
+            ignore_no_migrations=True,
+        ).disk_migrations
+        incompatible_history = incompatible_reset_migrations(
+            applied_migrations=manifest.compatibility.migration_head.items(),
+            known_migrations=known_migrations,
+        )
+        if incompatible_history:
+            problems.append(
+                {
+                    "code": "migration_reset",
+                    "message": (
+                        "backup predates the 2026-07-16 current-schema reset: "
+                        f"{', '.join(incompatible_history)}"
+                    ),
+                    "incompatible_migrations": list(incompatible_history),
+                },
+            )
+
+        # 4. Cross-major version mismatch.  If we can parse both
         # versions as semver (or at least extract a major
         # component), refuse ANY major mismatch — both directions.
         #

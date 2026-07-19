@@ -226,6 +226,14 @@ test *args:
     source ./set-env.sh >/dev/null 2>&1 || true
     exec .venv/bin/pytest {{args}}
 
+# Enforce the ratcheting production-code mypy baseline used by CI.
+typecheck:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    source ./set-env.sh >/dev/null 2>&1 || true
+    exec uv run python scripts/check_mypy_baseline.py
+
 # Community + validibot-pro. No args: run Pro's own suite (its settings). With
 # args: run those paths under config.settings.test_pro (Pro in INSTALLED_APPS).
 test-pro *args:

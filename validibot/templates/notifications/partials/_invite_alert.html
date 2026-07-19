@@ -1,13 +1,13 @@
 {% load i18n %}
 
-{#
+{% comment %}
   Shared alert template for invite notifications.
   Expected context:
     - notification: the Notification object
     - invite: the invite object (PendingInvite, GuestInvite, or WorkflowInvite)
     - invite_type: "member", "guest", or "workflow"
     - show_dismissed: whether to show dismissed notifications
-#}
+{% endcomment %}
 <div class="alert alert-info border alert-dismissible fade show d-flex justify-content-between align-items-start"
      role="alert">
   <div>

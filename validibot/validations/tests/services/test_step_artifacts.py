@@ -9,6 +9,7 @@ without mutating payload or ordinary output values.
 
 import hashlib
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -27,6 +28,7 @@ from validibot.validations.models import Artifact
 from validibot.validations.models import WorkflowStepIOPromotion
 from validibot.validations.services.artifacts import build_step_artifact_refs
 from validibot.validations.services.artifacts import register_output_artifacts
+from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.services.path_resolution import resolve_step_input
 from validibot.validations.services.run_context import RunContextBuilder
 from validibot.validations.tests.factories import ExecutionAttemptFactory
@@ -144,17 +146,28 @@ class TestStepArtifactRegistration:
         assert refs[0]["producer_step_key"] == step.step_key
         assert refs[0]["uri"] == artifact.storage_uri
 
+    @patch(
+        "validibot.validations.services.artifacts.hash_gcs_file_generation",
+    )
     def test_accepts_gcs_artifact_and_manifest_inside_verified_attempt(
         self,
+        hash_generation,
         settings,
     ):
-        """Trusted GCS output references remain indexable for normal callbacks."""
+        """Trusted GCS references require matching provider bytes and metadata."""
         settings.GCS_VALIDATION_BUCKET = "validation"
         step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
         attempt = ExecutionAttemptFactory(step_run=step_run)
         prefix = (
             f"gs://validation/runs/{step_run.validation_run.org_id}/"
             f"{step_run.validation_run_id}/attempts/{attempt.pk}"
+        )
+        artifact_uri = f"{prefix}/output/report.html"
+        hash_generation.return_value = FileIdentity(
+            uri=artifact_uri,
+            size_bytes=123,
+            sha256=TEST_ARTIFACT_SHA256,
+            storage_version="1700000000000005",
         )
 
         refs = register_output_artifacts(
@@ -166,8 +179,9 @@ class TestStepArtifactRegistration:
                         name="report.html",
                         type="report",
                         mime_type="text/html",
-                        uri=f"{prefix}/output/report.html",
+                        uri=artifact_uri,
                         size_bytes=123,
+                        storage_version="1700000000000005",
                     ),
                 ],
                 raw_outputs=SimpleNamespace(
@@ -176,10 +190,59 @@ class TestStepArtifactRegistration:
             ),
         )
 
-        assert refs[0]["uri"] == f"{prefix}/output/report.html"
+        assert refs[0]["uri"] == artifact_uri
         assert Artifact.objects.get(step_run=step_run).manifest_uri == (
             f"{prefix}/output/manifest.json"
         )
+        hash_generation.assert_called_once_with(
+            uri=artifact_uri,
+            storage_version="1700000000000005",
+        )
+
+    @patch(
+        "validibot.validations.services.artifacts.hash_gcs_file_generation",
+    )
+    def test_rejects_gcs_artifact_identity_that_does_not_match_bytes(
+        self,
+        hash_generation,
+        settings,
+    ):
+        """A container-reported cloud digest cannot enter signed evidence unchecked."""
+        settings.GCS_VALIDATION_BUCKET = "validation"
+        step_run = ValidationStepRunFactory(status=StepStatus.PASSED)
+        attempt = ExecutionAttemptFactory(step_run=step_run)
+        uri = (
+            f"gs://validation/runs/{step_run.validation_run.org_id}/"
+            f"{step_run.validation_run_id}/attempts/{attempt.pk}/output/report.html"
+        )
+        hash_generation.return_value = FileIdentity(
+            uri=uri,
+            size_bytes=123,
+            sha256="b" * 64,
+            storage_version="1700000000000005",
+        )
+
+        with pytest.raises(ValueError, match="does not match stored bytes"):
+            register_output_artifacts(
+                step_run=step_run,
+                output_envelope=SimpleNamespace(
+                    execution_attempt_id=str(attempt.pk),
+                    artifacts=[
+                        _validation_artifact(
+                            name="report.html",
+                            type="report",
+                            mime_type="text/html",
+                            uri=uri,
+                            size_bytes=123,
+                            sha256=TEST_ARTIFACT_SHA256,
+                            storage_version="1700000000000005",
+                        ),
+                    ],
+                    raw_outputs=None,
+                ),
+            )
+
+        assert not Artifact.objects.filter(step_run=step_run).exists()
 
     @pytest.mark.parametrize(
         "hostile_uri",

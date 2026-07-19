@@ -495,6 +495,7 @@ class Command(BaseCommand):
                     from django.core.management import call_command
 
                     self.stdout.write("      Applying migrations...")
+                    call_command("check_migration_history", verbosity=0)
                     call_command("migrate", verbosity=0)
                     self._add_result(
                         "VB102",

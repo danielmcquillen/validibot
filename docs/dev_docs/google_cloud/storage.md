@@ -49,8 +49,10 @@ gcloud storage buckets add-iam-policy-binding gs://BUCKET \
 
 Do not grant that role to the validator Cloud Run service account. Validator
 jobs receive a short-lived, attempt-prefix Credential Access Boundary token at
-dispatch. Run `just gcp validator-storage-isolation <stage>` to remove and
-verify historical validator bindings after the coordinated rollout.
+dispatch. Run `just gcp validator-storage-capability-probe <stage>` to exercise
+the real token against temporary objects, then run
+`just gcp validator-storage-isolation <stage>` to remove historical bindings
+and prove the runtime identity's effective object permissions are denied.
 
 ## Django Configuration
 

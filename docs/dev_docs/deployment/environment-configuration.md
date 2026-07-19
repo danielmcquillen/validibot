@@ -460,7 +460,7 @@ quickly the transport decides a delivery was lost:
 | `CELERY_VISIBILITY_TIMEOUT_SECONDS` | `3600` | Self-hosted Redis | Must exceed `CELERY_TASK_TIME_LIMIT` (1800 seconds), otherwise Redis can deliver a healthy long task to another worker. |
 | `CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS` | `600` | GCP | Bounds the short worker HTTP orchestration request; accepted range is 15–1800 seconds. Validator compute runs separately in Cloud Run Jobs. |
 | `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED` | `false` | GCP | Enables per-execution Credential Access Boundary token delivery and stages every validator input into one attempt prefix. Enable only after capability-aware backend images are deployed. |
-| `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED` | `false` | GCP | Operator assertion that the validator Cloud Run service account has no project/bucket storage role. Set true only after `just gcp validator-storage-isolation <stage>` succeeds; `VB205` remains WARN otherwise. |
+| `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED` | `false` | GCP | Operator assertion that the validator Cloud Run service account has no effective object access. Set true only after both `just gcp validator-storage-capability-probe <stage>` and `just gcp validator-storage-isolation <stage>` succeed and a normal advanced validation passes with ambient IAM removed; `VB205` remains WARN otherwise. |
 
 Transport retries never authorize a second provider launch after an attempt
 has reached `DISPATCHING`, `RUNNING`, or `UNKNOWN`.

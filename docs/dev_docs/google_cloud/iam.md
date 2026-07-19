@@ -140,20 +140,30 @@ The `just gcp validator-deploy` command additionally grants:
 - `validibot_job_runner` on the job to the main SA (so web/worker can trigger it)
 - `roles/run.invoker` on the worker service to the validator SA (so the job can POST callbacks)
 
-After capability-aware images and Django are deployed, remove historical
-validator storage bindings with:
+After capability-aware images and Django are deployed, first prove the
+downscoped token's provider behavior:
+
+```bash
+cd /Users/danielmcquillen/projects/validibot/validibot
+just gcp validator-storage-capability-probe prod
+```
+
+Then remove historical validator storage bindings and evaluate the service
+account's effective object permissions with
+[Policy Troubleshooter](https://cloud.google.com/policy-intelligence/docs/troubleshoot-access):
 
 ```bash
 cd /Users/danielmcquillen/projects/validibot/validibot
 just gcp validator-storage-isolation prod
 ```
 
-That recipe removes the known legacy bindings and rejects remaining direct
-predefined `roles/storage*` bindings. Before setting
-`GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`, also require the
-provider negative probes to deny effective metadata-identity access; inherited,
-group, primitive, or custom-role grants are not proven absent by a static role
-name scan.
+That recipe removes the known legacy bindings, rejects remaining direct
+predefined `roles/storage*` bindings, and fails unless effective object
+get/list/create/update/delete permissions are conclusively `CANNOT_ACCESS`.
+Policy Troubleshooter evaluates inherited, group, primitive, custom-role, and
+conditional policy paths; an unknown result is not proof and stops the recipe.
+Before setting `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`,
+also repeat a normal advanced validation with ambient IAM removed.
 
 ## Application Default Credentials (ADC)
 

@@ -93,6 +93,7 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
   cloudtasks.googleapis.com \
+  policytroubleshooter.googleapis.com \
   storage.googleapis.com
 ```
 
@@ -104,6 +105,7 @@ gcloud services enable \
 | `artifactregistry.googleapis.com` | Artifact Registry (Docker images)        |
 | `cloudbuild.googleapis.com`       | Cloud Build (CI/CD)                      |
 | `cloudtasks.googleapis.com`       | Cloud Tasks (async task queue)           |
+| `policytroubleshooter.googleapis.com` | Effective validator IAM isolation checks |
 | `storage.googleapis.com`          | Cloud Storage (media files)              |
 
 ## Create Cloud Tasks Queue

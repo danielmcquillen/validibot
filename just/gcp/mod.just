@@ -2645,6 +2645,7 @@ init-stage stage: _require-gcp-config
         artifactregistry.googleapis.com \
         cloudkms.googleapis.com \
         iam.googleapis.com \
+        policytroubleshooter.googleapis.com \
         compute.googleapis.com \
         servicenetworking.googleapis.com \
         cloudresourcemanager.googleapis.com \
@@ -3621,6 +3622,14 @@ validators-deploy-all stage: _require-gcp-config
     just gcp validator-deploy shacl {{stage}}
     just gcp validator-deploy schematron {{stage}}
 
+# Exercise the real GCS Credential Access Boundary token with the deployed
+# Django image and trusted stage identity. The management command creates only
+# a random probe prefix, checks allowed/denied operations, and cleans the prefix.
+# Usage: just gcp validator-storage-capability-probe dev|staging|prod
+[arg('stage', pattern='dev|staging|prod')]
+validator-storage-capability-probe stage: _require-gcp-config
+    just gcp management-cmd {{stage}} "probe_validator_gcs_capability --json"
+
 # Remove historical ambient GCS access after capability-aware validator images
 # and Django have both been deployed. This recipe is deliberately separate from
 # validator-deploy so the dependency-order rollout cannot strand old images.
@@ -3638,6 +3647,9 @@ validator-storage-isolation stage: _require-gcp-config
         VALIDATOR_SA_EMAIL="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
     fi
 
+    echo "Rollback command if validator execution fails after IAM removal:"
+    echo "  gcloud storage buckets add-iam-policy-binding gs://$STORAGE_BUCKET --member=serviceAccount:$VALIDATOR_SA_EMAIL --role=roles/storage.objectAdmin --condition='expression=resource.name.startsWith(\"projects/_/buckets/$STORAGE_BUCKET/objects/runs/\"),title=validator-runs-prefix-only' --project={{gcp_project}}"
+    echo ""
     echo "Removing historical validator storage bindings..."
     gcloud storage buckets remove-iam-policy-binding "gs://$STORAGE_BUCKET" \
         --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
@@ -3667,10 +3679,47 @@ validator-storage-isolation stage: _require-gcp-config
         exit 1
     fi
 
-    echo "Verified: $VALIDATOR_SA_EMAIL has no direct predefined roles/storage* binding"
-    echo "on the project or stage bucket. Before asserting isolation, also run the"
-    echo "provider negative probes for effective access (including inherited, group,"
-    echo "primitive, and custom-role grants)."
+    echo "Checking effective validator permissions with Policy Troubleshooter..."
+    gcloud services enable policytroubleshooter.googleapis.com \
+        --project={{gcp_project}} \
+        --quiet
+    BUCKET_RESOURCE="//storage.googleapis.com/projects/_/buckets/$STORAGE_BUCKET"
+    BUCKET_CONTEXT="projects/_/buckets/$STORAGE_BUCKET"
+    OBJECT_CONTEXT="$BUCKET_CONTEXT/objects/runs/validibot-capability-probes/effective-access-check"
+    REQUEST_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    check_effective_permission() {
+        local permission="$1"
+        local resource_name="$2"
+        local resource_type="$3"
+        local state
+        state=$(gcloud policy-intelligence troubleshoot-policy iam \
+            "$BUCKET_RESOURCE" \
+            --principal-email="$VALIDATOR_SA_EMAIL" \
+            --permission="$permission" \
+            --resource-name="$resource_name" \
+            --resource-service="storage.googleapis.com" \
+            --resource-type="$resource_type" \
+            --request-time="$REQUEST_TIME" \
+            --project={{gcp_project}} \
+            --format="value(overallAccessState)")
+        echo "  $permission: $state"
+        if [ "$state" != "CANNOT_ACCESS" ]; then
+            echo "ERROR: effective permission $permission was not conclusively denied."
+            echo "Policy Troubleshooter returned: ${state:-<empty>}"
+            exit 1
+        fi
+    }
+
+    check_effective_permission "storage.objects.get" "$OBJECT_CONTEXT" "storage.googleapis.com/Object"
+    check_effective_permission "storage.objects.create" "$OBJECT_CONTEXT" "storage.googleapis.com/Object"
+    check_effective_permission "storage.objects.delete" "$OBJECT_CONTEXT" "storage.googleapis.com/Object"
+    check_effective_permission "storage.objects.update" "$OBJECT_CONTEXT" "storage.googleapis.com/Object"
+    check_effective_permission "storage.objects.list" "$BUCKET_CONTEXT" "storage.googleapis.com/Bucket"
+
+    echo "Verified: $VALIDATOR_SA_EMAIL has no effective object read/list/create/update/delete permission."
+    echo "Also run the downscoped-token provider probe before asserting isolation:"
+    echo "  just gcp validator-storage-capability-probe {{stage}}"
     echo "Only after those probes pass, set both deployment flags and redeploy Django:"
     echo "  GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true"
     echo "  GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true"

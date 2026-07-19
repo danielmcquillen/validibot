@@ -182,24 +182,66 @@ Stage isolation is enforced by:
 Roll out in dependency order so old containers are never stranded without their
 historical storage identity:
 
-1. Publish and deploy capability-aware validator backend images.
-2. Deploy Django with `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true` and
-   `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=false`. Doctor
-   remains WARN because container code could still fall back to ambient IAM.
-3. Remove and verify the validator SA's direct predefined storage bindings:
+1. Deploy the published `validibot-validator-backends` 0.14.0 code and the
+   matching Django code:
+
+   ```bash
+   cd /Users/danielmcquillen/projects/validibot/validibot
+   just gcp validators-deploy-all prod
+   ```
+
+2. Set `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true` and keep
+   `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=false`, then sync and
+   deploy Django. Doctor remains WARN because the validator metadata identity
+   may still bypass the narrow credential:
+
+   ```bash
+   cd /Users/danielmcquillen/projects/validibot/validibot
+   just gcp secrets prod
+   just gcp deploy-all prod
+   ```
+
+3. Exercise the real downscoped token against temporary provider objects. The
+   command proves allowed read/create, denied cross-attempt read/create,
+   denied overwrite/delete, and generation-fenced cleanup:
+
+   ```bash
+   cd /Users/danielmcquillen/projects/validibot/validibot
+   just gcp validator-storage-capability-probe prod
+   ```
+
+4. Run a representative advanced validation while the old ambient role still
+   exists. Include an artifact-producing path and, before final rollout, a job
+   long enough to exercise token renewal.
+
+5. Remove the known historical bindings and require Policy Troubleshooter to
+   return `CANNOT_ACCESS` for effective object get/list/create/update/delete:
 
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
    just gcp validator-storage-isolation prod
    ```
 
-4. Run the provider negative probes and confirm the metadata identity cannot
-   read, list, create, overwrite, or delete stage-bucket objects. This separate
-   check is required because static `roles/storage*` inspection does not prove
-   the absence of inherited, group, primitive, or custom-role permissions.
-5. Set `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`, sync the
-   stage secret, redeploy Django, and run doctor. `VB205` becomes OK only when
-   both flags are true.
+   Unknown or conditional results fail closed. The recipe prints the exact
+   conditional IAM rollback command before removal.
+
+6. Repeat the representative advanced validation with ambient IAM removed. If
+   the capability path fails, use the printed rollback command before further
+   diagnosis.
+
+7. Only after both provider probes and normal execution pass, set
+   `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`, then sync,
+   redeploy, and run doctor:
+
+   ```bash
+   cd /Users/danielmcquillen/projects/validibot/validibot
+   just gcp secrets prod
+   just gcp deploy-all prod
+   just gcp doctor prod --json
+   ```
+
+   `VB205` becomes OK only when both flags are true. Preserve the probe and
+   doctor JSON with the deployment record.
 
 ### Deploy-time environment variables
 

@@ -266,11 +266,15 @@ The bootstrap-host script does this automatically.
 **Fix:** Verify `REDIS_URL` and `just self-hosted status` shows redis
 healthy.
 
+This check is skipped on GCP, where Cloud Tasks replaces Celery delivery.
+
 ### `VB402` Celery Beat schedules
 **Severity:** warn if no periodic tasks
 **Trigger:** No `PeriodicTask` entries in the database.
 **Fix:** Run `just self-hosted manage "setup_validibot"` to seed the
 default scheduled tasks.
+
+This check is skipped on GCP, where Cloud Scheduler replaces Celery Beat.
 
 ### `VB403` Celery Beat not installed
 **Severity:** skipped
@@ -279,7 +283,7 @@ default scheduled tasks.
 appear on a normal install.
 
 ### `VB411` Restore test
-**Severity:** warn if missing or stale; skipped for local Compose
+**Severity:** warn if missing or stale; skipped for local Compose and GCP
 **Trigger:** No `.last-restore-test` marker file in `DATA_STORAGE_ROOT`,
 or the marker is older than 90 days. The marker is written by the
 restore recipe after a successful restore drill.
@@ -287,7 +291,9 @@ restore recipe after a successful restore drill.
 `just self-hosted backup` followed by `just self-hosted restore <backup-path>`
 and then `just self-hosted doctor` plus `just self-hosted smoke-test`.
 Principle: a backup that has never been restored is not considered valid.
-Disposable local Compose data does not require a restore drill.
+Disposable local Compose data does not require a restore drill. GCP restore
+drills are recorded in the hosted operator runbook because Cloud Run has no
+durable local data root on which this self-hosted marker could be stored.
 
 ---
 
@@ -374,6 +380,39 @@ self-hosted deployments and pin validator backend images via
 launch will be refused.
 **Fix:** Set `COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES=True` and configure
 `COSIGN_VERIFY_PUBLIC_KEY_PATH`, or relax the policy to `digest`.
+
+### `VB720` Validator provider queue
+**Severity:** skipped outside GCP; warn while Jobs remain primary; error when a
+Service is primary without complete configuration
+**Trigger:** The separate long-delivery queue or its dedicated Service invoker
+identity is missing.
+**Fix:** Set `GCP_VALIDATOR_TASK_QUEUE_NAME` and
+`GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT`, upload the Django environment,
+then run `just gcp init-stage <stage>` to reconcile queue and IAM policy.
+
+### `VB721` Validator deployment routes
+**Severity:** ok or error
+**Trigger:** A release-enabled managed validator has no ready, unblocked primary
+route, or a Service primary lacks its retained ready long-running Job route.
+**Fix:** Run `just gcp validator-deployments-sync <stage>`, inspect
+`just gcp validator-deployments-list <stage>`, and activate Services only after
+both routes are ready.
+
+### `VB722` Validator callback identities
+**Severity:** ok or error
+**Trigger:** An active deployment's recorded runtime service account is absent
+from `TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS`.
+**Fix:** Add every active validator runtime SA to the worker allowlist, upload
+the updated secret, and redeploy the worker. Do not add the provider-task
+invoker: it invokes validator Services, not the worker callback endpoint.
+
+### `VB723` Validator Service capacity
+**Severity:** info while Jobs are primary; ok once Services are primary
+**Trigger:** Always reported on GCP. It projects the registered minimum,
+maximum, and concurrency policy for active Service routes.
+**Fix:** No action for info. If measured latency requires warming, deploy a new
+Service revision with `VALIDATOR_SERVICE_MIN_INSTANCES=1`, register and verify
+it, then activate that immutable deployment.
 
 ---
 

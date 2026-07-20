@@ -51,7 +51,7 @@ The backend is selected based on the `DEPLOYMENT_TARGET` setting:
 
 - `"test"`, `"local_docker_compose"`, `"self_hosted"` → DockerComposeExecutionBackend
 
-- `"gcp"` → GCPExecutionBackend (Cloud Run Jobs)
+- `"gcp"` → CloudRunJobsExecutionBackend (Cloud Run Jobs)
 - `"aws"` → AWSBatchExecutionBackend (future)
 
 The `VALIDATOR_RUNNER` setting can override this if needed.

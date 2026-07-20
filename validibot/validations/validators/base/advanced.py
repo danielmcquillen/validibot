@@ -199,7 +199,7 @@ class AdvancedValidator(BaseValidator):
         run = run_context.validation_run if run_context else None
         step = run_context.step if run_context else None
 
-        if not run or not step:
+        if run_context is None or run is None or step is None:
             logger.error(
                 "%s validator requires run_context to be set with "
                 "validation_run and workflow_step",
@@ -224,7 +224,7 @@ class AdvancedValidator(BaseValidator):
         from validibot.validations.services.execution import get_execution_backend
         from validibot.validations.services.execution.base import ExecutionRequest
 
-        backend = get_execution_backend()
+        backend = get_execution_backend(run_context.execution_deployment)
 
         if not backend.is_available():
             logger.warning(

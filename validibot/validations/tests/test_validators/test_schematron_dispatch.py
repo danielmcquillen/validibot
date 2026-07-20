@@ -1,7 +1,7 @@
 """Tests for Schematron execution-backend dispatch (ADR-2026-07-01 D4).
 
 Membership in ``ADVANCED_VALIDATION_TYPES`` routes Schematron to a container
-processor, but ``GCPExecutionBackend.execute()`` dispatches off an explicit
+processor, but ``CloudRunJobsExecutionBackend.execute()`` dispatches off an explicit
 per-type table — the review flagged that without a ``SCHEMATRON`` entry, a
 Schematron step would fall through to "Unsupported validator type" on GCP
 despite being correctly advanced-routed. These tests pin that dispatch entry
@@ -15,12 +15,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from validibot.validations.services.execution.base import ExecutionResponse
-from validibot.validations.services.execution.gcp import GCPExecutionBackend
+from validibot.validations.services.execution.gcp import CloudRunJobsExecutionBackend
 
 
-def _backend_with_project() -> GCPExecutionBackend:
+def _backend_with_project() -> CloudRunJobsExecutionBackend:
     """A GCP backend that believes it is configured (no real GCP calls)."""
-    backend = GCPExecutionBackend()
+    backend = CloudRunJobsExecutionBackend()
     backend._project_id = "test-project"
     return backend
 

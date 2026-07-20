@@ -92,16 +92,30 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # Create durable identity before any provider work. A redelivery that
         # observes an already-claimed attempt must not call the provider again;
         # reconciliation owns that case.
+        from validibot.core.constants import DeploymentTarget
+        from validibot.core.deployment import get_deployment_target
         from validibot.validations.services.execution import get_execution_backend
+        from validibot.validations.services.execution.deployments import (
+            effective_execution_budget_seconds,
+        )
         from validibot.validations.services.execution_attempts import (
             get_or_create_execution_attempt,
         )
 
-        backend = get_execution_backend()
+        managed = get_deployment_target() == DeploymentTarget.GCP
+        default_backend = None if managed else get_execution_backend()
+        execution_budget_seconds = effective_execution_budget_seconds(
+            step=self.workflow_step
+        )
         attempt, attempt_created = get_or_create_execution_attempt(
             self.step_run,
-            runner_type=backend.backend_name,
+            runner_type=(default_backend.backend_name if default_backend else None),
+            validator=self.validator,
+            managed=managed,
+            effective_budget_seconds=execution_budget_seconds,
         )
+        run_context.execution_attempt = attempt
+        run_context.execution_deployment = attempt.deployment
         if not attempt_created and attempt.state != ExecutionAttemptState.PENDING:
             logger.info(
                 "Execution attempt %s is already %s; skipping provider relaunch",

@@ -34,7 +34,11 @@ README*
 LICENSE*
 # Exclude local data and caches
 storage/
-data/
+# Ship the small curated EnergyPlus weather catalogue used by
+# initialize_validibot, while excluding any other developer-local data.
+data/*
+!data/weather/
+!data/weather/**
 .parcel-cache/
 .mypy_cache/
 .pytest_cache/

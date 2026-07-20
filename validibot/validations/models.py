@@ -26,6 +26,11 @@ from validibot.submissions.constants import data_format_allowed_file_types
 from validibot.submissions.models import Submission
 from validibot.users.models import Organization
 from validibot.users.models import User
+from validibot.validations.constants import CLOUD_RUN_SERVICE_DISPATCH_DEADLINE_SECONDS
+from validibot.validations.constants import CLOUD_RUN_SERVICE_MAXIMUM_DOMAIN_SECONDS
+from validibot.validations.constants import (
+    CLOUD_RUN_SERVICE_REQUEST_TIMEOUT_LIMIT_SECONDS,
+)
 from validibot.validations.constants import EXECUTION_ATTEMPT_TERMINAL_STATES
 from validibot.validations.constants import RULESET_ASSERTION_NOTES_MAX_LENGTH
 from validibot.validations.constants import VALIDATION_RUN_SHORT_DESCRIPTION_MAX_LENGTH
@@ -40,6 +45,10 @@ from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import DefaultSourceStrategy
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ExecutionAttemptState
+from validibot.validations.constants import ExecutionDeploymentKind
+from validibot.validations.constants import ExecutionDeploymentReadiness
+from validibot.validations.constants import ExecutionDeploymentRoutingRole
+from validibot.validations.constants import ExecutionProviderType
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ResourceFileType
@@ -1784,6 +1793,371 @@ class Validator(TimeStampedModel):
         return labels
 
 
+class ValidatorExecutionDeployment(TimeStampedModel):
+    """One immutable managed-provider route for a validator release.
+
+    A validator describes product/domain behavior; this record describes one
+    concrete place where that exact validator release can execute.  Attempts
+    pin this identity before provider contact so later activation or rollback
+    cannot rewrite historical provenance.
+
+    Provider configuration and capabilities are JSON-backed for portability,
+    but are never schemaless: ``clean()`` validates both through the strict,
+    secret-free Pydantic contracts in ``deployment_schemas``.
+    """
+
+    IMMUTABLE_AFTER_READY_FIELDS = frozenset(
+        {
+            "validator_id",
+            "provider_type",
+            "deployment_kind",
+            "deployment_revision",
+            "provider_configuration",
+            "provider_resource_name",
+            "route",
+            "authentication_audience",
+            "backend_release_identity",
+            "backend_image_ref",
+            "backend_image_digest",
+            "expected_runtime_identity",
+            "declared_capabilities",
+            "maximum_execution_seconds",
+            "request_timeout_seconds",
+            "dispatch_timeout_seconds",
+            "concurrency",
+        }
+    )
+
+    class Meta:
+        ordering = ["validator_id", "provider_type", "deployment_kind", "created"]
+        indexes = [
+            models.Index(
+                fields=["validator", "readiness_state", "routing_role"],
+                name="val_execdep_route_idx",
+            ),
+            models.Index(
+                fields=["provider_type", "deployment_kind"],
+                name="val_execdep_provider_idx",
+            ),
+            models.Index(
+                fields=["provider_type", "provider_resource_name"],
+                name="val_execdep_resource_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "validator",
+                    "provider_type",
+                    "deployment_kind",
+                    "deployment_revision",
+                ],
+                name="uq_validator_execution_deployment_revision",
+            ),
+            models.UniqueConstraint(
+                fields=["validator", "routing_role"],
+                condition=~Q(routing_role=ExecutionDeploymentRoutingRole.INACTIVE),
+                name="uq_validator_execution_routing_slot",
+            ),
+            models.CheckConstraint(
+                condition=Q(readiness_state__in=ExecutionDeploymentReadiness.values),
+                name="ck_execution_deployment_readiness_known",
+            ),
+            models.CheckConstraint(
+                condition=Q(routing_role__in=ExecutionDeploymentRoutingRole.values),
+                name="ck_execution_deployment_routing_role_known",
+            ),
+        ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    validator = models.ForeignKey(
+        Validator,
+        on_delete=models.PROTECT,
+        related_name="execution_deployments",
+    )
+    provider_type = models.CharField(
+        max_length=16,
+        choices=ExecutionProviderType.choices,
+    )
+    deployment_kind = models.CharField(
+        max_length=32,
+        choices=ExecutionDeploymentKind.choices,
+    )
+    display_name = models.CharField(max_length=160)
+    deployment_revision = models.CharField(max_length=128)
+    provider_configuration = models.JSONField(default=dict)
+    provider_resource_name = models.CharField(max_length=512)
+    route = models.CharField(max_length=2048, blank=True, default="")
+    authentication_audience = models.CharField(
+        max_length=2048,
+        blank=True,
+        default="",
+    )
+    backend_release_identity = models.CharField(max_length=128)
+    backend_image_ref = models.CharField(max_length=512)
+    backend_image_digest = models.CharField(max_length=71)
+    expected_runtime_identity = models.CharField(max_length=254)
+    declared_capabilities = models.JSONField(default=dict)
+    verified_capabilities = models.JSONField(default=dict, blank=True)
+    readiness_state = models.CharField(
+        max_length=16,
+        choices=ExecutionDeploymentReadiness.choices,
+        default=ExecutionDeploymentReadiness.DRAFT,
+    )
+    last_verification_succeeded = models.BooleanField(null=True, blank=True)
+    last_verification_details = models.JSONField(default=dict, blank=True)
+    last_verified_at = models.DateTimeField(null=True, blank=True)
+    routing_role = models.CharField(
+        max_length=16,
+        choices=ExecutionDeploymentRoutingRole.choices,
+        default=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    emergency_blocked = models.BooleanField(default=False)
+    emergency_block_reason = models.CharField(max_length=500, blank=True, default="")
+    activated_at = models.DateTimeField(null=True, blank=True)
+    maximum_execution_seconds = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+    )
+    request_timeout_seconds = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+    )
+    dispatch_timeout_seconds = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+    )
+    minimum_instances = models.PositiveIntegerField(default=0)
+    maximum_instances = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+    )
+    concurrency = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+    )
+
+    def clean(self):
+        """Validate cross-field provider identity and capability invariants."""
+        super().clean()
+        from pydantic import ValidationError as PydanticValidationError
+
+        from validibot.validations.services.execution.deployment_schemas import (
+            CloudRunJobProviderConfig,
+        )
+        from validibot.validations.services.execution.deployment_schemas import (
+            CloudRunServiceProviderConfig,
+        )
+        from validibot.validations.services.execution.deployment_schemas import (
+            DeploymentVerificationDetails,
+        )
+        from validibot.validations.services.execution.deployment_schemas import (
+            parse_deployment_capabilities,
+        )
+        from validibot.validations.services.execution.deployment_schemas import (
+            parse_provider_configuration,
+        )
+
+        errors: dict[str, ValidationError | str | list[str]] = {}
+        provider_config = None
+        try:
+            provider_config = parse_provider_configuration(
+                provider_type=self.provider_type,
+                deployment_kind=self.deployment_kind,
+                configuration=self.provider_configuration,
+            )
+        except (PydanticValidationError, ValueError) as exc:
+            errors["provider_configuration"] = str(exc)
+
+        try:
+            declared = parse_deployment_capabilities(
+                deployment_kind=self.deployment_kind,
+                capabilities=self.declared_capabilities,
+            )
+        except (PydanticValidationError, ValueError) as exc:
+            errors["declared_capabilities"] = str(exc)
+            declared = None
+
+        if self.verified_capabilities:
+            try:
+                parse_deployment_capabilities(
+                    deployment_kind=self.deployment_kind,
+                    capabilities=self.verified_capabilities,
+                )
+            except (PydanticValidationError, ValueError) as exc:
+                errors["verified_capabilities"] = str(exc)
+
+        verification_details = None
+        if self.last_verification_details:
+            try:
+                verification_details = DeploymentVerificationDetails.model_validate(
+                    self.last_verification_details
+                )
+            except PydanticValidationError as exc:
+                errors["last_verification_details"] = str(exc)
+
+        if verification_details is not None and (
+            verification_details.observed_provider_revision != self.deployment_revision
+            or verification_details.observed_resource_name
+            != self.provider_resource_name
+            or verification_details.observed_image_digest != self.backend_image_digest
+        ):
+            errors["last_verification_details"] = (
+                "Observed revision, resource, and image digest must match this "
+                "deployment."
+            )
+
+        if provider_config is not None:
+            if self.provider_resource_name != provider_config.canonical_resource_name:
+                errors["provider_resource_name"] = (
+                    "Must equal the canonical resource derived from provider "
+                    "configuration."
+                )
+            if self.expected_runtime_identity != (
+                provider_config.runtime_service_account
+            ):
+                errors["expected_runtime_identity"] = (
+                    "Must equal the runtime identity in provider configuration."
+                )
+            if isinstance(provider_config, CloudRunServiceProviderConfig):
+                if self.route != provider_config.service_url:
+                    errors["route"] = (
+                        "Must equal the Service URL in provider configuration."
+                    )
+                if (
+                    self.authentication_audience
+                    != provider_config.authentication_audience
+                ):
+                    errors["authentication_audience"] = (
+                        "Must equal the audience in provider configuration."
+                    )
+                if (
+                    self.maximum_execution_seconds
+                    > CLOUD_RUN_SERVICE_MAXIMUM_DOMAIN_SECONDS
+                ):
+                    errors["maximum_execution_seconds"] = (
+                        "Cloud Run Service domain execution cannot exceed 1500 seconds."
+                    )
+                if (
+                    self.request_timeout_seconds is None
+                    or self.request_timeout_seconds <= self.maximum_execution_seconds
+                    or self.request_timeout_seconds
+                    >= CLOUD_RUN_SERVICE_REQUEST_TIMEOUT_LIMIT_SECONDS
+                ):
+                    errors["request_timeout_seconds"] = (
+                        "Cloud Run Service request timeout must exceed domain "
+                        "execution and remain below 1650 seconds."
+                    )
+                if (
+                    self.dispatch_timeout_seconds
+                    != CLOUD_RUN_SERVICE_DISPATCH_DEADLINE_SECONDS
+                ):
+                    errors["dispatch_timeout_seconds"] = (
+                        "Cloud Run Service provider tasks require an 1800-second "
+                        "dispatch deadline."
+                    )
+                if self.concurrency != 1:
+                    errors["concurrency"] = (
+                        "Cloud Run validator Services require concurrency one."
+                    )
+                if self.maximum_instances is None:
+                    errors["maximum_instances"] = (
+                        "Cloud Run validator Services require an explicit maximum."
+                    )
+            elif isinstance(provider_config, CloudRunJobProviderConfig) and (
+                self.route or self.authentication_audience
+            ):
+                errors["route"] = (
+                    "Cloud Run Job deployments do not expose a request route or "
+                    "authentication audience."
+                )
+
+        digest_match = re.fullmatch(r"sha256:[0-9a-f]{64}", self.backend_image_digest)
+        if digest_match is None:
+            errors["backend_image_digest"] = (
+                "Must be a lowercase sha256 digest with 64 hexadecimal characters."
+            )
+        elif not self.backend_image_ref.endswith(f"@{self.backend_image_digest}"):
+            errors["backend_image_ref"] = (
+                "Must be pinned to the exact backend image digest."
+            )
+
+        if (
+            declared is not None
+            and self.maximum_execution_seconds != declared.maximum_execution_seconds
+        ):
+            errors["maximum_execution_seconds"] = (
+                "Must equal the declared maximum execution capability."
+            )
+        if (
+            self.maximum_instances is not None
+            and self.minimum_instances > self.maximum_instances
+        ):
+            errors["minimum_instances"] = (
+                "Cannot exceed the deployment maximum instance count."
+            )
+        if self.readiness_state == ExecutionDeploymentReadiness.READY and (
+            self.last_verification_succeeded is not True
+            or self.last_verified_at is None
+            or not self.verified_capabilities
+            or not self.last_verification_details
+        ):
+            errors["readiness_state"] = (
+                "A ready deployment requires a successful timestamped verification "
+                "and verified capabilities."
+            )
+        if (
+            self.routing_role != ExecutionDeploymentRoutingRole.INACTIVE
+            and self.readiness_state != ExecutionDeploymentReadiness.READY
+        ):
+            errors["routing_role"] = (
+                "Only a ready deployment may occupy a routing slot."
+            )
+        if (
+            self.readiness_state == ExecutionDeploymentReadiness.RETIRED
+            and self.routing_role != ExecutionDeploymentRoutingRole.INACTIVE
+        ):
+            errors["routing_role"] = "A retired deployment must be inactive."
+
+        if not self._state.adding:
+            previous = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values("readiness_state", *self.IMMUTABLE_AFTER_READY_FIELDS)
+                .first()
+            )
+            if previous is not None and previous["readiness_state"] in {
+                ExecutionDeploymentReadiness.READY,
+                ExecutionDeploymentReadiness.RETIRED,
+            }:
+                changed_fields = sorted(
+                    field_name
+                    for field_name in self.IMMUTABLE_AFTER_READY_FIELDS
+                    if previous[field_name] != getattr(self, field_name)
+                )
+                if changed_fields:
+                    errors["__all__"] = (
+                        "A deployment that reached READY is immutable; create a new "
+                        "revision to change: " + ", ".join(changed_fields)
+                    )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        """Enforce provider and post-readiness invariants on every normal save."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        """Show validator, provider primitive, and immutable revision."""
+        return (
+            f"{self.validator} — {self.get_deployment_kind_display()} "
+            f"({self.deployment_revision})"
+        )
+
+
 # ── Unified Step I/O Model ──────────────────────────────────────────
 #
 # These four models implement the unified step I/O architecture: a
@@ -3216,7 +3590,7 @@ class ExecutionAttempt(TimeStampedModel):
             models.UniqueConstraint(
                 fields=[
                     "runner_type",
-                    "provider_job_name",
+                    "provider_resource_name",
                     "provider_execution_id",
                 ],
                 condition=~Q(provider_execution_id=""),
@@ -3253,7 +3627,26 @@ class ExecutionAttempt(TimeStampedModel):
         default=ExecutionAttemptState.PENDING,
     )
     runner_type = models.CharField(max_length=64)
-    provider_job_name = models.CharField(max_length=512, blank=True, default="")
+    deployment = models.ForeignKey(
+        ValidatorExecutionDeployment,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="execution_attempts",
+        help_text=_(
+            "Exact managed-provider deployment selected before dispatch. Empty "
+            "only for historical, local, and self-hosted attempts."
+        ),
+    )
+    deployment_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_(
+            "Secret-free immutable route and capability facts selected with this "
+            "attempt. Empty only for historical, local, and self-hosted attempts."
+        ),
+    )
+    provider_resource_name = models.CharField(max_length=512, blank=True, default="")
     provider_execution_id = models.CharField(
         max_length=512,
         blank=True,
@@ -3286,8 +3679,10 @@ class ExecutionAttempt(TimeStampedModel):
     retry_policy_snapshot = models.JSONField(default=dict, blank=True)
 
     dispatch_started_at = models.DateTimeField(null=True, blank=True)
+    provider_accepted_at = models.DateTimeField(null=True, blank=True)
     provider_started_at = models.DateTimeField(null=True, blank=True)
     provider_finished_at = models.DateTimeField(null=True, blank=True)
+    callback_received_at = models.DateTimeField(null=True, blank=True)
     terminal_at = models.DateTimeField(null=True, blank=True)
     provider_status_code = models.CharField(max_length=64, blank=True, default="")
     last_error_code = models.CharField(max_length=64, blank=True, default="")

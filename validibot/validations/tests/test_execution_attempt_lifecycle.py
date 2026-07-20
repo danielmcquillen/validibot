@@ -68,11 +68,11 @@ class TestExecutionAttemptWriter:
 
         first, first_created = get_or_create_execution_attempt(
             step_run,
-            runner_type="GCPExecutionBackend",
+            runner_type="CloudRunJobsExecutionBackend",
         )
         second, second_created = get_or_create_execution_attempt(
             step_run,
-            runner_type="GCPExecutionBackend",
+            runner_type="CloudRunJobsExecutionBackend",
         )
 
         assert first_created is True
@@ -454,7 +454,7 @@ class TestCloudRunDispatchAmbiguity:
         assert execution_id == mock_run_job.return_value
         assert attempt.state == ExecutionAttemptState.RUNNING
         assert attempt.provider_execution_id == mock_run_job.return_value
-        assert attempt.provider_job_name == "validator-job"
+        assert attempt.provider_resource_name == "validator-job"
         assert attempt.execution_bundle_uri == "gs://bucket/bundle"
         assert attempt.input_envelope_sha256 == "a" * 64
         assert attempt.input_evidence_snapshot["attempt_contract_version"] == (

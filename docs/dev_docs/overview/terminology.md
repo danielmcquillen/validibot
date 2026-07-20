@@ -10,7 +10,7 @@ This page is the canonical glossary for Validibot's architecture. Use these term
 | **Simple validator** | A `SimpleValidator` subclass that runs synchronously inside Django and returns a complete `ValidationResult` from `validate()`. May still evaluate CEL assertions, emit findings, and produce step outputs, but does not launch an external validator backend. Examples: JSON Schema, XML Schema, Basic/CEL, THERM's structural checks. |
 | **Advanced validator** | An `AdvancedValidator` subclass that orchestrates external compute. Validates run context, preprocesses the submission (e.g. EnergyPlus template resolution), builds an `ExecutionRequest`, selects an `ExecutionBackend`, dispatches to a validator backend, processes the output envelope, evaluates output-stage assertions. |
 | **Validator backend** | The external domain implementation an advanced validator delegates to. Receives a `validibot-shared` input envelope, performs isolated heavyweight work, returns a typed output envelope. Today: Docker images in `validibot-validator-backends/`. Future: WASM modules, Windows VM jobs, partner-provided containers. |
-| **Validator container** / **validator job** | Use only when referring to the concrete runtime of one execution (a specific Docker container or Cloud Run Job instance). |
+| **Validator container** / **validator Service request** / **validator Job** | Use only for the concrete runtime shape. A Service deployment may serve sequential requests, but each request runs a fresh one-shot child. |
 
 ### Why the validator vs. validator backend distinction matters
 
@@ -47,9 +47,10 @@ a workflow signal only after explicit promotion.
 
 | Term | Meaning |
 |---|---|
-| **Execution backend** | The platform-level abstraction that coordinates an advanced validation run across deployment targets. `DockerComposeExecutionBackend` for self-hosted/local; `GCPExecutionBackend` for Cloud Run Jobs. Handles storage layout, input envelope creation, container/job dispatch, result retrieval or callback metadata, deployment-specific error handling. |
-| **Validator runner** | Lower-level container/job launcher used by an execution backend. `DockerValidatorRunner` starts local Docker containers and waits synchronously. `GoogleCloudRunValidatorRunner` starts Cloud Run Jobs and works with the async callback flow. |
-| **Validator backend runtime** | The concrete thing launched for one run: a Docker container, Cloud Run Job, Cloud Batch job, future execution unit. Receives a deliberately narrower envelope: input file references the validator selected, resource file references the validator selected, domain-specific inputs, execution context (callback/output URI, timeout). |
+| **Execution deployment** | A verified provider route beneath a versioned validator. Managed attempts pin its exact revision, URL/resource, image digest, runtime identity, capabilities, and timeout/capacity facts before provider contact. |
+| **Execution backend** | The platform adapter selected from the pinned deployment: `DockerComposeExecutionBackend`, `CloudRunServiceExecutionBackend`, or `CloudRunJobsExecutionBackend`. |
+| **Validator runner / provider dispatcher** | Lower-level launch mechanism: local Docker, Cloud Run Jobs API, or deterministic Cloud Tasks HTTP delivery to a private Service. |
+| **Validator backend runtime** | The concrete thing launched for one run: a Docker container, Cloud Run Service request/child, Cloud Run Job, Cloud Batch job, or future execution unit. Receives only the narrow attempt envelope and capability. |
 
 The relationship: an advanced validator *has* a validator backend, while an execution backend *runs* that backend on Docker, Cloud Run, Cloud Batch, or a future platform.
 

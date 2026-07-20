@@ -102,17 +102,18 @@ The `WorkflowViewSet.start_validation()` method processes the request:
 
 #### 2.3 Execution Dispatch
 
-The validation work executes inline for simple validators or triggers a Cloud
-Run Job (GCP) or Docker container (Docker Compose) for heavier workloads. The API returns:
+The validation work executes inline for simple validators or dispatches an
+advanced backend to a pinned Cloud Run Service/retained Job deployment (GCP)
+or Docker container (Docker Compose). The API returns:
 
 - **201 Created**: If validation completes quickly
-- **202 Accepted**: If a Cloud Run Job was launched or execution is still running; clients poll for status
+- **202 Accepted**: If managed/container execution is still running; clients poll for status
 
 ### Phase 3: Validation Execution
 
 The `ValidationRunService` facade delegates execution to the `StepOrchestrator`,
-which handles the actual validation work (either inline or coordinating Cloud Run
-Jobs). See [Service Layer Architecture](service_architecture.md) for the full
+which handles the actual validation work (either inline or coordinating a
+pinned managed deployment). See [Service Layer Architecture](service_architecture.md) for the full
 decomposition.
 
 #### 3.1 Execution Setup
@@ -174,8 +175,9 @@ For validator steps, the processor pattern provides a clean separation of concer
 
    Container-based validators receive one storage workspace per execution
    attempt. Local Docker uses narrow read-only input and writable output mounts;
-   Cloud Run uses a distinct GCS prefix. A retry therefore cannot reuse the
-   previous attempt's input or output path.
+   GCP uses a distinct prefix plus a short-lived Credential Access Boundary
+   token; the runtime identity has no ambient bucket access. A retry therefore
+   cannot reuse the previous attempt's input or output path.
 
 3. **Result Processing**: The validator returns a `ValidationResult` object
    - `passed`: Boolean (True/False) or None for async

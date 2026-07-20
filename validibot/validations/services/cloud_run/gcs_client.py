@@ -198,6 +198,13 @@ def download_envelope(
     return envelope
 
 
+def gcs_object_exists(uri: str) -> bool:
+    """Return whether an exact GCS object exists without downloading it."""
+    bucket_name, blob_path = parse_gcs_uri(uri)
+    client = storage.Client()
+    return client.bucket(bucket_name).blob(blob_path).exists()
+
+
 def delete_prefix(uri_prefix: str) -> int:
     """
     Delete every object under a ``gs://`` prefix and return the count deleted.

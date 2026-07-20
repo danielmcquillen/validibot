@@ -8,14 +8,18 @@ the runner layer and maps execution status to ExecutionResponse.
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import pytest
 from django.test import SimpleTestCase
 
 from validibot.validations.services.execution.base import ExecutionBackend
 from validibot.validations.services.execution.base import ExecutionResponse
+from validibot.validations.services.execution.base import (
+    ProviderStatusTemporarilyUnavailableError,
+)
 from validibot.validations.services.execution.docker_compose import (
     DockerComposeExecutionBackend,
 )
-from validibot.validations.services.execution.gcp import GCPExecutionBackend
+from validibot.validations.services.execution.gcp import CloudRunJobsExecutionBackend
 from validibot.validations.services.runners.base import ExecutionInfo
 from validibot.validations.services.runners.base import ExecutionStatus
 
@@ -164,7 +168,7 @@ class TestDockerCheckStatus(SimpleTestCase):
 
 
 class TestGCPCheckStatus(SimpleTestCase):
-    """Tests for GCPExecutionBackend.check_status().
+    """Tests for CloudRunJobsExecutionBackend.check_status().
 
     The GCP backend lazy-imports GoogleCloudRunValidatorRunner inside
     check_status(), so we patch at the source module where the class is
@@ -186,7 +190,7 @@ class TestGCPCheckStatus(SimpleTestCase):
         )
         mock_runner_cls.return_value = mock_runner_instance
 
-        backend = GCPExecutionBackend()
+        backend = CloudRunJobsExecutionBackend()
         backend._project_id = "test-project"
         backend._region = "us-central1"
 
@@ -212,7 +216,7 @@ class TestGCPCheckStatus(SimpleTestCase):
         )
         mock_runner_cls.return_value = mock_runner_instance
 
-        backend = GCPExecutionBackend()
+        backend = CloudRunJobsExecutionBackend()
         backend._project_id = "test-project"
         backend._region = "us-central1"
 
@@ -233,7 +237,7 @@ class TestGCPCheckStatus(SimpleTestCase):
         )
         mock_runner_cls.return_value = mock_runner_instance
 
-        backend = GCPExecutionBackend()
+        backend = CloudRunJobsExecutionBackend()
         backend._project_id = "test-project"
         backend._region = "us-central1"
 
@@ -264,7 +268,7 @@ class TestGCPCheckStatus(SimpleTestCase):
         )
         mock_runner_cls.return_value = mock_runner_instance
 
-        backend = GCPExecutionBackend()
+        backend = CloudRunJobsExecutionBackend()
         backend._project_id = "test-project"
         backend._region = "us-central1"
 
@@ -276,8 +280,8 @@ class TestGCPCheckStatus(SimpleTestCase):
         assert result.error_message is None
 
     def test_check_status_handles_import_error(self):
-        """Returns None when google-cloud-run is not installed."""
-        backend = GCPExecutionBackend()
+        """A missing status client must remain a retryable lookup failure."""
+        backend = CloudRunJobsExecutionBackend()
         backend._project_id = "test-project"
         backend._region = "us-central1"
 
@@ -289,45 +293,42 @@ class TestGCPCheckStatus(SimpleTestCase):
         sys.modules[module_key] = None  # forces ImportError on import
 
         try:
-            result = backend.check_status("some-execution")
+            with pytest.raises(ProviderStatusTemporarilyUnavailableError):
+                backend.check_status("some-execution")
         finally:
             if saved is None:
                 sys.modules.pop(module_key, None)
             else:
                 sys.modules[module_key] = saved
 
-        assert result is None
-
     @patch(RUNNER_PATH)
     def test_check_status_handles_api_error(self, mock_runner_cls):
-        """Returns None when the Cloud Run API call fails."""
+        """A provider API error must not masquerade as unsupported lookup."""
         mock_runner_instance = MagicMock()
         mock_runner_instance.get_execution_status.side_effect = ValueError(
             "Execution not found"
         )
         mock_runner_cls.return_value = mock_runner_instance
 
-        backend = GCPExecutionBackend()
+        backend = CloudRunJobsExecutionBackend()
         backend._project_id = "test-project"
         backend._region = "us-central1"
 
-        result = backend.check_status("nonexistent-execution")
-
-        assert result is None
+        with pytest.raises(ProviderStatusTemporarilyUnavailableError):
+            backend.check_status("nonexistent-execution")
 
     @patch(RUNNER_PATH)
     def test_check_status_handles_unexpected_error(self, mock_runner_cls):
-        """Returns None on unexpected errors from the runner."""
+        """An unexpected client failure remains explicitly retryable."""
         mock_runner_instance = MagicMock()
         mock_runner_instance.get_execution_status.side_effect = RuntimeError(
             "Network unreachable"
         )
         mock_runner_cls.return_value = mock_runner_instance
 
-        backend = GCPExecutionBackend()
+        backend = CloudRunJobsExecutionBackend()
         backend._project_id = "test-project"
         backend._region = "us-central1"
 
-        result = backend.check_status("some-execution")
-
-        assert result is None
+        with pytest.raises(ProviderStatusTemporarilyUnavailableError):
+            backend.check_status("some-execution")

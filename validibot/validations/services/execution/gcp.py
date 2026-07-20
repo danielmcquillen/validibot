@@ -38,17 +38,22 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 
+from validibot.validations.constants import ProviderStatusLookupCapability
 from validibot.validations.services.execution.base import ExecutionBackend
 from validibot.validations.services.execution.base import ExecutionRequest
 from validibot.validations.services.execution.base import ExecutionResponse
+from validibot.validations.services.execution.base import (
+    ProviderStatusTemporarilyUnavailableError,
+)
 
 if TYPE_CHECKING:
+    from validibot.validations.models import ValidatorExecutionDeployment
     from validibot.validations.validators.base.base import ValidationResult
 
 logger = logging.getLogger(__name__)
 
 
-class GCPExecutionBackend(ExecutionBackend):
+class CloudRunJobsExecutionBackend(ExecutionBackend):
     """
     GCP execution backend using Cloud Run Jobs.
 
@@ -69,8 +74,13 @@ class GCPExecutionBackend(ExecutionBackend):
     the workflow execution.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        deployment: ValidatorExecutionDeployment | None = None,
+    ) -> None:
         """Initialize the GCP backend."""
+        self.deployment = deployment
         self._project_id = None
         self._region = None
 
@@ -80,17 +90,30 @@ class GCPExecutionBackend(ExecutionBackend):
         return True
 
     @property
+    def status_lookup_capability(self) -> ProviderStatusLookupCapability:
+        """Cloud Run Jobs expose durable execution status through the Jobs API."""
+        return ProviderStatusLookupCapability.SUPPORTED
+
+    @property
     def project_id(self) -> str:
         """GCP project ID."""
         if self._project_id is None:
-            self._project_id = getattr(settings, "GCP_PROJECT_ID", "")
+            self._project_id = (
+                self.deployment.provider_configuration["project_id"]
+                if self.deployment is not None
+                else getattr(settings, "GCP_PROJECT_ID", "")
+            )
         return self._project_id
 
     @property
     def region(self) -> str:
         """GCP region for Cloud Run Jobs."""
         if self._region is None:
-            self._region = getattr(settings, "GCP_REGION", "us-central1")
+            self._region = (
+                self.deployment.provider_configuration["region"]
+                if self.deployment is not None
+                else getattr(settings, "GCP_REGION", "us-central1")
+            )
         return self._region
 
     def is_available(self) -> bool:
@@ -110,8 +133,12 @@ class GCPExecutionBackend(ExecutionBackend):
                 (projects/.../jobs/.../executions/...).
 
         Returns:
-            ExecutionResponse if the status could be determined, None if the
-            Cloud Run SDK is not available or the API call fails.
+            ExecutionResponse when the provider answered the query.
+
+        Raises:
+            ProviderStatusTemporarilyUnavailableError: If the SDK or provider API
+                cannot answer now. This remains retryable and is never confused
+                with an execution failure.
         """
         try:
             from validibot.validations.services.runners.base import ExecutionStatus
@@ -122,7 +149,9 @@ class GCPExecutionBackend(ExecutionBackend):
             logger.debug(
                 "google-cloud-run not available, cannot check execution status"
             )
-            return None
+            raise ProviderStatusTemporarilyUnavailableError(
+                "Cloud Run status client is unavailable"
+            ) from None
 
         try:
             runner = GoogleCloudRunValidatorRunner(
@@ -136,7 +165,9 @@ class GCPExecutionBackend(ExecutionBackend):
                 execution_id,
                 exc_info=True,
             )
-            return None
+            raise ProviderStatusTemporarilyUnavailableError(
+                "Cloud Run execution status is temporarily unavailable"
+            ) from None
 
         return ExecutionResponse(
             execution_id=info.execution_id,
@@ -149,6 +180,18 @@ class GCPExecutionBackend(ExecutionBackend):
             execution_status=info.status,
             error_message=info.error_message,
         )
+
+    def cancel(self, execution_id: str) -> bool:
+        """Cancel the exact Cloud Run Job execution through its pinned region."""
+        from validibot.validations.services.runners.google_cloud_run import (
+            GoogleCloudRunValidatorRunner,
+        )
+
+        runner = GoogleCloudRunValidatorRunner(
+            project_id=self.project_id,
+            region=self.region,
+        )
+        return runner.cancel(execution_id)
 
     def get_container_image(self, validator_type: str) -> str:
         """
@@ -164,6 +207,9 @@ class GCPExecutionBackend(ExecutionBackend):
         """
         from validibot.validations.validators.base.config import get_config
 
+        if self.deployment is not None:
+            return str(self.deployment.provider_configuration["job_name"])
+
         vtype = validator_type.lower()
 
         config = get_config(vtype.upper())
@@ -171,6 +217,15 @@ class GCPExecutionBackend(ExecutionBackend):
             return config.image_name
 
         return f"validibot-validator-backend-{vtype}"
+
+    def _launcher_kwargs(self, validator_type: str) -> dict:
+        """Return the exact pinned Job target supplied to shared staging code."""
+        return {
+            "job_name": self.get_container_image(validator_type),
+            "expected_image_digest": (
+                self.deployment.backend_image_digest if self.deployment else None
+            ),
+        }
 
     def _launch_result_to_response(
         self,
@@ -293,6 +348,7 @@ class GCPExecutionBackend(ExecutionBackend):
             submission=request.submission,
             ruleset=ruleset,
             step=request.step,
+            **self._launcher_kwargs(request.validator_type),
         )
 
         return self._launch_result_to_response(result)
@@ -316,6 +372,7 @@ class GCPExecutionBackend(ExecutionBackend):
             submission=request.submission,
             ruleset=ruleset,
             step=request.step,
+            **self._launcher_kwargs(request.validator_type),
         )
 
         return self._launch_result_to_response(result)
@@ -343,6 +400,7 @@ class GCPExecutionBackend(ExecutionBackend):
             submission=request.submission,
             ruleset=request.step.ruleset,
             step=request.step,
+            **self._launcher_kwargs(request.validator_type),
         )
 
         return self._launch_result_to_response(result)
@@ -378,6 +436,7 @@ class GCPExecutionBackend(ExecutionBackend):
             submission=request.submission,
             ruleset=ruleset,
             step=request.step,
+            **self._launcher_kwargs(request.validator_type),
         )
 
         stats = result.stats or {}

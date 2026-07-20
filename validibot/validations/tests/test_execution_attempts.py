@@ -84,14 +84,14 @@ class TestExecutionAttemptModel:
         first = ExecutionAttemptFactory(
             state=ExecutionAttemptState.RUNNING,
             runner_type="google_cloud_run",
-            provider_job_name="energyplus",
+            provider_resource_name="energyplus",
             provider_execution_id="executions/provider-123",
         )
 
         with pytest.raises(IntegrityError), transaction.atomic():
             ExecutionAttemptFactory(
                 runner_type=first.runner_type,
-                provider_job_name=first.provider_job_name,
+                provider_resource_name=first.provider_resource_name,
                 provider_execution_id=first.provider_execution_id,
             )
 

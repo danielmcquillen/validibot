@@ -428,7 +428,7 @@ DEPLOYMENT_TARGET=gcp
 WORKER_URL=https://validibot-worker-xxxx.run.app
 # Optional — defaults to WORKER_URL
 TASK_OIDC_AUDIENCE=https://validibot-worker-xxxx.run.app
-TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS=validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com
+TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS=validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com,validibot-validator-prod@PROJECT.iam.gserviceaccount.com
 ```
 
 **Set both explicitly in production.** The fallbacks (`WORKER_URL` for
@@ -459,6 +459,10 @@ quickly the transport decides a delivery was lost:
 |---|---:|---|---|
 | `CELERY_VISIBILITY_TIMEOUT_SECONDS` | `3600` | Self-hosted Redis | Must exceed `CELERY_TASK_TIME_LIMIT` (1800 seconds), otherwise Redis can deliver a healthy long task to another worker. |
 | `CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS` | `600` | GCP | Bounds the short worker HTTP orchestration request; accepted range is 15–1800 seconds. Validator compute runs separately in Cloud Run Jobs. |
+| `GCP_VALIDATOR_TASK_QUEUE_NAME` | empty | GCP | Separate stage-level queue used only for long validator Service deliveries. Production convention: `<app>-validator-provider`. |
+| `GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT` | empty | GCP | Dedicated OIDC principal with `run.invoker` only on registered private validator Services. |
+| `GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS` | `1800` | GCP | Exact Cloud Tasks HTTP deadline for validator Service requests; changing it requires revisiting the Service transport contract. |
+| `VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS` | `300` | GCP | Bounded retry window after an attempt deadline when a status-capable provider API is temporarily unavailable. After the grace period, the attempt's absolute deadline remains authoritative. |
 | `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED` | `false` | GCP | Enables per-execution Credential Access Boundary token delivery and stages every validator input into one attempt prefix. Enable only after capability-aware backend images are deployed. |
 | `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED` | `false` | GCP | Operator assertion that the validator Cloud Run service account has no effective object access. Set true only after both `just gcp validator-storage-capability-probe <stage>` and `just gcp validator-storage-isolation <stage>` succeed and a normal advanced validation passes with ambient IAM removed; `VB205` remains WARN otherwise. |
 

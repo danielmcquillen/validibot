@@ -487,12 +487,14 @@ def test_launch_time_infra_code_survives_to_the_result():
     Callback-time engine failures already carry ``schematron.*`` codes; this
     pins the LAUNCH path. A launcher result whose issue carries
     ``schematron.rules_invalid`` + ``meta.infra_error`` must flow through
-    ``GCPExecutionBackend._launch_result_to_response`` and
+    ``CloudRunJobsExecutionBackend._launch_result_to_response`` and
     ``AdvancedValidator._response_to_result`` without collapsing to a generic
     coded-nothing error — so a launch-time failure renders as "we couldn't run
     the check", not as a rule failure.
     """
-    from validibot.validations.services.execution.gcp import GCPExecutionBackend
+    from validibot.validations.services.execution.gcp import (
+        CloudRunJobsExecutionBackend,
+    )
     from validibot.validations.validators.base.base import ValidationIssue
     from validibot.validations.validators.base.base import ValidationResult
 
@@ -509,7 +511,7 @@ def test_launch_time_infra_code_survives_to_the_result():
         ],
     )
 
-    response = GCPExecutionBackend()._launch_result_to_response(launch_result)
+    response = CloudRunJobsExecutionBackend()._launch_result_to_response(launch_result)
     assert response.error_code == CODE_RULES_INVALID
     assert response.error_meta == {"infra_error": True}
 

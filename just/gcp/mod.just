@@ -153,6 +153,7 @@ validibot_version := `awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ {print "v" 
 # validator-build recipes below. Runtime trust does not consume this; validator
 # runs are still identified by image digest.
 validator_backend_git_sha := `git -C ../validibot-validator-backends rev-parse --short HEAD 2>/dev/null || echo "dev"`
+validator_backend_version := `awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ {print $2; exit}' ../validibot-validator-backends/pyproject.toml`
 
 # =============================================================================
 # Submodules
@@ -1342,6 +1343,23 @@ open stage: _require-gcp-config
         --region {{gcp_region}} \
         --project {{gcp_project}} \
         --format="value(status.url)" 2>/dev/null)
+    INGRESS=$(gcloud run services describe "$SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(metadata.annotations.'run.googleapis.com/ingress')" 2>/dev/null)
+    if [ "$INGRESS" = "internal-and-cloud-load-balancing" ]; then
+        if [ "{{stage}}" = "prod" ]; then
+            DJANGO_ENV_FILE=".envs/.production/.google-cloud/.django"
+        else
+            DJANGO_ENV_FILE=".envs/.{{stage}}/.google-cloud/.django"
+        fi
+        PUBLIC_URL=$(sed -n 's/^SITE_URL=//p' "$DJANGO_ENV_FILE" | head -n 1 | tr -d "\"'")
+        if [ -z "$PUBLIC_URL" ]; then
+            echo "Error: SITE_URL is missing from $DJANGO_ENV_FILE." >&2
+            exit 1
+        fi
+        URL="${PUBLIC_URL%/}"
+    fi
     if [ -z "$URL" ]; then
         echo "Error: Could not get URL for $SERVICE"
         exit 1
@@ -1365,8 +1383,28 @@ health-check stage: _require-gcp-config
         --region {{gcp_region}} \
         --project {{gcp_project}} \
         --format="value(status.url)")
-    echo "Checking: $URL"
-    curl -s -o /dev/null -w "HTTP Status: %{http_code}\nTime: %{time_total}s\n" "$URL"
+    INGRESS=$(gcloud run services describe "$SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(metadata.annotations.'run.googleapis.com/ingress')")
+    if [ "$INGRESS" = "internal-and-cloud-load-balancing" ]; then
+        if [ "{{stage}}" = "prod" ]; then
+            DJANGO_ENV_FILE=".envs/.production/.google-cloud/.django"
+        else
+            DJANGO_ENV_FILE=".envs/.{{stage}}/.google-cloud/.django"
+        fi
+        PUBLIC_URL=$(sed -n 's/^SITE_URL=//p' "$DJANGO_ENV_FILE" | head -n 1 | tr -d "\"'")
+        if [ -z "$PUBLIC_URL" ]; then
+            echo "Error: SITE_URL is missing from $DJANGO_ENV_FILE." >&2
+            exit 1
+        fi
+        URL="${PUBLIC_URL%/}"
+    fi
+    HEALTH_URL="${URL%/}/health/"
+    echo "Checking: $HEALTH_URL"
+    curl --fail --silent --show-error --output /dev/null \
+        --write-out "HTTP Status: %{http_code}\nTime: %{time_total}s\n" \
+        "$HEALTH_URL"
 
 # =============================================================================
 # Management Commands
@@ -2625,13 +2663,18 @@ init-stage stage: _require-gcp-config
         DB_INSTANCE="${APP_NAME}-db"
         SECRET_NAME="django-env"
         QUEUE_NAME="${APP_NAME}-tasks"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
+        PROVIDER_INVOKER_NAME="${APP_NAME}-validator-invoker-prod"
     else
         SA_NAME="${APP_NAME}-cloudrun-{{stage}}"
         DB_INSTANCE="${APP_NAME}-db-{{stage}}"
         SECRET_NAME="django-env-{{stage}}"
         QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
+        PROVIDER_INVOKER_NAME="${APP_NAME}-validator-invoker-{{stage}}"
     fi
     SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
+    PROVIDER_INVOKER_EMAIL="$PROVIDER_INVOKER_NAME@{{gcp_project}}.iam.gserviceaccount.com"
 
     # Step 0: Enable the GCP APIs every stage needs. Without these, later
     # steps fail with opaque "API [x] not enabled" errors. Idempotent —
@@ -2645,6 +2688,8 @@ init-stage stage: _require-gcp-config
         secretmanager.googleapis.com \
         artifactregistry.googleapis.com \
         cloudkms.googleapis.com \
+        logging.googleapis.com \
+        monitoring.googleapis.com \
         iam.googleapis.com \
         policytroubleshooter.googleapis.com \
         compute.googleapis.com \
@@ -2762,6 +2807,40 @@ init-stage stage: _require-gcp-config
             --project={{gcp_project}}
         echo "   Created"
     fi
+    echo ""
+
+    # The provider queue uses a distinct OIDC principal. It has no project
+    # roles and receives run.invoker only on the four validator Services.
+    echo "2d. Creating provider-task invoker: $PROVIDER_INVOKER_NAME"
+    if gcloud iam service-accounts describe "$PROVIDER_INVOKER_EMAIL" --project={{gcp_project}} &>/dev/null; then
+        echo "   Provider-task invoker already exists"
+    else
+        gcloud iam service-accounts create "$PROVIDER_INVOKER_NAME" \
+            --display-name="Validibot {{stage}} Validator Service Invoker" \
+            --project={{gcp_project}}
+        echo "   Created"
+    fi
+
+    # The application SA may attach this identity to provider tasks, and the
+    # Google-managed Cloud Tasks agent may mint each short-lived OIDC token.
+    gcloud iam service-accounts add-iam-policy-binding "$PROVIDER_INVOKER_EMAIL" \
+        --member="serviceAccount:$SA_EMAIL" \
+        --role="roles/iam.serviceAccountUser" \
+        --project={{gcp_project}} \
+        --quiet >/dev/null
+    PROJECT_NUMBER=$(gcloud projects describe {{gcp_project}} --format='value(projectNumber)')
+    TASKS_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-cloudtasks.iam.gserviceaccount.com"
+    # Enabling the API does not always materialize its managed service identity
+    # immediately. Create it explicitly before granting token-minting rights.
+    gcloud beta services identity create \
+        --service=cloudtasks.googleapis.com \
+        --project={{gcp_project}} >/dev/null
+    gcloud iam service-accounts add-iam-policy-binding "$PROVIDER_INVOKER_EMAIL" \
+        --member="serviceAccount:$TASKS_SERVICE_AGENT" \
+        --role="roles/iam.serviceAccountTokenCreator" \
+        --project={{gcp_project}} \
+        --quiet >/dev/null
+    echo "   OIDC delegation reconciled"
     echo ""
 
     # Step 3: Create Cloud SQL instance
@@ -2922,6 +3001,36 @@ init-stage stage: _require-gcp-config
             --location={{gcp_region}} \
             --project={{gcp_project}}
         echo "   Queue created"
+    fi
+    echo ""
+
+    # Long validator deliveries never consume the short application-worker
+    # queue. Retry duration cannot outlive the 30-minute task/token contract.
+    echo "5b. Reconciling validator provider queue: $PROVIDER_QUEUE_NAME"
+    if gcloud tasks queues describe "$PROVIDER_QUEUE_NAME" --location={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        gcloud tasks queues update "$PROVIDER_QUEUE_NAME" \
+            --location={{gcp_region}} \
+            --max-dispatches-per-second=16 \
+            --max-concurrent-dispatches=16 \
+            --max-attempts=5 \
+            --max-retry-duration=1800s \
+            --min-backoff=2s \
+            --max-backoff=60s \
+            --max-doublings=5 \
+            --project={{gcp_project}} >/dev/null
+        echo "   Provider queue updated"
+    else
+        gcloud tasks queues create "$PROVIDER_QUEUE_NAME" \
+            --location={{gcp_region}} \
+            --max-dispatches-per-second=16 \
+            --max-concurrent-dispatches=16 \
+            --max-attempts=5 \
+            --max-retry-duration=1800s \
+            --min-backoff=2s \
+            --max-backoff=60s \
+            --max-doublings=5 \
+            --project={{gcp_project}}
+        echo "   Provider queue created"
     fi
     echo ""
 
@@ -3348,14 +3457,21 @@ scheduler-setup stage: _require-gcp-config
         "/api/v1/scheduled/cleanup-stuck-runs/" \
         "Mark stuck validation runs as FAILED - 30min timeout ({{stage}})"
 
-    # Job 8: Send periodic emails (every 6 hours)
+    # Job 8: Verify active validator Service deployments (hourly)
+    create_or_update_job \
+        "${APP_NAME}-verify-validator-deployments${JOB_SUFFIX}" \
+        "17 * * * *" \
+        "/api/v1/scheduled/verify-validator-deployments/" \
+        "Detect validator Service provider drift ({{stage}})"
+
+    # Job 9: Send periodic emails (every 6 hours)
     create_or_update_job \
         "${APP_NAME}-send-periodic-emails${JOB_SUFFIX}" \
         "0 */6 * * *" \
         "/api/v1/scheduled/send-periodic-emails/" \
         "Run periodic email handlers - trial lifecycle etc ({{stage}})"
 
-    # Job 9: Enforce audit log retention (daily at 2:30 AM)
+    # Job 10: Enforce audit log retention (daily at 2:30 AM)
     # Archives AuditLogEntry rows past AUDIT_HOT_RETENTION_DAYS via
     # whatever ``AUDIT_ARCHIVE_BACKEND`` is configured (NullArchiveBackend
     # / FilesystemArchiveBackend in community, cloud add-ons can point
@@ -3403,7 +3519,7 @@ scheduler-delete-all stage: _require-gcp-config
     echo
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
             job="${job_base}${JOB_SUFFIX}"
             echo "Deleting $job..."
             gcloud scheduler jobs delete "$job" \
@@ -3435,7 +3551,7 @@ scheduler-pause-all stage: _require-gcp-config
     fi
 
     echo "Pausing all scheduler jobs for {{stage}}..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         echo "Pausing $job..."
         gcloud scheduler jobs pause "$job" \
@@ -3464,7 +3580,7 @@ scheduler-resume-all stage: _require-gcp-config
     fi
 
     echo "Resuming all scheduler jobs for {{stage}}..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         echo "Resuming $job..."
         gcloud scheduler jobs resume "$job" \
@@ -3533,10 +3649,51 @@ validator-push name:
 # Build and push in one step
 validator-build-push name: (validator-build name) (validator-push name)
 
+# Verify one signed backend release image and its byte-identical GAR mirror.
+# Production deploy recipes call this before resolving the GAR tag to a digest.
+[private]
+_validator-release-verify-image name release_tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: backend release tag must be vX.Y.Z." >&2
+        exit 1
+    fi
+    git -C ../validibot-validator-backends verify-tag "{{release_tag}}" >/dev/null
+    GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-{{name}}"
+    GHCR_DIGEST=$(docker buildx imagetools inspect "${GHCR_IMAGE}:{{release_tag}}" \
+        | awk '/^Digest:/ {print $2; exit}')
+    if [[ ! "$GHCR_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "Error: could not resolve ${GHCR_IMAGE}:{{release_tag}} to one digest." >&2
+        exit 1
+    fi
+    gh attestation verify "oci://${GHCR_IMAGE}@${GHCR_DIGEST}" \
+        --owner danielmcquillen >/dev/null
+    GAR_IMAGE="{{validator_repo}}/{{app_name}}-validator-backend-{{name}}"
+    GAR_DIGEST=$(gcloud artifacts docker images list "$GAR_IMAGE" \
+        --include-tags \
+        --filter="tags:{{release_tag}}" \
+        --limit=1 \
+        --project={{gcp_project}} \
+        --format='value(version)')
+    if [ "$GAR_DIGEST" != "$GHCR_DIGEST" ]; then
+        echo "Error: GAR mirror digest $GAR_DIGEST differs from signed GHCR digest $GHCR_DIGEST." >&2
+        exit 1
+    fi
+    echo "Verified {{name}} {{release_tag}} at ${GHCR_DIGEST}."
+
+# Verify the signed release and GAR mirror for all four backend images.
+# Usage: just gcp validator-release-verify v0.15.0
+validator-release-verify release_tag: _require-gcp-config
+    just gcp _validator-release-verify-image energyplus {{release_tag}}
+    just gcp _validator-release-verify-image fmu {{release_tag}}
+    just gcp _validator-release-verify-image shacl {{release_tag}}
+    just gcp _validator-release-verify-image schematron {{release_tag}}
+
 # Deploy a Cloud Run Job for a validator to a specific stage
 # Usage: just gcp validator-deploy energyplus dev | just gcp validator-deploy fmu prod
 [arg('stage', pattern='dev|staging|prod')]
-validator-deploy name stage: _require-gcp-config (validator-build-push name)
+validator-deploy name stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -3572,12 +3729,46 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
     fi
 
+    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
+    if [ "{{stage}}" = "prod" ]; then
+        if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: production validator deploys require an immutable signed release tag." >&2
+            echo "Usage: VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z just gcp validator-deploy {{name}} prod" >&2
+            exit 1
+        fi
+        IMAGE_TAG="$RELEASE_TAG"
+        just gcp _validator-release-verify-image {{name}} "$RELEASE_TAG"
+    elif [ -n "$RELEASE_TAG" ]; then
+        IMAGE_TAG="$RELEASE_TAG"
+    else
+        just gcp validator-build-push {{name}}
+        IMAGE_TAG="{{validator_backend_git_sha}}"
+    fi
+
+    # Resolve the pushed revision tag to its immutable GAR digest. Cloud Run
+    # records the exact bytes it will execute, and the application can safely
+    # enforce VALIDATOR_BACKEND_IMAGE_POLICY=digest without trusting a mutable
+    # tag. ``artifacts docker images list`` avoids requiring the optional
+    # Container Analysis API used by ``images describe``.
+    IMAGE_REPOSITORY="{{validator_repo}}/{{app_name}}-validator-backend-{{name}}"
+    IMAGE_DIGEST=$(gcloud artifacts docker images list "$IMAGE_REPOSITORY" \
+        --include-tags \
+        --filter="tags:${IMAGE_TAG}" \
+        --limit=1 \
+        --project {{gcp_project}} \
+        --format='value(version)')
+    if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "Error: could not resolve $IMAGE_REPOSITORY:$IMAGE_TAG to one digest." >&2
+        exit 1
+    fi
+    IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"
+
     # Deploy the job with the dedicated validator SA (least-privilege).
     # Image name MUST match what ``validator-build`` / ``validator-push``
     # actually produced — both use the ``-validator-backend-`` prefix.
     echo "Deploying $JOB_NAME..."
     gcloud run jobs deploy "$JOB_NAME" \
-        --image {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{validator_backend_git_sha}} \
+        --image "$IMAGE_REF" \
         --region {{gcp_region}} \
         --service-account "$VALIDATOR_SA" \
         --max-retries 0 \
@@ -3587,9 +3778,9 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         --subnet default \
         --vpc-egress all-traffic \
         --set-env-vars GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp \
-        --labels validator={{name}},revision={{validator_backend_git_sha}},stage={{stage}} \
+        --labels validator={{name}},release="${IMAGE_TAG//./-}",stage={{stage}} \
         --project {{gcp_project}}
-    echo "$JOB_NAME deployed"
+    echo "$JOB_NAME deployed at $IMAGE_REF"
 
     # Grant the main SA (web/worker) permission to trigger this job with overrides
     echo "Granting job runner permission to main SA on $JOB_NAME..."
@@ -3622,6 +3813,499 @@ validators-deploy-all stage: _require-gcp-config
     just gcp validator-deploy fmu {{stage}}
     just gcp validator-deploy shacl {{stage}}
     just gcp validator-deploy schematron {{stage}}
+
+# Deploy one digest-pinned private validator Cloud Run Service. The same image
+# retains its one-shot Job entrypoint; VALIDIBOT_EXECUTION_SHAPE selects the
+# shared HTTP parent only for this Service revision.
+# Usage: just gcp validator-service-deploy energyplus prod
+[arg('stage', pattern='dev|staging|prod')]
+validator-service-deploy name stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        PROVIDER_INVOKER="${APP_NAME}-validator-invoker-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        WORKER_SERVICE="${APP_NAME}-worker"
+    else
+        PROVIDER_INVOKER="${APP_NAME}-validator-invoker-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+    fi
+
+    case "{{name}}" in
+        energyplus) CPU=4; MEMORY=8Gi; DEFAULT_MAX_INSTANCES=4 ;;
+        fmu) CPU=2; MEMORY=4Gi; DEFAULT_MAX_INSTANCES=4 ;;
+        shacl) CPU=2; MEMORY=4Gi; DEFAULT_MAX_INSTANCES=8 ;;
+        schematron) CPU=2; MEMORY=4Gi; DEFAULT_MAX_INSTANCES=8 ;;
+        *) echo "Error: unknown validator Service '{{name}}'" >&2; exit 1 ;;
+    esac
+    MIN_INSTANCES="${VALIDATOR_SERVICE_MIN_INSTANCES:-0}"
+    MAX_INSTANCES="${VALIDATOR_SERVICE_MAX_INSTANCES:-$DEFAULT_MAX_INSTANCES}"
+    if ! [[ "$MIN_INSTANCES" =~ ^[0-9]+$ && "$MAX_INSTANCES" =~ ^[1-9][0-9]*$ ]] \
+        || [ "$MIN_INSTANCES" -gt "$MAX_INSTANCES" ]; then
+        echo "Error: invalid Service min/max instance bounds." >&2
+        exit 1
+    fi
+    for service_account in "$PROVIDER_INVOKER" "$VALIDATOR_SA"; do
+        gcloud iam service-accounts describe "$service_account" \
+            --project={{gcp_project}} >/dev/null
+    done
+
+    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
+    if [ "{{stage}}" = "prod" ]; then
+        if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: production validator Services require an immutable signed release tag." >&2
+            echo "Usage: VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z just gcp validator-service-deploy {{name}} prod" >&2
+            exit 1
+        fi
+        IMAGE_TAG="$RELEASE_TAG"
+        BACKEND_RELEASE="${RELEASE_TAG#v}"
+        just gcp _validator-release-verify-image {{name}} "$RELEASE_TAG"
+    elif [ -n "$RELEASE_TAG" ]; then
+        IMAGE_TAG="$RELEASE_TAG"
+        BACKEND_RELEASE="${RELEASE_TAG#v}"
+    else
+        just gcp validator-build-push {{name}}
+        IMAGE_TAG="{{validator_backend_git_sha}}"
+        BACKEND_RELEASE="{{validator_backend_version}}"
+    fi
+    SERVICE_NAME="${APP_NAME}-validator-service-{{name}}"
+    if [ -n "$RELEASE_TAG" ]; then
+        RELEASE_LABEL="${RELEASE_TAG//./-}"
+        if [[ ! "$RELEASE_LABEL" =~ ^[a-z0-9-]+$ ]]; then
+            echo "Error: backend release tag cannot form a Cloud Run Service name." >&2
+            exit 1
+        fi
+        SERVICE_NAME="${SERVICE_NAME}-${RELEASE_LABEL}"
+    fi
+    if [ "{{stage}}" != "prod" ]; then
+        SERVICE_NAME="${SERVICE_NAME}-{{stage}}"
+    fi
+
+    IMAGE_REPOSITORY="{{validator_repo}}/{{app_name}}-validator-backend-{{name}}"
+    IMAGE_DIGEST=$(gcloud artifacts docker images list "$IMAGE_REPOSITORY" \
+        --include-tags \
+        --filter="tags:${IMAGE_TAG}" \
+        --limit=1 \
+        --project={{gcp_project}} \
+        --format='value(version)')
+    if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "Error: could not resolve $IMAGE_REPOSITORY:$IMAGE_TAG to one digest." >&2
+        exit 1
+    fi
+    IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"
+
+    echo "Deploying private Service $SERVICE_NAME at $IMAGE_REF..."
+    gcloud run deploy "$SERVICE_NAME" \
+        --image "$IMAGE_REF" \
+        --region {{gcp_region}} \
+        --service-account "$VALIDATOR_SA" \
+        --port 8080 \
+        --ingress internal \
+        --no-allow-unauthenticated \
+        --concurrency 1 \
+        --timeout 1649s \
+        --cpu "$CPU" \
+        --memory "$MEMORY" \
+        --min "$MIN_INSTANCES" \
+        --max "$MAX_INSTANCES" \
+        --cpu-boost \
+        --execution-environment gen2 \
+        --network default \
+        --subnet default \
+        --vpc-egress all-traffic \
+        --set-env-vars GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp,VALIDIBOT_EXECUTION_SHAPE=service,VALIDIBOT_BACKEND_IMAGE_DIGEST="$IMAGE_DIGEST",VALIDIBOT_BACKEND_RELEASE="$BACKEND_RELEASE" \
+        --labels validator={{name}},release="${IMAGE_TAG//./-}",stage={{stage}},execution-shape=service \
+        --project {{gcp_project}}
+
+    # Reconcile the exact invocation policy. The provider-task identity is the
+    # sole caller; even another individually named principal is rejected.
+    gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --member="serviceAccount:$PROVIDER_INVOKER" \
+        --role="roles/run.invoker" \
+        --quiet >/dev/null
+    gcloud run services get-iam-policy "$SERVICE_NAME" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format=json \
+        | jq -r '.bindings[]? | select(.role == "roles/run.invoker") | .members[]?' \
+        | while IFS= read -r invoker_member; do
+            if [ "$invoker_member" = "serviceAccount:$PROVIDER_INVOKER" ]; then
+                continue
+            fi
+            echo "Removing unexpected Service invoker: $invoker_member"
+            gcloud run services remove-iam-policy-binding "$SERVICE_NAME" \
+            --region {{gcp_region}} \
+            --project {{gcp_project}} \
+            --member="$invoker_member" \
+            --role="roles/run.invoker" \
+            --quiet >/dev/null
+        done
+    gcloud run services add-iam-policy-binding "$WORKER_SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --member="serviceAccount:$VALIDATOR_SA" \
+        --role="roles/run.invoker" \
+        --quiet >/dev/null
+    echo "$SERVICE_NAME is private, concurrency=1, min=$MIN_INSTANCES, max=$MAX_INSTANCES."
+
+# Provision all four Services without changing application routing.
+[arg('stage', pattern='dev|staging|prod')]
+validator-services-deploy-all stage: _require-gcp-config
+    just gcp validator-service-deploy energyplus {{stage}}
+    just gcp validator-service-deploy fmu {{stage}}
+    just gcp validator-service-deploy shacl {{stage}}
+    just gcp validator-service-deploy schematron {{stage}}
+
+# Register current digest-pinned Jobs as primary routes for new attempts.
+[arg('stage', pattern='dev|staging|prod')]
+validator-deployments-sync stage: _require-gcp-config
+    just gcp management-cmd {{stage}} "sync_gcp_validator_deployments --activate-primary"
+
+# Verify/register Services while leaving all routing on Jobs.
+[arg('stage', pattern='dev|staging|prod')]
+validator-services-register stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
+    if [ "{{stage}}" = "prod" ] && [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: set VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z for production registration." >&2
+        exit 1
+    fi
+    RELEASE_ARG=""
+    if [ -n "$RELEASE_TAG" ]; then RELEASE_ARG="--backend-release-tag=$RELEASE_TAG"; fi
+    just gcp management-cmd {{stage}} "sync_gcp_validator_services $RELEASE_ARG"
+
+# Make every verified Service primary and retain its Job as long-running.
+[arg('stage', pattern='dev|staging|prod')]
+validator-services-activate stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
+    if [ "{{stage}}" = "prod" ] && [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: set VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z for production activation." >&2
+        exit 1
+    fi
+    RELEASE_ARG=""
+    if [ -n "$RELEASE_TAG" ]; then RELEASE_ARG="--backend-release-tag=$RELEASE_TAG"; fi
+    just gcp management-cmd {{stage}} "sync_gcp_validator_services --activate-primary $RELEASE_ARG"
+
+    # Keep only the newly activated release warm. Historical release-specific
+    # Services remain callable for immutable in-flight attempt snapshots, but
+    # their mutable service-level minimum is reduced to zero.
+    RELEASE_SUFFIX=""
+    if [ -n "$RELEASE_TAG" ]; then RELEASE_SUFFIX="-${RELEASE_TAG//./-}"; fi
+    declare -A CURRENT_SERVICES=()
+    for name in energyplus fmu shacl schematron; do
+        SERVICE_NAME="{{app_name}}-validator-service-${name}${RELEASE_SUFFIX}"
+        if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
+        CURRENT_SERVICES["$SERVICE_NAME"]=1
+    done
+    SERVICES=$(gcloud run services list \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
+        --format='value(metadata.name)')
+    while IFS= read -r SERVICE_NAME; do
+        [ -z "$SERVICE_NAME" ] && continue
+        if [ -n "${CURRENT_SERVICES[$SERVICE_NAME]:-}" ]; then
+            continue
+        fi
+        echo "Cooling superseded validator Service $SERVICE_NAME to min=0..."
+        gcloud run services update "$SERVICE_NAME" \
+            --region={{gcp_region}} \
+            --project={{gcp_project}} \
+            --min=0 \
+            --quiet
+    done <<< "$SERVICES"
+
+    # Re-read every inactive registered Service by durable provider name. This
+    # records the capacity transition and rejects any unrelated provider drift.
+    just gcp management-cmd {{stage}} "sync_registered_gcp_validator_services"
+
+# Change mutable service-level warming/capacity, then verify and audit the live
+# settings without creating a new Cloud Run revision.
+# Usage: just gcp validator-service-capacity shacl prod v0.15.0 1 8
+[arg('stage', pattern='dev|staging|prod')]
+validator-service-capacity name stage release_tag minimum maximum: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: release_tag must be vX.Y.Z." >&2
+        exit 1
+    fi
+    if ! [[ "{{minimum}}" =~ ^[0-9]+$ && "{{maximum}}" =~ ^[1-9][0-9]*$ ]] \
+        || [ "{{minimum}}" -gt "{{maximum}}" ]; then
+        echo "Error: capacity requires 0 <= minimum <= maximum." >&2
+        exit 1
+    fi
+    RELEASE_LABEL="{{release_tag}}"
+    RELEASE_LABEL="${RELEASE_LABEL//./-}"
+    SERVICE_NAME="{{app_name}}-validator-service-{{name}}-${RELEASE_LABEL}"
+    if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
+    gcloud run services update "$SERVICE_NAME" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --min={{minimum}} \
+        --max={{maximum}} \
+        --quiet
+    just gcp management-cmd {{stage}} "sync_gcp_validator_services --backend-release-tag={{release_tag}}"
+
+# Roll new attempts back to the retained Jobs. In-flight Service attempts keep
+# their immutable route and remain able to callback/reconcile.
+[arg('stage', pattern='dev|staging|prod')]
+validator-services-rollback stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
+    if [ "{{stage}}" = "prod" ] && [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: set VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z for production rollback." >&2
+        exit 1
+    fi
+
+    # Route new attempts first. Exact in-flight deployment snapshots continue
+    # to reference the retained Service revision while it drains.
+    just gcp management-cmd {{stage}} "sync_gcp_validator_deployments --activate-primary"
+
+    RELEASE_SUFFIX=""
+    RELEASE_ARG=""
+    if [ -n "$RELEASE_TAG" ]; then
+        RELEASE_SUFFIX="-${RELEASE_TAG//./-}"
+        RELEASE_ARG="--backend-release-tag=$RELEASE_TAG"
+    fi
+    for name in energyplus fmu shacl schematron; do
+        SERVICE_NAME="{{app_name}}-validator-service-${name}${RELEASE_SUFFIX}"
+        if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
+        gcloud run services update "$SERVICE_NAME" \
+            --region={{gcp_region}} \
+            --project={{gcp_project}} \
+            --min=0 \
+            --quiet
+    done
+
+    # Re-read and audit the live zero-minimum capacity without reactivating it.
+    just gcp management-cmd {{stage}} "sync_gcp_validator_services $RELEASE_ARG"
+
+# Retire all four immutable Service resources for an old release. The recipe
+# first forces min=0, re-verifies live state, and proves every deployment is
+# inactive and drained. Provider deletion is recorded only after all deletes
+# succeed. Historical deployment rows and attempt evidence are retained.
+# Usage: VALIDATOR_SERVICE_RETIRE_CONFIRM=v0.14.0 just gcp validator-services-retire prod v0.14.0
+[arg('stage', pattern='dev|staging|prod')]
+validator-services-retire stage release_tag: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: release_tag must be vX.Y.Z." >&2
+        exit 1
+    fi
+    if [ "${VALIDATOR_SERVICE_RETIRE_CONFIRM:-}" != "{{release_tag}}" ]; then
+        echo "Error: set VALIDATOR_SERVICE_RETIRE_CONFIRM={{release_tag}} to confirm immutable Service deletion." >&2
+        exit 1
+    fi
+    RELEASE_LABEL="{{release_tag}}"
+    RELEASE_LABEL="${RELEASE_LABEL//./-}"
+    ALL_PRESENT=1
+    for name in energyplus fmu shacl schematron; do
+        SERVICE_NAME="{{app_name}}-validator-service-${name}-${RELEASE_LABEL}"
+        if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
+        if gcloud run services describe "$SERVICE_NAME" \
+            --region={{gcp_region}} \
+            --project={{gcp_project}} >/dev/null 2>&1; then
+            gcloud run services update "$SERVICE_NAME" \
+                --region={{gcp_region}} \
+                --project={{gcp_project}} \
+                --min=0 \
+                --quiet
+        else
+            ALL_PRESENT=0
+            echo "$SERVICE_NAME is already absent; continuing a previously preflighted cleanup."
+        fi
+    done
+    if [ "$ALL_PRESENT" -eq 1 ]; then
+        VALIDATOR_BACKEND_RELEASE_TAG={{release_tag}} just gcp validator-services-register {{stage}}
+    else
+        echo "Skipping group provider re-verification because at least one resource was already deleted."
+    fi
+    just gcp management-cmd {{stage}} "retire_validator_service_release {{release_tag}} --json"
+
+    for name in energyplus fmu shacl schematron; do
+        SERVICE_NAME="{{app_name}}-validator-service-${name}-${RELEASE_LABEL}"
+        if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
+        if gcloud run services describe "$SERVICE_NAME" \
+            --region={{gcp_region}} \
+            --project={{gcp_project}} >/dev/null 2>&1; then
+            gcloud run services delete "$SERVICE_NAME" \
+                --region={{gcp_region}} \
+                --project={{gcp_project}} \
+                --quiet
+        fi
+    done
+    just gcp management-cmd {{stage}} "retire_validator_service_release {{release_tag}} --provider-deleted --json"
+
+# Safe application-level route/readiness inventory.
+[arg('stage', pattern='dev|staging|prod')]
+validator-deployments-list stage: _require-gcp-config
+    just gcp management-cmd {{stage}} "list_validator_deployments --json"
+
+# Report persisted p50/p95 timing stages without blending Job and Service
+# deployment revisions. JSON output can be retained with rollout evidence.
+# Usage: just gcp validator-latency-report prod 168 20
+[arg('stage', pattern='dev|staging|prod')]
+validator-latency-report stage since_hours="168" minimum_samples="20": _require-gcp-config
+    just gcp management-cmd {{stage}} "report_validator_execution_latency --since-hours={{since_hours}} --minimum-samples={{minimum_samples}} --json"
+
+# Reconcile the validator dashboard, log metrics, and alert policies. Policies
+# create incidents even without a notification channel; set comma-separated
+# full channel resource names to deliver email/SMS/PagerDuty notifications.
+# Usage: just gcp validator-observability prod
+[arg('stage', pattern='dev|staging|prod')]
+validator-observability stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        PROVIDER_QUEUE="${APP_NAME}-validator-provider"
+        WORKER_SERVICE="${APP_NAME}-worker"
+        SERVICE_REGEX="${APP_NAME}-validator-service-(energyplus|fmu|shacl|schematron)-v[0-9]+-[0-9]+-[0-9]+"
+    else
+        PROVIDER_QUEUE="${APP_NAME}-validator-provider-{{stage}}"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        SERVICE_REGEX="${APP_NAME}-validator-service-(energyplus|fmu|shacl|schematron)(-v[0-9]+-[0-9]+-[0-9]+)?-{{stage}}"
+    fi
+    CHANNELS_JSON=$(jq -cn --arg value "${VALIDATOR_MONITORING_NOTIFICATION_CHANNELS:-}" \
+        '$value | split(",") | map(gsub("^[[:space:]]+|[[:space:]]+$"; "")) | map(select(length > 0))')
+    if [ "$CHANNELS_JSON" = "[]" ]; then
+        echo "WARNING: no VALIDATOR_MONITORING_NOTIFICATION_CHANNELS configured; incidents stay in Cloud Monitoring." >&2
+    fi
+
+    upsert_log_metric() {
+        local metric_name="$1"
+        local description="$2"
+        local event_name="$3"
+        local log_filter="resource.type=\"cloud_run_revision\" resource.labels.service_name=\"$WORKER_SERVICE\" jsonPayload.event=\"$event_name\""
+        if gcloud logging metrics describe "$metric_name" --project={{gcp_project}} >/dev/null 2>&1; then
+            gcloud logging metrics update "$metric_name" \
+                --project={{gcp_project}} \
+                --description="$description" \
+                --log-filter="$log_filter" \
+                --quiet >/dev/null
+        else
+            gcloud logging metrics create "$metric_name" \
+                --project={{gcp_project}} \
+                --description="$description" \
+                --log-filter="$log_filter" \
+                --quiet >/dev/null
+        fi
+        echo "Log metric reconciled: $metric_name"
+    }
+
+    upsert_policy() {
+        local display_name="$1"
+        local condition_name="$2"
+        local filter="$3"
+        local threshold="$4"
+        local duration="$5"
+        local aligner="$6"
+        local reducer="${7:-}"
+        local aggregation
+        local policy
+        local existing
+        aggregation=$(jq -cn \
+            --arg aligner "$aligner" \
+            --arg reducer "$reducer" \
+            '{alignmentPeriod:"60s",perSeriesAligner:$aligner} + if $reducer == "" then {} else {crossSeriesReducer:$reducer} end')
+        policy=$(jq -cn \
+            --arg display_name "$display_name" \
+            --arg condition_name "$condition_name" \
+            --arg filter "$filter" \
+            --arg duration "$duration" \
+            --arg stage "{{stage}}" \
+            --argjson threshold "$threshold" \
+            --argjson aggregation "$aggregation" \
+            --argjson channels "$CHANNELS_JSON" \
+            '{displayName:$display_name,combiner:"OR",enabled:true,notificationChannels:$channels,userLabels:{component:"validator-execution",stage:$stage},conditions:[{displayName:$condition_name,conditionThreshold:{filter:$filter,comparison:"COMPARISON_GT",thresholdValue:$threshold,duration:$duration,aggregations:[$aggregation],trigger:{count:1}}}],documentation:{mimeType:"text/markdown",content:"Managed by `just gcp validator-observability`. Inspect the validator execution dashboard and rollout runbook before changing routing or capacity."}}')
+        existing=$(gcloud monitoring policies list \
+            --project={{gcp_project}} \
+            --filter="displayName=\"$display_name\"" \
+            --format='value(name)')
+        if [ "$(printf '%s\n' "$existing" | sed '/^$/d' | wc -l | tr -d ' ')" -gt 1 ]; then
+            echo "Error: duplicate Monitoring policies named '$display_name'." >&2
+            exit 1
+        fi
+        if [ -n "$existing" ]; then
+            gcloud monitoring policies update "$existing" \
+                --project={{gcp_project}} \
+                --policy="$policy" \
+                --quiet >/dev/null
+        else
+            gcloud monitoring policies create \
+                --project={{gcp_project}} \
+                --policy="$policy" \
+                --quiet >/dev/null
+        fi
+        echo "Alert policy reconciled: $display_name"
+    }
+
+    CALLBACK_METRIC="validibot_validator_callback_failure_{{stage}}"
+    TIMEOUT_METRIC="validibot_validator_attempt_timeout_{{stage}}"
+    DRIFT_METRIC="validibot_validator_deployment_drift_{{stage}}"
+    upsert_log_metric "$CALLBACK_METRIC" "Validator callback processing failures ({{stage}})" "validator_callback_failure"
+    upsert_log_metric "$TIMEOUT_METRIC" "Validator attempts reaching their absolute deadline ({{stage}})" "validator_attempt_timeout"
+    upsert_log_metric "$DRIFT_METRIC" "Primary validator Service deployment drift ({{stage}})" "validator_deployment_drift"
+
+    QUEUE_FILTER="metric.type=\"cloudtasks.googleapis.com/queue/depth\" resource.type=\"cloud_tasks_queue\" resource.labels.queue_id=\"$PROVIDER_QUEUE\" resource.labels.location=\"{{gcp_region}}\""
+    QUEUE_ERROR_FILTER="metric.type=\"cloudtasks.googleapis.com/queue/task_attempt_count\" resource.type=\"cloud_tasks_queue\" resource.labels.queue_id=\"$PROVIDER_QUEUE\" resource.labels.location=\"{{gcp_region}}\" metric.labels.response_code!=\"ok\""
+    PENDING_LATENCY_FILTER="metric.type=\"run.googleapis.com/request_latency/pending\" resource.type=\"cloud_run_revision\" resource.labels.service_name=monitoring.regex.full_match(\"$SERVICE_REGEX\")"
+    PENDING_FILTER="metric.type=\"run.googleapis.com/pending_queue/pending_requests\" resource.type=\"cloud_run_revision\" resource.labels.service_name=monitoring.regex.full_match(\"$SERVICE_REGEX\")"
+    IDLE_FILTER="metric.type=\"run.googleapis.com/container/instance_count\" resource.type=\"cloud_run_revision\" resource.labels.service_name=monitoring.regex.full_match(\"$SERVICE_REGEX\") metric.labels.state=\"idle\""
+    upsert_policy "Validibot {{stage}} validator provider backlog" "Provider queue depth exceeds 10" "$QUEUE_FILTER" 10 300s ALIGN_MAX
+    upsert_policy "Validibot {{stage}} validator provider delivery errors" "Provider task returned an error" "$QUEUE_ERROR_FILTER" 0 0s ALIGN_SUM
+    upsert_policy "Validibot {{stage}} validator startup latency" "Service pending/startup p95 exceeds target" "$PENDING_LATENCY_FILTER" "${VALIDATOR_SERVICE_PENDING_P95_ALERT_MS:-30000}" 300s ALIGN_PERCENTILE_95
+    upsert_policy "Validibot {{stage}} validator saturation" "Service requests remain pending" "$PENDING_FILTER" 0 300s ALIGN_MAX
+    upsert_policy "Validibot {{stage}} unexpected warm validator capacity" "Idle instances exceed the approved total" "$IDLE_FILTER" "${VALIDATOR_SERVICE_EXPECTED_MAX_IDLE_INSTANCES:-4}" 900s ALIGN_MAX REDUCE_SUM
+    upsert_policy "Validibot {{stage}} validator callback failures" "Callback processing failed" "metric.type=\"logging.googleapis.com/user/$CALLBACK_METRIC\" resource.type=\"cloud_run_revision\"" 0 0s ALIGN_SUM
+    upsert_policy "Validibot {{stage}} validator attempt timeouts" "Attempt reached its absolute deadline" "metric.type=\"logging.googleapis.com/user/$TIMEOUT_METRIC\" resource.type=\"cloud_run_revision\"" 0 0s ALIGN_SUM
+    upsert_policy "Validibot {{stage}} validator deployment drift" "Hourly provider verification detected drift" "metric.type=\"logging.googleapis.com/user/$DRIFT_METRIC\" resource.type=\"cloud_run_revision\"" 0 0s ALIGN_SUM
+
+    DASHBOARD_TEMPLATE="just/gcp/monitoring/validator-execution-dashboard.json"
+    DASHBOARD_CONFIG=$(mktemp)
+    DASHBOARD_UPDATE=$(mktemp)
+    trap 'rm -f "$DASHBOARD_CONFIG" "$DASHBOARD_UPDATE"' EXIT
+    sed \
+        -e "s/__STAGE__/{{stage}}/g" \
+        -e "s/__REGION__/{{gcp_region}}/g" \
+        -e "s/__PROVIDER_QUEUE__/$PROVIDER_QUEUE/g" \
+        -e "s|__SERVICE_REGEX__|$SERVICE_REGEX|g" \
+        "$DASHBOARD_TEMPLATE" > "$DASHBOARD_CONFIG"
+    DASHBOARD_DISPLAY="Validibot {{stage}} validator execution"
+    DASHBOARD_NAME=$(gcloud monitoring dashboards list \
+        --project={{gcp_project}} \
+        --filter="displayName=\"$DASHBOARD_DISPLAY\"" \
+        --format='value(name)')
+    if [ "$(printf '%s\n' "$DASHBOARD_NAME" | sed '/^$/d' | wc -l | tr -d ' ')" -gt 1 ]; then
+        echo "Error: duplicate Monitoring dashboards named '$DASHBOARD_DISPLAY'." >&2
+        exit 1
+    fi
+    if [ -n "$DASHBOARD_NAME" ]; then
+        DASHBOARD_ETAG=$(gcloud monitoring dashboards describe "$DASHBOARD_NAME" \
+            --project={{gcp_project}} \
+            --format='value(etag)')
+        jq --arg etag "$DASHBOARD_ETAG" '.etag=$etag' "$DASHBOARD_CONFIG" > "$DASHBOARD_UPDATE"
+        gcloud monitoring dashboards update "$DASHBOARD_NAME" \
+            --project={{gcp_project}} \
+            --config-from-file="$DASHBOARD_UPDATE" \
+            --quiet >/dev/null
+    else
+        gcloud monitoring dashboards create \
+            --project={{gcp_project}} \
+            --config-from-file="$DASHBOARD_CONFIG" \
+            --quiet >/dev/null
+    fi
+    echo "Dashboard reconciled: $DASHBOARD_DISPLAY"
 
 # Exercise the real GCS Credential Access Boundary token with the deployed
 # Django image and trusted stage identity. The management command creates only
@@ -3897,12 +4581,14 @@ maintenance-on stage: _require-gcp-config
         WORKER_SERVICE="${APP_NAME}-worker"
         DB_INSTANCE="${APP_NAME}-db"
         QUEUE_NAME="${APP_NAME}-tasks"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
         JOB_SUFFIX=""
     else
         WEB_SERVICE="${APP_NAME}-web-{{stage}}"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
         DB_INSTANCE="${APP_NAME}-db-{{stage}}"
         QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
         JOB_SUFFIX="-{{stage}}"
     fi
 
@@ -3929,7 +4615,7 @@ maintenance-on stage: _require-gcp-config
 
     # 3. Pause Cloud Scheduler jobs
     echo "3. Pausing Cloud Scheduler jobs..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         gcloud scheduler jobs pause "$job" \
             --project {{gcp_project}} \
@@ -3943,6 +4629,10 @@ maintenance-on stage: _require-gcp-config
         --location {{gcp_region}} \
         --project {{gcp_project}} \
         --quiet 2>/dev/null && echo "   Queue paused" || echo "   - Queue not found"
+    gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} \
+        --project {{gcp_project}} \
+        --quiet 2>/dev/null && echo "   Provider queue paused" || echo "   - Provider queue not found"
 
     # 5. Stop Cloud SQL instance
     echo "5. Stopping Cloud SQL instance $DB_INSTANCE..."
@@ -3967,7 +4657,7 @@ maintenance-on stage: _require-gcp-config
     echo "  Web service: internal-only (no public traffic)"
     echo "  Worker service: internal-only"
     echo "  Scheduler jobs: paused"
-    echo "  Task queue: paused"
+    echo "  Task queues: paused"
     echo "  Database: stopped"
     echo ""
     echo "To bring back online: just gcp maintenance-off {{stage}}"
@@ -3986,12 +4676,14 @@ maintenance-off stage: _require-gcp-config
         WORKER_SERVICE="${APP_NAME}-worker"
         DB_INSTANCE="${APP_NAME}-db"
         QUEUE_NAME="${APP_NAME}-tasks"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
         JOB_SUFFIX=""
     else
         WEB_SERVICE="${APP_NAME}-web-{{stage}}"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
         DB_INSTANCE="${APP_NAME}-db-{{stage}}"
         QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
         JOB_SUFFIX="-{{stage}}"
     fi
 
@@ -4020,10 +4712,14 @@ maintenance-off stage: _require-gcp-config
         --location {{gcp_region}} \
         --project {{gcp_project}} \
         --quiet 2>/dev/null && echo "   Queue resumed" || echo "   - Queue not found"
+    gcloud tasks queues resume "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} \
+        --project {{gcp_project}} \
+        --quiet 2>/dev/null && echo "   Provider queue resumed" || echo "   - Provider queue not found"
 
     # 3. Resume Cloud Scheduler jobs
     echo "3. Resuming Cloud Scheduler jobs..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         gcloud scheduler jobs resume "$job" \
             --project {{gcp_project}} \
@@ -4072,7 +4768,7 @@ maintenance-off stage: _require-gcp-config
     echo "  Web service: accepting public traffic"
     echo "  Worker service: internal-only (correct)"
     echo "  Scheduler jobs: running"
-    echo "  Task queue: running"
+    echo "  Task queues: running"
     echo "  Database: running"
     echo ""
     echo "Check status: just gcp status {{stage}}"
@@ -4090,10 +4786,12 @@ maintenance-status stage: _require-gcp-config
         WEB_SERVICE="${APP_NAME}-web"
         DB_INSTANCE="${APP_NAME}-db"
         QUEUE_NAME="${APP_NAME}-tasks"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
     else
         WEB_SERVICE="${APP_NAME}-web-{{stage}}"
         DB_INSTANCE="${APP_NAME}-db-{{stage}}"
         QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
     fi
 
     echo "Maintenance status for {{stage}}:"
@@ -4104,9 +4802,9 @@ maintenance-status stage: _require-gcp-config
     INGRESS=$(gcloud run services describe "$WEB_SERVICE" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
-        --format="value(spec.template.metadata.annotations.'run.googleapis.com/ingress')" 2>/dev/null || echo "unknown")
-    if [ "$INGRESS" = "all" ]; then
-        echo "Web service:  ONLINE (public traffic allowed)"
+        --format="value(metadata.annotations.'run.googleapis.com/ingress')" 2>/dev/null || echo "unknown")
+    if [ "$INGRESS" = "all" ] || [ "$INGRESS" = "internal-and-cloud-load-balancing" ]; then
+        echo "Web service:  ONLINE ($INGRESS)"
     else
         echo "Web service:  MAINTENANCE ($INGRESS)"
     fi
@@ -4130,6 +4828,15 @@ maintenance-status stage: _require-gcp-config
         echo "Task queue:   ONLINE ($QUEUE_STATUS)"
     else
         echo "Task queue:   MAINTENANCE ($QUEUE_STATUS)"
+    fi
+    PROVIDER_QUEUE_STATUS=$(gcloud tasks queues describe "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(state)" 2>/dev/null || echo "unknown")
+    if [ "$PROVIDER_QUEUE_STATUS" = "RUNNING" ]; then
+        echo "Provider queue: ONLINE ($PROVIDER_QUEUE_STATUS)"
+    else
+        echo "Provider queue: MAINTENANCE ($PROVIDER_QUEUE_STATUS)"
     fi
 
     echo ""
@@ -4445,12 +5152,7 @@ validate-gcp:
     echo ""
 
     echo "2. Checking service health..."
-    URL=$(gcloud run services describe ${APP_NAME}-web \
-        --region={{gcp_region}} \
-        --project={{gcp_project}} \
-        --format="value(status.url)")
-
-    if curl -s --max-time 10 "$URL" &>/dev/null; then
+    if just gcp health-check prod; then
         echo -e "${GREEN}OK${NC} Service responds to requests"
         ((TESTS_PASSED++))
     else
@@ -4714,6 +5416,7 @@ verify-deployment-quick stage: _require-gcp-config
 #   2. SA role sprawl (lists roles per SA for review)
 #   3. Worker ingress posture (should be internal)
 #   4. Public bucket access (should only be on public/ prefix)
+#   5. Validator Services remain private with only the dedicated invoker
 #
 # Usage: just gcp security-audit prod
 [arg('stage', pattern='dev|staging|prod')]
@@ -4738,18 +5441,20 @@ security-audit stage: _require-gcp-config
     if [ "{{stage}}" = "prod" ]; then
         MAIN_SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        PROVIDER_INVOKER="${APP_NAME}-validator-invoker-prod@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker"
         STORAGE_BUCKET="${APP_NAME}-storage"
     else
         MAIN_SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        PROVIDER_INVOKER="${APP_NAME}-validator-invoker-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
         STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
     fi
 
     # 1. Check for user-managed SA keys (should be zero)
     echo "1. Checking for user-managed SA keys..."
-    for sa in "$MAIN_SA" "$VALIDATOR_SA"; do
+    for sa in "$MAIN_SA" "$VALIDATOR_SA" "$PROVIDER_INVOKER"; do
         sa_short="${sa%%@*}"
         KEYS=$(gcloud iam service-accounts keys list \
             --iam-account="$sa" \
@@ -4758,18 +5463,18 @@ security-audit stage: _require-gcp-config
             --format="value(name)" 2>/dev/null || echo "")
         if [ -z "$KEYS" ]; then
             echo "   PASS: $sa_short has no user-managed keys"
-            ((PASS++))
+            ((PASS+=1))
         else
             KEY_COUNT=$(echo "$KEYS" | wc -l | tr -d ' ')
             echo "   WARN: $sa_short has $KEY_COUNT user-managed key(s) - consider deleting"
-            ((WARN++))
+            ((WARN+=1))
         fi
     done
     echo ""
 
     # 2. Check SA role assignments
     echo "2. Checking SA role assignments..."
-    for sa in "$MAIN_SA" "$VALIDATOR_SA"; do
+    for sa in "$MAIN_SA" "$VALIDATOR_SA" "$PROVIDER_INVOKER"; do
         sa_short="${sa%%@*}"
         echo "   $sa_short:"
         ROLES=$(gcloud projects get-iam-policy {{gcp_project}} \
@@ -4782,6 +5487,10 @@ security-audit stage: _require-gcp-config
             echo "$ROLES" | while read -r role; do
                 echo "     - $role"
             done
+            if [ "$sa" = "$PROVIDER_INVOKER" ]; then
+                echo "     WARN: provider invoker must have no project-level roles"
+                ((WARN+=1))
+            fi
         fi
     done
     echo ""
@@ -4791,15 +5500,15 @@ security-audit stage: _require-gcp-config
     WORKER_INGRESS=$(gcloud run services describe "$WORKER_SERVICE" \
         --region={{gcp_region}} \
         --project={{gcp_project}} \
-        --format="value(spec.template.metadata.annotations.'run.googleapis.com/ingress')" 2>/dev/null || echo "unknown")
+        --format="value(metadata.annotations.'run.googleapis.com/ingress')" 2>/dev/null || echo "unknown")
     if [ "$WORKER_INGRESS" = "internal" ]; then
         echo "   PASS: Worker ingress is 'internal'"
-        ((PASS++))
+        ((PASS+=1))
     elif [ "$WORKER_INGRESS" = "unknown" ]; then
         echo "   SKIP: Worker service not found (not yet deployed?)"
     else
         echo "   WARN: Worker ingress is '$WORKER_INGRESS' (expected 'internal')"
-        ((WARN++))
+        ((WARN+=1))
     fi
     echo ""
 
@@ -4817,13 +5526,50 @@ security-audit stage: _require-gcp-config
         ' 2>/dev/null || echo "")
     if [ -z "$UNCONDITIONAL_PUBLIC" ]; then
         echo "   PASS: No unconditional public access on $STORAGE_BUCKET"
-        ((PASS++))
+        ((PASS+=1))
     else
         echo "   WARN: Unconditional public access found on $STORAGE_BUCKET:"
         echo "$UNCONDITIONAL_PUBLIC" | while read -r line; do
             echo "     $line"
         done
-        ((WARN++))
+        ((WARN+=1))
+    fi
+    echo ""
+
+    # 5. Validator Service invocation policy
+    echo "5. Checking validator Service IAM..."
+    SERVICES=$(gcloud run services list \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
+        --format='value(metadata.name)' 2>/dev/null || true)
+    if [ -z "$SERVICES" ]; then
+        if [ "{{stage}}" = "prod" ]; then
+            echo "   WARN: no production validator Services found"
+            ((WARN+=1))
+        else
+            echo "   SKIP: no validator Services found"
+        fi
+    else
+        while IFS= read -r SERVICE; do
+            [ -z "$SERVICE" ] && continue
+            POLICY=$(gcloud run services get-iam-policy "$SERVICE" \
+                --region={{gcp_region}} \
+                --project={{gcp_project}} \
+                --format=json)
+            BROAD=$(jq -r '[.bindings[]?.members[]? | select(. == "allUsers" or . == "allAuthenticatedUsers")] | length' <<< "$POLICY")
+            EXPECTED=$(jq -r --arg member "serviceAccount:$PROVIDER_INVOKER" \
+                '[.bindings[]? | select(.role == "roles/run.invoker") | .members[]? | select(. == $member)] | length' <<< "$POLICY")
+            INVOKER_COUNT=$(jq -r \
+                '[.bindings[]? | select(.role == "roles/run.invoker") | .members[]?] | length' <<< "$POLICY")
+            if [ "$BROAD" -eq 0 ] && [ "$EXPECTED" -eq 1 ] && [ "$INVOKER_COUNT" -eq 1 ]; then
+                echo "   PASS: $SERVICE grants only the dedicated invoker"
+                ((PASS+=1))
+            else
+                echo "   WARN: $SERVICE has unexpected invoker IAM (broad=$BROAD expected=$EXPECTED total=$INVOKER_COUNT)"
+                ((WARN+=1))
+            fi
+        done <<< "$SERVICES"
     fi
     echo ""
 
@@ -5750,7 +6496,7 @@ validators stage: _require-gcp-config
         DESCRIBE=$(gcloud run jobs describe "$JOB_NAME" \
             --region={{gcp_region}} \
             --project={{gcp_project}} \
-            --format='value(spec.template.template.containers[0].image,metadata.labels.validator)' 2>/dev/null \
+            --format='value(spec.template.spec.template.spec.containers[0].image,metadata.labels.validator)' 2>/dev/null \
             || echo -e "(unknown)\t(unknown)")
         IMAGE=$(echo "$DESCRIBE" | awk -F'\t' '{print $1}')
         VALIDATOR=$(echo "$DESCRIBE" | awk -F'\t' '{print $2}')
@@ -5804,6 +6550,36 @@ validators stage: _require-gcp-config
     echo ""
     echo "Tip: run 'just gcp doctor {{stage}}' for the deployment-wide"
     echo "image-policy check (VB712 / VB713)."
+
+# List the immutable Cloud Run Service side of the validator deployment seam.
+# Application routing/readiness remains authoritative in
+# ``validator-deployments-list``; this view exposes live provider drift.
+[arg('stage', pattern='dev|staging|prod')]
+validator-services stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Validator Cloud Run Services — {{stage}}"
+    SERVICES=$(gcloud run services list \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
+        --format='value(metadata.name)' 2>/dev/null || true)
+    if [ -z "$SERVICES" ]; then
+        echo "No validator Services found."
+        exit 0
+    fi
+    printf "%-48s %-28s %-5s %-7s %-7s %s\n" \
+        "SERVICE" "READY REVISION" "CONC" "MIN" "MAX" "IMAGE"
+    while IFS= read -r SERVICE; do
+        [ -z "$SERVICE" ] && continue
+        gcloud run services describe "$SERVICE" \
+            --region={{gcp_region}} \
+            --project={{gcp_project}} \
+            --format='value(metadata.name,status.latestReadyRevisionName,spec.template.spec.containerConcurrency,spec.template.metadata.annotations.autoscaling\.knative\.dev/minScale,spec.template.metadata.annotations.autoscaling\.knative\.dev/maxScale,spec.template.spec.containers[0].image)' \
+            | awk -F'\t' '{printf "%-48s %-28s %-5s %-7s %-7s %s\n", $1, $2, $3, $4, $5, $6}'
+    done <<< "$SERVICES"
+    echo ""
+    echo "Application routing: just gcp validator-deployments-list {{stage}}"
 
 # =============================================================================
 # Cleanup (Phase 5 of ADR-2026-04-27)

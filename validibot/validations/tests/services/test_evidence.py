@@ -215,6 +215,15 @@ class TestBuildManifest:
             state=ExecutionAttemptState.COMPLETED,
             runner_type="cloud_run_job",
             provider_execution_id="execution-1",
+            deployment_snapshot={
+                "deployment_id": "deployment-1",
+                "deployment_kind": "cloud_run_service",
+                "deployment_revision": "validator-shacl-00042-abc",
+                "provider_resource_name": (
+                    "projects/example/locations/australia-southeast1/"
+                    "services/validibot-validator-service-shacl"
+                ),
+            },
             input_envelope_sha256="c" * 64,
             output_envelope_sha256="d" * 64,
             backend_image_digest="registry/backend@sha256:" + "e" * 64,
@@ -260,6 +269,10 @@ class TestBuildManifest:
         assert record.input_files[0].storage_version == "sha256:" + "b" * 64
         assert record.input_relationships[0].source_sha256 == "a" * 64
         assert record.input_relationships[0].target_sha256 == "b" * 64
+        if "execution_deployment_id" in type(record).model_fields:
+            assert record.execution_deployment_id == "deployment-1"
+            assert record.deployment_kind == "cloud_run_service"
+            assert record.deployment_revision == "validator-shacl-00042-abc"
 
     def test_build_redacts_attempt_output_digest_without_losing_verification(self):
         """DO_NOT_STORE hides output identity but retains confirmed input evidence."""

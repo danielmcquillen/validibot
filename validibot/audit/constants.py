@@ -50,6 +50,34 @@ class AuditAction(TextChoices):
     VALIDATOR_ADDED = "validator_added", _("Validator Added")
     VALIDATOR_UPDATED = "validator_updated", _("Validator Updated")
     VALIDATOR_REMOVED = "validator_removed", _("Validator Removed")
+    VALIDATOR_DEPLOYMENT_ACTIVATED = (
+        "validator_deployment_activated",
+        _("Validator Deployment Activated"),
+    )
+    VALIDATOR_DEPLOYMENT_REGISTERED = (
+        "validator_deployment_registered",
+        _("Validator Deployment Registered"),
+    )
+    VALIDATOR_DEPLOYMENT_VERIFIED = (
+        "validator_deployment_verified",
+        _("Validator Deployment Verified"),
+    )
+    VALIDATOR_DEPLOYMENT_CAPACITY_UPDATED = (
+        "validator_deployment_capacity_updated",
+        _("Validator Deployment Capacity Updated"),
+    )
+    VALIDATOR_DEPLOYMENT_BLOCKED = (
+        "validator_deployment_blocked",
+        _("Validator Deployment Blocked"),
+    )
+    VALIDATOR_DEPLOYMENT_UNBLOCKED = (
+        "validator_deployment_unblocked",
+        _("Validator Deployment Unblocked"),
+    )
+    VALIDATOR_DEPLOYMENT_RETIRED = (
+        "validator_deployment_retired",
+        _("Validator Deployment Retired"),
+    )
     # Organization lifecycle. We audit *changes* and deletion, not
     # creation: a new org is usually an auto-provisioned personal
     # workspace (noise), and auditing creation would also mean an org's
@@ -148,6 +176,14 @@ AUDITABLE_FIELDS: dict[str, tuple[str, ...]] = {
     # field paths, so the full diff goes behind the redaction line.
     # Lives in the ``validations`` app, not ``workflows``.
     "validations.Ruleset": ("name",),
+    "validations.ValidatorExecutionDeployment": (
+        "readiness_state",
+        "routing_role",
+        "emergency_blocked",
+        "emergency_block_reason",
+        "minimum_instances",
+        "maximum_instances",
+    ),
     # Membership — ``roles`` is an M2M through ``MembershipRole``, so
     # direct role changes fire on that through-table rather than on
     # ``Membership`` itself. Here we capture the suspension flag; role
@@ -203,6 +239,13 @@ RETENTION_COLD_DAYS: dict[AuditAction, int] = {
     AuditAction.VALIDATOR_ADDED: 365 * 2,
     AuditAction.VALIDATOR_UPDATED: 365 * 2,
     AuditAction.VALIDATOR_REMOVED: 365 * 2,
+    AuditAction.VALIDATOR_DEPLOYMENT_ACTIVATED: 365 * 3,
+    AuditAction.VALIDATOR_DEPLOYMENT_REGISTERED: 365 * 3,
+    AuditAction.VALIDATOR_DEPLOYMENT_VERIFIED: 365 * 3,
+    AuditAction.VALIDATOR_DEPLOYMENT_CAPACITY_UPDATED: 365 * 3,
+    AuditAction.VALIDATOR_DEPLOYMENT_BLOCKED: 365 * 3,
+    AuditAction.VALIDATOR_DEPLOYMENT_UNBLOCKED: 365 * 3,
+    AuditAction.VALIDATOR_DEPLOYMENT_RETIRED: 365 * 3,
     # Permission + member changes: 3 years (insider-threat window)
     AuditAction.MEMBER_INVITED: 365 * 3,
     AuditAction.MEMBER_ROLE_CHANGED: 365 * 3,

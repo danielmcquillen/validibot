@@ -13,8 +13,8 @@ Validator → ExecutionBackend → Infrastructure
                           ↓
           ┌───────────────┼───────────────┐
           ↓               ↓               ↓
-  DockerComposeBackend   GCPBackend      AWSBackend
-  (Docker socket)   (Cloud Run+GCS)    (future)
+  DockerComposeBackend   GCP deployments              AWSBackend
+  (Docker socket)        (Service or retained Job)    (future)
 ```
 
 Each backend handles:
@@ -26,12 +26,14 @@ Each backend handles:
 
 ## Backend Selection
 
-The backend is selected via the `VALIDATOR_RUNNER` setting:
+`VALIDATOR_RUNNER` selects local Docker versus managed GCP. On GCP, the
+attempt resolver first pins an eligible `ValidatorExecutionDeployment`; its
+deployment kind then selects the exact Service or Job adapter:
 
 | Setting Value        | Backend                         | Execution Model |
 | -------------------- | ------------------------------- | --------------- |
 | `"docker"`           | `DockerComposeExecutionBackend` | Synchronous     |
-| `"google_cloud_run"` | `GCPExecutionBackend`           | Asynchronous    |
+| `"google_cloud_run"` | `CloudRunServiceExecutionBackend` or `CloudRunJobsExecutionBackend` | Asynchronous |
 
 If `VALIDATOR_RUNNER` is not set, the system auto-detects:
 
@@ -63,25 +65,29 @@ Used for Docker Compose deployments where validators run as local Docker contain
 
 ### Asynchronous (GCP Cloud Run)
 
-Used for GCP deployments where validators run as Cloud Run Jobs.
+Used for GCP deployments where request-shaped attempts run on private Cloud
+Run Services and attempts over the Service budget use retained Cloud Run Jobs.
 
 ```
 1. Validator calls backend.execute(request)
 2. Backend uploads inputs below
    ``gs://<bucket>/runs/<org>/<run>/attempts/<attempt>/``
-3. Backend triggers Cloud Run Job (non-blocking)
-4. Returns ExecutionResponse with is_complete=False
-5. Container POSTs callback to Django when complete
-6. Callback handler loads output envelope from GCS
+3. Resolver pins the exact ready deployment and immutable route/image facts
+4. Service path creates one deterministic provider Cloud Task; Job path calls
+   the Cloud Run Jobs API
+5. Returns ExecutionResponse with is_complete=False
+6. Container writes immutable output and POSTs an authenticated callback
+7. Callback handler verifies and loads the exact output envelope from GCS
 ```
 
 **Characteristics:**
 
 - Non-blocking — validation runs in background
 - Scalable — Cloud Run handles concurrency
-- Retry-safe — attempts never share an object prefix
-- Callback-based — results arrive via authenticated HTTP POST
-- IAM-secured — no shared secrets, Google-signed ID tokens
+- Retry-safe — attempts never share an object prefix or accepted output
+- Callback-based — results require OIDC plus attempt-bound credentials
+- IAM-secured — a dedicated identity is the sole Service invoker; runtime
+  identities have no ambient GCS authority
 
 ## Two-Layer Architecture
 
@@ -92,7 +98,7 @@ ExecutionBackend (high-level orchestration)
     ├── Storage management (upload/download envelopes)
     ├── Envelope building (input envelope construction)
     ├── Status checking (check_status() for reconciliation)
-    └── Delegates to → ValidatorRunner (low-level container execution)
+    └── Delegates to → local/Job runner or Service provider-task dispatcher
                             ├── Container spawn/wait/remove
                             ├── Security hardening (cap_drop, read_only, etc.)
                             ├── Container labeling (Ryuk pattern)
@@ -102,14 +108,16 @@ ExecutionBackend (high-level orchestration)
 **Why two layers?**
 
 - **ExecutionBackend** handles orchestration: it knows about storage URIs, envelopes, and the callback protocol. It doesn't know how containers are spawned.
-- **ValidatorRunner** handles container lifecycle: it knows about Docker APIs and Cloud Run Jobs. It doesn't know about envelopes or callbacks.
+- **ValidatorRunner/provider dispatcher** handles the infrastructure launch:
+  local Docker lifecycle, the Cloud Run Jobs API, or deterministic Cloud Tasks
+  HTTP delivery to a private Service.
 
 This separation means new deployment targets only need a new runner (for container execution) and a new backend (for storage integration), without duplicating orchestration logic.
 
 | Layer | Docker Compose | GCP |
 |-------|---------------|-----|
-| Backend | `DockerComposeExecutionBackend` | `GCPExecutionBackend` |
-| Runner | `DockerValidatorRunner` | `GoogleCloudRunValidatorRunner` |
+| Backend | `DockerComposeExecutionBackend` | `CloudRunServiceExecutionBackend` / `CloudRunJobsExecutionBackend` |
+| Runner/dispatch | `DockerValidatorRunner` | Provider HTTP task dispatcher / Cloud Run Jobs launcher |
 | Storage | Local filesystem (`file://`) | GCS (`gs://`) |
 | Execution | Sync (blocking) | Async (callback) |
 
@@ -121,8 +129,11 @@ validibot/validations/services/
 │   ├── __init__.py               # Exports get_execution_backend()
 │   ├── base.py                   # ExecutionBackend ABC, ExecutionRequest, ExecutionResponse
 │   ├── docker_compose.py         # DockerComposeExecutionBackend
-│   ├── gcp.py                    # GCPExecutionBackend
-│   └── registry.py               # Backend selection and caching
+│   ├── gcp.py                    # CloudRunJobsExecutionBackend
+│   ├── gcp_service.py            # CloudRunServiceExecutionBackend
+│   ├── gcp_service_dispatch.py   # deterministic private-Service task
+│   ├── deployments.py            # resolution, activation, audit, retirement
+│   └── registry.py               # deployment-aware backend selection
 ├── runners/                      # Runner layer (low-level)
 │   ├── __init__.py               # Exports get_validator_runner()
 │   ├── base.py                   # ValidatorRunner ABC, ExecutionStatus, ExecutionResult

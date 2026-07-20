@@ -169,6 +169,18 @@ SCHEDULED_ADMIN_TASKS: tuple[ScheduledAdminTaskDefinition, ...] = (
         schedule_interval_minutes=10,
         description="Mark validation runs stuck >30min as FAILED",
     ),
+    ScheduledAdminTaskDefinition(
+        id="verify-validator-deployments",
+        name="Verify Validator Deployments",
+        celery_task="",
+        api_endpoint="/api/v1/scheduled/verify-validator-deployments/",
+        schedule_cron="17 * * * *",
+        description=(
+            "Detect image, revision, IAM, runtime, timeout, or capacity drift "
+            "in primary GCP validator Services"
+        ),
+        backends=(Backend.GCP,),
+    ),
     # -------------------------------------------------------------------------
     # API Cleanup Tasks
     # -------------------------------------------------------------------------

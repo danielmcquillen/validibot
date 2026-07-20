@@ -126,7 +126,9 @@ dependencies = [
   # validator input/output envelope.
   # 0.18.0 adds URI-free attempt/input evidence models and artifact storage
   # versions to the strict file-identity contract introduced in 0.16.0.
-  "validibot-shared==0.18.0",
+  # 0.19.0 records the immutable execution deployment selected for each
+  # managed attempt in portable evidence manifests.
+  "validibot-shared==0.19.0",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

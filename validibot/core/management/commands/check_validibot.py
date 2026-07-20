@@ -300,6 +300,10 @@ class Command(BaseCommand):
             ("Roles & Permissions", self._check_roles_permissions),
             ("Validators", self._check_validators),
             (
+                "Validator execution deployments",
+                self._check_validator_execution_deployments,
+            ),
+            (
                 "Validator backend image policy",
                 self._check_validator_backend_image_policy,
             ),
@@ -993,12 +997,228 @@ class Command(BaseCommand):
                 "No enabled validators found",
             )
 
+    def _check_validator_execution_deployments(self):
+        """Report safe GCP provider queue, route, identity, and capacity facts."""
+        if self.target != "gcp":
+            self._add_result(
+                "VB720",
+                "validators",
+                "Validator provider queue",
+                CheckStatus.SKIPPED,
+                "Managed validator Service routing is specific to GCP.",
+            )
+            return
+
+        from validibot.validations.constants import ExecutionDeploymentKind
+        from validibot.validations.constants import ExecutionDeploymentReadiness
+        from validibot.validations.constants import ExecutionDeploymentRoutingRole
+        from validibot.validations.constants import ValidationType
+        from validibot.validations.constants import ValidatorAvailabilityState
+        from validibot.validations.constants import ValidatorReleaseState
+        from validibot.validations.models import Validator
+        from validibot.validations.models import ValidatorExecutionDeployment
+
+        eligible = list(
+            Validator.objects.filter(
+                validation_type__in=(
+                    ValidationType.ENERGYPLUS,
+                    ValidationType.FMU,
+                    ValidationType.SHACL,
+                    ValidationType.SCHEMATRON,
+                ),
+                is_enabled=True,
+                release_state=ValidatorReleaseState.PUBLISHED,
+                availability_state=ValidatorAvailabilityState.AVAILABLE,
+            ).order_by("slug")
+        )
+        routes = list(
+            ValidatorExecutionDeployment.objects.filter(
+                validator__in=eligible,
+                routing_role__in=(
+                    ExecutionDeploymentRoutingRole.PRIMARY,
+                    ExecutionDeploymentRoutingRole.LONG_RUNNING,
+                ),
+            ).select_related("validator")
+        )
+        routes_by_validator: dict[object, dict[str, ValidatorExecutionDeployment]] = {}
+        for route in routes:
+            routes_by_validator.setdefault(route.validator_id, {})[
+                route.routing_role
+            ] = route
+        problems: list[str] = []
+        service_primaries: list[ValidatorExecutionDeployment] = []
+        for validator in eligible:
+            active = routes_by_validator.get(validator.pk, {})
+            primary = active.get(ExecutionDeploymentRoutingRole.PRIMARY)
+            if primary is None:
+                problems.append(f"{validator.slug}: no primary route")
+                continue
+            if (
+                primary.readiness_state != ExecutionDeploymentReadiness.READY
+                or primary.emergency_blocked
+            ):
+                problems.append(f"{validator.slug}: primary is not launchable")
+            if primary.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_SERVICE:
+                service_primaries.append(primary)
+                compatibility = active.get(ExecutionDeploymentRoutingRole.LONG_RUNNING)
+                if (
+                    compatibility is None
+                    or compatibility.deployment_kind
+                    != ExecutionDeploymentKind.CLOUD_RUN_JOB
+                    or compatibility.readiness_state
+                    != ExecutionDeploymentReadiness.READY
+                    or compatibility.emergency_blocked
+                ):
+                    problems.append(
+                        f"{validator.slug}: no ready long-running Job route"
+                    )
+
+        if problems:
+            self._add_result(
+                "VB721",
+                "validators",
+                "Validator deployment routes",
+                CheckStatus.ERROR,
+                f"{len(problems)} managed route problem(s)",
+                details="\n".join(problems) if self.verbose else None,
+                fix_hint=(
+                    "Run 'just gcp validator-deployments-sync <stage>', inspect "
+                    "'just gcp validator-deployments-list <stage>', and only "
+                    "then activate Services."
+                ),
+            )
+        elif eligible:
+            self._add_result(
+                "VB721",
+                "validators",
+                "Validator deployment routes",
+                CheckStatus.OK,
+                f"{len(eligible)} validator route(s) are launchable",
+            )
+        else:
+            self._add_result(
+                "VB721",
+                "validators",
+                "Validator deployment routes",
+                CheckStatus.WARN,
+                "No release-enabled managed validators were found.",
+            )
+
+        queue = str(getattr(settings, "GCP_VALIDATOR_TASK_QUEUE_NAME", "")).strip()
+        invoker = str(
+            getattr(
+                settings,
+                "GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT",
+                "",
+            )
+        ).strip()
+        provider_configured = bool(queue and invoker)
+        self._add_result(
+            "VB720",
+            "validators",
+            "Validator provider queue",
+            (
+                CheckStatus.OK
+                if provider_configured
+                else CheckStatus.ERROR
+                if service_primaries
+                else CheckStatus.WARN
+            ),
+            (
+                f"Provider queue '{queue}' uses dedicated invoker '{invoker}'"
+                if provider_configured
+                else "Provider queue or dedicated invoker is not configured."
+            ),
+            fix_hint=(
+                "Set GCP_VALIDATOR_TASK_QUEUE_NAME and "
+                "GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT, upload secrets, "
+                "and rerun 'just gcp init-stage <stage>'."
+                if not provider_configured
+                else None
+            ),
+        )
+
+        allowlist = {
+            str(email).strip().lower()
+            for email in (
+                getattr(settings, "TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS", [])
+                or [getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "")]
+            )
+            if str(email).strip()
+        }
+        missing_identities = sorted(
+            {
+                route.expected_runtime_identity
+                for route in routes
+                if route.expected_runtime_identity.lower() not in allowlist
+            }
+        )
+        self._add_result(
+            "VB722",
+            "validators",
+            "Validator callback identities",
+            CheckStatus.ERROR if missing_identities else CheckStatus.OK,
+            (
+                f"{len(missing_identities)} active runtime identity/identities "
+                "are absent from the worker OIDC allowlist."
+                if missing_identities
+                else "Every active validator runtime identity is allowlisted."
+            ),
+            details=(
+                "\n".join(missing_identities)
+                if missing_identities and self.verbose
+                else None
+            ),
+            fix_hint=(
+                "Add the listed validator runtime service accounts to "
+                "TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS and redeploy the worker."
+                if missing_identities
+                else None
+            ),
+        )
+
+        capacities = [
+            f"{route.validator.slug}: min={route.minimum_instances}, "
+            f"max={route.maximum_instances}, concurrency={route.concurrency}"
+            for route in service_primaries
+        ]
+        self._add_result(
+            "VB723",
+            "validators",
+            "Validator Service capacity",
+            CheckStatus.OK if service_primaries else CheckStatus.INFO,
+            (
+                f"{len(service_primaries)} Service primary route(s) have "
+                "explicit capacity."
+                if service_primaries
+                else "No validator Services are primary."
+            ),
+            details="\n".join(capacities) if capacities and self.verbose else None,
+        )
+
     # =========================================================================
     # Background Tasks Checks (VB4xx)
     # =========================================================================
 
     def _check_celery(self):
         """Check Celery/background task system."""
+        if self.target == "gcp":
+            self._add_result(
+                "VB401",
+                "tasks",
+                "Celery broker",
+                CheckStatus.SKIPPED,
+                "Celery is not used on GCP; background work uses Cloud Tasks.",
+            )
+            self._add_result(
+                "VB402",
+                "tasks",
+                "Celery Beat schedules",
+                CheckStatus.SKIPPED,
+                "Celery Beat is not used on GCP; schedules use Cloud Scheduler.",
+            )
+            return
+
         broker_url = getattr(settings, "CELERY_BROKER_URL", None)
 
         if not broker_url:
@@ -1793,6 +2013,20 @@ class Command(BaseCommand):
                 "Restore test",
                 CheckStatus.SKIPPED,
                 "Restore drills are not required for disposable local Compose data.",
+            )
+            return
+
+        if self.target == "gcp":
+            self._add_result(
+                "VB411",
+                "backups",
+                "Restore test",
+                CheckStatus.SKIPPED,
+                (
+                    "Cloud Run has no durable local data root; hosted Cloud SQL "
+                    "and GCS restore-drill evidence is tracked in the GCP "
+                    "operator runbook."
+                ),
             )
             return
 

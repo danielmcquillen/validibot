@@ -146,9 +146,17 @@ def cancel_active_execution(run: ValidationRun) -> bool | None:
     execution_id = identity.execution_id
 
     try:
-        from validibot.validations.services.runners import get_validator_runner
+        if identity.attempt.deployment_id:
+            from validibot.validations.services.execution.registry import (
+                get_execution_backend,
+            )
 
-        canceled = get_validator_runner().cancel(execution_id)
+            backend = get_execution_backend(identity.attempt.deployment)
+            canceled = backend.cancel(execution_id)
+        else:
+            from validibot.validations.services.runners import get_validator_runner
+
+            canceled = get_validator_runner().cancel(execution_id)
     except Exception:
         logger.warning(
             "Failed to request provider cancellation",

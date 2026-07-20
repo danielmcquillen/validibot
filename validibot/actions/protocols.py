@@ -7,7 +7,9 @@ from typing import Any
 from typing import Protocol
 
 if TYPE_CHECKING:
+    from validibot.validations.models import ExecutionAttempt
     from validibot.validations.models import ValidationRun
+    from validibot.validations.models import ValidatorExecutionDeployment
     from validibot.workflows.models import WorkflowStep
 
 
@@ -53,6 +55,10 @@ class RunContext:
             to populate the ``i.*`` namespace. Per ADR-2026-05-22, both
             sources feed the same namespace; bindings take precedence
             because they represent explicit author intent.
+        execution_attempt: Durable identity allocated before provider contact
+            for an advanced validator step.
+        execution_deployment: Exact managed-provider route pinned to the
+            attempt. Empty for local and self-hosted execution.
     """
 
     validation_run: ValidationRun | None = None
@@ -61,6 +67,8 @@ class RunContext:
     workflow_signals: dict[str, Any] = field(default_factory=dict)
     workflow_constants: dict[str, Any] = field(default_factory=dict)
     step_input_contract_values: dict[str, Any] = field(default_factory=dict)
+    execution_attempt: ExecutionAttempt | None = None
+    execution_deployment: ValidatorExecutionDeployment | None = None
 
 
 @dataclass

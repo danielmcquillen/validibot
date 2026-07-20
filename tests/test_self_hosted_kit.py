@@ -25,6 +25,8 @@ backup/restore, etc.). What this suite locks in today:
    is multi-stage — is captured via the recipe's argument shape.
 4. Every stub helper script handles ``--help`` cleanly (exit 0,
    prints usage referencing the script name).
+5. Production image and GCP operator recipes retain runtime seed data,
+   immutable validator image references, and load-balancer-aware health checks.
 
 If a future PR breaks any of these invariants — for instance, by
 accidentally re-introducing the historical ``docker-compose``
@@ -627,6 +629,60 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             "_deploy-worker"
         )
 
+    def test_validator_deploy_resolves_and_uses_gar_digest(self):
+        """Production validator Jobs must execute immutable image bytes.
+
+        A revision tag is useful for discovery, but it remains mutable. The
+        deploy recipe must resolve that tag through GAR and pass the resulting
+        ``repository@sha256`` reference to Cloud Run before the application can
+        safely enforce its digest image policy.
+        """
+        block = self._block_between(
+            "validator-deploy name stage:",
+            "# Build and deploy all validator jobs",
+        )
+
+        assert "gcloud artifacts docker images list" in block
+        assert 'IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"' in block
+        assert '--image "$IMAGE_REF"' in block
+
+    def test_validator_inventory_reads_current_cloud_run_job_schema(self):
+        """The inventory must read the image path emitted by current gcloud.
+
+        The previous field path silently returned an empty value and told the
+        operator every configured Job had no image, hiding both version drift
+        and whether the deployment was digest pinned.
+        """
+        block = self._block_between(
+            "validators stage:",
+            "# Cleanup (Phase 5 of ADR-2026-04-27)",
+        )
+
+        assert "spec.template.spec.template.spec.containers[0].image" in block
+        assert "spec.template.template.containers[0].image" not in block
+
+    def test_health_and_maintenance_are_load_balancer_aware(self):
+        """LB-only Cloud Run ingress must still report and probe as online.
+
+        The direct run.app URL is deliberately unavailable under
+        ``internal-and-cloud-load-balancing``. Health checks therefore use the
+        configured public ``SITE_URL`` and fail on non-2xx responses, while
+        maintenance status treats both supported public ingress modes as live.
+        """
+        health_block = self._block_between(
+            "health-check stage:",
+            "# Management Commands",
+        )
+        maintenance_block = self._block_between(
+            "maintenance-status stage:",
+            "# Load Balancer & DNS",
+        )
+
+        assert "DJANGO_ENV_FILE" in health_block
+        assert "SITE_URL" in health_block
+        assert "curl --fail" in health_block
+        assert "internal-and-cloud-load-balancing" in maintenance_block
+
     def test_operator_job_updates_converge_identity_and_database_binding(self):
         """Re-running an operator recipe must converge old Cloud Run Jobs.
 
@@ -749,6 +805,54 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "{{git_sha}}" not in block
         # The legacy app-version env var must not appear.
         assert "VALIDATOR_VERSION=" not in block
+
+
+class RuntimeImageContentTests(SimpleTestCase):
+    """Verify production images contain required initialization resources.
+
+    ``initialize_validibot`` seeds the EnergyPlus weather catalogue from the
+    repository's ``data/weather`` directory. Docker context exclusions must
+    not turn a successful database initialization into a partial one.
+    """
+
+    def test_docker_context_includes_curated_weather_catalogue(self):
+        """The image context includes weather files but not arbitrary data.
+
+        This keeps the production image small and predictable while ensuring a
+        fresh database can create the same system weather resources as local
+        development.
+        """
+        dockerignore_lines = {
+            line.strip()
+            for line in (REPO_ROOT / ".dockerignore")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+
+        assert "data/" not in dockerignore_lines
+        assert "data/*" in dockerignore_lines
+        assert "!data/weather/" in dockerignore_lines
+        assert "!data/weather/**" in dockerignore_lines
+        assert any((REPO_ROOT / "data" / "weather").glob("*.epw"))
+
+
+class ContinuousIntegrationConfigurationTests(SimpleTestCase):
+    """Keep production-only startup requirements represented in CI.
+
+    The deployment-check step imports production settings. Every required
+    secret needs a distinct, throwaway fixture so CI tests the boot contract
+    without weakening production validation.
+    """
+
+    def test_deployment_check_has_separate_api_digest_key(self):
+        """CI supplies the API digest key separately from Django's secret key."""
+        workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+
+        assert "DJANGO_API_KEY_DIGEST_KEY:" in workflow
+        assert "fake-api-key-digest-key-for-ci-only" in workflow
 
 
 class NoStaleDockerComposeReferencesTests(SimpleTestCase):

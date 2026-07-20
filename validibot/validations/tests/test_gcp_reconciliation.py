@@ -19,6 +19,7 @@ from django.test import override_settings
 from django.utils import timezone
 from validibot_shared.validations.envelopes import ValidationStatus
 
+from validibot.validations.constants import ProviderStatusLookupCapability
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
@@ -27,14 +28,22 @@ from validibot.validations.management.commands.cleanup_stuck_runs import (
     get_default_timeout_minutes,
 )
 from validibot.validations.services.execution.base import ExecutionResponse
+from validibot.validations.services.execution.base import (
+    ProviderStatusTemporarilyUnavailableError,
+)
 from validibot.validations.services.runners.base import ExecutionStatus
 
 CMD_PATH = "validibot.validations.management.commands.cleanup_stuck_runs"
 
 # These are lazy-imported inside command methods, so patch at source module
-GCP_BACKEND_PATH = "validibot.validations.services.execution.gcp.GCPExecutionBackend"
+GCP_BACKEND_PATH = (
+    "validibot.validations.services.execution.registry.get_execution_backend"
+)
 CALLBACK_SVC_PATH = (
     "validibot.validations.services.validation_callback.ValidationCallbackService"
+)
+GCS_OBJECT_EXISTS_PATH = (
+    "validibot.validations.services.cloud_run.gcs_client.gcs_object_exists"
 )
 
 
@@ -83,6 +92,7 @@ def _mock_step_run(*, output=None):
         else ""
     )
     attempt.runner_type = "google_cloud_run"
+    attempt.timeout_at = timezone.now() - timedelta(minutes=1)
     active_attempt = attempt if attempt.provider_execution_id else None
     active_queryset = (
         step_run.execution_attempts.filter.return_value.order_by.return_value
@@ -338,6 +348,46 @@ class TestReconcileRecoversLostCallback(SimpleTestCase):
 
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
     @patch(GCP_BACKEND_PATH)
+    @patch(GCS_OBJECT_EXISTS_PATH, return_value=True)
+    @patch(CALLBACK_SVC_PATH)
+    def test_service_reconciliation_salvages_exact_attempt_output(
+        self,
+        mock_callback_cls,
+        mock_output_exists,
+        mock_backend_factory,
+        mock_is_gcp,
+    ):
+        """A Service missing its callback must recover from its pinned output URI."""
+        backend = MagicMock()
+        backend.status_lookup_capability = ProviderStatusLookupCapability.UNSUPPORTED
+        mock_backend_factory.return_value = backend
+        mock_response = MagicMock(status_code=200)
+        callback_service = MagicMock()
+        callback_service.process_reconciliation.return_value = mock_response
+        mock_callback_cls.return_value = callback_service
+        run = _mock_run()
+        step_run = _mock_step_run(
+            output={
+                "execution_name": ("projects/p/locations/r/queues/q/tasks/attempt-id"),
+                "execution_bundle_uri": "gs://bucket/runs/org/run-id",
+            }
+        )
+        step_run.attempt.deployment_id = uuid.uuid4()
+        step_run.attempt.deployment = MagicMock()
+
+        cmd = Command()
+        with patch.object(cmd, "_get_active_step_run", return_value=step_run):
+            result = cmd._try_reconcile_gcp_run(run)
+
+        assert result == "reconciled"
+        mock_backend_factory.assert_called_once_with(step_run.attempt.deployment)
+        mock_output_exists.assert_called_once_with(
+            "gs://bucket/runs/org/run-id/output.json"
+        )
+        callback_service.process_reconciliation.assert_called_once()
+
+    @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
+    @patch(GCP_BACKEND_PATH)
     @patch(CALLBACK_SVC_PATH)
     def test_reconcile_recovers_lost_callback(
         self, mock_callback_cls, mock_backend_cls, mock_is_gcp
@@ -446,9 +496,11 @@ class TestReconcileFallsThrough(SimpleTestCase):
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
     @patch(GCP_BACKEND_PATH)
     def test_reconcile_falls_through_on_api_error(self, mock_backend_cls, mock_is_gcp):
-        """Falls through to timeout when GCP API returns None."""
+        """A transient provider error stays retryable during the bounded grace."""
         mock_backend = MagicMock()
-        mock_backend.check_status.return_value = None
+        mock_backend.check_status.side_effect = (
+            ProviderStatusTemporarilyUnavailableError("provider unavailable")
+        )
         mock_backend_cls.return_value = mock_backend
 
         run = _mock_run()
@@ -462,6 +514,35 @@ class TestReconcileFallsThrough(SimpleTestCase):
         cmd = Command()
         with patch.object(cmd, "_get_active_step_run", return_value=step_run):
             result = cmd._try_reconcile_gcp_run(run)
+        assert result == "provider_unavailable"
+
+    @override_settings(VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS=300)
+    @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
+    @patch(GCP_BACKEND_PATH)
+    def test_reconcile_times_out_after_provider_lookup_grace(
+        self,
+        mock_backend_cls,
+        mock_is_gcp,
+    ):
+        """Persistent provider API failure cannot defer the durable fence forever."""
+        mock_backend = MagicMock()
+        mock_backend.check_status.side_effect = (
+            ProviderStatusTemporarilyUnavailableError("provider unavailable")
+        )
+        mock_backend_cls.return_value = mock_backend
+        run = _mock_run()
+        step_run = _mock_step_run(
+            output={
+                "execution_name": "projects/p/locations/r/jobs/j/executions/e",
+                "execution_bundle_uri": "gs://bucket/runs/org/run-id",
+            }
+        )
+        step_run.attempt.timeout_at = timezone.now() - timedelta(minutes=6)
+
+        cmd = Command()
+        with patch.object(cmd, "_get_active_step_run", return_value=step_run):
+            result = cmd._try_reconcile_gcp_run(run)
+
         assert result == "error"
 
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=True)
@@ -552,7 +633,8 @@ class TestReconcileDryRun(SimpleTestCase):
 
 def _wire_stuck_runs_qs(mock_run_model, mock_qs):
     """Wire mock_run_model so handle() iterates over mock_qs."""
-    qs_chain = mock_run_model.objects.filter.return_value.order_by.return_value
+    qs_chain = mock_run_model.objects.annotate.return_value
+    qs_chain = qs_chain.filter.return_value.filter.return_value.order_by.return_value
     qs_chain.__getitem__ = MagicMock(return_value=mock_qs)
 
 

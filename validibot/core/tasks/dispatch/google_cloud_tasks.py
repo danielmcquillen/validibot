@@ -7,15 +7,14 @@ the Cloud Run worker service via HTTP with OIDC authentication.
 
 from __future__ import annotations
 
-import json
 import logging
 
 from django.conf import settings
-from google.protobuf import duration_pb2
 
 from validibot.core.tasks.dispatch.base import TaskDispatcher
 from validibot.core.tasks.dispatch.base import TaskDispatchRequest
 from validibot.core.tasks.dispatch.base import TaskDispatchResponse
+from validibot.core.tasks.dispatch.http_task_client import create_http_task
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +59,6 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
 
     def dispatch(self, request: TaskDispatchRequest) -> TaskDispatchResponse:
         """Enqueue task via Google Cloud Tasks."""
-        from google.cloud import tasks_v2
-
         # Validate configuration
         project_id = getattr(settings, "GCP_PROJECT_ID", "")
         queue_name = getattr(settings, "GCS_TASK_QUEUE_NAME", "")
@@ -121,30 +118,6 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
         # Get the service account for OIDC authentication
         service_account = self._get_invoker_service_account()
 
-        # Create the task
-        client = tasks_v2.CloudTasksClient()
-
-        task = tasks_v2.Task(
-            http_request=tasks_v2.HttpRequest(
-                http_method=tasks_v2.HttpMethod.POST,
-                url=endpoint_url,
-                headers={"Content-Type": "application/json"},
-                body=json.dumps(payload).encode(),
-                oidc_token=tasks_v2.OidcToken(
-                    service_account_email=service_account,
-                    audience=worker_url,
-                ),
-            ),
-            dispatch_deadline=duration_pb2.Duration(
-                seconds=self._get_dispatch_deadline_seconds()
-            ),
-        )
-
-        create_request = tasks_v2.CreateTaskRequest(
-            parent=queue_path,
-            task=task,
-        )
-
         logger.info(
             "Enqueueing Cloud Task: queue=%s task_name=%s validation_run_id=%s "
             "resume_from_step=%s",
@@ -155,14 +128,23 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
         )
 
         try:
-            created_task = client.create_task(request=create_request)
+            created_task = create_http_task(
+                project_id=project_id,
+                region=region,
+                queue_name=queue_name,
+                endpoint_url=endpoint_url,
+                payload=payload,
+                oidc_service_account=service_account,
+                oidc_audience=worker_url,
+                dispatch_deadline_seconds=self._get_dispatch_deadline_seconds(),
+            )
             logger.info(
                 "Cloud Task created: %s for validation_run_id=%s",
-                created_task.name,
+                created_task.task_name,
                 request.validation_run_id,
             )
             return TaskDispatchResponse(
-                task_id=created_task.name,
+                task_id=created_task.task_name,
                 is_sync=False,
             )
 

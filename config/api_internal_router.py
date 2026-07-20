@@ -16,6 +16,7 @@ from validibot.core.api.scheduled_tasks import ProcessPurgeRetriesView
 from validibot.core.api.scheduled_tasks import PurgeExpiredOutputsView
 from validibot.core.api.scheduled_tasks import PurgeExpiredSubmissionsView
 from validibot.core.api.scheduled_tasks import SendPeriodicEmailsView
+from validibot.core.api.scheduled_tasks import VerifyValidatorDeploymentsView
 from validibot.tracking.api.log_event import LogTrackingEventView
 from validibot.validations.api.callbacks import ValidationCallbackView
 from validibot.validations.api.execute import ExecuteValidationRunView
@@ -86,6 +87,11 @@ urlpatterns = [
         "scheduled/cleanup-stuck-runs/",
         CleanupStuckRunsView.as_view(),
         name="scheduled-cleanup-stuck-runs",
+    ),
+    path(
+        "scheduled/verify-validator-deployments/",
+        VerifyValidatorDeploymentsView.as_view(),
+        name="scheduled-verify-validator-deployments",
     ),
     path(
         "scheduled/send-periodic-emails/",

@@ -27,6 +27,8 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from validibot.validations.constants import ProviderStatusLookupCapability
+
 if TYPE_CHECKING:
     from validibot_shared.validations.envelopes import ValidationInputEnvelope
     from validibot_shared.validations.envelopes import ValidationOutputEnvelope
@@ -39,6 +41,15 @@ if TYPE_CHECKING:
     from validibot.workflows.models import WorkflowStep
 
 logger = logging.getLogger(__name__)
+
+
+class ProviderStatusTemporarilyUnavailableError(RuntimeError):
+    """A status-capable provider could not answer a status query right now.
+
+    This is intentionally distinct from an unsupported lookup capability and
+    from a provider execution state. Reconciliation may retry it for a bounded
+    grace period without inventing a provider failure.
+    """
 
 
 @dataclass
@@ -186,6 +197,15 @@ class ExecutionBackend(ABC):
         """
         return True
 
+    @property
+    def status_lookup_capability(self) -> ProviderStatusLookupCapability:
+        """Declare whether provider state can reconcile a missing callback.
+
+        Backends fail closed to ``UNSUPPORTED`` unless their provider exposes
+        a durable, per-execution status resource and the adapter implements it.
+        """
+        return ProviderStatusLookupCapability.UNSUPPORTED
+
     @abstractmethod
     def execute(self, request: ExecutionRequest) -> ExecutionResponse:
         """
@@ -229,19 +249,29 @@ class ExecutionBackend(ABC):
         container is still running, has completed, or has failed. This allows
         recovery of lost callbacks for async backends.
 
-        The default implementation returns None, meaning the backend does not
-        support status checking. Sync backends (Docker Compose) don't need
-        this because the caller already has the result. Async backends (GCP)
-        should override to query their platform's execution status API.
+        The default implementation returns ``None`` only for a backend whose
+        declared capability is ``UNSUPPORTED``. A backend that declares
+        ``SUPPORTED`` must return an explicit provider state or raise
+        :class:`ProviderStatusTemporarilyUnavailableError`.
 
         Args:
             execution_id: Execution identifier from previous execute() call.
                 For GCP, this is the Cloud Run execution name.
 
         Returns:
-            ExecutionResponse with current status if determinable, None otherwise.
+            ExecutionResponse with current status, or ``None`` when lookup is
+            unsupported by this backend.
         """
         return None
+
+    def cancel(self, execution_id: str) -> bool:
+        """Request best-effort cancellation of one exact provider execution.
+
+        Backends that do not expose cancellation fail closed. Callers fence the
+        logical run before this external side effect, so a false result never
+        reopens work that the database has already made terminal.
+        """
+        return False
 
     def build_input_envelope(
         self,

@@ -1,18 +1,24 @@
 # Validator Containers (Advanced Validators)
 
-Validator containers run advanced validations like EnergyPlus simulations and FMU execution. They support two deployment modes:
+Validator containers run advanced validations such as EnergyPlus, FMU,
+SHACL, and Schematron. They support two deployment modes:
 
-1. **GCP Cloud Run Jobs** (production): Async execution with GCS storage and callbacks
+1. **GCP managed execution**: Cloud Run Services are the normal route, with
+   retained Cloud Run Jobs for work over the Service budget and rollback
 2. **Docker Compose** (Docker): Sync execution with local filesystem storage
 
-## GCP Mode: Cloud Run Jobs (web/worker split)
+## GCP mode: provider-selectable Services and Jobs
 
 We deploy one Django image as two Cloud Run services:
 
 - **$GCP_APP_NAME-web** (`APP_ROLE=web`): Public UI + public API.
 - **$GCP_APP_NAME-worker** (`APP_ROLE=worker`): Private/IAM-only internal API (callbacks).
 
-Validator jobs (EnergyPlus, FMU, etc.) run as Cloud Run Jobs and call back to the worker service using Google-signed ID tokens (audience = callback URL). No shared secrets.
+Every advanced attempt snapshots one verified `ValidatorExecutionDeployment`.
+Attempts with an effective domain budget of at most 1500 seconds use the ready
+primary Cloud Run Service. Longer attempts use the retained Cloud Run Job.
+Both runtimes call the worker using Google-signed ID tokens and the attempt
+callback nonce. There is no shared callback secret.
 
 In environments with a custom public domain (production), `SITE_URL` points at the public domain (for example `https://validibot.com`) while `WORKER_URL` points at the worker service `*.run.app` URL. Callbacks and scheduled tasks should always target `WORKER_URL`, never `SITE_URL`.
 
@@ -22,22 +28,31 @@ In environments with a custom public domain (production), `SITE_URL` points at t
 sequenceDiagram
     participant Web as web (APP_ROLE=web)
     participant Worker as worker (APP_ROLE=worker)
-    participant JobsAPI as Cloud Run Jobs API
-    participant Job as Validator Job (SA)
+    participant Queue as Provider Cloud Tasks queue
+    participant Service as Private validator Service
 
-    Web->>JobsAPI: jobs.run (web SA)
-    JobsAPI-->>Job: Start job with input URI + short-lived attempt token
-    Job->>Job: Read/create only below one attempt GCS prefix
-    Job->>Worker: Renew token with callback nonce if still active
-    Job->>Worker: Callback with result_uri (ID token from job SA)
+    Web->>Worker: Application task
+    Worker->>Worker: Resolve and snapshot exact deployment
+    Worker->>Queue: Create deterministic attempt task
+    Queue->>Service: OIDC HTTP request (dedicated invoker)
+    Service->>Service: Fresh one-shot child + attempt GCS token
+    Service->>Worker: Renew token if attempt remains active
+    Service->>Worker: Callback with exact result generation
+    Service-->>Queue: Transport response
     Worker->>Worker: Verify ID token + persist results
 ```
 
 IAM roles involved:
 
 - **Web/Worker service account** (`$GCP_APP_NAME-cloudrun-{stage}`): Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `VALIDIBOT_INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
-- **Validator job service account** (`$GCP_APP_NAME-validator-{stage}`): Dedicated runtime SA used by validator Cloud Run Jobs. It has `roles/run.invoker` on `$GCP_APP_NAME-worker` for callbacks and token renewal, but **no project or bucket storage role**. Django supplies a short-lived Credential Access Boundary token limited to one attempt prefix and the `roles/storage.objectViewer` + `roles/storage.objectCreator` permission ceiling.
+- **Validator runtime service account** (`$GCP_APP_NAME-validator-{stage}`): Used by both Services and Jobs. It has `roles/run.invoker` on the worker for callbacks and renewal, but **no project or bucket storage role**. Django supplies a short-lived Credential Access Boundary token limited to one attempt prefix and the `roles/storage.objectViewer` + `roles/storage.objectCreator` permission ceiling.
+- **Provider-task invoker** (`$GCP_APP_NAME-validator-invoker-{stage}`): Has no project roles. It is the only `roles/run.invoker` member on the four private validator Services and is attached only to provider-queue tasks.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
+
+Cloud Run Jobs remain a separate execution shape. They have queryable provider
+status and may run for up to their configured long-running budget. Cloud Run
+Services have no durable per-request status resource, so callback/output
+reconciliation is authoritative and their transport task is deterministic.
 
 ### Custom IAM Role
 
@@ -72,8 +87,11 @@ The launcher generates a unique `callback_id` for each job execution and puts it
    - Set `WORKER_URL` in the stage env file to the worker service URL (see below)
    - Grant `roles/run.invoker` on `$GCP_APP_NAME-worker` to each validator job service account
 
-4. Validator jobs:
-   - Tag Cloud Run Jobs with labels: `validator=<name>,revision=<backend_git_sha>`
+4. Validator deployments:
+   - Deploy Jobs and release-specific Services by digest
+   - Keep Service concurrency at one and use a distinct provider queue
+   - Register live ready revisions before activation; never route from a raw URL setting
+   - Tag provider resources with validator, release, stage, and execution shape
    - Backend images carry OCI labels such as `org.opencontainers.image.version` and `org.opencontainers.image.revision`
    - Callback client mints an ID token via metadata server; Django callback view 404s on non-worker.
    - Validator SA has no ambient GCS role; token renewal requires the attempt callback nonce and an active durable attempt.
@@ -90,40 +108,56 @@ gcloud run services describe $GCP_APP_NAME-worker \
 
 Then update your env file (`.envs/.production/.google-cloud/.django`), run `just gcp secrets prod`, and redeploy.
 
-## Deploying Validator Jobs
+## Deploying validator backends
 
-Validator containers can be deployed using either justfile. Both are equivalent and kept in sync:
+Development may build directly from the backend checkout. Production accepts
+only a signed `vX.Y.Z` backend release whose GHCR attestation and GAR mirror
+resolve to the same digest.
 
-| Location                | Command                                    | Notes                                       |
-| ----------------------- | ------------------------------------------ | ------------------------------------------- |
-| `validibot/`            | `just gcp validator-deploy energyplus dev` | Uses symlink to `validibot_validators_dev/` |
-| `validibot_validators/` | `just deploy energyplus dev`               | Native repo, shorter command                |
-
-### Quick deploy
+### Development
 
 ```bash
-# From validibot_validators directory
-just deploy energyplus dev      # Deploy EnergyPlus to dev
-just deploy fmu prod            # Deploy FMU to prod
-just deploy-all dev             # Deploy all validators to dev
-
-# From validibot directory
 just gcp validator-deploy energyplus dev
 just gcp validators-deploy-all dev
+just gcp validator-services-deploy-all dev
+just gcp validator-deployments-sync dev
+just gcp validator-services-register dev
 ```
+
+### Production release deployment
+
+```bash
+just gcp validator-release-verify v0.15.0
+VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validators-deploy-all prod
+VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-deploy-all prod
+just gcp validator-deployments-sync prod
+VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-register prod
+```
+
+Registration does not activate Services. Complete smoke, duplicate-delivery,
+deadline, output-salvage, GCS, and latency acceptance first. Then run
+`VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp
+validator-services-activate prod`. The matching rollback command routes new
+attempts back to Jobs before reducing Service minimums to zero.
 
 ### What the deploy command does
 
-1. **Builds** the container image with `linux/amd64` platform (required by Cloud Run)
-2. **Pushes** to Artifact Registry at `$GCP_REGION-docker.pkg.dev/project-xxx/validibot/`
-3. **Deploys** the Cloud Run Job with:
+1. In development, **builds and pushes** a `linux/amd64` image. In production,
+   verifies and resolves the canonical release image instead
+2. **Deploys** the retained Cloud Run Job with:
    - Stage-appropriate job name (`$GCP_APP_NAME-validator-backend-energyplus-dev` for dev, `$GCP_APP_NAME-validator-backend-energyplus` for prod). The same name the runtime resolves at dispatch time via `ValidatorConfig.cloud_run_job_name`.
    - Dedicated validator service account (`$GCP_APP_NAME-validator-dev@...` for dev) with no ambient storage role
    - Memory (4Gi), CPU (2), timeout (1 hour), no retries
    - Labels for tracking (`validator=energyplus,stage=dev,version=abc123`)
-4. **Grants IAM permissions**:
+3. **Deploys** a separate private Service per backend release with concurrency
+   one, Startup CPU Boost, service-level min/max capacity, and the shared HTTP
+   parent entrypoint
+4. **Reconciles IAM permissions**:
    - Adds custom `validibot_job_runner` role to the main SA so the web/worker service can trigger the job with env overrides
-   - Grants `roles/run.invoker` on the worker service to the validator SA so the job can POST callbacks and renew an active attempt token
+   - Grants `roles/run.invoker` on the worker to the validator runtime SA
+   - Removes every validator Service invoker except the dedicated provider-task identity
+5. **Registers** only after observing the exact ready revision, digest, runtime
+   identity, invoker policy, resources, timeout, concurrency, and capacity
 
 ### Viewing logs and job status
 
@@ -135,12 +169,6 @@ just logs energyplus dev            # View recent logs
 
 # From validibot directory (equivalent)
 gcloud run jobs list --filter "name~$GCP_APP_NAME-validator" --region $GCP_REGION
-```
-
-### Deleting a validator job
-
-```bash
-just delete-job energyplus dev
 ```
 
 ## Multi-Environment Architecture
@@ -155,7 +183,7 @@ Nothing stage-specific. The container includes:
 - Python dependencies
 - Validator code
 
-### What's passed at runtime (job execution)
+### What's passed at runtime (attempt execution)
 
 When Django triggers a validator Cloud Run Job execution, it passes:
 
@@ -174,20 +202,24 @@ Before launch, Django copies exact generations of any reusable resource or upstr
 Stage isolation is enforced by:
 
 1. **Django** creates envelopes with stage-appropriate bucket names and callback URLs
-2. **Service accounts** - each stage's validator job uses a stage-specific SA that only has access to its own buckets
-3. **GCS bucket permissions** - the Django service identity can access its stage bucket; the validator identity cannot. Its injected token is limited to one stage-bucket attempt prefix.
+2. **Service accounts** - each stage has separate application, validator-runtime,
+   and provider-invoker identities
+3. **GCS capabilities** - the Django identity can access its stage bucket; the
+   validator identity cannot. Its injected token is limited to one
+   stage-bucket attempt prefix.
 
 ## Attempt-capability rollout
 
 Roll out in dependency order so old containers are never stranded without their
 historical storage identity:
 
-1. Deploy the published `validibot-validator-backends` 0.14.0 code and the
-   matching Django code:
+1. Deploy a published capability-aware `validibot-validator-backends` release
+   and the matching Django code. For the July 2026 Service rollout this is
+   `v0.15.0`:
 
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp validators-deploy-all prod
+   VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validators-deploy-all prod
    ```
 
 2. Set `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true` and keep
@@ -258,13 +290,21 @@ image digest as the trust-critical backend identity.
 
 ### Implications
 
-- **One build, deploy everywhere**: Build once with `just validator-build energyplus`, then deploy to any stage
-- **No secrets in containers**: Validators use ADC (Application Default Credentials) from the attached service account
-- **Safe rollbacks**: Rolling back a validator version doesn't affect stage isolation
+- **One release, deploy everywhere**: Production stages resolve the same
+  attested backend digest
+- **No ambient data credential**: The attached runtime identity can mint a
+  callback token but cannot read GCS objects; the injected attempt capability
+  is the data boundary
+- **Safe rollbacks**: New attempts return to retained Jobs while in-flight
+  Service attempts keep their exact deployment snapshot
 
 ## Image-pinning policy: `VALIDATOR_BACKEND_IMAGE_POLICY`
 
-Cloud Run Jobs let an operator deploy a validator backend by pointing the Job at any container image — `:latest`, a moving tag, a specific version, or a digest. The setting `VALIDATOR_BACKEND_IMAGE_POLICY` decides how strict Validibot is about what counts as an acceptable launch image.
+Self-hosted and legacy Job configurations may point at a tag or digest. The
+setting `VALIDATOR_BACKEND_IMAGE_POLICY` decides what counts as an acceptable
+launch image. Hosted production provisioning is stricter: both Jobs and
+Services are imported only after the signed release resolves to an attested,
+matching GHCR/GAR digest, and the provider resource is digest-pinned.
 
 ### The three policies
 
@@ -300,23 +340,31 @@ Run `validibot doctor` to get a stage-aware advisory:
 - `VB712` (warn / info) — policy is `tag` and the deployment target is `production`. Operators on production targets should pin to `digest` or `signed-digest`.
 - `VB713` (error) — policy is `signed-digest` but `COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES` is false. Every launch will be refused; either enable cosign verification or relax the policy.
 
-## Lost Callback Recovery
+## Reconciliation and lost-callback recovery
 
-If a Cloud Run Job completes but its callback never reaches Django (network failure, container crash before POST, Cloud Run retry exhaustion), the run gets stuck in `RUNNING` status. The `cleanup_stuck_runs` management command handles this:
+If a callback never reaches Django, the durable attempt remains the authority.
+The `cleanup_stuck_runs` management command handles both execution shapes:
 
 1. The command runs every 10 minutes via Cloud Scheduler
 2. It finds runs stuck in `RUNNING` past `VALIDATOR_TIMEOUT_SECONDS` (default:
    3600 seconds / 60 minutes)
-3. For GCP runs, it looks for `execution_name` in `step_run.output` (stored by the launcher at job trigger time)
-4. It queries the Cloud Run Jobs API to check the actual execution status
-5. If the job **succeeded**, it constructs a synthetic callback and processes it through `ValidationCallbackService`, recovering the full validation results
-6. If the job **failed**, it marks the run as `FAILED` with the Cloud Run error
-7. If the job is **still running after that outer deadline**, it commits the
-   `TIMED_OUT` decision and calls Cloud Run's execution-cancellation operation
+3. It first tries to load and verify the exact expected output generation. A
+   valid output is processed through the same trusted callback service
+4. For Jobs, it may also query the provider execution status and cancel the
+   execution after the absolute deadline
+5. For Services, status lookup is explicitly unsupported. The watchdog retries
+   transient output/provider errors only within a bounded grace period; the
+   absolute attempt deadline still wins
+6. Service cancellation deletes the deterministic provider task when possible
+   and durably fences the attempt. A request already executing may finish, but
+   its late output/callback cannot change the terminal decision
 
 ### Where execution metadata is stored
 
-When the GCP backend triggers a Cloud Run Job, the launcher stores execution metadata in `result.stats`:
+Execution metadata is persisted on `ValidationExecutionAttempt`, including the
+exact `execution_deployment`, provider task/execution identity, deployment
+revision, backend digest, deadlines, envelopes, and timing stages. Legacy Job
+stats may also appear in `step_run.output`:
 
 ```python
 stats = {
@@ -328,9 +376,8 @@ stats = {
 }
 ```
 
-The step orchestrator persists these stats into `step_run.output`, making them available for later reconciliation.
-
-The output envelope URI is derived from `execution_bundle_uri + "/output.json"`.
+New reconciliation uses the attempt record and exact output identity rather
+than reconstructing authority from these legacy stats.
 
 ## Local vs cloud storage
 
@@ -341,8 +388,10 @@ The output envelope URI is derived from `execution_bundle_uri + "/output.json"`.
 
 - Containers log all errors; fatal errors are optionally sent to Sentry if configured.
 - User-facing messages stay minimal; detailed context stays in logs/Sentry.
-- To inspect logs: open Cloud Logging and filter on `resource.type="cloud_run_job"` and
-  `resource.labels.job_name` matching the validator. Fatal errors will include stack traces.
+- To inspect logs: filter Cloud Logging on `cloud_run_job` for retained Jobs or
+  `cloud_run_revision` plus the release-specific validator Service name.
+  Structured runtime logs include safe attempt/deployment/task identifiers and
+  durations but never capability tokens or callback nonces. Fatal errors will include stack traces.
   If Sentry DSN is present in the container, `report_fatal` will forward the exception there.
   (Sentry bootstrap for validator containers is planned; for now, errors always land in Cloud Logging.)
 

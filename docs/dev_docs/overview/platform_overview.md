@@ -174,7 +174,8 @@ The validator registry allows new types of validators to be added without core p
 
 Asynchronous processing is handled by:
 - **Docker Compose**: Celery + Celery Beat with Redis broker
-- **GCP**: Cloud Run Jobs and Cloud Tasks
+- **GCP**: Cloud Tasks plus primary private validator Services and retained
+  Cloud Run Jobs for long-running attempts and rollback
 
 ### Auditability
 

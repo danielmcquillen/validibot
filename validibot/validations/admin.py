@@ -7,6 +7,7 @@ from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.models import Validator
+from validibot.validations.models import ValidatorExecutionDeployment
 from validibot.validations.models import ValidatorResourceFile
 
 
@@ -74,6 +75,52 @@ class ValidatorAdmin(admin.ModelAdmin):
     list_editable = ("is_enabled",)
     search_fields = ("name", "slug", "version", "org__name")
     ordering = ("order",)
+
+
+@admin.register(ValidatorExecutionDeployment)
+class ValidatorExecutionDeploymentAdmin(admin.ModelAdmin):
+    """Read-only operational view of immutable managed execution routes."""
+
+    list_display = (
+        "display_name",
+        "validator",
+        "provider_type",
+        "deployment_kind",
+        "deployment_revision",
+        "readiness_state",
+        "routing_role",
+        "emergency_blocked",
+        "last_verified_at",
+    )
+    list_filter = (
+        "provider_type",
+        "deployment_kind",
+        "readiness_state",
+        "routing_role",
+        "emergency_blocked",
+    )
+    search_fields = (
+        "display_name",
+        "validator__name",
+        "provider_resource_name",
+        "backend_image_digest",
+    )
+    readonly_fields = tuple(
+        field.name for field in ValidatorExecutionDeployment._meta.fields
+    )
+    ordering = ("validator", "provider_type", "deployment_kind", "created")
+
+    def has_add_permission(self, request):
+        """Deployment creation belongs to audited provisioning services."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Route activation cannot bypass verification through Django admin."""
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Deployment provenance is retained and retired rather than deleted."""
+        return False
 
 
 @admin.register(CustomValidator)
@@ -358,7 +405,7 @@ class ExecutionAttemptAdmin(admin.ModelAdmin):
         "id",
         "step_run__validation_run__id",
         "provider_execution_id",
-        "provider_job_name",
+        "provider_resource_name",
     )
     readonly_fields = tuple(field.name for field in ExecutionAttempt._meta.fields)
     ordering = ("-created",)

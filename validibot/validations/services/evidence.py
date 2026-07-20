@@ -516,30 +516,52 @@ def _build_execution_attempt_records(
         inputs_verified = attempt.state == ExecutionAttemptState.COMPLETED and bool(
             attempt.output_envelope_sha256
         )
-        records.append(
-            ManifestExecutionAttempt(
-                execution_attempt_id=str(attempt.pk),
-                step_run_id=str(attempt.step_run_id),
-                attempt_number=attempt.attempt_number,
-                state=str(attempt.state),
-                runner_type=attempt.runner_type,
-                provider_execution_id=attempt.provider_execution_id,
-                attempt_contract_version=attempt_contract_version,
-                input_envelope_sha256=attempt.input_envelope_sha256,
-                output_envelope_sha256=(
-                    attempt.output_envelope_sha256
-                    if include_output_hash and attempt.output_envelope_sha256
-                    else None
-                ),
-                backend_image_digest=(
-                    attempt.backend_image_digest
-                    or attempt.step_run.validator_backend_image_digest
-                ),
-                inputs_verified=inputs_verified,
-                input_files=input_files,
-                input_relationships=input_relationships,
+        attempt_kwargs = {
+            "execution_attempt_id": str(attempt.pk),
+            "step_run_id": str(attempt.step_run_id),
+            "attempt_number": attempt.attempt_number,
+            "state": str(attempt.state),
+            "runner_type": attempt.runner_type,
+            "provider_execution_id": attempt.provider_execution_id,
+            "attempt_contract_version": attempt_contract_version,
+            "input_envelope_sha256": attempt.input_envelope_sha256,
+            "output_envelope_sha256": (
+                attempt.output_envelope_sha256
+                if include_output_hash and attempt.output_envelope_sha256
+                else None
             ),
-        )
+            "backend_image_digest": (
+                attempt.backend_image_digest
+                or attempt.step_run.validator_backend_image_digest
+            ),
+            "inputs_verified": inputs_verified,
+            "input_files": input_files,
+            "input_relationships": input_relationships,
+        }
+        deployment_snapshot = attempt.deployment_snapshot
+        if isinstance(deployment_snapshot, dict):
+            deployment_projection = {
+                "execution_deployment_id": str(
+                    deployment_snapshot.get("deployment_id") or ""
+                ),
+                "deployment_kind": str(
+                    deployment_snapshot.get("deployment_kind") or ""
+                ),
+                "deployment_revision": str(
+                    deployment_snapshot.get("deployment_revision") or ""
+                ),
+                "provider_resource_name": str(
+                    deployment_snapshot.get("provider_resource_name") or ""
+                ),
+            }
+            attempt_kwargs.update(
+                {
+                    field_name: value
+                    for field_name, value in deployment_projection.items()
+                    if field_name in ManifestExecutionAttempt.model_fields
+                }
+            )
+        records.append(ManifestExecutionAttempt.model_validate(attempt_kwargs))
     return records
 
 

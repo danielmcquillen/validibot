@@ -39,13 +39,22 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.core.management.base import CommandError
 from django.db import transaction
+from django.db.models import Exists
+from django.db.models import OuterRef
+from django.db.models import Q
 from django.utils import timezone
 
+from validibot.validations.constants import EXECUTION_ATTEMPT_ACTIVE_STATES
+from validibot.validations.constants import ProviderStatusLookupCapability
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.models import ExecutionAttempt
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
+from validibot.validations.services.execution.base import (
+    ProviderStatusTemporarilyUnavailableError,
+)
 from validibot.validations.services.runners.base import ExecutionStatus
 from validibot.validations.services.validation_run import cancel_active_execution
 from validibot.validations.services.validation_run import fence_active_execution_attempt
@@ -111,14 +120,30 @@ class Command(BaseCommand):
         batch_size = options["batch_size"]
 
         timeout = timedelta(minutes=timeout_minutes)
-        cutoff = timezone.now() - timeout
+        now = timezone.now()
+        cutoff = now - timeout
 
-        # Find runs that have been RUNNING for too long
-        # We check started_at, not created_at, to measure actual run time
-        stuck_runs = ValidationRun.objects.filter(
-            status=ValidationRunStatus.RUNNING,
-            started_at__lt=cutoff,
-        ).order_by("started_at")[:batch_size]
+        # Managed attempts carry an absolute deadline chosen before provider
+        # contact. That exact fence wins over the legacy site-wide cutoff. Runs
+        # without a bounded active attempt retain the configured fallback.
+        bounded_attempts = ExecutionAttempt.objects.filter(
+            step_run__validation_run_id=OuterRef("pk"),
+            state__in=EXECUTION_ATTEMPT_ACTIVE_STATES,
+            timeout_at__isnull=False,
+        )
+        expired_attempts = bounded_attempts.filter(timeout_at__lte=now)
+        stuck_runs = (
+            ValidationRun.objects.annotate(
+                has_bounded_attempt=Exists(bounded_attempts),
+                has_expired_attempt=Exists(expired_attempts),
+            )
+            .filter(status=ValidationRunStatus.RUNNING)
+            .filter(
+                Q(has_expired_attempt=True)
+                | Q(has_bounded_attempt=False, started_at__lt=cutoff)
+            )
+            .order_by("started_at")[:batch_size]
+        )
 
         count = stuck_runs.count()
 
@@ -132,6 +157,7 @@ class Command(BaseCommand):
 
         reconciled_ids = []
         profile_rejected_ids = []
+        provider_unavailable_ids = []
         timed_out_ids = []
         error_message = (
             f"Run timed out after {timeout_minutes} minutes - "
@@ -147,6 +173,9 @@ class Command(BaseCommand):
                 continue
             if result == "profile_rejected":
                 profile_rejected_ids.append(str(run.id))
+                continue
+            if result == "provider_unavailable":
+                provider_unavailable_ids.append(str(run.id))
                 continue
             # Once the configured outer deadline has elapsed, a provider that
             # still reports RUNNING must be fenced and canceled rather than
@@ -203,6 +232,7 @@ class Command(BaseCommand):
                 logger.warning(
                     "Marked stuck run as TIMED_OUT",
                     extra={
+                        "event": "validator_attempt_timeout",
                         "run_id": str(locked.id),
                         "workflow_id": str(workflow_id) if workflow_id else None,
                         "timeout_minutes": timeout_minutes,
@@ -222,12 +252,18 @@ class Command(BaseCommand):
 
         # Report results
         if dry_run:
-            total = len(reconciled_ids) + len(profile_rejected_ids) + len(timed_out_ids)
+            total = (
+                len(reconciled_ids)
+                + len(profile_rejected_ids)
+                + len(provider_unavailable_ids)
+                + len(timed_out_ids)
+            )
             self.stdout.write(
                 self.style.WARNING(
                     f"[DRY RUN] {total} stuck run(s): "
                     f"{len(reconciled_ids)} reconcilable, "
                     f"{len(profile_rejected_ids)} profile-rejected, "
+                    f"{len(provider_unavailable_ids)} provider-status retryable, "
                     f"{len(timed_out_ids)} would time out"
                 )
             )
@@ -259,7 +295,22 @@ class Command(BaseCommand):
                 )
                 self._display_ids(profile_rejected_ids)
 
-            if not reconciled_ids and not profile_rejected_ids and not timed_out_ids:
+            if provider_unavailable_ids:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "Deferred "
+                        f"{len(provider_unavailable_ids)} run(s) while provider "
+                        "status was temporarily unavailable."
+                    )
+                )
+                self._display_ids(provider_unavailable_ids)
+
+            if (
+                not reconciled_ids
+                and not profile_rejected_ids
+                and not provider_unavailable_ids
+                and not timed_out_ids
+            ):
                 self.stdout.write(self.style.SUCCESS("No runs needed cleanup."))
 
     def _display_ids(self, ids: list[str]) -> None:
@@ -293,6 +344,8 @@ class Command(BaseCommand):
             - "still_running": Job is still executing on GCP; the caller
               applies the configured timeout fence and requests cancellation
             - "not_applicable": Not a GCP run or missing metadata
+            - "provider_unavailable": Status/output lookup should be retried
+              within its bounded post-deadline grace window
             - "error": GCP API call failed (fall through to timeout)
         """
         # 1. Check if deployment is GCP
@@ -312,12 +365,76 @@ class Command(BaseCommand):
         if identity is None:
             return "not_applicable"
         execution_name = identity.execution_id
-        # 3. Query Cloud Run Job status via backend
+        # 3. Select the exact backend pinned before provider contact. Legacy
+        # attempts without a deployment remain on the historical Job adapter.
         try:
-            from validibot.validations.services.execution.gcp import GCPExecutionBackend
+            from validibot.validations.services.execution.registry import (
+                get_execution_backend,
+            )
 
-            backend = GCPExecutionBackend()
+            backend = get_execution_backend(
+                identity.attempt.deployment if identity.attempt.deployment_id else None
+            )
+        except Exception:
+            logger.warning(
+                "Failed to resolve the pinned execution backend for run %s",
+                run.id,
+                exc_info=True,
+            )
+            return "error"
+
+        # Request-driven Services expose no durable per-request status. Their
+        # exact output object is the authoritative salvage signal after the
+        # attempt deadline; it still passes through the normal envelope and
+        # callback identity verification pipeline.
+        if (
+            backend.status_lookup_capability
+            == ProviderStatusLookupCapability.UNSUPPORTED
+        ):
+            result_uri = identity.attempt.output_envelope_uri
+            if not result_uri:
+                return "error"
+            try:
+                from validibot.validations.services.cloud_run.gcs_client import (
+                    gcs_object_exists,
+                )
+
+                output_exists = gcs_object_exists(result_uri)
+            except Exception:
+                logger.warning(
+                    "Failed to inspect exact attempt output for run %s",
+                    run.id,
+                    exc_info=True,
+                )
+                if self._status_retry_grace_is_active(identity.attempt):
+                    return "provider_unavailable"
+                return "error"
+            if not output_exists:
+                return "error"
+            if dry_run:
+                self.stdout.write(
+                    f"  [RECONCILE-OUTPUT] {run.id}: exact attempt output exists, "
+                    "would recover via callback"
+                )
+                return "reconciled"
+            return self._recover_lost_callback(
+                run,
+                execution_bundle_uri=identity.execution_bundle_uri,
+                attempt=identity.attempt,
+            )
+
+        # 4. Jobs provide a durable execution status resource.
+        try:
             status_response = backend.check_status(execution_name)
+        except ProviderStatusTemporarilyUnavailableError:
+            logger.warning(
+                "Provider status temporarily unavailable for run %s",
+                run.id,
+                exc_info=True,
+            )
+            if self._status_retry_grace_is_active(identity.attempt):
+                return "provider_unavailable"
+            return "error"
         except Exception:
             logger.warning(
                 "Failed to check GCP execution status for run %s",
@@ -329,7 +446,7 @@ class Command(BaseCommand):
         if status_response is None:
             return "error"
 
-        # 4. Act based on the explicit provider state. Human-readable messages
+        # 5. Act based on the explicit provider state. Human-readable messages
         # are diagnostics only and must never determine success versus failure.
         execution_status = status_response.execution_status
         if execution_status == ExecutionStatus.FAILED:
@@ -380,6 +497,19 @@ class Command(BaseCommand):
             execution_bundle_uri=identity.execution_bundle_uri,
             attempt=identity.attempt,
         )
+
+    @staticmethod
+    def _status_retry_grace_is_active(attempt: ExecutionAttempt) -> bool:
+        """Return whether provider lookup may retry past the hard deadline."""
+        timeout_at = getattr(attempt, "timeout_at", None)
+        if not timeout_at or not hasattr(timeout_at, "tzinfo"):
+            return False
+        grace_seconds = getattr(
+            settings,
+            "VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS",
+            300,
+        )
+        return timezone.now() < timeout_at + timedelta(seconds=grace_seconds)
 
     def _is_gcp_deployment(self) -> bool:
         """Check if the current deployment target is GCP."""

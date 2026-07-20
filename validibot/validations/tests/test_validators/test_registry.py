@@ -530,7 +530,7 @@ class TestCloudRunJobName:
     def test_falls_back_to_convention_when_image_name_empty(self):
         """No ``image_name`` → ``validibot-validator-backend-{slug}``.
 
-        This matches the GCPExecutionBackend's image fallback so the
+        This matches the CloudRunJobsExecutionBackend's image fallback so the
         runtime can resolve a name even for validators that didn't
         explicitly set image_name (e.g. user-created custom advanced
         validators). The slug here is ``validation_type.lower()`` so

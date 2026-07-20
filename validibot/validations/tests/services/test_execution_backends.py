@@ -61,7 +61,7 @@ from validibot.validations.services.execution.base import ExecutionResponse
 from validibot.validations.services.execution.docker_compose import (
     DockerComposeExecutionBackend,
 )
-from validibot.validations.services.execution.gcp import GCPExecutionBackend
+from validibot.validations.services.execution.gcp import CloudRunJobsExecutionBackend
 from validibot.validations.services.execution.registry import clear_backend_cache
 from validibot.validations.services.execution.registry import get_execution_backend
 from validibot.validations.services.file_identity import FileIdentity
@@ -362,7 +362,7 @@ class TestBackendFactory:
 
 
 # ==============================================================================
-# GCPExecutionBackend — Cloud Run launcher result conversion
+# CloudRunJobsExecutionBackend — Cloud Run launcher result conversion
 # ==============================================================================
 # The GCP launcher returns ValidationResult because it predates the execution
 # backend abstraction. These tests keep the adapter honest: a successful launch is
@@ -371,12 +371,12 @@ class TestBackendFactory:
 # ==============================================================================
 
 
-class TestGCPExecutionBackendLaunchResultConversion:
+class TestCloudRunJobsExecutionBackendLaunchResultConversion:
     """Tests for converting Cloud Run launcher results into ExecutionResponse."""
 
     def test_pending_launch_result_stays_async(self):
         """``passed=None`` from the launcher means the Cloud Run Job dispatched."""
-        backend = GCPExecutionBackend()
+        backend = CloudRunJobsExecutionBackend()
         result = ValidationResult(
             passed=None,
             issues=[],
@@ -403,7 +403,7 @@ class TestGCPExecutionBackendLaunchResultConversion:
         that and returns ``is_complete=False``, the step is marked RUNNING and no
         callback will ever arrive.
         """
-        backend = GCPExecutionBackend()
+        backend = CloudRunJobsExecutionBackend()
         result = ValidationResult(
             passed=False,
             issues=[

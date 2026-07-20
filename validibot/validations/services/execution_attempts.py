@@ -12,9 +12,11 @@ import logging
 import secrets
 from dataclasses import dataclass
 from dataclasses import field
+from datetime import timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -32,6 +34,7 @@ if TYPE_CHECKING:
 
     from validibot.validations.models import ExecutionAttempt
     from validibot.validations.models import ValidationStepRun
+    from validibot.validations.models import Validator
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +172,10 @@ def resolve_callback_attempt(
 def get_or_create_execution_attempt(
     step_run: ValidationStepRun,
     *,
-    runner_type: str,
+    runner_type: str | None = None,
+    validator: Validator | None = None,
+    managed: bool = False,
+    effective_budget_seconds: int | None = None,
 ) -> tuple[ExecutionAttempt, bool]:
     """Return the active attempt, creating it before provider work begins.
 
@@ -177,8 +183,24 @@ def get_or_create_execution_attempt(
     complements the partial unique constraint that permits only one active
     attempt.
     """
+    from validibot.validations.constants import ExecutionDeploymentKind
     from validibot.validations.models import ExecutionAttempt
     from validibot.validations.models import ValidationStepRun
+    from validibot.validations.services.execution.deployments import (
+        build_deployment_snapshot,
+    )
+    from validibot.validations.services.execution.deployments import (
+        resolve_execution_deployment,
+    )
+
+    budget_seconds = (
+        effective_budget_seconds
+        if effective_budget_seconds is not None
+        else int(getattr(settings, "VALIDATOR_TIMEOUT_SECONDS", 3600))
+    )
+    if budget_seconds < 1:
+        msg = "The effective execution budget must be at least one second."
+        raise ValueError(msg)
 
     with transaction.atomic():
         locked_step = (
@@ -196,10 +218,66 @@ def get_or_create_execution_attempt(
             ]
             or 0
         )
+        deployment = None
+        deployment_snapshot: dict[str, object] = {}
+        resolved_runner_type = runner_type
+        if managed:
+            if validator is None:
+                msg = "Managed execution attempt allocation requires a validator."
+                raise ValueError(msg)
+            deployment = resolve_execution_deployment(
+                validator=validator,
+                effective_budget_seconds=budget_seconds,
+                for_update=True,
+            )
+            deployment_snapshot = build_deployment_snapshot(deployment)
+            resolved_runner_type = {
+                ExecutionDeploymentKind.CLOUD_RUN_JOB: ("CloudRunJobsExecutionBackend"),
+                ExecutionDeploymentKind.CLOUD_RUN_SERVICE: (
+                    "CloudRunServiceExecutionBackend"
+                ),
+            }[ExecutionDeploymentKind(deployment.deployment_kind)]
+        if not resolved_runner_type:
+            msg = "Execution attempt allocation requires a runner type."
+            raise ValueError(msg)
+        now = timezone.now()
+        attempt_deadline_seconds = budget_seconds
+        if deployment is not None:
+            # Provider execution budgets cover domain work. The durable attempt
+            # deadline also leaves bounded startup/callback room; Services use
+            # their verified request timeout as the exact outer request bound.
+            if deployment.request_timeout_seconds is not None:
+                attempt_deadline_seconds = max(
+                    budget_seconds,
+                    deployment.request_timeout_seconds,
+                )
+            else:
+                attempt_deadline_seconds = budget_seconds + 120
         attempt = ExecutionAttempt.objects.create(
             step_run=locked_step,
             attempt_number=last_number + 1,
-            runner_type=runner_type[:64],
+            runner_type=resolved_runner_type[:64],
+            deployment=deployment,
+            deployment_snapshot=deployment_snapshot,
+            provider_resource_name=(
+                deployment.provider_resource_name if deployment is not None else ""
+            ),
+            backend_image_ref=(
+                deployment.backend_image_ref if deployment is not None else ""
+            ),
+            backend_image_digest=(
+                deployment.backend_image_digest if deployment is not None else ""
+            ),
+            timeout_at=now + timedelta(seconds=attempt_deadline_seconds),
+            retry_policy_snapshot={
+                "schema_version": 1,
+                "effective_budget_seconds": budget_seconds,
+                "attempt_deadline_seconds": attempt_deadline_seconds,
+                "maximum_provider_dispatches": 1,
+                "provider_acceptance_policy": (
+                    "deterministic_same_task_only_after_claim"
+                ),
+            },
         )
         return attempt, True
 
@@ -351,9 +429,11 @@ def transition_execution_attempt(
     provider_status_code: str | None = None,
     last_error_code: str | None = None,
     last_error: str | None = None,
+    provider_accepted_at: datetime | None = None,
     provider_started_at: datetime | None = None,
     provider_finished_at: datetime | None = None,
-    provider_job_name: str | None = None,
+    callback_received_at: datetime | None = None,
+    provider_resource_name: str | None = None,
     provider_execution_id: str | None = None,
     execution_bundle_uri: str | None = None,
     input_envelope_uri: str | None = None,
@@ -427,10 +507,14 @@ def transition_execution_attempt(
                 if last_error is not None
                 else None
             ),
+            "provider_accepted_at": provider_accepted_at,
             "provider_started_at": provider_started_at,
             "provider_finished_at": provider_finished_at,
-            "provider_job_name": (
-                provider_job_name[:512] if provider_job_name is not None else None
+            "callback_received_at": callback_received_at,
+            "provider_resource_name": (
+                provider_resource_name[:512]
+                if provider_resource_name is not None
+                else None
             ),
             "provider_execution_id": (
                 provider_execution_id[:512]

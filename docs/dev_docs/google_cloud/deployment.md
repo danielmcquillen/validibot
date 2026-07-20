@@ -21,8 +21,8 @@ Each stage has isolated:
 - Cloud Run services (web + worker)
 - Cloud SQL database instance
 - Secrets in Secret Manager
-- Cloud Tasks queue
-- Service account
+- Application and validator-provider Cloud Tasks queues
+- Application, validator-runtime, and provider-invoker service accounts
 
 Shared across stages:
 - GCS buckets (with stage prefixes in paths)
@@ -62,9 +62,11 @@ The `gcp-init-stage` command works for all stages (dev, staging, prod). The comm
 **Current production resources:**
 
 - Service account (web/worker): `$GCP_APP_NAME-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
-- Service account (validators): `$GCP_APP_NAME-validator-prod@PROJECT.iam.gserviceaccount.com`
+- Service account (validator runtime): `$GCP_APP_NAME-validator-prod@PROJECT.iam.gserviceaccount.com`
+- Service account (provider invoker): `$GCP_APP_NAME-validator-invoker-prod@PROJECT.iam.gserviceaccount.com`
 - Cloud SQL: `$GCP_APP_NAME-db`
 - Cloud Tasks queue: `$GCP_APP_NAME-tasks`
+- Validator provider queue: `$GCP_APP_NAME-validator-provider`
 - GCS bucket: `$GCP_APP_NAME-storage` (with public/ and private/ prefixes)
 - Secret: `django-env`
 
@@ -83,9 +85,11 @@ This command creates (example for dev):
 
 - Service account (web/worker): `$GCP_APP_NAME-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
 - Service account (validators): `$GCP_APP_NAME-validator-dev@PROJECT.iam.gserviceaccount.com` (worker callback/capability renewal only; no ambient storage role)
+- Service account (provider invoker): `$GCP_APP_NAME-validator-invoker-dev@PROJECT.iam.gserviceaccount.com` (sole validator Service invoker; no project roles)
 - Cloud SQL instance: `$GCP_APP_NAME-db-dev` (db-f1-micro tier for dev, db-g1-small for staging; prod currently defaults to db-f1-micro—bump before real traffic)
 - Database `validibot` and user `validibot_user` with generated password
 - Cloud Tasks queue: `$GCP_APP_NAME-validation-queue-dev`
+- Validator provider queue: `$GCP_APP_NAME-validator-provider-dev`
 - GCS bucket: `$GCP_APP_NAME-storage-dev` (with public/ and private/ prefixes)
 - Secret placeholder: `django-env-dev`
 
@@ -177,18 +181,26 @@ concern using the currently deployed image.
 ### Step 6: Deploy Validators
 
 ```bash
-# Deploy EnergyPlus and FMU validator Cloud Run Jobs
-just gcp validators-deploy-all <stage>
+# Production: use one exact signed release for retained Jobs and Services.
+just gcp validator-release-verify v0.15.0
+VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validators-deploy-all prod
+VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-deploy-all prod
+just gcp validator-deployments-sync prod
+VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-register prod
 ```
 
-This builds, pushes, and deploys Cloud Run Jobs named
-`validibot-validator-backend-<slug>` (e.g.
-`validibot-validator-backend-energyplus`). The same naming
-convention is what the runtime launcher looks up via
-`ValidatorConfig.cloud_run_job_name` and what the standalone
-`cd ../validibot-validator-backends && just deploy-all <stage>`
-recipe produces — so whichever path an operator picks, the
-result is the same.
+Production resolves a release to exact GHCR/GAR digests, refreshes retained
+Jobs, and creates distinct private Services such as
+`validibot-validator-service-energyplus-v0-15-0`. Registration observes the
+ready provider state but leaves Jobs primary. Complete the live acceptance in
+the rollout record before running:
+
+```bash
+VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-activate prod
+```
+
+Development may use the backend repo's local build/push recipes; production
+intentionally refuses that unsigned path.
 
 If you have legacy jobs from the older `validibot-validator-<slug>`
 naming convention, you can safely delete them once you've confirmed
@@ -212,6 +224,9 @@ just gcp logs <stage>
 
 # List all resources
 just gcp list-resources <stage>
+
+# Verify deployment inventory, queues, IAM, callbacks, and timeout chain
+just gcp doctor <stage> --strict
 ```
 
 Optionally, update `DJANGO_ALLOWED_HOSTS` in your stage's env file with the service URL, then run `just gcp secrets <stage>` and `just gcp deploy <stage>` again.

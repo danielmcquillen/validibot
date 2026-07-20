@@ -381,7 +381,11 @@ def _run_validator_job_safely(
     attempt, claimed = transition_execution_attempt(
         attempt.pk,
         ExecutionAttemptState.DISPATCHING,
-        provider_job_name=job_name,
+        provider_resource_name=(
+            attempt.deployment.provider_resource_name
+            if attempt.deployment is not None
+            else job_name
+        ),
         execution_bundle_uri=execution_bundle_uri,
         input_envelope_uri=input_uri,
         input_envelope_sha256=input_envelope_sha256,
@@ -420,12 +424,16 @@ def _run_validator_job_safely(
         attempt.pk,
         ExecutionAttemptState.RUNNING,
         provider_execution_id=execution_name,
-        provider_started_at=timezone.now(),
+        provider_accepted_at=timezone.now(),
     )
     return execution_name
 
 
-def _enforce_cloud_run_job_image_policy(job_name: str) -> None:
+def _enforce_cloud_run_job_image_policy(
+    job_name: str,
+    *,
+    expected_image_digest: str | None = None,
+) -> None:
     """Fail closed when a Cloud Run Job image violates deployment policy.
 
     Tag policy keeps configured-image discovery best-effort for community
@@ -457,6 +465,15 @@ def _enforce_cloud_run_job_image_policy(job_name: str) -> None:
     if not configured_image:
         return
 
+    if expected_image_digest and not configured_image.endswith(
+        f"@{expected_image_digest}"
+    ):
+        msg = (
+            f"Cloud Run Job '{job_name}' does not match its pinned deployment "
+            "image digest. Refusing to dispatch."
+        )
+        raise RuntimeError(msg)
+
     policy_result = enforce_image_policy(configured_image)
     if policy_result.should_proceed:
         return
@@ -482,6 +499,7 @@ def _dispatch_cloud_run_validation(
     envelope,
     submission: Submission,
     step: WorkflowStep,
+    expected_image_digest: str | None = None,
 ) -> tuple[str, str | None]:
     """Apply common launch policy, durable dispatch, and digest capture.
 
@@ -489,7 +507,42 @@ def _dispatch_cloud_run_validation(
     building their typed envelope, and mapping domain errors. This helper owns
     the shared trust-boundary mechanics that must evolve in lockstep.
     """
-    _enforce_cloud_run_job_image_policy(job_name)
+    from validibot.validations.services.execution_attempts import (
+        get_active_execution_attempt,
+    )
+
+    attempt = get_active_execution_attempt(step_run)
+    deployment_snapshot = (
+        getattr(attempt, "deployment_snapshot", None) if attempt is not None else None
+    )
+    deployment = (
+        attempt.deployment
+        if attempt is not None
+        and attempt.deployment_id
+        and isinstance(deployment_snapshot, dict)
+        and deployment_snapshot
+        else None
+    )
+    project_id = (
+        deployment.provider_configuration["project_id"]
+        if deployment is not None
+        else settings.GCP_PROJECT_ID
+    )
+    region = (
+        deployment.provider_configuration["region"]
+        if deployment is not None
+        else settings.GCP_REGION
+    )
+    pinned_digest = expected_image_digest or (
+        deployment.backend_image_digest if deployment is not None else None
+    )
+    if pinned_digest:
+        _enforce_cloud_run_job_image_policy(
+            job_name,
+            expected_image_digest=pinned_digest,
+        )
+    else:
+        _enforce_cloud_run_job_image_policy(job_name)
     logger.info("Triggering Cloud Run Job: %s", job_name)
     gcs_capability = None
     if getattr(settings, "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED", False):
@@ -499,14 +552,14 @@ def _dispatch_cloud_run_validation(
 
         gcs_capability = issue_attempt_gcs_runtime_capability(
             execution_bundle_uri=execution_bundle_uri,
-            project_id=settings.GCP_PROJECT_ID,
+            project_id=project_id,
             refresh_url=build_validation_storage_capability_refresh_url(),
         )
 
     execution_name = _run_validator_job_safely(
         step_run=step_run,
-        project_id=settings.GCP_PROJECT_ID,
-        region=settings.GCP_REGION,
+        project_id=project_id,
+        region=region,
         job_name=job_name,
         input_uri=input_envelope_uri,
         execution_bundle_uri=execution_bundle_uri,
@@ -568,6 +621,9 @@ def launch_energyplus_validation(
     submission: Submission,
     ruleset: Ruleset | None,
     step: WorkflowStep,
+    job_name: str | None = None,
+    expected_image_digest: str | None = None,
+    provider_dispatch=None,
 ) -> ValidationResult:
     """
     Launch an EnergyPlus validation via Cloud Run Jobs.
@@ -677,9 +733,10 @@ def launch_energyplus_validation(
         # Job name comes from ValidatorConfig (not from a per-validator
         # env var) so the deploy convention and the runtime lookup
         # can't drift — see _resolve_cloud_run_job_name.
-        job_name = _resolve_cloud_run_job_name("ENERGYPLUS")
+        job_name = job_name or _resolve_cloud_run_job_name("ENERGYPLUS")
 
-        execution_name, backend_image_digest = _dispatch_cloud_run_validation(
+        dispatch = provider_dispatch or _dispatch_cloud_run_validation
+        execution_name, backend_image_digest = dispatch(
             step_run=current_step_run,
             job_name=job_name,
             input_envelope_uri=input_envelope_uri,
@@ -687,6 +744,7 @@ def launch_energyplus_validation(
             envelope=envelope,
             submission=submission,
             step=step,
+            expected_image_digest=expected_image_digest,
         )
         logger.info(
             "Marked step run %s as RUNNING for run %s (image digest: %s)",
@@ -696,7 +754,7 @@ def launch_energyplus_validation(
         )
 
         # 7. Return pending ValidationResult
-        stats = {
+        stats: dict[str, object] = {
             "job_status": CloudRunJobStatus.PENDING,
             "job_name": job_name,
             "execution_name": execution_name,
@@ -745,6 +803,9 @@ def launch_fmu_validation(
     submission,
     ruleset,
     step: WorkflowStep,
+    job_name: str | None = None,
+    expected_image_digest: str | None = None,
+    provider_dispatch=None,
 ) -> ValidationResult:
     """
     Launch an FMU validation via Cloud Run Jobs.
@@ -811,9 +872,10 @@ def launch_fmu_validation(
         # Job name comes from ValidatorConfig (not from a per-validator
         # env var) so the deploy convention and the runtime lookup
         # can't drift — see _resolve_cloud_run_job_name.
-        job_name = _resolve_cloud_run_job_name("FMU")
+        job_name = job_name or _resolve_cloud_run_job_name("FMU")
 
-        execution_name, _ = _dispatch_cloud_run_validation(
+        dispatch = provider_dispatch or _dispatch_cloud_run_validation
+        execution_name, _ = dispatch(
             step_run=current_step_run,
             job_name=job_name,
             input_envelope_uri=input_envelope_uri,
@@ -821,9 +883,10 @@ def launch_fmu_validation(
             envelope=envelope,
             submission=submission,
             step=step,
+            expected_image_digest=expected_image_digest,
         )
 
-        stats = {
+        stats: dict[str, object] = {
             "job_status": CloudRunJobStatus.PENDING,
             "job_name": job_name,
             "execution_name": execution_name,
@@ -868,6 +931,9 @@ def launch_shacl_validation(
     submission: Submission,
     ruleset: Ruleset | None,
     step: WorkflowStep,
+    job_name: str | None = None,
+    expected_image_digest: str | None = None,
+    provider_dispatch=None,
 ) -> ValidationResult:
     """
     Launch a SHACL validation via Cloud Run Jobs.
@@ -962,9 +1028,10 @@ def launch_shacl_validation(
             upload_envelope_local(envelope, Path(input_envelope_uri))
 
         # 5. Trigger the Cloud Run Job. Job name comes from ValidatorConfig.
-        job_name = _resolve_cloud_run_job_name("SHACL")
+        job_name = job_name or _resolve_cloud_run_job_name("SHACL")
 
-        execution_name, _ = _dispatch_cloud_run_validation(
+        dispatch = provider_dispatch or _dispatch_cloud_run_validation
+        execution_name, _ = dispatch(
             step_run=current_step_run,
             job_name=job_name,
             input_envelope_uri=input_envelope_uri,
@@ -972,9 +1039,10 @@ def launch_shacl_validation(
             envelope=envelope,
             submission=submission,
             step=step,
+            expected_image_digest=expected_image_digest,
         )
 
-        stats = {
+        stats: dict[str, object] = {
             "job_status": CloudRunJobStatus.PENDING,
             "job_name": job_name,
             "execution_name": execution_name,
@@ -1019,6 +1087,9 @@ def launch_schematron_validation(
     submission: Submission,
     ruleset: Ruleset | None,
     step: WorkflowStep,
+    job_name: str | None = None,
+    expected_image_digest: str | None = None,
+    provider_dispatch=None,
 ) -> ValidationResult:
     """
     Launch a Schematron validation via Cloud Run Jobs.
@@ -1124,9 +1195,10 @@ def launch_schematron_validation(
 
         # 5. Trigger the Cloud Run Job. Job name comes from ValidatorConfig,
         # gated by the same image policy as the other advanced launchers.
-        job_name = _resolve_cloud_run_job_name("SCHEMATRON")
+        job_name = job_name or _resolve_cloud_run_job_name("SCHEMATRON")
 
-        execution_name, _ = _dispatch_cloud_run_validation(
+        dispatch = provider_dispatch or _dispatch_cloud_run_validation
+        execution_name, _ = dispatch(
             step_run=current_step_run,
             job_name=job_name,
             input_envelope_uri=input_envelope_uri,
@@ -1134,9 +1206,10 @@ def launch_schematron_validation(
             envelope=envelope,
             submission=submission,
             step=step,
+            expected_image_digest=expected_image_digest,
         )
 
-        stats = {
+        stats: dict[str, object] = {
             "job_status": CloudRunJobStatus.PENDING,
             "job_name": job_name,
             "execution_name": execution_name,

@@ -1,0 +1,163 @@
+{
+  "displayName": "Validibot __STAGE__ validator execution",
+  "labels": {
+    "component": "validator-execution",
+    "stage": "__STAGE__"
+  },
+  "gridLayout": {
+    "columns": 2,
+    "widgets": [
+      {
+        "title": "Provider queue depth",
+        "xyChart": {
+          "dataSets": [{
+            "plotType": "LINE",
+            "timeSeriesQuery": {
+              "timeSeriesFilter": {
+                "filter": "metric.type=\"cloudtasks.googleapis.com/queue/depth\" resource.type=\"cloud_tasks_queue\" resource.labels.queue_id=\"__PROVIDER_QUEUE__\" resource.labels.location=\"__REGION__\"",
+                "aggregation": {
+                  "alignmentPeriod": "60s",
+                  "perSeriesAligner": "ALIGN_MAX"
+                }
+              }
+            }
+          }],
+          "yAxis": {"label": "tasks", "scale": "LINEAR"}
+        }
+      },
+      {
+        "title": "Provider task attempt delay p95",
+        "xyChart": {
+          "dataSets": [{
+            "plotType": "LINE",
+            "timeSeriesQuery": {
+              "timeSeriesFilter": {
+                "filter": "metric.type=\"cloudtasks.googleapis.com/queue/task_attempt_delays\" resource.type=\"cloud_tasks_queue\" resource.labels.queue_id=\"__PROVIDER_QUEUE__\" resource.labels.location=\"__REGION__\"",
+                "aggregation": {
+                  "alignmentPeriod": "60s",
+                  "perSeriesAligner": "ALIGN_PERCENTILE_95"
+                }
+              }
+            }
+          }],
+          "yAxis": {"label": "milliseconds", "scale": "LINEAR"}
+        }
+      },
+      {
+        "title": "Service pending/startup latency p95",
+        "xyChart": {
+          "dataSets": [{
+            "plotType": "LINE",
+            "timeSeriesQuery": {
+              "timeSeriesFilter": {
+                "filter": "metric.type=\"run.googleapis.com/request_latency/pending\" resource.type=\"cloud_run_revision\" resource.labels.service_name=monitoring.regex.full_match(\"__SERVICE_REGEX__\")",
+                "aggregation": {
+                  "alignmentPeriod": "60s",
+                  "perSeriesAligner": "ALIGN_PERCENTILE_95"
+                }
+              }
+            }
+          }],
+          "yAxis": {"label": "milliseconds", "scale": "LINEAR"}
+        }
+      },
+      {
+        "title": "Service pending requests",
+        "xyChart": {
+          "dataSets": [{
+            "plotType": "STACKED_AREA",
+            "timeSeriesQuery": {
+              "timeSeriesFilter": {
+                "filter": "metric.type=\"run.googleapis.com/pending_queue/pending_requests\" resource.type=\"cloud_run_revision\" resource.labels.service_name=monitoring.regex.full_match(\"__SERVICE_REGEX__\")",
+                "aggregation": {
+                  "alignmentPeriod": "60s",
+                  "perSeriesAligner": "ALIGN_MAX"
+                }
+              }
+            }
+          }],
+          "yAxis": {"label": "requests", "scale": "LINEAR"}
+        }
+      },
+      {
+        "title": "Validator Service instances by state",
+        "xyChart": {
+          "dataSets": [{
+            "plotType": "STACKED_AREA",
+            "timeSeriesQuery": {
+              "timeSeriesFilter": {
+                "filter": "metric.type=\"run.googleapis.com/container/instance_count\" resource.type=\"cloud_run_revision\" resource.labels.service_name=monitoring.regex.full_match(\"__SERVICE_REGEX__\")",
+                "aggregation": {
+                  "alignmentPeriod": "60s",
+                  "perSeriesAligner": "ALIGN_MAX"
+                }
+              }
+            }
+          }],
+          "yAxis": {"label": "instances", "scale": "LINEAR"}
+        }
+      },
+      {
+        "title": "Billable validator instance time",
+        "xyChart": {
+          "dataSets": [{
+            "plotType": "STACKED_AREA",
+            "timeSeriesQuery": {
+              "timeSeriesFilter": {
+                "filter": "metric.type=\"run.googleapis.com/container/billable_instance_time\" resource.type=\"cloud_run_revision\" resource.labels.service_name=monitoring.regex.full_match(\"__SERVICE_REGEX__\")",
+                "aggregation": {
+                  "alignmentPeriod": "300s",
+                  "perSeriesAligner": "ALIGN_RATE"
+                }
+              }
+            }
+          }],
+          "yAxis": {"label": "billable seconds/second", "scale": "LINEAR"}
+        }
+      },
+      {
+        "title": "Callback failures and attempt timeouts",
+        "xyChart": {
+          "dataSets": [
+            {
+              "legendTemplate": "callback failures",
+              "plotType": "STACKED_BAR",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/validibot_validator_callback_failure___STAGE__\" resource.type=\"cloud_run_revision\"",
+                  "aggregation": {"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_SUM"}
+                }
+              }
+            },
+            {
+              "legendTemplate": "attempt timeouts",
+              "plotType": "STACKED_BAR",
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"logging.googleapis.com/user/validibot_validator_attempt_timeout___STAGE__\" resource.type=\"cloud_run_revision\"",
+                  "aggregation": {"alignmentPeriod": "300s", "perSeriesAligner": "ALIGN_SUM"}
+                }
+              }
+            }
+          ],
+          "yAxis": {"label": "events", "scale": "LINEAR"}
+        }
+      },
+      {
+        "title": "Deployment drift",
+        "xyChart": {
+          "dataSets": [{
+            "plotType": "STACKED_BAR",
+            "timeSeriesQuery": {
+              "timeSeriesFilter": {
+                "filter": "metric.type=\"logging.googleapis.com/user/validibot_validator_deployment_drift___STAGE__\" resource.type=\"cloud_run_revision\"",
+                "aggregation": {"alignmentPeriod": "3600s", "perSeriesAligner": "ALIGN_SUM"}
+              }
+            }
+          }],
+          "yAxis": {"label": "events", "scale": "LINEAR"}
+        }
+      }
+    ]
+  }
+}

@@ -161,6 +161,29 @@ def _coerce_finished_at(finished_at_candidate) -> datetime:
     return dt_value.astimezone(UTC)
 
 
+def _coerce_optional_timing_at(timing_candidate) -> datetime | None:
+    """Normalize optional provider timing without inventing a latency sample."""
+    if timing_candidate is None:
+        return None
+    if isinstance(timing_candidate, datetime):
+        dt_value = timing_candidate
+    elif isinstance(timing_candidate, str):
+        try:
+            dt_value = datetime.fromisoformat(timing_candidate.replace("Z", "+00:00"))
+        except ValueError:
+            logger.warning("Could not parse optional provider timing value")
+            return None
+    else:
+        logger.warning(
+            "Unexpected optional provider timing type %s",
+            type(timing_candidate),
+        )
+        return None
+    if dt_value.tzinfo is None:
+        return dt_value.replace(tzinfo=UTC)
+    return dt_value.astimezone(UTC)
+
+
 class ValidationCallbackService:
     """
     Process container-based validator callbacks.
@@ -185,7 +208,7 @@ class ValidationCallbackService:
 
     # ── Public entry point ────────────────────────────────────────────
 
-    def process(self, *, payload: dict) -> Response:
+    def process(self, *, payload: dict, caller_email: str = "") -> Response:
         """
         Validate and process a validator callback payload.
 
@@ -235,10 +258,14 @@ class ValidationCallbackService:
                 callback,
                 run,
                 require_callback_nonce=True,
+                caller_email=caller_email,
             )
 
         except ValidationError:
-            logger.warning("Invalid callback payload")
+            logger.warning(
+                "Invalid callback payload",
+                extra={"event": "validator_callback_failure"},
+            )
             return Response(
                 {"error": "Invalid callback payload"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -248,7 +275,10 @@ class ValidationCallbackService:
             # ``logger.exception`` captures the full traceback for
             # operators; this endpoint is called by validator workers
             # under OIDC auth and only consumes the status code anyway.
-            logger.exception("Unexpected error processing callback")
+            logger.exception(
+                "Unexpected error processing callback",
+                extra={"event": "validator_callback_failure"},
+            )
             return Response(
                 {"error": "Internal server error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -284,6 +314,7 @@ class ValidationCallbackService:
             callback,
             run,
             require_callback_nonce=False,
+            caller_email="",
         )
 
     @staticmethod
@@ -314,6 +345,7 @@ class ValidationCallbackService:
         run: ValidationRun,
         *,
         require_callback_nonce: bool,
+        caller_email: str,
     ) -> Response:
         """
         Ensure idempotent processing for an attempt-bound callback.
@@ -368,6 +400,28 @@ class ValidationCallbackService:
                     {"error": "Invalid callback credentials"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            if attempt.deployment_id:
+                expected_identity = str(
+                    attempt.deployment_snapshot.get(
+                        "expected_runtime_identity",
+                        "",
+                    )
+                ).lower()
+                if not expected_identity or caller_email.lower() != expected_identity:
+                    logger.warning(
+                        "Rejected callback from runtime identity not pinned to "
+                        "the execution attempt",
+                        extra={
+                            "run_id": str(run.pk),
+                            "attempt_id": str(attempt.pk),
+                            "caller_email": caller_email,
+                            "deployment_id": str(attempt.deployment_id),
+                        },
+                    )
+                    return Response(
+                        {"error": "Callback runtime identity does not match attempt"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
         try:
             with transaction.atomic():
                 receipt, receipt_created = self._get_or_create_receipt(
@@ -522,6 +576,7 @@ class ValidationCallbackService:
         4. Either resume the next step or finalize the run
         5. Mark the receipt as completed (idempotency bookkeeping)
         """
+        callback_received_at = timezone.now()
         try:
             step_run, validator = self._resolve_active_step_run(run)
             output_envelope = self._download_and_validate_envelope(
@@ -541,6 +596,15 @@ class ValidationCallbackService:
             # Tasks retry to a cached 200 instead of re-running doomed work.
             # Server errors (5xx, e.g. a transient envelope-download failure)
             # are left PROCESSING so the retry can re-attempt.
+            logger.warning(
+                "Validator callback processing failed",
+                extra={
+                    "event": "validator_callback_failure",
+                    "run_id": str(run.pk),
+                    "attempt_id": str(attempt.pk),
+                    "callback_status_code": exc.status_code,
+                },
+            )
             if status.is_client_error(exc.status_code):
                 self._mark_receipt_rejected(callback, receipt, run)
                 from validibot.validations.constants import ExecutionAttemptState
@@ -553,6 +617,7 @@ class ValidationCallbackService:
                     ExecutionAttemptState.FAILED,
                     last_error_code="callback_rejected",
                     last_error=str(exc.detail),
+                    callback_received_at=callback_received_at,
                 )
             return Response(
                 {"error": exc.detail},
@@ -567,7 +632,13 @@ class ValidationCallbackService:
         transition_execution_attempt(
             attempt.pk,
             ExecutionAttemptState.COMPLETED,
-            provider_finished_at=timezone.now(),
+            provider_started_at=_coerce_optional_timing_at(
+                getattr(output_envelope.timing, "started_at", None)
+            ),
+            provider_finished_at=_coerce_optional_timing_at(
+                getattr(output_envelope.timing, "finished_at", None)
+            ),
+            callback_received_at=callback_received_at,
             output_envelope_uri=callback.result_uri or "",
             output_envelope_sha256=output_envelope_sha256(output_envelope),
         )

@@ -37,6 +37,73 @@ class RuntimeStorageIsolation(StrEnum):
     UNSUPPORTED = "unsupported"
 
 
+class ExecutionProviderType(TextChoices):
+    """Managed infrastructure provider for a validator deployment."""
+
+    GCP = "GCP", _("Google Cloud Platform")
+
+
+class ExecutionDeploymentKind(TextChoices):
+    """Provider primitive that accepts one validator execution."""
+
+    CLOUD_RUN_JOB = "CLOUD_RUN_JOB", _("Cloud Run Job")
+    CLOUD_RUN_SERVICE = "CLOUD_RUN_SERVICE", _("Cloud Run Service")
+
+
+class ExecutionDeploymentReadiness(TextChoices):
+    """Operator-verified lifecycle state of an execution deployment."""
+
+    DRAFT = "DRAFT", _("Draft")
+    VERIFYING = "VERIFYING", _("Verifying")
+    READY = "READY", _("Ready")
+    FAILED = "FAILED", _("Verification failed")
+    RETIRED = "RETIRED", _("Retired")
+
+
+class ExecutionDeploymentRoutingRole(TextChoices):
+    """Exclusive routing slot occupied by a launchable deployment."""
+
+    INACTIVE = "INACTIVE", _("Inactive")
+    PRIMARY = "PRIMARY", _("Primary")
+    LONG_RUNNING = "LONG_RUNNING", _("Long-running compatibility")
+
+
+class ExecutionShape(TextChoices):
+    """How a provider holds and represents an execution."""
+
+    REQUEST = "REQUEST", _("Request-driven")
+    JOB = "JOB", _("Provider job")
+
+
+class ProviderStatusLookupCapability(TextChoices):
+    """Whether provider state can reconcile a missing callback."""
+
+    SUPPORTED = "SUPPORTED", _("Supported")
+    UNSUPPORTED = "UNSUPPORTED", _("Unsupported")
+
+
+class ProviderCancellationCapability(TextChoices):
+    """Whether the provider exposes cancellation for one execution."""
+
+    SUPPORTED = "SUPPORTED", _("Supported")
+    BEST_EFFORT = "BEST_EFFORT", _("Best effort before execution starts")
+    UNSUPPORTED = "UNSUPPORTED", _("Unsupported")
+
+
+class CallbackAuthenticationMethod(TextChoices):
+    """Authentication contract expected for deployment callbacks."""
+
+    ATTEMPT_NONCE_AND_OIDC = (
+        "ATTEMPT_NONCE_AND_OIDC",
+        _("Attempt nonce and provider OIDC identity"),
+    )
+
+
+CLOUD_RUN_SERVICE_MAXIMUM_DOMAIN_SECONDS = 1500
+CLOUD_RUN_SERVICE_REQUEST_TIMEOUT_LIMIT_SECONDS = 1650
+CLOUD_RUN_SERVICE_DISPATCH_DEADLINE_SECONDS = 1800
+
+
 class ValidationRunStatus(TextChoices):
     PENDING = "PENDING", _("Pending")
     RUNNING = "RUNNING", _("Running")

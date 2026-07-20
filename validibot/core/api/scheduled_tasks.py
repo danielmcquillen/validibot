@@ -466,6 +466,44 @@ class CleanupStuckRunsView(ScheduledTaskBaseView):
             )
 
 
+class VerifyValidatorDeploymentsView(ScheduledTaskBaseView):
+    """Verify primary validator Services against their durable snapshots.
+
+    This read-only hourly check turns out-of-band provider edits into a failed
+    Scheduler request and a structured ``validator_deployment_drift`` log.
+
+    URL: POST /api/v1/scheduled/verify-validator-deployments/
+    Recommended schedule: Hourly at minute 17
+    """
+
+    def post(self, request):
+        """Run exact provider verification and return only safe command output."""
+        logger.info("Starting scheduled validator deployment verification")
+        try:
+            out = StringIO()
+            call_command("verify_gcp_validator_deployments", "--json", stdout=out)
+            output = out.getvalue().strip()
+            logger.info("Validator deployment verification completed: %s", output)
+            return Response(
+                {
+                    "task": "verify_validator_deployments",
+                    "status": "completed",
+                    "output": output,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception:
+            logger.exception("Failed to verify validator deployments")
+            return Response(
+                {
+                    "task": "verify_validator_deployments",
+                    "status": "failed",
+                    "error": "internal error",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
 class SendPeriodicEmailsView(ScheduledTaskBaseView):
     """
     Run registered periodic email handlers.

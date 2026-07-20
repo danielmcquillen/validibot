@@ -206,6 +206,14 @@ SESSION_COOKIE_NAME = "__Secure-sessionid"
 CSRF_COOKIE_SECURE = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-name
 CSRF_COOKIE_NAME = "__Secure-csrftoken"
+# https://docs.djangoproject.com/en/dev/ref/settings/#csrf-trusted-origins
+# Explicitly trust only the origins configured by the operator. This is needed
+# when HTTPS terminates at a reverse proxy or cloud load balancer, and keeps the
+# setting aligned with the documented DJANGO_CSRF_TRUSTED_ORIGINS contract.
+CSRF_TRUSTED_ORIGINS = env.list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    default=[],
+)
 # Language cookie - must be Secure on HTTPS or browsers won't store it reliably
 # (especially with HSTS preload enabled)
 LANGUAGE_COOKIE_SECURE = True

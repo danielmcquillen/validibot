@@ -525,8 +525,48 @@ class DoctorTargetGcpTests(TestCase):
     """Doctor behaviour when running against a GCP profile."""
 
     def test_gcp_target_in_json_output(self):
+        """The doctor reports that the active target is GCP."""
         result, _ = _run_doctor()
         self.assertEqual(result["target"], "gcp")
+
+    def test_gcp_skips_celery_and_beat_checks(self):
+        """GCP must not probe Redis or Celery for Cloud Tasks workloads.
+
+        A production GCP doctor previously tried localhost Redis and reported
+        a blocking error even though Cloud Tasks and Cloud Scheduler were the
+        configured delivery systems. Explicit skipped results retain the stable
+        check IDs without claiming that Celery is part of the hosted runtime.
+        """
+        command = Command()
+        command.target = "gcp"
+
+        command._check_celery()
+
+        checks = {result.id: result for result in command.results}
+        self.assertEqual(checks["VB401"].status, CheckStatus.SKIPPED)
+        self.assertIn("Cloud Tasks", checks["VB401"].message)
+        self.assertEqual(checks["VB402"].status, CheckStatus.SKIPPED)
+        self.assertIn("Cloud Scheduler", checks["VB402"].message)
+
+    @override_settings(DATA_STORAGE_ROOT="/ephemeral/cloud-run/storage")
+    def test_gcp_skips_local_restore_marker(self):
+        """Cloud Run must not treat its ephemeral filesystem as drill evidence.
+
+        Hosted database and object-storage restore exercises are recorded in
+        the GCP operator runbook. Looking for a self-hosted marker inside an
+        ephemeral Cloud Run instance can only produce a false warning and an
+        inapplicable remediation command.
+        """
+        command = Command()
+        command.target = "gcp"
+
+        command._check_restore_test()
+
+        restore_check = next(
+            result for result in command.results if result.id == "VB411"
+        )
+        self.assertEqual(restore_check.status, CheckStatus.SKIPPED)
+        self.assertIn("GCP operator runbook", restore_check.message)
 
 
 class DoctorStorageCapabilityTests(TestCase):
@@ -913,6 +953,66 @@ class DoctorImagePolicyTests(TestCase):
         # The fix-hint should mention the valid values so the operator
         # sees the answer alongside the problem.
         self.assertIn("tag", vb711["fix_hint"].lower())
+
+
+class DoctorValidatorDeploymentTests(TestCase):
+    """Verify doctor projects the managed route contract without provider secrets."""
+
+    @override_settings(
+        GCP_VALIDATOR_TASK_QUEUE_NAME="validibot-validator-provider",
+        GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT=(
+            "validator-invoker@example.iam.gserviceaccount.com"
+        ),
+        TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS=[
+            "validator-runtime@example.iam.gserviceaccount.com"
+        ],
+    )
+    def test_ready_job_route_reports_configured_provider_contract(self):
+        """A ready Job-only intermediate rollout should be healthy and explicit."""
+        from validibot.validations.constants import ValidationType
+        from validibot.validations.services.execution.gcp_job_import import (
+            GCPJobObservation,
+        )
+        from validibot.validations.services.execution.gcp_job_import import (
+            register_observed_job_deployment,
+        )
+        from validibot.validations.tests.factories import ValidatorFactory
+
+        validator = ValidatorFactory(validation_type=ValidationType.SHACL)
+        digest = "sha256:" + "a" * 64
+        register_observed_job_deployment(
+            validator=validator,
+            project_id="test-project",
+            region="australia-southeast1",
+            observation=GCPJobObservation(
+                resource_name=(
+                    "projects/test-project/locations/australia-southeast1/"
+                    "jobs/validibot-validator-backend-shacl"
+                ),
+                job_name="validibot-validator-backend-shacl",
+                revision="0.14.0",
+                image_ref=f"example.invalid/shacl@{digest}",
+                image_digest=digest,
+                runtime_service_account=(
+                    "validator-runtime@example.iam.gserviceaccount.com"
+                ),
+                maximum_execution_seconds=3600,
+                maximum_cpu_millis=2000,
+                maximum_memory_mib=4096,
+            ),
+            activate_primary=True,
+        )
+        command = Command()
+        command.target = "gcp"
+        command.verbose = True
+
+        command._check_validator_execution_deployments()
+
+        checks = {result.id: result for result in command.results}
+        self.assertEqual(checks["VB720"].status, CheckStatus.OK)
+        self.assertEqual(checks["VB721"].status, CheckStatus.OK)
+        self.assertEqual(checks["VB722"].status, CheckStatus.OK)
+        self.assertEqual(checks["VB723"].status, CheckStatus.INFO)
 
 
 class DoctorVersionStampTests(TestCase):

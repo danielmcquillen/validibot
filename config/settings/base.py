@@ -980,6 +980,31 @@ VALIDATOR_RUNNER = env("VALIDATOR_RUNNER", default="docker")
 # Provider deployment recipes use the same environment variable and default,
 # so the watchdog never declares timeout before the configured runtime does.
 VALIDATOR_TIMEOUT_SECONDS = env.int("VALIDATOR_TIMEOUT_SECONDS", default=3600)
+MAX_PROVIDER_STATUS_LOOKUP_GRACE_SECONDS = 1800
+VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS = env.int(
+    "VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS",
+    default=300,
+)
+if not (
+    0
+    <= VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS
+    <= MAX_PROVIDER_STATUS_LOOKUP_GRACE_SECONDS
+):
+    raise ImproperlyConfigured(
+        "VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS must be between 0 and 1800."
+    )
+# Domain budget used when a workflow step does not request a narrower or longer
+# validator execution. 1500 seconds fits the request-driven Service contract;
+# an explicit step budget above it is planned onto the retained Job route.
+VALIDATOR_DEFAULT_EXECUTION_SECONDS = env.int(
+    "VALIDATOR_DEFAULT_EXECUTION_SECONDS",
+    default=min(1500, VALIDATOR_TIMEOUT_SECONDS),
+)
+if not 1 <= VALIDATOR_DEFAULT_EXECUTION_SECONDS <= VALIDATOR_TIMEOUT_SECONDS:
+    raise ImproperlyConfigured(
+        "VALIDATOR_DEFAULT_EXECUTION_SECONDS must be between 1 and "
+        "VALIDATOR_TIMEOUT_SECONDS."
+    )
 VALIDATOR_RUNNER_OPTIONS = {
     "memory_limit": env("VALIDATOR_MEMORY_LIMIT", default="4g"),
     "cpu_limit": env("VALIDATOR_CPU_LIMIT", default="2.0"),
@@ -1171,6 +1196,26 @@ if not (
         "CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS must be between 15 and 1800."
     )
 
+# Provider queue for request-driven validator Services. This is deliberately
+# separate from the short application-orchestration queue above: it has its own
+# invoker identity, capacity/retry policy, and the full Cloud Tasks HTTP limit.
+GCP_VALIDATOR_TASK_QUEUE_NAME = env(
+    "GCP_VALIDATOR_TASK_QUEUE_NAME",
+    default="",
+)
+GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT = env(
+    "GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT",
+    default="",
+)
+GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS = env.int(
+    "GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS",
+    default=30 * 60,
+)
+if GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS != _CLOUD_TASKS_MAX_DEADLINE_SECONDS:
+    raise ImproperlyConfigured(
+        "GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS must be exactly 1800."
+    )
+
 # Shared secret for authenticating requests to worker-only API endpoints.
 # Required for Docker Compose deployments (all services share the same key).
 # Leave empty for GCP deployments (Cloud Run IAM + OIDC handle authentication).
@@ -1196,9 +1241,11 @@ WORKER_API_KEY = env("WORKER_API_KEY", default="")
 #       ``[CLOUD_TASKS_SERVICE_ACCOUNT]`` — correct for the default
 #       single-SA deployment (Cloud Tasks, Cloud Scheduler, and Cloud Run
 #       Jobs all reuse ``${APP_NAME}-cloudrun-<stage>@...``). Override when
-#       splitting SAs per caller, or when validator Cloud Run Jobs run
-#       under a separate identity. See ``just gcp`` recipes for the SAs
-#       wired by our deployment tooling.
+#       splitting SAs per caller. The current GCP recipes use a separate
+#       validator runtime identity for both Jobs and Services, so production
+#       must explicitly include both the application and validator runtime SAs.
+#       The provider-task invoker calls validator Services, not this worker,
+#       and does not belong in this allowlist.
 TASK_OIDC_AUDIENCE = env("TASK_OIDC_AUDIENCE", default="")
 TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS = env.list(
     "TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS",

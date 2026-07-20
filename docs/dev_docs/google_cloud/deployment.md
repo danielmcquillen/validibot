@@ -186,6 +186,9 @@ transitional `STOPPED` state is not reported as safely offline too early.
 `just gcp deploy-all <stage>` already runs migrations and the complete guarded
 initializer before deploying services. A fresh database receives site/default
 data, validators and Step I/O, help content, and bundled validator resources.
+The production image includes the version-controlled curated EPW catalogue in
+`data/weather/`, so system EnergyPlus weather resources are reproducible from a
+clean checkout rather than depending on developer-local files.
 Before writing schema changes, the migration job runs the read-only
 `check_migration_history` preflight. It refuses a database that records one of
 the deliberately removed pre-2026-07-16 migration tails instead of attempting

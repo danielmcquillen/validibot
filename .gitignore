@@ -314,8 +314,11 @@ _envs/*
 # Storage bucket when running locally
 /storage
 
-# Local data files (weather seeds, etc.)
-/data
+# Local data files. Keep the curated weather seed catalogue reproducible while
+# ignoring any other developer-local data added under this directory.
+/data/*
+!/data/weather/
+!/data/weather/*.epw
 
 # Temporary files
 temp.json

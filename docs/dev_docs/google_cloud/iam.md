@@ -11,10 +11,11 @@ This document covers how Validibot uses Google Cloud IAM (Identity and Access Ma
 
 ## Overview
 
-We use two types of service accounts per environment:
+We use three service-account roles per environment:
 
 - **Web/Worker SA** (`$GCP_APP_NAME-cloudrun-{stage}`) - Used by Cloud Run web and worker services. Has broad access to run the Django application.
-- **Validator SA** (`$GCP_APP_NAME-validator-{stage}`) - Used by validator Cloud Run Jobs. It can invoke the worker for callbacks/capability renewal but has no ambient storage role.
+- **Validator runtime SA** (`$GCP_APP_NAME-validator-{stage}`) - Used by validator Services and retained Jobs. It can invoke the worker for callbacks/capability renewal but has no ambient storage role.
+- **Provider invoker SA** (`$GCP_APP_NAME-validator-invoker-{stage}`) - Attached only to provider-queue tasks and the sole `run.invoker` member on validator Services. It has no project roles and is not a callback identity.
 
 This ensures:
 

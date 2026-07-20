@@ -628,18 +628,20 @@ A validator container goes through these stages:
 ### Async Path (GCP Cloud Run)
 
 ```
-1. UPLOAD   → GCPExecutionBackend uploads input envelope + files to GCS
-2. TRIGGER  → Cloud Run Jobs API starts execution (returns immediately)
-3. EXECUTE  → Container runs on Cloud Run (minutes to hours)
-4. CALLBACK → Container POSTs callback to Django worker with result_uri
-5. PROCESS  → ValidationCallbackService downloads output, processes results
+1. RESOLVE  → Django pins the exact ready Service or retained Job deployment
+2. UPLOAD   → Django stages the input envelope/files under one GCS attempt prefix
+3. DISPATCH → Service: deterministic provider Cloud Task; Job: Cloud Run Jobs API
+4. EXECUTE  → Runtime receives only the attempt capability and runs one-shot work
+5. CALLBACK → Runtime POSTs exact output generation to the Django worker
+6. PROCESS  → ValidationCallbackService verifies and processes immutable output
 ```
 
-**If the callback is lost:** The `cleanup_stuck_runs` command queries the Cloud Run Jobs API:
-- Job succeeded → Recovers results via synthetic callback through `ValidationCallbackService`
-- Job failed → Marks run as `FAILED` with the error message
-- Job still running → Skips (no false timeout)
-- API unavailable → Falls through to simple `TIMED_OUT` marking
+**If the callback is lost:** `cleanup_stuck_runs` uses the capability declared by
+the pinned deployment. Jobs have queryable provider status. Services do not
+have a durable per-request status resource, so reconciliation retries bounded
+immutable-output salvage and never treats a transport 2xx as a validation
+result. A verified output is processed through the same idempotent
+`ValidationCallbackService` path; otherwise the absolute attempt deadline wins.
 
 ### Container Security Hardening
 

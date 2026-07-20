@@ -313,8 +313,9 @@ When running on GCP, containers are launched asynchronously and report back via 
          │
          │ 3. engine.validate()
          │    - Evaluate INPUT-stage assertions
-         │    - backend = GCPExecutionBackend
-         │    - backend.execute() → Triggers Cloud Run Job
+         │    - resolve exact ready deployment
+         │    - Service backend → deterministic provider task
+         │    - Jobs backend → retained Cloud Run Job
          │    - Returns IMMEDIATELY with passed=None
          │
          ▼
@@ -338,8 +339,8 @@ When running on GCP, containers are launched asynchronously and report back via 
 **Phase 2: Callback Processing (minutes later)**
 ```
 ┌─────────────────┐
-│ Cloud Run Job   │
-│ (EnergyPlus)    │
+│ Cloud Run       │
+│ Service or Job  │
 └────────┬────────┘
          │
          │ 1. Container completes

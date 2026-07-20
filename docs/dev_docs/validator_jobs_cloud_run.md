@@ -127,6 +127,7 @@ just gcp validator-services-register dev
 ### Production release deployment
 
 ```bash
+just gcp validator-release-mirror v0.15.0
 just gcp validator-release-verify v0.15.0
 VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validators-deploy-all prod
 VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-deploy-all prod
@@ -139,6 +140,10 @@ deadline, output-salvage, GCS, and latency acceptance first. Then run
 `VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp
 validator-services-activate prod`. The matching rollback command routes new
 attempts back to Jobs before reducing Service minimums to zero.
+
+`validator-release-mirror` verifies the signed tag and GHCR attestation before
+copying by digest into GAR; it does not rebuild. The following verify step
+proves the two registries contain byte-identical release images.
 
 ### What the deploy command does
 
@@ -219,6 +224,8 @@ historical storage identity:
 
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
+   just gcp validator-release-mirror v0.15.0
+   just gcp validator-release-verify v0.15.0
    VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validators-deploy-all prod
    ```
 

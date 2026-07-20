@@ -177,8 +177,13 @@ When a validation fails, here's how to investigate:
    jsonPayload.message:"run_id=<the-run-id>"
    ```
 
-4. **Check Cloud Run Job logs** (for validator execution):
+4. **Check the pinned validator runtime logs**. Request-shaped attempts use a
+   release-specific Service; over-budget/rollback attempts use retained Jobs:
    ```
+   resource.type="cloud_run_revision"
+   resource.labels.service_name="validibot-validator-service-energyplus-v0-15-0"
+
+   # Retained Job route:
    resource.type="cloud_run_job"
    resource.labels.job_name="$GCP_APP_NAME-validator-backend-energyplus"
    ```

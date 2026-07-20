@@ -91,7 +91,9 @@ The PDV suite verifies:
 - **Scheduled task endpoints**: Protected from external access
 - **Authenticated requests**: Reach Django when properly authenticated
 
-The worker security tests are particularly important because the callback endpoint is how validator jobs report their results. If this endpoint were exposed, attackers could spoof validation results.
+The worker security tests are particularly important because the callback
+endpoint is how validator Services and retained Jobs report their results. If
+this endpoint were exposed, attackers could spoof validation results.
 
 ### MCP Server (if enabled)
 

@@ -63,11 +63,12 @@ The downside is storage duplication, especially on GCP where both the original a
 
 ```
 1. Celery worker receives validation task
-2. GCPExecutionBackend.execute() → Cloud Run launcher:
+2. Selected GCP execution backend dispatches the pinned deployment:
    a. Reads submission content from DB
    b. Uploads copy to gs://bucket/runs/{org}/{run}/attempts/{attempt}/model.epjson
    c. Uploads input.json to that attempt prefix
-   d. Triggers Cloud Run Job (non-blocking)
+   d. Resolves an immutable deployment and dispatches a private Service task or
+      retained Cloud Run Job (non-blocking)
    e. Returns immediately with pending status
 3. Container runs in Cloud Run, writes output to GCS
 4. Container POSTs callback to worker service

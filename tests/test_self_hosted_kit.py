@@ -661,13 +661,14 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "spec.template.spec.template.spec.containers[0].image" in block
         assert "spec.template.template.containers[0].image" not in block
 
-    def test_health_and_maintenance_are_load_balancer_aware(self):
-        """LB-only Cloud Run ingress must still report and probe as online.
+    def test_health_is_load_balancer_aware_and_maintenance_is_strict(self):
+        """Health uses the public LB while maintenance checks the offline state.
 
         The direct run.app URL is deliberately unavailable under
         ``internal-and-cloud-load-balancing``. Health checks therefore use the
-        configured public ``SITE_URL`` and fail on non-2xx responses, while
-        maintenance status treats both supported public ingress modes as live.
+        configured public ``SITE_URL`` and fail on non-2xx responses. A stage
+        only counts as safely offline when ingress, minimum capacity, database,
+        and queues all agree; checking ingress alone hides billable instances.
         """
         health_block = self._block_between(
             "health-check stage:",
@@ -681,7 +682,90 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "DJANGO_ENV_FILE" in health_block
         assert "SITE_URL" in health_block
         assert "curl --fail" in health_block
-        assert "internal-and-cloud-load-balancing" in maintenance_block
+        assert "WEB_SERVICE_MIN" in maintenance_block
+        assert "WEB_REVISION_MIN" in maintenance_block
+        assert 'DB_STATUS" = "STOPPED"' in maintenance_block
+        assert 'QUEUE_STATUS" = "PAUSED"' in maintenance_block
+        assert "MAINTENANCE (safely offline)" in maintenance_block
+
+    def test_maintenance_enforcement_scales_every_runtime_surface_to_zero(self):
+        """Maintenance must stop warm instances as well as block public traffic.
+
+        Web, worker, optional MCP, and validator Services can each retain paid
+        minimum capacity. Central enforcement prevents a partial shutdown from
+        looking safe while one of those surfaces remains warm.
+        """
+        block = self._block_between(
+            "_enforce-maintenance stage:",
+            "# Put a stage into maintenance mode",
+        )
+
+        assert "--ingress internal --min=0" in block
+        assert '"$WORKER_SERVICE" "$MCP_SERVICE"' in block
+        assert "metadata.labels.validator" in block
+        assert 'queues pause "$QUEUE_NAME"' in block
+        assert 'queues pause "$PROVIDER_QUEUE_NAME"' in block
+        assert "--activation-policy NEVER" in block
+
+    def test_maintenance_deploy_restores_offline_state_on_every_exit(self):
+        """An offline deployment must fail closed if any intermediate step fails.
+
+        Migrations require Cloud SQL briefly, but traffic and task dispatch must
+        remain disabled. The EXIT trap is the recovery guarantee for build,
+        migration, web, worker, scheduler, and MCP failures.
+        """
+        block = self._block_between(
+            "deploy-maintenance stage:",
+            "# Run a Django management command during maintenance",
+        )
+
+        assert "_maintenance-assert-offline" in block
+        assert "trap 'just gcp _enforce-maintenance" in block
+        assert "_maintenance-start-database" in block
+        assert "_migrate" in block
+        maintenance_safe_child_steps = 4
+        assert block.count("GCP_DEPLOY_MAINTENANCE=1") == maintenance_safe_child_steps
+        assert "trap - EXIT" in block
+
+    def test_maintenance_off_waits_for_database_before_resuming_work(self):
+        """No traffic or queued work may resume against a starting database.
+
+        The database readiness helper must run before service ingress, queues,
+        or schedulers are restored. Validator minimums come from a durable label
+        so temporary maintenance scaling does not erase the chosen capacity.
+        """
+        block = self._block_between(
+            "maintenance-off stage:",
+            "# Report the signals that define maintenance mode",
+        )
+
+        ready = block.index("_maintenance-start-database")
+        assert ready < block.index("run services update")
+        assert ready < block.index("tasks queues resume")
+        assert ready < block.index("scheduler jobs resume")
+        assert block.rindex('--ingress "$WEB_INGRESS"') > block.index(
+            "scheduler jobs resume"
+        )
+        assert "desired-min-instances" in block
+
+    def test_validator_release_mirror_copies_attested_digest_without_rebuild(self):
+        """The GAR production mirror must preserve the signed GHCR image bytes.
+
+        Rebuilding a release for another registry creates unrelated bytes. The
+        mirror verifies the tag and attestation, copies by digest, and then uses
+        the shared verifier to prove both registries resolve to one digest.
+        """
+        block = self._block_between(
+            "_validator-release-mirror-image name release_tag:",
+            "# Mirror all signed release images",
+        )
+
+        assert "git -C ../validibot-validator-backends verify-tag" in block
+        assert "gh attestation verify" in block
+        assert "docker buildx imagetools create" in block
+        assert '"${GHCR_IMAGE}@${GHCR_DIGEST}"' in block
+        assert "_validator-release-verify-image" in block
+        assert "docker build " not in block
 
     def test_operator_job_updates_converge_identity_and_database_binding(self):
         """Re-running an operator recipe must converge old Cloud Run Jobs.

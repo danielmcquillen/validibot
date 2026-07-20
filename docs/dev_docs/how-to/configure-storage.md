@@ -106,7 +106,7 @@ This standardized structure allows containers to work identically across platfor
 | ------------------------------ | --------------------------------------- |
 | **Docker Compose** | Shared volume mount at `STORAGE_ROOT`   |
 | **Kubernetes**                 | Shared PVC or object storage (MinIO/S3) |
-| **Cloud Run Jobs (GCP)**       | GCS bucket via service account          |
+| **Cloud Run Services/Jobs (GCP)** | Attempt-scoped GCS capability token  |
 
 ## Configuration by Environment
 
@@ -313,8 +313,9 @@ The standardized run directory structure (`runs/{run_id}/input/` and `output/`) 
 
 ### Google Cloud Storage
 
-- Web app and Cloud Run Jobs both access the same GCS bucket
-- Authentication via service accounts (no credentials needed in code)
+- The web/worker identity stages attempt data in the GCS bucket
+- Validator Services and Jobs receive a short-lived token restricted to one
+  attempt prefix; their runtime service account has no ambient object role
 - Requires IAM configuration for public/private separation
 
 ### Future Platforms (S3, Azure Blob, etc.)

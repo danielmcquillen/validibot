@@ -55,18 +55,21 @@ gcloud logging read "resource.labels.service_name=\"$GCP_APP_NAME-worker\" sever
   --limit=20
 ```
 
-### Check Cloud Run Job logs (for EnergyPlus/FMU validators)
+### Check validator Service or retained Job logs
 
-Job names follow the `$GCP_APP_NAME-validator-backend-<slug>` convention
-(May 2026 standardisation; matches `ValidatorConfig.cloud_run_job_name`).
+Normal request-shaped GCP attempts use release-specific Cloud Run Services.
+Attempts over the Service budget, plus explicit rollback traffic, use retained
+Jobs. First inspect the attempt's pinned deployment in Django admin or with
+`just gcp validator-deployments-list prod`; do not guess the execution shape
+from the validator slug.
 
 ```bash
-# EnergyPlus validator job logs
-gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-backend-energyplus\"" \
+# Service logs (substitute the release and backend from the pinned deployment)
+gcloud logging read 'resource.type="cloud_run_revision" resource.labels.service_name="validibot-validator-service-energyplus-v0-15-0"' \
   --limit=50
 
-# FMU validator job logs
-gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-backend-fmu\"" \
+# Retained Job logs
+gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-backend-energyplus\"" \
   --limit=50
 ```
 
@@ -89,7 +92,7 @@ gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"
 
 ### OOM (Out of Memory)
 
-**Symptoms**: `error_category` is `OOM`, Cloud Run Job terminated
+**Symptoms**: `error_category` is `OOM`, validator Service child or Job terminated
 
 **Causes**:
 
@@ -131,17 +134,21 @@ This is the expected outcome when the validator finds issues with your file. Che
 
 **Causes**:
 
-- Cloud Run Job failed to send callback
-- Network/IAM issues between job and worker
+- Validator Service or retained Job failed to send its callback
+- Network/IAM issues between the selected runtime and worker
 - Callback endpoint rejected the request
 
 **Diagnosis**:
 
-1. Check Cloud Run Job execution status:
+1. Identify the attempt's pinned deployment. Jobs have queryable execution
+   status; Services do not have a durable per-request status resource:
    ```bash
+   just gcp validator-deployments-list prod
    gcloud run jobs executions list --job=$GCP_APP_NAME-validator-backend-energyplus
    ```
-2. Check worker logs for callback attempts:
+2. For a Service attempt, correlate the deterministic provider task, Service
+   revision logs, and immutable output generation recorded on the attempt.
+3. Check worker logs for callback attempts:
    ```bash
    gcloud logging read "resource.labels.service_name=\"$GCP_APP_NAME-worker\" jsonPayload.message:\"callback\"" --limit=20
    ```

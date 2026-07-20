@@ -108,10 +108,10 @@ Policy values:
     digest — that is the point (it stops a swapped tag from running), but it
     means you must pin your validator images by digest *before* turning the
     policy up, or every validation will fail to launch. The default stays `tag`
-    so the community quick-start works out of the box. On the hosted/GCP path
-    the validator Cloud Run Jobs are currently deployed by git-SHA tag, so
-    enabling `digest` there is a deliberate step: pin the job images by digest
-    first, then set `VALIDATOR_BACKEND_IMAGE_POLICY=digest`.
+    so the community quick-start works out of the box. The hosted/GCP path
+    deploys signed releases to Services and retained Jobs by Artifact Registry
+    digest and can therefore enforce `digest` after the exact registered
+    deployments have been verified.
 
 ## Run-scoped isolation
 

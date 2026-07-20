@@ -460,6 +460,11 @@ deploy stage: _require-gcp-config
     else
         INGRESS="all"
     fi
+    if [ "${GCP_DEPLOY_MAINTENANCE:-0}" = "1" ]; then
+        INGRESS="internal"
+        MIN_INSTANCES=0
+        echo "   Maintenance-safe deploy: forcing ingress=internal and min-instances=0"
+    fi
 
     echo "Deploying $SERVICE to Cloud Run ({{stage}}, ingress: $INGRESS)..."
     gcloud run deploy "$SERVICE" \

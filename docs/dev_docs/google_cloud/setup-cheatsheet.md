@@ -110,7 +110,10 @@ gcloud services enable \
 
 ## Create Cloud Tasks Queue
 
-Cloud Tasks is available for async orchestration and retries (for example, moving web→worker work off-request). Validator Cloud Run Jobs are triggered directly via the Jobs API today, but we still provision the queue so we can adopt Cloud Tasks where it adds reliability.
+Cloud Tasks has two distinct uses: the application queue dispatches short work
+to the worker, while the provider queue delivers deterministic OIDC requests
+to private validator Services. Retained validator Jobs are still triggered
+directly through the Jobs API for over-budget work and rollback.
 
 ```bash
 gcloud tasks queues create $GCP_APP_NAME-tasks \
@@ -532,7 +535,7 @@ just gcp errors-since prod 6h
 # Per-validator inventory: which backends are deployed for the stage,
 # whether each is digest-pinned, and the last execution status.  Useful
 # when verifying that a hardening change (digest policy) has actually
-# rolled out to every validator job, or for diagnosing a specific
+# rolled out to every validator Service/Job deployment, or for diagnosing a specific
 # validator that hasn't run successfully recently.
 just gcp validators prod
 

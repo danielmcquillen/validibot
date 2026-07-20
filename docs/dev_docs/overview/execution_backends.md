@@ -363,9 +363,9 @@ python manage.py cleanup_containers --all
 
 ## GCP Backend Details
 
-For detailed GCP architecture including Cloud Run Jobs, IAM configuration, and callback flow, see:
+For detailed GCP architecture including Services, retained Jobs, IAM, and callbacks, see:
 
-- [Validator Containers (Cloud Run)](../validator_jobs_cloud_run.md) — Job execution and callbacks
+- [Validator Containers (Cloud Run)](../validator_jobs_cloud_run.md) — Service/Job execution and callbacks
 - [GCP Deployment](../google_cloud/deployment.md) — Service deployment
 - [IAM & Service Accounts](../google_cloud/iam.md) — Security configuration
 
@@ -374,11 +374,11 @@ For detailed GCP architecture including Cloud Run Jobs, IAM configuration, and c
 **Web/Worker Split:**
 
 - `$GCP_APP_NAME-web` — Public UI and API
-- `$GCP_APP_NAME-worker` — Private, receives callbacks from validator jobs
+- `$GCP_APP_NAME-worker` — Private, receives callbacks from validator Services and Jobs
 
 **Callback Authentication:**
 
-- Validator jobs use Google-signed ID tokens
+- Validator Services and Jobs use Google-signed callback ID tokens
 - Worker service requires IAM authentication
 - No shared secrets in envelopes
 
@@ -386,7 +386,8 @@ For detailed GCP architecture including Cloud Run Jobs, IAM configuration, and c
 
 - Input/output envelopes stored in GCS
 - URIs use `gs://` scheme
-- Service accounts need appropriate storage permissions
+- Validator runtimes receive attempt-scoped GCS capability tokens; their
+  service account has no ambient bucket object permissions
 
 ## Status Checking
 
@@ -401,7 +402,8 @@ def check_status(self, execution_id: str) -> ExecutionResponse | None:
 | Backend | Behavior |
 |---------|----------|
 | `DockerComposeExecutionBackend` | Queries Docker daemon for container state. Primarily for debugging (sync execution already returns results). |
-| `GCPExecutionBackend` | Queries Cloud Run Jobs API for execution state. Used by reconciliation to recover lost callbacks. |
+| `CloudRunJobsExecutionBackend` | Queries the Cloud Run Jobs API for execution state. |
+| `CloudRunServiceExecutionBackend` | Explicitly reports status lookup as unsupported because Cloud Run has no durable per-request Service resource. |
 
 This method is **not abstract** — backends that don't need status checking (sync backends) can leave the default `None` return.
 
@@ -419,23 +421,33 @@ All strategies use Docker container labels (`org.validibot.managed`, `org.validi
 
 ### GCP Cloud Run
 
-Cloud Run Jobs are ephemeral — there's nothing to clean up at the container level. Error recovery is handled by the reconciliation system (see below).
+Cloud Run Jobs are ephemeral. Validator Services reuse a bounded HTTP parent
+but create a fresh one-shot child and scratch directory for every request.
+Cloud infrastructure needs no per-container cleanup; attempt scratch cleanup
+is enforced by the runtime, and application recovery is handled by the
+reconciliation system.
 
 ## Error Recovery
 
 ### Lost Callback Recovery (GCP)
 
-If a Cloud Run Job completes but its callback never reaches Django (network failure, container crash before POST), the `cleanup_stuck_runs` management command attempts reconciliation:
+If a validator runtime writes output but its callback never reaches Django,
+`cleanup_stuck_runs` attempts capability-aware reconciliation:
 
 1. Finds runs stuck in `RUNNING` status past the timeout threshold
-2. For GCP runs, checks `step_run.output` for `execution_name` metadata
-3. Queries Cloud Run Jobs API via `GCPExecutionBackend.check_status()`
-4. Based on result:
+2. Reads the attempt's immutable deployment snapshot and output generation
+3. For Jobs, queries status through `CloudRunJobsExecutionBackend`; for
+   Services, records that provider status is unsupported and retries bounded
+   immutable-output salvage
+4. Based on verified evidence:
    - **Still running after the configured outer deadline**: Marks the run
      `TIMED_OUT`, then requests provider cancellation
-   - **Succeeded**: Constructs a synthetic callback and processes through `ValidationCallbackService` (reuses existing idempotency, finding persistence, assertion evaluation)
+   - **Verified output exists**: Constructs a synthetic callback and processes
+     through `ValidationCallbackService` (reuses idempotency, persistence, and
+     assertion evaluation)
    - **Failed**: Marks the run as `FAILED` with the Cloud Run error message
-   - **API error**: Falls through to simple `TIMED_OUT` marking
+   - **Provider lookup unavailable/unsupported and no output**: Retries within
+     the lookup grace window, then the absolute attempt deadline wins
 
 This reconciliation runs automatically when `cleanup_stuck_runs` is scheduled (typically every 10 minutes via Cloud Scheduler).
 

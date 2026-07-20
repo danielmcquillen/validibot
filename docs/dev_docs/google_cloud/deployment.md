@@ -45,6 +45,9 @@ just gcp deploy-worker prod
 # Deploy both services at once
 just gcp deploy-all dev
 
+# Replace the staged revision while a stage remains fully offline
+just gcp deploy-maintenance prod
+
 # Run migrations
 just gcp migrate dev
 
@@ -86,7 +89,8 @@ This command creates (example for dev):
 - Service account (web/worker): `$GCP_APP_NAME-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
 - Service account (validators): `$GCP_APP_NAME-validator-dev@PROJECT.iam.gserviceaccount.com` (worker callback/capability renewal only; no ambient storage role)
 - Service account (provider invoker): `$GCP_APP_NAME-validator-invoker-dev@PROJECT.iam.gserviceaccount.com` (sole validator Service invoker; no project roles)
-- Cloud SQL instance: `$GCP_APP_NAME-db-dev` (db-f1-micro tier for dev, db-g1-small for staging; prod currently defaults to db-f1-micro—bump before real traffic)
+- Cloud SQL instance: `$GCP_APP_NAME-db-dev` (`db-f1-micro` for dev,
+  `db-g1-small` for staging, and `db-custom-2-8192` for production)
 - Database `validibot` and user `validibot_user` with generated password
 - Cloud Tasks queue: `$GCP_APP_NAME-validation-queue-dev`
 - Validator provider queue: `$GCP_APP_NAME-validator-provider-dev`
@@ -163,6 +167,14 @@ just gcp deploy-all <stage>
 # e.g., just gcp deploy-all dev|staging|prod
 ```
 
+The standard deploy recipes require Cloud SQL to be running and refuse a stage
+that is in maintenance mode. To stage the latest application while keeping the
+site offline, use `just gcp deploy-maintenance <stage>`. It confirms the stage
+is already offline, starts only Cloud SQL for migrations, deploys web, worker,
+schedulers, and optional MCP with internal ingress and zero minimum capacity,
+then stops Cloud SQL and re-pauses all work. An exit trap restores maintenance
+mode even if an intermediate step fails.
+
 ### Step 5: Database and Application Initialization
 
 `just gcp deploy-all <stage>` already runs migrations and the complete guarded
@@ -182,6 +194,7 @@ concern using the currently deployed image.
 
 ```bash
 # Production: use one exact signed release for retained Jobs and Services.
+just gcp validator-release-mirror v0.15.0
 just gcp validator-release-verify v0.15.0
 VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validators-deploy-all prod
 VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-deploy-all prod
@@ -189,7 +202,9 @@ just gcp validator-deployments-sync prod
 VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-register prod
 ```
 
-Production resolves a release to exact GHCR/GAR digests, refreshes retained
+The mirror command verifies the signed tag and GitHub attestation, then copies
+the exact GHCR digest into GAR without rebuilding it. Production resolves that
+release to equal GHCR/GAR digests, refreshes retained
 Jobs, and creates distinct private Services such as
 `validibot-validator-service-energyplus-v0-15-0`. Registration observes the
 ready provider state but leaves Jobs primary. Complete the live acceptance in
@@ -324,7 +339,7 @@ gcloud compute ssl-certificates describe $GCP_APP_NAME-cert --global \
 - Make sure `DJANGO_ALLOWED_HOSTS` (in `.envs/.production/.django`) includes your domain(s) (for example `validibot.com` and `www.validibot.com`). Then run `just gcp secrets prod` and redeploy.
 - Set these base URLs in your env file (they serve different purposes):
   - `SITE_URL`: public web base URL (prod: `https://validibot.com`; dev/staging: the web `*.run.app` URL is fine).
-  - `WORKER_URL`: internal worker base URL (the worker `*.run.app` URL). Cloud Run Jobs and Cloud Scheduler target the worker service; callbacks should never go to the public domain.
+  - `WORKER_URL`: internal worker base URL (the worker `*.run.app` URL). Validator Services, retained Jobs, and Cloud Scheduler target the worker service; callbacks should never go to the public domain.
   You can fetch the current worker URL with:
 
   ```bash
@@ -461,12 +476,22 @@ just gcp status-all
 ### Pause/Resume Service
 
 ```bash
-# Block public access (useful during maintenance)
-just gcp pause dev
+# Fully stop a stage: internal ingress, min=0, paused work, stopped database
+just gcp maintenance-on dev
 
-# Restore public access
-just gcp resume dev
+# Check every offline-state signal
+just gcp maintenance-status dev
+
+# Stage a release or run a management command without opening the stage
+just gcp deploy-maintenance dev
+just gcp maintenance-management-cmd dev "check_validibot --strict"
+
+# Restore database first, then capacity, queues, schedulers, and ingress
+just gcp maintenance-off dev
 ```
+
+The lower-level `pause`/`resume` recipes only change web ingress. Use the
+maintenance recipes when the intent is to take a stage offline or control cost.
 
 ### List Resources
 

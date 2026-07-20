@@ -174,9 +174,19 @@ just gcp scheduler-setup dev           # Create scheduled jobs
 just gcp lb-setup prod "example.com"   # Set up HTTPS load balancer
 
 # Maintenance
-just gcp maintenance-on dev            # Put in maintenance mode
-just gcp maintenance-off dev           # Resume from maintenance
+just gcp maintenance-on dev            # Internal/min=0, pause work, stop DB
+just gcp maintenance-status dev        # Verify all offline-state signals
+just gcp deploy-maintenance dev         # Deploy latest but remain offline
+just gcp init-stage-maintenance dev     # Reconcile infra but remain offline
+just gcp maintenance-management-cmd dev "check_validibot --strict"
+just gcp maintenance-off dev           # Start DB first, then safely resume
 ```
+
+`deploy`, `deploy-worker`, and `deploy-all` deliberately refuse to run while
+Cloud SQL is stopped. `deploy-maintenance` is the fail-closed alternative: it
+briefly starts only the database for migrations, forces all deployed services
+to internal ingress and zero minimums, pauses new scheduler/queue work, and
+restores full maintenance mode on success or failure.
 
 #### MCP server commands
 

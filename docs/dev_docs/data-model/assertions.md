@@ -295,8 +295,9 @@ than informational output from the validator.
 
 ### Async validators (EnergyPlus, FMU)
 
-Success messages work with async validators just like sync validators. When an EnergyPlus or FMU
-Cloud Run Job completes and returns its output envelope, the callback service evaluates any
+Success messages work with async validators just like sync validators. When an
+EnergyPlus or FMU Cloud Run Service request or retained Job returns its output
+envelope, the callback service evaluates any
 output-stage assertions against the envelope outputs. If assertions pass and success messages
 are configured (via `success_message` or `show_success_messages`), SUCCESS findings are created
 alongside any simulation-generated findings.

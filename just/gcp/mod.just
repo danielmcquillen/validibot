@@ -1005,6 +1005,11 @@ _deploy-web stage:
     else
         INGRESS="all"
     fi
+    if [ "${GCP_DEPLOY_MAINTENANCE:-0}" = "1" ]; then
+        INGRESS="internal"
+        MIN_INSTANCES=0
+        echo "   Maintenance-safe deploy: forcing ingress=internal and min-instances=0"
+    fi
 
     # Determine VPC egress mode. If the Cloud SQL instance has a private IP,
     # we enable Direct VPC egress so Cloud Run connects to the database over
@@ -1068,8 +1073,10 @@ _deploy-web stage:
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
         --set-env-vars "$SET_ENV_VARS" \
-        --min-instances $MIN_INSTANCES \
-        --max-instances $MAX_INSTANCES \
+        --min "$MIN_INSTANCES" \
+        --max "$MAX_INSTANCES" \
+        --min-instances default \
+        --max-instances default \
         --memory 1Gi \
         --timeout {{gcp_cloud_run_request_timeout}} \
         --execution-environment gen2 \
@@ -1146,11 +1153,13 @@ _deploy-worker stage:
         --location={{gcp_region}} \
         --project={{gcp_project}} \
         --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
-    if [ "$QUEUE_STATE" = "PAUSED" ]; then
+    if [ "$QUEUE_STATE" = "PAUSED" ] && [ "${GCP_DEPLOY_MAINTENANCE:-0}" != "1" ]; then
         echo "Resuming Cloud Tasks queue '$QUEUE_NAME'..."
         gcloud tasks queues resume "$QUEUE_NAME" \
             --location={{gcp_region}} \
             --project={{gcp_project}}
+    elif [ "$QUEUE_STATE" = "PAUSED" ]; then
+        echo "Leaving Cloud Tasks queue '$QUEUE_NAME' paused for maintenance-safe deploy."
     fi
 
     echo ""
@@ -3404,6 +3413,13 @@ scheduler-setup stage: _require-gcp-config
                 --oidc-token-audience "$WORKER_URL" \
                 --description "$description"
         fi
+        if [ "${GCP_DEPLOY_MAINTENANCE:-0}" = "1" ]; then
+            gcloud scheduler jobs pause "$job_name" \
+                --project {{gcp_project}} \
+                --location {{gcp_region}} \
+                --quiet
+            echo "   Paused for maintenance-safe deploy"
+        fi
         echo "   Done"
         echo ""
     }
@@ -3690,6 +3706,42 @@ validator-release-verify release_tag: _require-gcp-config
     just gcp _validator-release-verify-image shacl {{release_tag}}
     just gcp _validator-release-verify-image schematron {{release_tag}}
 
+# Copy one verified GHCR release image into GAR without rebuilding it. The
+# source digest is attested first; verification after the copy proves that the
+# production registry contains exactly the signed release bytes.
+[private]
+_validator-release-mirror-image name release_tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: backend release tag must be vX.Y.Z." >&2
+        exit 1
+    fi
+    git -C ../validibot-validator-backends verify-tag "{{release_tag}}" >/dev/null
+    GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-{{name}}"
+    GHCR_DIGEST=$(docker buildx imagetools inspect "${GHCR_IMAGE}:{{release_tag}}" \
+        | awk '/^Digest:/ {print $2; exit}')
+    if [[ ! "$GHCR_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "Error: could not resolve ${GHCR_IMAGE}:{{release_tag}} to one digest." >&2
+        exit 1
+    fi
+    gh attestation verify "oci://${GHCR_IMAGE}@${GHCR_DIGEST}" \
+        --owner danielmcquillen >/dev/null
+    GAR_IMAGE="{{validator_repo}}/{{app_name}}-validator-backend-{{name}}"
+    echo "Mirroring verified {{name}} {{release_tag}} (${GHCR_DIGEST}) to GAR..."
+    docker buildx imagetools create \
+        --tag "${GAR_IMAGE}:{{release_tag}}" \
+        "${GHCR_IMAGE}@${GHCR_DIGEST}"
+    just gcp _validator-release-verify-image {{name}} {{release_tag}}
+
+# Mirror all signed release images from GHCR into the production GAR registry.
+# Usage: just gcp validator-release-mirror v0.15.0
+validator-release-mirror release_tag: _require-gcp-config
+    just gcp _validator-release-mirror-image energyplus {{release_tag}}
+    just gcp _validator-release-mirror-image fmu {{release_tag}}
+    just gcp _validator-release-mirror-image shacl {{release_tag}}
+    just gcp _validator-release-mirror-image schematron {{release_tag}}
+
 # Deploy a Cloud Run Job for a validator to a specific stage
 # Usage: just gcp validator-deploy energyplus dev | just gcp validator-deploy fmu prod
 [arg('stage', pattern='dev|staging|prod')]
@@ -3916,7 +3968,7 @@ validator-service-deploy name stage: _require-gcp-config
         --subnet default \
         --vpc-egress all-traffic \
         --set-env-vars GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp,VALIDIBOT_EXECUTION_SHAPE=service,VALIDIBOT_BACKEND_IMAGE_DIGEST="$IMAGE_DIGEST",VALIDIBOT_BACKEND_RELEASE="$BACKEND_RELEASE" \
-        --labels validator={{name}},release="${IMAGE_TAG//./-}",stage={{stage}},execution-shape=service \
+        --labels validator={{name}},release="${IMAGE_TAG//./-}",stage={{stage}},execution-shape=service,desired-min-instances="$MIN_INSTANCES" \
         --project {{gcp_project}}
 
     # Reconcile the exact invocation policy. The provider-task identity is the
@@ -4019,6 +4071,7 @@ validator-services-activate stage: _require-gcp-config
             --region={{gcp_region}} \
             --project={{gcp_project}} \
             --min=0 \
+            --update-labels=desired-min-instances=0 \
             --quiet
     done <<< "$SERVICES"
 
@@ -4051,6 +4104,7 @@ validator-service-capacity name stage release_tag minimum maximum: _require-gcp-
         --project={{gcp_project}} \
         --min={{minimum}} \
         --max={{maximum}} \
+        --update-labels=desired-min-instances={{minimum}} \
         --quiet
     just gcp management-cmd {{stage}} "sync_gcp_validator_services --backend-release-tag={{release_tag}}"
 
@@ -4542,43 +4596,90 @@ list-weather env:
 # Maintenance Mode
 # =============================================================================
 #
-# Put a stage into maintenance mode to save costs when not in use.
-# This pauses/scales down resources without deleting them.
-#
-# What gets paused:
-#   - Cloud Run services: Ingress set to 'internal' (blocks public traffic)
-#   - Cloud SQL: Instance stopped (takes ~1 min to restart)
-#   - Cloud Scheduler: All jobs paused
-#   - Cloud Tasks queue: Paused
-#
-# Note: Cloud Run will still scale to 0 when idle, but maintenance mode
-# ensures no traffic can reach the services and stops the database.
-#
-# =============================================================================
+# Maintenance mode is an enforced offline state, not merely a traffic hint:
+# public ingress is blocked, all services have a zero minimum, queues and
+# schedulers are paused, and Cloud SQL is stopped. The dedicated deployment
+# and management-command recipes temporarily start only the database and use
+# an EXIT trap to restore this full state after success or failure.
 
-# Put a stage into maintenance mode (pause all resources)
-# Usage: just gcp maintenance-on dev
-[arg('stage', pattern='dev|staging|prod')]
-maintenance-on stage: _require-gcp-config
+[private]
+_maintenance-start-database stage:
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
-
-    # Safety check for prod
-    if [ "{{stage}}" = "prod" ]; then
-        echo "WARNING: You are about to put PRODUCTION into maintenance mode!"
-        echo "This will make the site unavailable to all users."
-        read -p "Are you absolutely sure? Type 'yes' to confirm: " -r
-        if [[ ! "$REPLY" == "yes" ]]; then
-            echo "Cancelled."
-            exit 1
-        fi
+    if [ "{{stage}}" = "prod" ]; then DB_INSTANCE="${APP_NAME}-db"; else DB_INSTANCE="${APP_NAME}-db-{{stage}}"; fi
+    DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
+        --project {{gcp_project}} --format="value(state)" 2>/dev/null || echo "unknown")
+    if [ "$DB_STATUS" = "unknown" ]; then
+        echo "Error: Cloud SQL instance $DB_INSTANCE was not found." >&2
+        exit 1
     fi
+    if [ "$DB_STATUS" != "RUNNABLE" ]; then
+        echo "Starting Cloud SQL instance $DB_INSTANCE..."
+        gcloud sql instances patch "$DB_INSTANCE" \
+            --activation-policy ALWAYS --project {{gcp_project}} --quiet
+    fi
+    for _ in $(seq 1 60); do
+        DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
+            --project {{gcp_project}} --format="value(state)" 2>/dev/null || echo "unknown")
+        if [ "$DB_STATUS" = "RUNNABLE" ]; then
+            echo "Cloud SQL instance $DB_INSTANCE is ready."
+            exit 0
+        fi
+        echo "Waiting for Cloud SQL ($DB_STATUS)..."
+        sleep 5
+    done
+    echo "Error: Cloud SQL instance $DB_INSTANCE did not become RUNNABLE." >&2
+    exit 1
 
-    # Compute stage-specific names
+[private]
+_maintenance-assert-offline stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="${APP_NAME}-web"
+        DB_INSTANCE="${APP_NAME}-db"
+        QUEUE_NAME="${APP_NAME}-tasks"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
+    else
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
+        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
+    fi
+    DB_POLICY=$(gcloud sql instances describe "$DB_INSTANCE" \
+        --project {{gcp_project}} --format="value(settings.activationPolicy)" 2>/dev/null || echo "unknown")
+    INGRESS=$(gcloud run services describe "$WEB_SERVICE" \
+        --region {{gcp_region}} --project {{gcp_project}} \
+        --format="value(metadata.annotations.'run.googleapis.com/ingress')" 2>/dev/null || echo "unknown")
+    QUEUE_STATE=$(gcloud tasks queues describe "$QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} \
+        --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
+    PROVIDER_STATE=$(gcloud tasks queues describe "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} \
+        --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
+    if [ "$DB_POLICY" != "NEVER" ] || [ "$INGRESS" != "internal" ] || [ "$QUEUE_STATE" != "PAUSED" ]; then
+        echo "Error: {{stage}} is not safely offline." >&2
+        echo "Expected DB policy NEVER, web ingress internal, and main queue PAUSED." >&2
+        echo "Observed DB=$DB_POLICY ingress=$INGRESS queue=$QUEUE_STATE." >&2
+        exit 1
+    fi
+    if [ "$PROVIDER_STATE" != "PAUSED" ] && [ "$PROVIDER_STATE" != "NOT_FOUND" ]; then
+        echo "Error: provider queue is $PROVIDER_STATE, not PAUSED." >&2
+        exit 1
+    fi
+    echo "Confirmed {{stage}} is offline."
+
+[private]
+_enforce-maintenance stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
     if [ "{{stage}}" = "prod" ]; then
         WEB_SERVICE="${APP_NAME}-web"
         WORKER_SERVICE="${APP_NAME}-worker"
+        MCP_SERVICE="${APP_NAME}-mcp"
         DB_INSTANCE="${APP_NAME}-db"
         QUEUE_NAME="${APP_NAME}-tasks"
         PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
@@ -4586,94 +4687,236 @@ maintenance-on stage: _require-gcp-config
     else
         WEB_SERVICE="${APP_NAME}-web-{{stage}}"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        MCP_SERVICE="${APP_NAME}-mcp-{{stage}}"
         DB_INSTANCE="${APP_NAME}-db-{{stage}}"
         QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
         PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
         JOB_SUFFIX="-{{stage}}"
     fi
 
-    echo "Putting {{stage}} into maintenance mode..."
-    echo ""
-
-    # 1. Block public traffic to web service
-    echo "1. Blocking public traffic to $WEB_SERVICE..."
+    echo "Enforcing maintenance mode on {{stage}}..."
     gcloud run services update "$WEB_SERVICE" \
-        --region {{gcp_region}} \
-        --ingress internal \
-        --project {{gcp_project}} \
-        --quiet
-    echo "   Web service set to internal-only"
-
-    # 2. Worker is already internal-only, but ensure it's set
-    echo "2. Confirming $WORKER_SERVICE is internal-only..."
-    gcloud run services update "$WORKER_SERVICE" \
-        --region {{gcp_region}} \
-        --ingress internal \
-        --project {{gcp_project}} \
-        --quiet 2>/dev/null || echo "   (worker not found or already internal)"
-    echo "   Worker service confirmed internal-only"
-
-    # 3. Pause Cloud Scheduler jobs
-    echo "3. Pausing Cloud Scheduler jobs..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
-        job="${job_base}${JOB_SUFFIX}"
-        gcloud scheduler jobs pause "$job" \
-            --project {{gcp_project}} \
-            --location {{gcp_region}} \
-            --quiet 2>/dev/null && echo "   Paused $job" || echo "   - $job (not found)"
+        --region {{gcp_region}} --project {{gcp_project}} \
+        --ingress internal --min=0 --min-instances=default --quiet
+    for service in "$WORKER_SERVICE" "$MCP_SERVICE"; do
+        if gcloud run services describe "$service" --region {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
+            gcloud run services update "$service" \
+                --region {{gcp_region}} --project {{gcp_project}} \
+                --ingress internal --min=0 --quiet
+        fi
     done
+    SERVICES=$(gcloud run services list \
+        --region {{gcp_region}} --project {{gcp_project}} \
+        --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
+        --format='value(metadata.name)')
+    while IFS= read -r service; do
+        [ -z "$service" ] && continue
+        gcloud run services update "$service" \
+            --region {{gcp_region}} --project {{gcp_project}} \
+            --ingress internal --min=0 --quiet
+    done <<< "$SERVICES"
 
-    # 4. Pause Cloud Tasks queue
-    echo "4. Pausing Cloud Tasks queue..."
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention ${APP_NAME}-verify-license-document-hashes; do
+        job="${job_base}${JOB_SUFFIX}"
+        if gcloud scheduler jobs describe "$job" --project {{gcp_project}} --location {{gcp_region}} &>/dev/null; then
+            gcloud scheduler jobs pause "$job" \
+                --project {{gcp_project}} --location {{gcp_region}} --quiet
+        fi
+    done
     gcloud tasks queues pause "$QUEUE_NAME" \
-        --location {{gcp_region}} \
-        --project {{gcp_project}} \
-        --quiet 2>/dev/null && echo "   Queue paused" || echo "   - Queue not found"
-    gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
-        --location {{gcp_region}} \
-        --project {{gcp_project}} \
-        --quiet 2>/dev/null && echo "   Provider queue paused" || echo "   - Provider queue not found"
-
-    # 5. Stop Cloud SQL instance
-    echo "5. Stopping Cloud SQL instance $DB_INSTANCE..."
-    echo "   (This saves the most cost but takes ~1 min to restart)"
-    DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
-        --project {{gcp_project}} \
-        --format="value(state)" 2>/dev/null || echo "unknown")
-    if [ "$DB_STATUS" = "RUNNABLE" ]; then
-        gcloud sql instances patch "$DB_INSTANCE" \
-            --activation-policy NEVER \
-            --project {{gcp_project}} \
-            --quiet
-        echo "   Database stopped"
-    else
-        echo "   - Database already stopped ($DB_STATUS)"
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    if gcloud tasks queues describe "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
+        gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
+            --location {{gcp_region}} --project {{gcp_project}} --quiet
     fi
 
-    echo ""
-    echo "{{stage}} is now in MAINTENANCE MODE"
-    echo ""
-    echo "Resources paused (not deleted):"
-    echo "  Web service: internal-only (no public traffic)"
-    echo "  Worker service: internal-only"
-    echo "  Scheduler jobs: paused"
-    echo "  Task queues: paused"
-    echo "  Database: stopped"
-    echo ""
-    echo "To bring back online: just gcp maintenance-off {{stage}}"
+    DB_POLICY=$(gcloud sql instances describe "$DB_INSTANCE" \
+        --project {{gcp_project}} --format="value(settings.activationPolicy)" 2>/dev/null || echo "unknown")
+    if [ "$DB_POLICY" = "unknown" ]; then
+        echo "Error: Cloud SQL instance $DB_INSTANCE was not found." >&2
+        exit 1
+    fi
+    if [ "$DB_POLICY" != "NEVER" ]; then
+        gcloud sql instances patch "$DB_INSTANCE" \
+            --activation-policy NEVER --project {{gcp_project}} --quiet
+    fi
+    for _ in $(seq 1 60); do
+        DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
+            --project {{gcp_project}} --format="value(state)" 2>/dev/null || echo "unknown")
+        if [ "$DB_STATUS" = "STOPPED" ]; then
+            echo "{{stage}} is in maintenance mode: services min=0/internal, work paused, database stopped."
+            exit 0
+        fi
+        echo "Waiting for Cloud SQL to stop ($DB_STATUS)..."
+        sleep 5
+    done
+    echo "Error: Cloud SQL instance $DB_INSTANCE did not stop." >&2
+    exit 1
 
-# Bring a stage out of maintenance mode (resume all resources)
-# Usage: just gcp maintenance-off dev
+# Put a stage into maintenance mode (pause and scale down all resources).
+[arg('stage', pattern='dev|staging|prod')]
+maintenance-on stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{stage}}" = "prod" ] && [ "${GCP_YES:-0}" != "1" ]; then
+        echo "WARNING: This will take PRODUCTION offline."
+        read -r -p "Type 'yes' to confirm: " REPLY
+        if [ "$REPLY" != "yes" ]; then echo "Cancelled."; exit 1; fi
+    fi
+    just gcp _enforce-maintenance {{stage}}
+
+# Reconcile existing stage infrastructure while preserving maintenance mode.
+[arg('stage', pattern='dev|staging|prod')]
+init-stage-maintenance stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just gcp _maintenance-assert-offline {{stage}}
+    trap 'just gcp _enforce-maintenance {{stage}}' EXIT
+    just gcp _maintenance-start-database {{stage}}
+    just gcp init-stage {{stage}}
+    just gcp _enforce-maintenance {{stage}}
+    trap - EXIT
+
+# Build and deploy the newest app revision without bringing the stage online.
+# Only Cloud SQL is temporarily started for migrations; an EXIT trap restores
+# full maintenance mode even if a build, migration, or deployment fails.
+[arg('stage', pattern='dev|staging|prod')]
+deploy-maintenance stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{stage}}" = "prod" ] && [ "${GCP_YES:-0}" != "1" ]; then
+        echo "WARNING: This will replace the staged PRODUCTION revision while keeping it offline."
+        read -r -p "Type 'prod' to confirm: " REPLY
+        if [ "$REPLY" != "prod" ]; then echo "Cancelled."; exit 1; fi
+    fi
+    just gcp _maintenance-assert-offline {{stage}}
+    trap 'just gcp _enforce-maintenance {{stage}}' EXIT
+    just gcp _enforce-maintenance {{stage}}
+    just gcp build
+    just gcp push
+    just gcp _maintenance-start-database {{stage}}
+    just gcp _migrate {{stage}}
+    GCP_DEPLOY_MAINTENANCE=1 just gcp _deploy-web {{stage}}
+    GCP_DEPLOY_MAINTENANCE=1 just gcp _deploy-worker {{stage}}
+    GCP_DEPLOY_MAINTENANCE=1 just gcp scheduler-setup {{stage}}
+    GCP_DEPLOY_MAINTENANCE=1 just gcp _maybe-deploy-mcp {{stage}}
+    just gcp _enforce-maintenance {{stage}}
+    trap - EXIT
+    echo "Latest revision deployed to {{stage}}; maintenance mode remains on."
+
+# Run a Django management command during maintenance without opening traffic.
+[arg('stage', pattern='dev|staging|prod')]
+maintenance-management-cmd stage command: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just gcp _maintenance-assert-offline {{stage}}
+    trap 'just gcp _enforce-maintenance {{stage}}' EXIT
+    just gcp _maintenance-start-database {{stage}}
+    just gcp management-cmd {{stage}} "{{command}}"
+    just gcp _enforce-maintenance {{stage}}
+    trap - EXIT
+
+# Bring a stage online. Database readiness is proven before any service,
+# queue, scheduler, or public ingress is restored.
 [arg('stage', pattern='dev|staging|prod')]
 maintenance-off stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
-
-    # Compute stage-specific names
+    if [ "{{stage}}" = "prod" ] && [ "${GCP_YES:-0}" != "1" ]; then
+        echo "WARNING: This will bring PRODUCTION online."
+        read -r -p "Type 'prod' to confirm: " REPLY
+        if [ "$REPLY" != "prod" ]; then echo "Cancelled."; exit 1; fi
+    fi
     if [ "{{stage}}" = "prod" ]; then
         WEB_SERVICE="${APP_NAME}-web"
         WORKER_SERVICE="${APP_NAME}-worker"
+        MCP_SERVICE="${APP_NAME}-mcp"
+        QUEUE_NAME="${APP_NAME}-tasks"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
+        JOB_SUFFIX=""
+        WEB_MIN=1
+        WEB_NEG="${APP_NAME}-neg"
+        MCP_NEG="${APP_NAME}-mcp-neg"
+    else
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        MCP_SERVICE="${APP_NAME}-mcp-{{stage}}"
+        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
+        JOB_SUFFIX="-{{stage}}"
+        WEB_MIN=0
+        WEB_NEG="${APP_NAME}-neg-{{stage}}"
+        MCP_NEG="${APP_NAME}-mcp-neg-{{stage}}"
+    fi
+
+    just gcp _maintenance-start-database {{stage}}
+    if gcloud compute network-endpoint-groups describe "$WEB_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then WEB_INGRESS="internal-and-cloud-load-balancing"; else WEB_INGRESS="all"; fi
+    if gcloud compute network-endpoint-groups describe "$MCP_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then MCP_INGRESS="internal-and-cloud-load-balancing"; else MCP_INGRESS="all"; fi
+
+    # Restore desired capacity while ingress remains closed. Public traffic is
+    # the final transition only after every queue and scheduler is ready.
+    gcloud run services update "$WEB_SERVICE" \
+        --region {{gcp_region}} --project {{gcp_project}} \
+        --ingress internal --min="$WEB_MIN" --quiet
+    gcloud run services update "$WORKER_SERVICE" \
+        --region {{gcp_region}} --project {{gcp_project}} \
+        --ingress internal --min=0 --quiet
+    if gcloud run services describe "$MCP_SERVICE" --region {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
+        gcloud run services update "$MCP_SERVICE" \
+            --region {{gcp_region}} --project {{gcp_project}} \
+            --ingress internal --min=0 --quiet
+    fi
+    SERVICES=$(gcloud run services list \
+        --region {{gcp_region}} --project {{gcp_project}} \
+        --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
+        --format='value(metadata.name)')
+    while IFS= read -r service; do
+        [ -z "$service" ] && continue
+        desired=$(gcloud run services describe "$service" \
+            --region {{gcp_region}} --project {{gcp_project}} \
+            --format="value(metadata.labels.'desired-min-instances')" 2>/dev/null || true)
+        desired="${desired:-0}"
+        if ! [[ "$desired" =~ ^[0-9]+$ ]]; then
+            echo "Error: invalid desired-min-instances label '$desired' on $service." >&2
+            exit 1
+        fi
+        gcloud run services update "$service" \
+            --region {{gcp_region}} --project {{gcp_project}} \
+            --ingress internal --min="$desired" --quiet
+    done <<< "$SERVICES"
+    gcloud tasks queues resume "$QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    gcloud tasks queues resume "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention ${APP_NAME}-verify-license-document-hashes; do
+        job="${job_base}${JOB_SUFFIX}"
+        if gcloud scheduler jobs describe "$job" --project {{gcp_project}} --location {{gcp_region}} &>/dev/null; then
+            gcloud scheduler jobs resume "$job" \
+                --project {{gcp_project}} --location {{gcp_region}} --quiet
+        fi
+    done
+    gcloud run services update "$WEB_SERVICE" \
+        --region {{gcp_region}} --project {{gcp_project}} \
+        --ingress "$WEB_INGRESS" --min="$WEB_MIN" --quiet
+    if gcloud run services describe "$MCP_SERVICE" --region {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
+        gcloud run services update "$MCP_SERVICE" \
+            --region {{gcp_region}} --project {{gcp_project}} \
+            --ingress "$MCP_INGRESS" --min=0 --quiet
+    fi
+    echo "{{stage}} is online: database ready, service capacity restored, work resumed."
+
+# Report the signals that define maintenance mode.
+[arg('stage', pattern='dev|staging|prod')]
+maintenance-status stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="${APP_NAME}-web"
+        WORKER_SERVICE="${APP_NAME}-worker"
+        MCP_SERVICE="${APP_NAME}-mcp"
         DB_INSTANCE="${APP_NAME}-db"
         QUEUE_NAME="${APP_NAME}-tasks"
         PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
@@ -4681,164 +4924,80 @@ maintenance-off stage: _require-gcp-config
     else
         WEB_SERVICE="${APP_NAME}-web-{{stage}}"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        MCP_SERVICE="${APP_NAME}-mcp-{{stage}}"
         DB_INSTANCE="${APP_NAME}-db-{{stage}}"
         QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
         PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
         JOB_SUFFIX="-{{stage}}"
     fi
-
-    echo "Bringing {{stage}} out of maintenance mode..."
-    echo ""
-
-    # 1. Start Cloud SQL instance first (takes longest)
-    echo "1. Starting Cloud SQL instance $DB_INSTANCE..."
-    echo "   (This may take 1-2 minutes)"
-    DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
-        --project {{gcp_project}} \
-        --format="value(state)" 2>/dev/null || echo "unknown")
-    if [ "$DB_STATUS" = "RUNNABLE" ]; then
-        echo "   - Database already running ($DB_STATUS)"
-    else
-        gcloud sql instances patch "$DB_INSTANCE" \
-            --activation-policy ALWAYS \
-            --project {{gcp_project}} \
-            --quiet
-        echo "   Database starting..."
-    fi
-
-    # 2. Resume Cloud Tasks queue
-    echo "2. Resuming Cloud Tasks queue..."
-    gcloud tasks queues resume "$QUEUE_NAME" \
-        --location {{gcp_region}} \
-        --project {{gcp_project}} \
-        --quiet 2>/dev/null && echo "   Queue resumed" || echo "   - Queue not found"
-    gcloud tasks queues resume "$PROVIDER_QUEUE_NAME" \
-        --location {{gcp_region}} \
-        --project {{gcp_project}} \
-        --quiet 2>/dev/null && echo "   Provider queue resumed" || echo "   - Provider queue not found"
-
-    # 3. Resume Cloud Scheduler jobs
-    echo "3. Resuming Cloud Scheduler jobs..."
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
-        job="${job_base}${JOB_SUFFIX}"
-        gcloud scheduler jobs resume "$job" \
-            --project {{gcp_project}} \
-            --location {{gcp_region}} \
-            --quiet 2>/dev/null && echo "   Resumed $job" || echo "   - $job (not found)"
-    done
-
-    # 4. Restore public traffic to web service
-    # Use internal-and-cloud-load-balancing if LB is set up, otherwise fall back to all
-    echo "4. Restoring public traffic to $WEB_SERVICE..."
-    if [ "{{stage}}" = "prod" ]; then NEG_NAME="${APP_NAME}-neg"; else NEG_NAME="${APP_NAME}-neg-{{stage}}"; fi
-    if gcloud compute network-endpoint-groups describe "$NEG_NAME" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null 2>&1; then
-        INGRESS="internal-and-cloud-load-balancing"
-    else
-        INGRESS="all"
-    fi
-    gcloud run services update "$WEB_SERVICE" \
-        --region {{gcp_region}} \
-        --ingress "$INGRESS" \
-        --project {{gcp_project}} \
-        --quiet
-    echo "   Web service accepting traffic (ingress: $INGRESS)"
-
-    # 5. Worker stays internal-only (that's correct)
-    echo "5. Worker service remains internal-only (correct configuration)"
-
-    # Wait for database to be ready
-    echo ""
-    echo "6. Waiting for database to be ready..."
-    for i in {1..30}; do
-        STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
-            --project {{gcp_project}} \
-            --format="value(state)" 2>/dev/null)
-        if [ "$STATUS" = "RUNNABLE" ]; then
-            echo "   Database is ready!"
-            break
-        fi
-        echo "   Waiting... ($STATUS)"
-        sleep 5
-    done
-
-    echo ""
-    echo "{{stage}} is now ONLINE"
-    echo ""
-    echo "All resources resumed:"
-    echo "  Web service: accepting public traffic"
-    echo "  Worker service: internal-only (correct)"
-    echo "  Scheduler jobs: running"
-    echo "  Task queues: running"
-    echo "  Database: running"
-    echo ""
-    echo "Check status: just gcp status {{stage}}"
-    echo "Open site: just gcp open {{stage}}"
-
-# Check maintenance status for a stage
-[arg('stage', pattern='dev|staging|prod')]
-maintenance-status stage: _require-gcp-config
-    #!/usr/bin/env bash
-    set -euo pipefail
-    APP_NAME="{{app_name}}"
-
-    # Compute stage-specific names
-    if [ "{{stage}}" = "prod" ]; then
-        WEB_SERVICE="${APP_NAME}-web"
-        DB_INSTANCE="${APP_NAME}-db"
-        QUEUE_NAME="${APP_NAME}-tasks"
-        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
-    else
-        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
-        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
-        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
-        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
-    fi
-
-    echo "Maintenance status for {{stage}}:"
-    echo "=================================="
-    echo ""
-
-    # Check web service ingress
     INGRESS=$(gcloud run services describe "$WEB_SERVICE" \
-        --region {{gcp_region}} \
-        --project {{gcp_project}} \
+        --region {{gcp_region}} --project {{gcp_project}} \
         --format="value(metadata.annotations.'run.googleapis.com/ingress')" 2>/dev/null || echo "unknown")
-    if [ "$INGRESS" = "all" ] || [ "$INGRESS" = "internal-and-cloud-load-balancing" ]; then
-        echo "Web service:  ONLINE ($INGRESS)"
-    else
-        echo "Web service:  MAINTENANCE ($INGRESS)"
-    fi
-
-    # Check database status
+    WEB_JSON=$(gcloud run services describe "$WEB_SERVICE" \
+        --region {{gcp_region}} --project {{gcp_project}} --format=json)
+    WEB_SERVICE_MIN=$(jq -r '.spec.scaling.minInstanceCount // .metadata.annotations["run.googleapis.com/minScale"] // "0"' <<< "$WEB_JSON")
+    WEB_REVISION_MIN=$(jq -r '.spec.template.metadata.annotations["autoscaling.knative.dev/minScale"] // "0"' <<< "$WEB_JSON")
     DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
-        --project {{gcp_project}} \
-        --format="value(state)" 2>/dev/null || echo "unknown")
-    if [ "$DB_STATUS" = "RUNNABLE" ]; then
-        echo "Database:     ONLINE ($DB_STATUS)"
-    else
-        echo "Database:     MAINTENANCE ($DB_STATUS)"
-    fi
-
-    # Check queue status
+        --project {{gcp_project}} --format="value(state)" 2>/dev/null || echo "unknown")
     QUEUE_STATUS=$(gcloud tasks queues describe "$QUEUE_NAME" \
-        --location {{gcp_region}} \
-        --project {{gcp_project}} \
-        --format="value(state)" 2>/dev/null || echo "unknown")
-    if [ "$QUEUE_STATUS" = "RUNNING" ]; then
-        echo "Task queue:   ONLINE ($QUEUE_STATUS)"
+        --location {{gcp_region}} --project {{gcp_project}} \
+        --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
+    PROVIDER_STATUS=$(gcloud tasks queues describe "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} \
+        --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
+    WEB_SERVICE_MIN="${WEB_SERVICE_MIN:-0}"
+    WEB_REVISION_MIN="${WEB_REVISION_MIN:-0}"
+    RUNTIME_ISSUES=0
+    check_offline_service() {
+        local service="$1"
+        if ! gcloud run services describe "$service" --region {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
+            return
+        fi
+        local ingress service_min revision_min service_json
+        ingress=$(gcloud run services describe "$service" \
+            --region {{gcp_region}} --project {{gcp_project}} \
+            --format="value(metadata.annotations.'run.googleapis.com/ingress')")
+        service_json=$(gcloud run services describe "$service" \
+            --region {{gcp_region}} --project {{gcp_project}} --format=json)
+        service_min=$(jq -r '.spec.scaling.minInstanceCount // .metadata.annotations["run.googleapis.com/minScale"] // "0"' <<< "$service_json")
+        revision_min=$(jq -r '.spec.template.metadata.annotations["autoscaling.knative.dev/minScale"] // "0"' <<< "$service_json")
+        echo "  Runtime:       $service ingress=$ingress service-min=$service_min revision-min=$revision_min"
+        if [ "$ingress" != "internal" ] || [ "$service_min" != "0" ] || [ "$revision_min" != "0" ]; then
+            RUNTIME_ISSUES=$((RUNTIME_ISSUES + 1))
+        fi
+    }
+    check_offline_service "$WORKER_SERVICE"
+    check_offline_service "$MCP_SERVICE"
+    SERVICES=$(gcloud run services list \
+        --region {{gcp_region}} --project {{gcp_project}} \
+        --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
+        --format='value(metadata.name)')
+    while IFS= read -r service; do
+        [ -z "$service" ] && continue
+        check_offline_service "$service"
+    done <<< "$SERVICES"
+    SCHEDULER_ACTIVE=0
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention ${APP_NAME}-verify-license-document-hashes; do
+        job="${job_base}${JOB_SUFFIX}"
+        state=$(gcloud scheduler jobs describe "$job" \
+            --project {{gcp_project}} --location {{gcp_region}} \
+            --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
+        if [ "$state" != "PAUSED" ] && [ "$state" != "NOT_FOUND" ]; then
+            SCHEDULER_ACTIVE=$((SCHEDULER_ACTIVE + 1))
+        fi
+    done
+    echo "Maintenance status for {{stage}}"
+    echo "  Web ingress:   $INGRESS"
+    echo "  Web minimum:   service=$WEB_SERVICE_MIN revision=$WEB_REVISION_MIN"
+    echo "  Database:      $DB_STATUS"
+    echo "  Main queue:    $QUEUE_STATUS"
+    echo "  Provider queue: $PROVIDER_STATUS"
+    echo "  Active schedulers: $SCHEDULER_ACTIVE"
+    if [ "$INGRESS" = "internal" ] && [ "$WEB_SERVICE_MIN" = "0" ] && [ "$WEB_REVISION_MIN" = "0" ] && [ "$DB_STATUS" = "STOPPED" ] && [ "$QUEUE_STATUS" = "PAUSED" ] && [ "$RUNTIME_ISSUES" = "0" ] && [ "$SCHEDULER_ACTIVE" = "0" ] && { [ "$PROVIDER_STATUS" = "PAUSED" ] || [ "$PROVIDER_STATUS" = "NOT_FOUND" ]; }; then
+        echo "  Overall:       MAINTENANCE (safely offline)"
     else
-        echo "Task queue:   MAINTENANCE ($QUEUE_STATUS)"
+        echo "  Overall:       ONLINE OR PARTIALLY TRANSITIONED"
     fi
-    PROVIDER_QUEUE_STATUS=$(gcloud tasks queues describe "$PROVIDER_QUEUE_NAME" \
-        --location {{gcp_region}} \
-        --project {{gcp_project}} \
-        --format="value(state)" 2>/dev/null || echo "unknown")
-    if [ "$PROVIDER_QUEUE_STATUS" = "RUNNING" ]; then
-        echo "Provider queue: ONLINE ($PROVIDER_QUEUE_STATUS)"
-    else
-        echo "Provider queue: MAINTENANCE ($PROVIDER_QUEUE_STATUS)"
-    fi
-
     echo ""
 
 # =============================================================================

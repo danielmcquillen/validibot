@@ -25,7 +25,8 @@ The GCP architecture includes:
 - **External HTTP(S) Load Balancer** _(optional)_ - Custom domain routing via serverless NEG. Required for regions without Cloud Run domain mapping support (e.g. `australia-southeast1`); optional but recommended for production in other regions
 - **Cloud SQL** - Managed PostgreSQL database
 - **Cloud Storage** - Object storage for media files
-- **Cloud Tasks** - Optional async queue for web→worker work and retries (validator jobs are triggered via the Jobs API today)
+- **Cloud Tasks** - Application-worker queue plus a separate provider queue for deterministic, OIDC-authenticated validator Service delivery
+- **Cloud Run Jobs** - Retained route for attempts over the Service budget and explicit rollback
 - **Cloud Scheduler** - Cron jobs for maintenance tasks
 - **Secret Manager** - Secure credential storage
 

@@ -300,7 +300,8 @@ GCP deployments use completely different infrastructure:
 - `DEPLOYMENT_TARGET=gcp`
 - Cloud SQL for database (via Unix socket)
 - Cloud Tasks for background work
-- Cloud Run Jobs for validator containers
+- Private Cloud Run Services for request-shaped validator work, with retained
+  Cloud Run Jobs for attempts over the Service budget and rollback
 - GCS for file storage (media + submissions)
 
 Infrastructure is provisioned idempotently via
@@ -411,7 +412,7 @@ deletion.
 On `DEPLOYMENT_TARGET=gcp`, worker endpoints verify a Google-signed
 OIDC identity token on every request. The token is provided as
 `Authorization: Bearer <jwt>` by the caller (Cloud Tasks, Cloud
-Scheduler, or a validator Cloud Run Job via the metadata server).
+Scheduler, or a validator Cloud Run Service/Job via the metadata server).
 
 Two settings control verification:
 
@@ -458,8 +459,8 @@ quickly the transport decides a delivery was lost:
 | Setting | Default | Deployment | Purpose |
 |---|---:|---|---|
 | `CELERY_VISIBILITY_TIMEOUT_SECONDS` | `3600` | Self-hosted Redis | Must exceed `CELERY_TASK_TIME_LIMIT` (1800 seconds), otherwise Redis can deliver a healthy long task to another worker. |
-| `CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS` | `600` | GCP | Bounds the short worker HTTP orchestration request; accepted range is 15–1800 seconds. Validator compute runs separately in Cloud Run Jobs. |
-| `GCP_VALIDATOR_TASK_QUEUE_NAME` | empty | GCP | Separate stage-level queue used only for long validator Service deliveries. Production convention: `<app>-validator-provider`. |
+| `CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS` | `600` | GCP | Bounds the short application-worker HTTP orchestration request; accepted range is 15–1800 seconds. Validator compute runs separately in a selected Service or retained Job. |
+| `GCP_VALIDATOR_TASK_QUEUE_NAME` | empty | GCP | Separate stage-level queue used only for bounded validator Service deliveries. Production convention: `<app>-validator-provider`. |
 | `GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT` | empty | GCP | Dedicated OIDC principal with `run.invoker` only on registered private validator Services. |
 | `GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS` | `1800` | GCP | Exact Cloud Tasks HTTP deadline for validator Service requests; changing it requires revisiting the Service transport contract. |
 | `VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS` | `300` | GCP | Bounded retry window after an attempt deadline when a status-capable provider API is temporarily unavailable. After the grace period, the attempt's absolute deadline remains authoritative. |

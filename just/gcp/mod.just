@@ -2673,14 +2673,14 @@ init-stage stage: _require-gcp-config
         SECRET_NAME="django-env"
         QUEUE_NAME="${APP_NAME}-tasks"
         PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
-        PROVIDER_INVOKER_NAME="${APP_NAME}-validator-invoker-prod"
+        PROVIDER_INVOKER_NAME="${APP_NAME}-val-invoker-prod"
     else
         SA_NAME="${APP_NAME}-cloudrun-{{stage}}"
         DB_INSTANCE="${APP_NAME}-db-{{stage}}"
         SECRET_NAME="django-env-{{stage}}"
         QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
         PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
-        PROVIDER_INVOKER_NAME="${APP_NAME}-validator-invoker-{{stage}}"
+        PROVIDER_INVOKER_NAME="${APP_NAME}-val-invoker-{{stage}}"
     fi
     SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
     PROVIDER_INVOKER_EMAIL="$PROVIDER_INVOKER_NAME@{{gcp_project}}.iam.gserviceaccount.com"
@@ -3876,11 +3876,11 @@ validator-service-deploy name stage: _require-gcp-config
     set -euo pipefail
     APP_NAME="{{app_name}}"
     if [ "{{stage}}" = "prod" ]; then
-        PROVIDER_INVOKER="${APP_NAME}-validator-invoker-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        PROVIDER_INVOKER="${APP_NAME}-val-invoker-prod@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker"
     else
-        PROVIDER_INVOKER="${APP_NAME}-validator-invoker-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        PROVIDER_INVOKER="${APP_NAME}-val-invoker-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
     fi
@@ -4614,22 +4614,44 @@ _maintenance-start-database stage:
         echo "Error: Cloud SQL instance $DB_INSTANCE was not found." >&2
         exit 1
     fi
-    if [ "$DB_STATUS" != "RUNNABLE" ]; then
+    DB_POLICY=$(gcloud sql instances describe "$DB_INSTANCE" \
+        --project {{gcp_project}} --format="value(settings.activationPolicy)")
+    DEADLINE=$((SECONDS + ${GCP_SQL_TRANSITION_TIMEOUT_SECONDS:-1800}))
+    if [ "$DB_POLICY" != "ALWAYS" ]; then
         echo "Starting Cloud SQL instance $DB_INSTANCE..."
-        gcloud sql instances patch "$DB_INSTANCE" \
-            --activation-policy ALWAYS --project {{gcp_project}} --quiet
+        PATCH_SUBMITTED=0
+        while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            if PATCH_OUTPUT=$(gcloud sql instances patch "$DB_INSTANCE" \
+                --activation-policy ALWAYS --project {{gcp_project}} --quiet --async 2>&1); then
+                PATCH_SUBMITTED=1
+                break
+            fi
+            if [[ "$PATCH_OUTPUT" != *"another operation was already in progress"* ]]; then
+                echo "$PATCH_OUTPUT" >&2
+                exit 1
+            fi
+            echo "Waiting for the active Cloud SQL operation before starting $DB_INSTANCE..."
+            sleep 10
+        done
+        if [ "$PATCH_SUBMITTED" != "1" ]; then
+            echo "Error: could not submit the Cloud SQL start operation within the transition timeout." >&2
+            exit 1
+        fi
     fi
-    for _ in $(seq 1 60); do
+    while [ "$SECONDS" -lt "$DEADLINE" ]; do
         DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
             --project {{gcp_project}} --format="value(state)" 2>/dev/null || echo "unknown")
-        if [ "$DB_STATUS" = "RUNNABLE" ]; then
+        ACTIVE_OPERATION=$(gcloud sql operations list \
+            --instance "$DB_INSTANCE" --project {{gcp_project}} \
+            --filter="status=RUNNING" --limit=1 --format="value(name)" 2>/dev/null || echo "unknown")
+        if [ "$DB_STATUS" = "RUNNABLE" ] && [ -z "$ACTIVE_OPERATION" ]; then
             echo "Cloud SQL instance $DB_INSTANCE is ready."
             exit 0
         fi
-        echo "Waiting for Cloud SQL ($DB_STATUS)..."
-        sleep 5
+        echo "Waiting for Cloud SQL (state=$DB_STATUS active-operation=${ACTIVE_OPERATION:-none})..."
+        sleep 10
     done
-    echo "Error: Cloud SQL instance $DB_INSTANCE did not become RUNNABLE." >&2
+    echo "Error: Cloud SQL instance $DB_INSTANCE did not become RUNNABLE within the transition timeout." >&2
     exit 1
 
 [private]
@@ -4737,21 +4759,41 @@ _enforce-maintenance stage:
         echo "Error: Cloud SQL instance $DB_INSTANCE was not found." >&2
         exit 1
     fi
+    DEADLINE=$((SECONDS + ${GCP_SQL_TRANSITION_TIMEOUT_SECONDS:-1800}))
     if [ "$DB_POLICY" != "NEVER" ]; then
-        gcloud sql instances patch "$DB_INSTANCE" \
-            --activation-policy NEVER --project {{gcp_project}} --quiet
+        PATCH_SUBMITTED=0
+        while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            if PATCH_OUTPUT=$(gcloud sql instances patch "$DB_INSTANCE" \
+                --activation-policy NEVER --project {{gcp_project}} --quiet --async 2>&1); then
+                PATCH_SUBMITTED=1
+                break
+            fi
+            if [[ "$PATCH_OUTPUT" != *"another operation was already in progress"* ]]; then
+                echo "$PATCH_OUTPUT" >&2
+                exit 1
+            fi
+            echo "Waiting for the active Cloud SQL operation before stopping $DB_INSTANCE..."
+            sleep 10
+        done
+        if [ "$PATCH_SUBMITTED" != "1" ]; then
+            echo "Error: could not submit the Cloud SQL stop operation within the transition timeout." >&2
+            exit 1
+        fi
     fi
-    for _ in $(seq 1 60); do
+    while [ "$SECONDS" -lt "$DEADLINE" ]; do
         DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
             --project {{gcp_project}} --format="value(state)" 2>/dev/null || echo "unknown")
-        if [ "$DB_STATUS" = "STOPPED" ]; then
+        ACTIVE_OPERATION=$(gcloud sql operations list \
+            --instance "$DB_INSTANCE" --project {{gcp_project}} \
+            --filter="status=RUNNING" --limit=1 --format="value(name)" 2>/dev/null || echo "unknown")
+        if [ "$DB_STATUS" = "STOPPED" ] && [ -z "$ACTIVE_OPERATION" ]; then
             echo "{{stage}} is in maintenance mode: services min=0/internal, work paused, database stopped."
             exit 0
         fi
-        echo "Waiting for Cloud SQL to stop ($DB_STATUS)..."
-        sleep 5
+        echo "Waiting for Cloud SQL to stop (state=$DB_STATUS active-operation=${ACTIVE_OPERATION:-none})..."
+        sleep 10
     done
-    echo "Error: Cloud SQL instance $DB_INSTANCE did not stop." >&2
+    echo "Error: Cloud SQL instance $DB_INSTANCE did not stop within the transition timeout." >&2
     exit 1
 
 # Put a stage into maintenance mode (pause and scale down all resources).
@@ -4939,6 +4981,9 @@ maintenance-status stage: _require-gcp-config
     WEB_REVISION_MIN=$(jq -r '.spec.template.metadata.annotations["autoscaling.knative.dev/minScale"] // "0"' <<< "$WEB_JSON")
     DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
         --project {{gcp_project}} --format="value(state)" 2>/dev/null || echo "unknown")
+    DB_ACTIVE_OPERATION=$(gcloud sql operations list \
+        --instance "$DB_INSTANCE" --project {{gcp_project}} \
+        --filter="status=RUNNING" --limit=1 --format="value(name)" 2>/dev/null || echo "unknown")
     QUEUE_STATUS=$(gcloud tasks queues describe "$QUEUE_NAME" \
         --location {{gcp_region}} --project {{gcp_project}} \
         --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
@@ -4990,10 +5035,11 @@ maintenance-status stage: _require-gcp-config
     echo "  Web ingress:   $INGRESS"
     echo "  Web minimum:   service=$WEB_SERVICE_MIN revision=$WEB_REVISION_MIN"
     echo "  Database:      $DB_STATUS"
+    echo "  DB operation:  ${DB_ACTIVE_OPERATION:-none}"
     echo "  Main queue:    $QUEUE_STATUS"
     echo "  Provider queue: $PROVIDER_STATUS"
     echo "  Active schedulers: $SCHEDULER_ACTIVE"
-    if [ "$INGRESS" = "internal" ] && [ "$WEB_SERVICE_MIN" = "0" ] && [ "$WEB_REVISION_MIN" = "0" ] && [ "$DB_STATUS" = "STOPPED" ] && [ "$QUEUE_STATUS" = "PAUSED" ] && [ "$RUNTIME_ISSUES" = "0" ] && [ "$SCHEDULER_ACTIVE" = "0" ] && { [ "$PROVIDER_STATUS" = "PAUSED" ] || [ "$PROVIDER_STATUS" = "NOT_FOUND" ]; }; then
+    if [ "$INGRESS" = "internal" ] && [ "$WEB_SERVICE_MIN" = "0" ] && [ "$WEB_REVISION_MIN" = "0" ] && [ "$DB_STATUS" = "STOPPED" ] && [ -z "$DB_ACTIVE_OPERATION" ] && [ "$QUEUE_STATUS" = "PAUSED" ] && [ "$RUNTIME_ISSUES" = "0" ] && [ "$SCHEDULER_ACTIVE" = "0" ] && { [ "$PROVIDER_STATUS" = "PAUSED" ] || [ "$PROVIDER_STATUS" = "NOT_FOUND" ]; }; then
         echo "  Overall:       MAINTENANCE (safely offline)"
     else
         echo "  Overall:       ONLINE OR PARTIALLY TRANSITIONED"
@@ -5600,13 +5646,13 @@ security-audit stage: _require-gcp-config
     if [ "{{stage}}" = "prod" ]; then
         MAIN_SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
-        PROVIDER_INVOKER="${APP_NAME}-validator-invoker-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        PROVIDER_INVOKER="${APP_NAME}-val-invoker-prod@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker"
         STORAGE_BUCKET="${APP_NAME}-storage"
     else
         MAIN_SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
-        PROVIDER_INVOKER="${APP_NAME}-validator-invoker-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        PROVIDER_INVOKER="${APP_NAME}-val-invoker-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
         STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
     fi

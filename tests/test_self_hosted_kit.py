@@ -52,6 +52,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 KIT_ROOT = REPO_ROOT / "deploy" / "self-hosted"
 ENVS_EXAMPLE_ROOT = REPO_ROOT / ".envs.example" / ".production" / ".self-hosted"
 DOCS_ROOT = REPO_ROOT / "docs" / "operations" / "self-hosting"
+GCP_SERVICE_ACCOUNT_ID_MAX_LENGTH = 30
 
 # The two host-prep helper scripts the kit ships. Only these two
 # remain as scripts because they have to run *before* ``just`` is
@@ -578,6 +579,23 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         end = text.index(end_marker, start)
         return text[start:end]
 
+    def test_provider_invoker_name_fits_google_service_account_limits(self):
+        """Derived provider identities must be valid in every supported stage.
+
+        Google service-account IDs are capped at 30 characters. The full
+        ``validator-invoker`` suffix exceeds that limit for the default app
+        name, while the documented ``val-invoker`` form remains readable and
+        fits for ``prod``, ``staging``, and ``dev``.
+        """
+        text = self._gcp_mod_text()
+
+        assert "${APP_NAME}-validator-invoker" not in text
+        for stage in ("prod", "staging", "dev"):
+            assert (
+                len(f"validibot-val-invoker-{stage}")
+                <= GCP_SERVICE_ACCOUNT_ID_MAX_LENGTH
+            )
+
     def test_deployed_image_resolver_uses_web_service_names(self):
         """Doctor / backup / restore must inspect the deployed web service.
 
@@ -684,7 +702,9 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "curl --fail" in health_block
         assert "WEB_SERVICE_MIN" in maintenance_block
         assert "WEB_REVISION_MIN" in maintenance_block
+        assert "DB_ACTIVE_OPERATION" in maintenance_block
         assert 'DB_STATUS" = "STOPPED"' in maintenance_block
+        assert '-z "$DB_ACTIVE_OPERATION"' in maintenance_block
         assert 'QUEUE_STATUS" = "PAUSED"' in maintenance_block
         assert "MAINTENANCE (safely offline)" in maintenance_block
 
@@ -706,6 +726,32 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert 'queues pause "$QUEUE_NAME"' in block
         assert 'queues pause "$PROVIDER_QUEUE_NAME"' in block
         assert "--activation-policy NEVER" in block
+        assert "--quiet --async" in block
+        assert "another operation was already in progress" in block
+        assert "GCP_SQL_TRANSITION_TIMEOUT_SECONDS" in block
+        assert "sql operations list" in block
+
+    def test_maintenance_database_start_polls_provider_state_asynchronously(self):
+        """A slow Cloud SQL control-plane operation must not defeat cleanup.
+
+        Cloud SQL can continue a start request after the local ``gcloud`` wait
+        times out, especially when scheduled maintenance is applied. Submitting
+        asynchronously and polling the instance state keeps the recipe in
+        control until the database is genuinely usable or the explicit,
+        operator-configurable transition deadline expires.
+        """
+        block = self._block_between(
+            "_maintenance-start-database stage:",
+            "_maintenance-assert-offline stage:",
+        )
+
+        assert "--activation-policy ALWAYS" in block
+        assert "--quiet --async" in block
+        assert "another operation was already in progress" in block
+        assert "GCP_SQL_TRANSITION_TIMEOUT_SECONDS" in block
+        assert "sql operations list" in block
+        assert 'DB_STATUS" = "RUNNABLE"' in block
+        assert '-z "$ACTIVE_OPERATION"' in block
 
     def test_maintenance_deploy_restores_offline_state_on_every_exit(self):
         """An offline deployment must fail closed if any intermediate step fails.

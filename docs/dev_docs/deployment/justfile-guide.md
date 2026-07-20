@@ -186,7 +186,11 @@ just gcp maintenance-off dev           # Start DB first, then safely resume
 Cloud SQL is stopped. `deploy-maintenance` is the fail-closed alternative: it
 briefly starts only the database for migrations, forces all deployed services
 to internal ingress and zero minimums, pauses new scheduler/queue work, and
-restores full maintenance mode on success or failure.
+restores full maintenance mode on success or failure. Its Cloud SQL transitions
+are asynchronous and poll both instance state and active provider operations,
+so scheduled maintenance cannot outlive the local CLI wait; the default
+30-minute deadline can be overridden with
+`GCP_SQL_TRANSITION_TIMEOUT_SECONDS`.
 
 #### MCP server commands
 

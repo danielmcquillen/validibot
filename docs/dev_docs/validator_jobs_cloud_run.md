@@ -46,7 +46,7 @@ IAM roles involved:
 
 - **Web/Worker service account** (`$GCP_APP_NAME-cloudrun-{stage}`): Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `VALIDIBOT_INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
 - **Validator runtime service account** (`$GCP_APP_NAME-validator-{stage}`): Used by both Services and Jobs. It has `roles/run.invoker` on the worker for callbacks and renewal, but **no project or bucket storage role**. Django supplies a short-lived Credential Access Boundary token limited to one attempt prefix and the `roles/storage.objectViewer` + `roles/storage.objectCreator` permission ceiling.
-- **Provider-task invoker** (`$GCP_APP_NAME-validator-invoker-{stage}`): Has no project roles. It is the only `roles/run.invoker` member on the four private validator Services and is attached only to provider-queue tasks.
+- **Provider-task invoker** (`$GCP_APP_NAME-val-invoker-{stage}`): Has no project roles. It is the only `roles/run.invoker` member on the four private validator Services and is attached only to provider-queue tasks. The abbreviated resource name stays within Google's 30-character service-account ID limit for `prod`, `staging`, and `dev`.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
 
 Cloud Run Jobs remain a separate execution shape. They have queryable provider

@@ -66,7 +66,7 @@ The `gcp-init-stage` command works for all stages (dev, staging, prod). The comm
 
 - Service account (web/worker): `$GCP_APP_NAME-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
 - Service account (validator runtime): `$GCP_APP_NAME-validator-prod@PROJECT.iam.gserviceaccount.com`
-- Service account (provider invoker): `$GCP_APP_NAME-validator-invoker-prod@PROJECT.iam.gserviceaccount.com`
+- Service account (provider invoker): `$GCP_APP_NAME-val-invoker-prod@PROJECT.iam.gserviceaccount.com`
 - Cloud SQL: `$GCP_APP_NAME-db`
 - Cloud Tasks queue: `$GCP_APP_NAME-tasks`
 - Validator provider queue: `$GCP_APP_NAME-validator-provider`
@@ -88,7 +88,7 @@ This command creates (example for dev):
 
 - Service account (web/worker): `$GCP_APP_NAME-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
 - Service account (validators): `$GCP_APP_NAME-validator-dev@PROJECT.iam.gserviceaccount.com` (worker callback/capability renewal only; no ambient storage role)
-- Service account (provider invoker): `$GCP_APP_NAME-validator-invoker-dev@PROJECT.iam.gserviceaccount.com` (sole validator Service invoker; no project roles)
+- Service account (provider invoker): `$GCP_APP_NAME-val-invoker-dev@PROJECT.iam.gserviceaccount.com` (sole validator Service invoker; no project roles)
 - Cloud SQL instance: `$GCP_APP_NAME-db-dev` (`db-f1-micro` for dev,
   `db-g1-small` for staging, and `db-custom-2-8192` for production)
 - Database `validibot` and user `validibot_user` with generated password
@@ -173,7 +173,13 @@ site offline, use `just gcp deploy-maintenance <stage>`. It confirms the stage
 is already offline, starts only Cloud SQL for migrations, deploys web, worker,
 schedulers, and optional MCP with internal ingress and zero minimum capacity,
 then stops Cloud SQL and re-pauses all work. An exit trap restores maintenance
-mode even if an intermediate step fails.
+mode even if an intermediate step fails. Database start and stop requests are
+submitted asynchronously and the recipes poll both the instance state and the
+absence of an active control-plane operation, which also covers slow provider
+maintenance and eventual state reporting. The default transition deadline is 30
+minutes; set `GCP_SQL_TRANSITION_TIMEOUT_SECONDS` for an exceptional longer
+operation. `maintenance-status` applies the same two-part database check, so a
+transitional `STOPPED` state is not reported as safely offline too early.
 
 ### Step 5: Database and Application Initialization
 

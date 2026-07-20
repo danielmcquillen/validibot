@@ -4717,50 +4717,95 @@ _enforce-maintenance stage:
     fi
 
     echo "Enforcing maintenance mode on {{stage}}..."
-    gcloud run services update "$WEB_SERVICE" \
-        --region {{gcp_region}} --project {{gcp_project}} \
-        --ingress internal --min=0 --min-instances=default --quiet
-    for service in "$WORKER_SERVICE" "$MCP_SERVICE"; do
-        if gcloud run services describe "$service" --region {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
-            gcloud run services update "$service" \
-                --region {{gcp_region}} --project {{gcp_project}} \
-                --ingress internal --min=0 --quiet
+    MAINTENANCE_ERRORS=0
+    record_maintenance_error() {
+        echo "Error: $*" >&2
+        MAINTENANCE_ERRORS=$((MAINTENANCE_ERRORS + 1))
+    }
+    ensure_offline_service() {
+        local service="$1"
+        local disable_mcp="${2:-0}"
+        local required="${3:-0}"
+        local service_json ingress service_min revision_min mcp_enabled
+        if ! service_json=$(gcloud run services describe "$service" \
+            --region {{gcp_region}} --project {{gcp_project}} --format=json 2>/dev/null); then
+            if [ "$required" = "1" ]; then
+                record_maintenance_error "required Cloud Run service $service could not be inspected."
+                return
+            fi
+            echo "   Service $service is not present; skipping."
+            return
         fi
-    done
-    SERVICES=$(gcloud run services list \
+        ingress=$(jq -r '.metadata.annotations["run.googleapis.com/ingress"] // "unknown"' <<< "$service_json")
+        service_min=$(jq -r '.spec.scaling.minInstanceCount // .metadata.annotations["run.googleapis.com/minScale"] // "0"' <<< "$service_json")
+        revision_min=$(jq -r '.spec.template.metadata.annotations["autoscaling.knative.dev/minScale"] // "0"' <<< "$service_json")
+        mcp_enabled=$(jq -r '[.spec.template.spec.containers[0].env[]? | select(.name == "VALIDIBOT_MCP_ENABLED") | .value][0] // "true"' <<< "$service_json")
+        if [ "$ingress" = "internal" ] && [ "$service_min" = "0" ] && [ "$revision_min" = "0" ] && { [ "$disable_mcp" != "1" ] || [ "$mcp_enabled" = "false" ]; }; then
+            echo "   Service $service is already internal with zero minimum capacity."
+            return
+        fi
+        update_args=(
+            gcloud run services update "$service"
+            --region {{gcp_region}} --project {{gcp_project}}
+            --ingress internal --min=0 --min-instances=default --quiet
+        )
+        if [ "$disable_mcp" = "1" ]; then
+            update_args+=(--update-env-vars VALIDIBOT_MCP_ENABLED=false)
+        fi
+        if ! "${update_args[@]}"; then
+            record_maintenance_error "could not make Cloud Run service $service maintenance-safe."
+        fi
+    }
+
+    # A failed desired revision can make even a no-op Cloud Run update fail.
+    # Inspect first so already-safe services are left alone, and aggregate any
+    # update failures so queues, schedulers, and especially Cloud SQL are still
+    # shut down before this recipe returns an error.
+    ensure_offline_service "$WEB_SERVICE" 0 1
+    ensure_offline_service "$WORKER_SERVICE" 0 1
+    ensure_offline_service "$MCP_SERVICE" 1
+    if SERVICES=$(gcloud run services list \
         --region {{gcp_region}} --project {{gcp_project}} \
         --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
-        --format='value(metadata.name)')
-    while IFS= read -r service; do
-        [ -z "$service" ] && continue
-        gcloud run services update "$service" \
-            --region {{gcp_region}} --project {{gcp_project}} \
-            --ingress internal --min=0 --quiet
-    done <<< "$SERVICES"
+        --format='value(metadata.name)'); then
+        while IFS= read -r service; do
+            [ -z "$service" ] && continue
+            ensure_offline_service "$service"
+        done <<< "$SERVICES"
+    else
+        record_maintenance_error "could not list validator Cloud Run services."
+    fi
 
     for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention ${APP_NAME}-verify-license-document-hashes; do
         job="${job_base}${JOB_SUFFIX}"
         if gcloud scheduler jobs describe "$job" --project {{gcp_project}} --location {{gcp_region}} &>/dev/null; then
-            gcloud scheduler jobs pause "$job" \
-                --project {{gcp_project}} --location {{gcp_region}} --quiet
+            if ! gcloud scheduler jobs pause "$job" \
+                --project {{gcp_project}} --location {{gcp_region}} --quiet; then
+                record_maintenance_error "could not pause scheduler job $job."
+            fi
         fi
     done
-    gcloud tasks queues pause "$QUEUE_NAME" \
-        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    if ! gcloud tasks queues pause "$QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet; then
+        record_maintenance_error "could not pause task queue $QUEUE_NAME."
+    fi
     if gcloud tasks queues describe "$PROVIDER_QUEUE_NAME" \
         --location {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
-        gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
-            --location {{gcp_region}} --project {{gcp_project}} --quiet
+        if ! gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
+            --location {{gcp_region}} --project {{gcp_project}} --quiet; then
+            record_maintenance_error "could not pause task queue $PROVIDER_QUEUE_NAME."
+        fi
     fi
 
     DB_POLICY=$(gcloud sql instances describe "$DB_INSTANCE" \
         --project {{gcp_project}} --format="value(settings.activationPolicy)" 2>/dev/null || echo "unknown")
+    DATABASE_CAN_TRANSITION=1
     if [ "$DB_POLICY" = "unknown" ]; then
-        echo "Error: Cloud SQL instance $DB_INSTANCE was not found." >&2
-        exit 1
+        record_maintenance_error "Cloud SQL instance $DB_INSTANCE was not found."
+        DATABASE_CAN_TRANSITION=0
     fi
     DEADLINE=$((SECONDS + ${GCP_SQL_TRANSITION_TIMEOUT_SECONDS:-1800}))
-    if [ "$DB_POLICY" != "NEVER" ]; then
+    if [ "$DATABASE_CAN_TRANSITION" = "1" ] && [ "$DB_POLICY" != "NEVER" ]; then
         PATCH_SUBMITTED=0
         while [ "$SECONDS" -lt "$DEADLINE" ]; do
             if PATCH_OUTPUT=$(gcloud sql instances patch "$DB_INSTANCE" \
@@ -4770,31 +4815,43 @@ _enforce-maintenance stage:
             fi
             if [[ "$PATCH_OUTPUT" != *"another operation was already in progress"* ]]; then
                 echo "$PATCH_OUTPUT" >&2
-                exit 1
+                record_maintenance_error "could not submit the Cloud SQL stop operation."
+                DATABASE_CAN_TRANSITION=0
+                break
             fi
             echo "Waiting for the active Cloud SQL operation before stopping $DB_INSTANCE..."
             sleep 10
         done
-        if [ "$PATCH_SUBMITTED" != "1" ]; then
-            echo "Error: could not submit the Cloud SQL stop operation within the transition timeout." >&2
-            exit 1
+        if [ "$DATABASE_CAN_TRANSITION" = "1" ] && [ "$PATCH_SUBMITTED" != "1" ]; then
+            record_maintenance_error "could not submit the Cloud SQL stop operation within the transition timeout."
+            DATABASE_CAN_TRANSITION=0
         fi
     fi
-    while [ "$SECONDS" -lt "$DEADLINE" ]; do
-        DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
-            --project {{gcp_project}} --format="value(state)" 2>/dev/null || echo "unknown")
-        ACTIVE_OPERATION=$(gcloud sql operations list \
-            --instance "$DB_INSTANCE" --project {{gcp_project}} \
-            --filter="status=RUNNING" --limit=1 --format="value(name)" 2>/dev/null || echo "unknown")
-        if [ "$DB_STATUS" = "STOPPED" ] && [ -z "$ACTIVE_OPERATION" ]; then
-            echo "{{stage}} is in maintenance mode: services min=0/internal, work paused, database stopped."
-            exit 0
+    DATABASE_STOPPED=0
+    if [ "$DATABASE_CAN_TRANSITION" = "1" ]; then
+        while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
+                --project {{gcp_project}} --format="value(state)" 2>/dev/null || echo "unknown")
+            ACTIVE_OPERATION=$(gcloud sql operations list \
+                --instance "$DB_INSTANCE" --project {{gcp_project}} \
+                --filter="status=RUNNING" --limit=1 --format="value(name)" 2>/dev/null || echo "unknown")
+            if [ "$DB_STATUS" = "STOPPED" ] && [ -z "$ACTIVE_OPERATION" ]; then
+                DATABASE_STOPPED=1
+                break
+            fi
+            echo "Waiting for Cloud SQL to stop (state=$DB_STATUS active-operation=${ACTIVE_OPERATION:-none})..."
+            sleep 10
+        done
+        if [ "$DATABASE_STOPPED" != "1" ]; then
+            record_maintenance_error "Cloud SQL instance $DB_INSTANCE did not stop within the transition timeout."
         fi
-        echo "Waiting for Cloud SQL to stop (state=$DB_STATUS active-operation=${ACTIVE_OPERATION:-none})..."
-        sleep 10
-    done
-    echo "Error: Cloud SQL instance $DB_INSTANCE did not stop within the transition timeout." >&2
-    exit 1
+    fi
+
+    if [ "$MAINTENANCE_ERRORS" != "0" ]; then
+        echo "Maintenance enforcement completed all possible safeguards with $MAINTENANCE_ERRORS error(s)." >&2
+        exit 1
+    fi
+    echo "{{stage}} is in maintenance mode: services min=0/internal, work paused, database stopped."
 
 # Put a stage into maintenance mode (pause and scale down all resources).
 [arg('stage', pattern='dev|staging|prod')]
@@ -4881,6 +4938,7 @@ maintenance-off stage: _require-gcp-config
         WEB_MIN=1
         WEB_NEG="${APP_NAME}-neg"
         MCP_NEG="${APP_NAME}-mcp-neg"
+        BUILD_FILE=".envs/.production/.google-cloud/.build"
     else
         WEB_SERVICE="${APP_NAME}-web-{{stage}}"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
@@ -4891,7 +4949,15 @@ maintenance-off stage: _require-gcp-config
         WEB_MIN=0
         WEB_NEG="${APP_NAME}-neg-{{stage}}"
         MCP_NEG="${APP_NAME}-mcp-neg-{{stage}}"
+        BUILD_FILE=".envs/.{{stage}}/.google-cloud/.build"
     fi
+    if [ -f "$BUILD_FILE" ]; then
+        set -a
+        # shellcheck disable=SC1090
+        source "$BUILD_FILE"
+        set +a
+    fi
+    MCP_ENABLED="${VALIDIBOT_MCP_ENABLED:-true}"
 
     just gcp _maintenance-start-database {{stage}}
     if gcloud compute network-endpoint-groups describe "$WEB_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then WEB_INGRESS="internal-and-cloud-load-balancing"; else WEB_INGRESS="all"; fi
@@ -4945,7 +5011,8 @@ maintenance-off stage: _require-gcp-config
     if gcloud run services describe "$MCP_SERVICE" --region {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
         gcloud run services update "$MCP_SERVICE" \
             --region {{gcp_region}} --project {{gcp_project}} \
-            --ingress "$MCP_INGRESS" --min=0 --quiet
+            --ingress "$MCP_INGRESS" --min=0 \
+            --update-env-vars "VALIDIBOT_MCP_ENABLED=$MCP_ENABLED" --quiet
     fi
     echo "{{stage}} is online: database ready, service capacity restored, work resumed."
 
@@ -4995,10 +5062,11 @@ maintenance-status stage: _require-gcp-config
     RUNTIME_ISSUES=0
     check_offline_service() {
         local service="$1"
+        local expect_mcp_disabled="${2:-0}"
         if ! gcloud run services describe "$service" --region {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
             return
         fi
-        local ingress service_min revision_min service_json
+        local ingress service_min revision_min service_json mcp_enabled
         ingress=$(gcloud run services describe "$service" \
             --region {{gcp_region}} --project {{gcp_project}} \
             --format="value(metadata.annotations.'run.googleapis.com/ingress')")
@@ -5006,13 +5074,18 @@ maintenance-status stage: _require-gcp-config
             --region {{gcp_region}} --project {{gcp_project}} --format=json)
         service_min=$(jq -r '.spec.scaling.minInstanceCount // .metadata.annotations["run.googleapis.com/minScale"] // "0"' <<< "$service_json")
         revision_min=$(jq -r '.spec.template.metadata.annotations["autoscaling.knative.dev/minScale"] // "0"' <<< "$service_json")
-        echo "  Runtime:       $service ingress=$ingress service-min=$service_min revision-min=$revision_min"
-        if [ "$ingress" != "internal" ] || [ "$service_min" != "0" ] || [ "$revision_min" != "0" ]; then
+        mcp_enabled=$(jq -r '[.spec.template.spec.containers[0].env[]? | select(.name == "VALIDIBOT_MCP_ENABLED") | .value][0] // "true"' <<< "$service_json")
+        if [ "$expect_mcp_disabled" = "1" ]; then
+            echo "  Runtime:       $service ingress=$ingress service-min=$service_min revision-min=$revision_min enabled=$mcp_enabled"
+        else
+            echo "  Runtime:       $service ingress=$ingress service-min=$service_min revision-min=$revision_min"
+        fi
+        if [ "$ingress" != "internal" ] || [ "$service_min" != "0" ] || [ "$revision_min" != "0" ] || { [ "$expect_mcp_disabled" = "1" ] && [ "$mcp_enabled" != "false" ]; }; then
             RUNTIME_ISSUES=$((RUNTIME_ISSUES + 1))
         fi
     }
     check_offline_service "$WORKER_SERVICE"
-    check_offline_service "$MCP_SERVICE"
+    check_offline_service "$MCP_SERVICE" 1
     SERVICES=$(gcloud run services list \
         --region {{gcp_region}} --project {{gcp_project}} \
         --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \

@@ -197,12 +197,16 @@ is built from `compose/production/mcp/Dockerfile`. The image is a
 lightweight Python container (~80 MB) with FastMCP, httpx, and
 pydantic-settings only — no Django, no database drivers.
 
-**License gate.** At startup the MCP server calls
+**License gate.** Whenever an enabled MCP revision starts, it calls
 `GET /api/v1/license/features/` against the Django API and refuses
 to serve traffic unless `mcp_server` is advertised. This only
 happens when `validibot-pro` (or enterprise) is installed. So a
 community-only deployment can build and deploy the image but the
-container will exit during the license check.
+enabled container will exit during the license check. A
+`deploy-maintenance` revision is instead internal and explicitly disabled, so
+it can become ready while Django is offline. `maintenance-off` exposes Django
+first and then re-enables MCP, which creates an enabled revision that performs
+the same fail-closed license check before serving traffic.
 
 ### Configure the knobs
 
@@ -224,9 +228,8 @@ VALIDIBOT_MCP_API_BASE_URL=https://app.your-domain.example
 # Django and MCP; do not repeat it in .django or .mcp.
 VALIDIBOT_MCP_BASE_URL=https://mcp.your-domain.example
 
-# Hosted x402 is cloud-only and disabled by default. Keep any x402 values in
-# this .build file, not in .django or .mcp; see the project operations runbook.
-VALIDIBOT_X402_ENABLED=false
+# Hosted x402 is cloud-only and disabled by default. Its runtime settings live
+# in the cloud Django .django secret, not in .build or .mcp.
 ```
 
 See `.envs.example/.production/.google-cloud/.build` for the full

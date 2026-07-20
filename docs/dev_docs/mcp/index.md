@@ -20,8 +20,8 @@ For the full deploy-side detail, see
 | FastMCP server source | `mcp/src/validibot_mcp/` |
 | Tool implementations | `mcp/src/validibot_mcp/tools/` |
 | Pydantic settings | `mcp/src/validibot_mcp/config.py` |
-| Startup license check | `mcp/src/validibot_mcp/license_check.py` |
-| Bearer-token + payment-signature auth | `mcp/src/validibot_mcp/auth.py` |
+| Enabled-revision license check | `mcp/src/validibot_mcp/license_check.py` |
+| OAuth/manual bearer extraction | `mcp/src/validibot_mcp/auth.py` |
 | Production Dockerfile | `compose/production/mcp/Dockerfile` |
 | `just mcp` / `just gcp mcp` recipes | `just/mcp/mod.just` |
 | Helper REST API the server proxies to | `validibot/mcp_api/` |
@@ -41,12 +41,16 @@ deployments. Two independent gates protect it:
    `.build` file) tells the deploy tooling to actually build and deploy
    the MCP container. When unset, every MCP-related `just` recipe
    short-circuits with a "skipped" message and exits 0.
-2. **Runtime:** at startup the server calls
+2. **Runtime:** whenever an enabled revision starts, the server calls
    `GET /api/v1/license/features/` against the Django API and refuses
    to serve traffic unless `mcp_server` is in the response. That feature
    is added by `validibot-pro`'s `License` declaration. Community-only
    deployments that build and start the container will see it exit
-   immediately on this check.
+   immediately on this check. GCP maintenance is intentionally different:
+   the staged revision is internal and has `VALIDIBOT_MCP_ENABLED=false`, so
+   it can become ready while Django is offline but every tool is still closed
+   with 503. `maintenance-off` exposes web first, re-enables MCP, and the new
+   online revision then performs the normal license check.
 
 Both gates exist deliberately: the build-time flag keeps the MCP
 container out of stacks that don't need it; the runtime gate prevents
@@ -71,6 +75,14 @@ OAuth 2.1. We support two paths:
   profile and the client sends it in the `Authorization: Bearer`
   header. Validated by `ValidibotTokenVerifier` in
   `mcp/src/validibot_mcp/token_verifier.py`.
+
+`OIDCProxy` uses Validibot's stable django-allauth authorize, token,
+revocation, and JWKS paths from local configuration. It does not fetch the
+issuer's discovery document during container startup, so an internal
+maintenance revision has no hidden dependency on public Django ingress.
+Operators that route a compatible provider differently can set the optional
+`VALIDIBOT_OAUTH_*_ENDPOINT` and `VALIDIBOT_OAUTH_JWKS_URL` overrides described
+in the environment configuration guide.
 
 ### Chain 2: MCP server → Django REST API
 
@@ -148,7 +160,8 @@ activates the `mcp` profile automatically.
 
 | Symptom | First place to look |
 |---|---|
-| Container exits at startup | `mcp/src/validibot_mcp/license_check.py` — license gate |
+| Enabled container exits at startup | `mcp/src/validibot_mcp/license_check.py` — license gate and Django API reachability |
+| Maintenance MCP revision is not ready | Confirm `VALIDIBOT_MCP_ENABLED=false`; maintenance revisions must not call the offline API |
 | `401 invalid_token` on tool call | Django audit/JWT verification + `mcp_api/authentication.py` |
 | `Mismatching redirect URI` on OAuth | The allauth `Client` row's redirect URI vs. `VALIDIBOT_MCP_BASE_URL` (`.build` on GCP, runtime env locally/self-hosted) |
 | `Connection issue — server config` | Client-cached failure; remove the connector and re-add fresh |

@@ -1,5 +1,5 @@
 """
-Startup license gate for the Validibot MCP server.
+Enable-time license gate for the Validibot MCP server.
 
 The MCP server is a commercial feature. It only runs when the Validibot
 deployment it fronts has the ``mcp_server`` feature enabled — i.e. when
@@ -18,10 +18,14 @@ Policy
 
 The gate fails closed:
 
-* If the community API is unreachable at boot, the MCP server refuses
-  to start. MCP has no useful mode without the REST API, so refusing
-  early is more honest than serving traffic that will fail on every
+* If the community API is unreachable when an enabled revision starts, the MCP
+  server refuses to start. MCP has no useful mode without the REST API, so
+  refusing early is more honest than serving traffic that will fail on every
   tool call.
+* A maintenance revision is the deliberate exception: deployment stamps
+  ``VALIDIBOT_MCP_ENABLED=false``, so tools already fail closed with 503 and
+  the license request is deferred. Taking the stage online re-enables MCP only
+  after Django is reachable, creating a revision that runs this check.
 * If the ``mcp_server`` feature is absent from the response, the
   server aborts with a clear message pointing at
   https://validibot.com/pricing.
@@ -58,7 +62,7 @@ _LICENSE_CHECK_TIMEOUT_SECONDS = 5.0
 
 
 class LicenseCheckError(RuntimeError):
-    """Raised from the ASGI lifespan when the MCP feature is not licensed."""
+    """Raised when an enabled MCP revision cannot confirm its feature license."""
 
 
 async def verify_license_or_die() -> None:

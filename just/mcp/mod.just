@@ -388,7 +388,7 @@ secrets stage: _require-gcp-config
 #   - No --add-cloudsql-instances (no database)
 #   - No VPC egress (no private network access needed)
 #   - Secrets mounted from mcp-env Secret Manager secret
-#   - Public config (API URL, MCP enabled, x402 knobs) via --set-env-vars
+#   - Public config (API URL and MCP enabled flag) via --set-env-vars
 #   - Lower resource limits (lightweight proxy, not a full Django app)
 #
 # Ingress mode is chosen automatically: if an NEG exists for the service
@@ -404,8 +404,8 @@ deploy stage: _require-gcp-config
     APP_NAME="{{app_name}}"
 
     # Source the stage's .build file (if present) to pick up deploy-time
-    # knobs like VALIDIBOT_MCP_API_BASE_URL, VALIDIBOT_MCP_BASE_URL, and shared
-    # x402 settings.
+    # knobs like VALIDIBOT_MCP_API_BASE_URL, VALIDIBOT_MCP_BASE_URL, and the
+    # MCP enabled flag.
     # ``set -a`` exports every variable the file defines so the
     # ``gcloud run deploy`` invocation below inherits them. Absent file →
     # no-op (inline env vars still work).
@@ -431,6 +431,13 @@ deploy stage: _require-gcp-config
     API_BASE_URL="${VALIDIBOT_MCP_API_BASE_URL}"
     MCP_BASE_URL="${VALIDIBOT_MCP_BASE_URL}"
     MCP_ENABLED="${VALIDIBOT_MCP_ENABLED:-true}"
+    if [ "${GCP_DEPLOY_MAINTENANCE:-0}" = "1" ]; then
+        # A maintenance revision must become ready while the Django issuer/API
+        # is intentionally internal and Cloud SQL is about to stop. Disabling
+        # MCP skips its startup license request and makes every tool return 503;
+        # maintenance-off restores the configured value after web is online.
+        MCP_ENABLED=false
+    fi
     SET_ENV_VARS="VALIDIBOT_API_BASE_URL=${API_BASE_URL},VALIDIBOT_MCP_BASE_URL=${MCP_BASE_URL},VALIDIBOT_MCP_ENABLED=${MCP_ENABLED}"
 
     if [ "{{stage}}" = "prod" ]; then

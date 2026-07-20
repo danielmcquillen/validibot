@@ -9,7 +9,8 @@ Django REST API. This module provides a *defense-in-depth* layer that:
    the ``/runs/`` endpoint and producing a better error message for agents.
 
 2. Checks the global kill switch (``MCP_ENABLED`` env var) so the operator
-   can shut down all MCP traffic without redeploying.
+   can shut down all MCP traffic with a configuration-only service revision or
+   container restart.
 
 These checks are optimizations and UX improvements, NOT security boundaries.
 The Django API is the authoritative gate.

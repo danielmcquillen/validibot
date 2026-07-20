@@ -193,6 +193,15 @@ payments, so the Coinbase CDP API credentials and the rest of the x402 settings
 live in the cloud Django secret (`.django`) instead. The public MCP URLs are
 shared across both services and live in `.build`.
 
+The MCP OAuth proxy builds the small provider map it needs from the configured
+authorization-server URL and Validibot's stable django-allauth routes. It does
+not download `/.well-known/openid-configuration` during process startup. This
+keeps maintenance deployments independent of public Django ingress. If a
+self-hosted reverse proxy exposes compatible endpoints on different paths,
+set `VALIDIBOT_OAUTH_AUTHORIZATION_ENDPOINT`,
+`VALIDIBOT_OAUTH_TOKEN_ENDPOINT`, `VALIDIBOT_OAUTH_REVOCATION_ENDPOINT`, and
+`VALIDIBOT_OAUTH_JWKS_URL` in `.mcp`; otherwise leave them unset.
+
 On GCP, `just gcp mcp secrets <stage>` uploads this file to Secret
 Manager as `mcp-env` and Cloud Run mounts it at `/secrets/.env` on
 the MCP service.
@@ -212,6 +221,8 @@ The quick version of "where does each variable go":
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST` | `.postgres` | Database credentials, kept isolated |
 | `VALIDIBOT_API_BASE_URL` | `.mcp` / `.build` (GCP) | MCP server's target for REST calls; GCP deploy stamps `VALIDIBOT_MCP_API_BASE_URL` into `VALIDIBOT_API_BASE_URL` |
 | `VALIDIBOT_OAUTH_CLIENT_SECRET` | `.mcp` | Paired OAuth client secret; same generated value as `IDP_OIDC_MCP_SERVER_CLIENT_SECRET`, stored in the MCP secret file |
+| `VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL` | `.mcp` | Canonical Django/OIDC issuer base URL; required by the standalone MCP server |
+| `VALIDIBOT_OAUTH_AUTHORIZATION_ENDPOINT`, `VALIDIBOT_OAUTH_TOKEN_ENDPOINT`, `VALIDIBOT_OAUTH_REVOCATION_ENDPOINT`, `VALIDIBOT_OAUTH_JWKS_URL` | `.mcp` | Optional complete-URL overrides for non-standard compatible OIDC routing; normal Validibot deployments derive these locally from the issuer URL |
 | `VALIDIBOT_COMMERCIAL_PACKAGE`, `VALIDIBOT_PRIVATE_INDEX_URL` | `.build` | Docker build-time args (docker-compose only) |
 | `ENABLE_MCP_SERVER` | `.build` | Recipe-level knob; decides whether `just gcp deploy-all` and the compose MCP profile activate MCP |
 | `DRF_NUM_PROXIES` | `.django` | Trusted-proxy count for client-IP resolution in DRF throttles; must equal the inbound proxy hop count or IP rate-limits can be spoofed (too high) / over-applied (too low). Community default 1; hosted cloud 2 (behind the LB). See [reverse-proxy.md](reverse-proxy.md). |

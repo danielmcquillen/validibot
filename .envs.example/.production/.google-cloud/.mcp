@@ -7,8 +7,9 @@
 # `just gcp mcp secrets prod` (surgical — only `.mcp`) uploads this file
 # to GCP Secret Manager (default name: `mcp-env`); Cloud Run mounts it
 # at /secrets/.env, where pydantic-settings reads it at container start.
-# The MCP server boots only if the deployment's license advertises the
-# `mcp_server` feature.
+# Every enabled MCP revision boots only if the deployment's license advertises
+# the `mcp_server` feature. Maintenance deployment stamps the runtime kill
+# switch off and defers that check until maintenance-off re-enables the service.
 #
 # Non-secret config (VALIDIBOT_API_BASE_URL, VALIDIBOT_MCP_BASE_URL,
 # VALIDIBOT_MCP_ENABLED) is set from `.build` via `--set-env-vars` in the
@@ -55,15 +56,16 @@ VALIDIBOT_OAUTH_CLIENT_SECRET=replace-with-generated-client-secret
 # `.build` and stamped onto this Cloud Run service. Do not repeat it here.
 
 # VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL — the upstream Django instance
-# that issues JWT access tokens for the authenticated MCP surface. The
-# FastMCP OIDCProxy fetches <this-url>/.well-known/openid-configuration at
-# startup to learn the authorize / token / JWKS endpoints.
+# that issues JWT access tokens for the authenticated MCP surface. MCP derives
+# Validibot's stable authorize/token/revoke/JWKS paths locally, so startup does
+# not depend on a discovery HTTP request.
 VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL=replace-with-oauth-server-url
 
 
 # ── Optional overrides ─────────────────────────────────────────────────
 
 # Everything else has a working default in config.py. Set any of these
-# only to override the default: VALIDIBOT_OAUTH_JWKS_URL,
-# VALIDIBOT_OAUTH_RESOURCE_AUDIENCE, VALIDIBOT_OAUTH_REQUIRED_SCOPE,
-# VALIDIBOT_AGENT_API_BASE_URL, VALIDIBOT_MCP_SERVICE_AUDIENCE.
+# only to override the default: VALIDIBOT_OAUTH_AUTHORIZATION_ENDPOINT,
+# VALIDIBOT_OAUTH_TOKEN_ENDPOINT, VALIDIBOT_OAUTH_REVOCATION_ENDPOINT,
+# VALIDIBOT_OAUTH_JWKS_URL, VALIDIBOT_OAUTH_RESOURCE_AUDIENCE,
+# VALIDIBOT_OAUTH_REQUIRED_SCOPE, VALIDIBOT_MCP_SERVICE_AUDIENCE.

@@ -135,8 +135,14 @@ For Pro, the private index URL embeds your license credentials. Treat `.build` a
 | Setting | Purpose |
 |---|---|
 | `MCP_PORT` | Port the MCP container listens on. Default: `8001`. |
-| `MCP_LOG_LEVEL` | `info` for production. `debug` for troubleshooting. |
-| `IDP_OIDC_MCP_SERVER_REDIRECT_URIS` | OIDC redirect URI for the MCP confidential client. Defaults to `[{VALIDIBOT_MCP_BASE_URL}/auth/callback]`. |
+| `VALIDIBOT_LOG_LEVEL` | `INFO` for production. `DEBUG` for troubleshooting. |
+| `VALIDIBOT_API_BASE_URL` | Internal or public URL of the Django API that MCP forwards tool calls to. |
+| `VALIDIBOT_MCP_BASE_URL` | Public MCP URL used for metadata, redirects, and the default token audience. Keep it aligned with Django's value. |
+| `VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL` | Public base URL of the Django OIDC issuer. |
+| `VALIDIBOT_OAUTH_CLIENT_ID`, `VALIDIBOT_OAUTH_CLIENT_SECRET` | Confidential client registered with Django. The secret is paired with `IDP_OIDC_MCP_SERVER_CLIENT_SECRET` in `.django`. |
+| `VALIDIBOT_MCP_SERVICE_KEY` | Shared MCP-to-Django key for self-hosting. Use the same generated value as `MCP_SERVICE_KEY` in `.django`. |
+| `VALIDIBOT_MCP_ENABLED` | Runtime kill switch. `false` makes every tool call return 503. |
+| `VALIDIBOT_OAUTH_AUTHORIZATION_ENDPOINT`, `VALIDIBOT_OAUTH_TOKEN_ENDPOINT`, `VALIDIBOT_OAUTH_REVOCATION_ENDPOINT`, `VALIDIBOT_OAUTH_JWKS_URL` | Optional complete-URL overrides if a compatible provider is routed differently. Validibot's standard paths are derived locally, without a startup discovery request. |
 
 ## Deployment profiles
 

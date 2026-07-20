@@ -173,13 +173,24 @@ site offline, use `just gcp deploy-maintenance <stage>`. It confirms the stage
 is already offline, starts only Cloud SQL for migrations, deploys web, worker,
 schedulers, and optional MCP with internal ingress and zero minimum capacity,
 then stops Cloud SQL and re-pauses all work. An exit trap restores maintenance
-mode even if an intermediate step fails. Database start and stop requests are
-submitted asynchronously and the recipes poll both the instance state and the
-absence of an active control-plane operation, which also covers slow provider
-maintenance and eventual state reporting. The default transition deadline is 30
-minutes; set `GCP_SQL_TRANSITION_TIMEOUT_SECONDS` for an exceptional longer
-operation. `maintenance-status` applies the same two-part database check, so a
-transitional `STOPPED` state is not reported as safely offline too early.
+mode even if an intermediate step fails. The cleanup first inspects Cloud Run
+and skips services that are already internal with zero minimum capacity. That
+matters when a newly selected revision is unhealthy: a redundant service update
+could otherwise fail before cleanup reaches Cloud SQL. Other service, queue,
+and scheduler failures are collected while every remaining safeguard is still
+attempted; the recipe reports failure only after the database stop path runs.
+
+Database start and stop requests are submitted asynchronously and the recipes
+poll both the instance state and the absence of an active control-plane
+operation, which also covers slow provider maintenance and eventual state
+reporting. The default transition deadline is 30 minutes; set
+`GCP_SQL_TRANSITION_TIMEOUT_SECONDS` for an exceptional longer operation.
+`maintenance-status` applies the same two-part database check, so a transitional
+`STOPPED` state is not reported as safely offline too early. Optional MCP is
+also internal, zero-capacity, and explicitly disabled while offline. Its
+revision starts without contacting the unavailable Django issuer; taking the
+stage online exposes web first and then restores the configured MCP kill-switch
+value, which runs the normal license check.
 
 ### Step 5: Database and Application Initialization
 

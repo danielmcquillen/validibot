@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import MultiAuth
-from fastmcp.server.auth.oidc_proxy import OIDCProxy
+from fastmcp.server.auth.oidc_proxy import OIDCConfiguration, OIDCProxy
 from fastmcp.utilities.logging import configure_logging as _configure_fastmcp_logging
+from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -103,6 +104,38 @@ _legacy_api_token_verifier = ValidibotTokenVerifier(
 )
 
 
+class ConfiguredOIDCProxy(OIDCProxy):
+    """OIDC proxy backed by Validibot's locally configured provider metadata.
+
+    FastMCP normally downloads the upstream discovery document in
+    ``OIDCProxy.__init__``. That makes container readiness depend on Django
+    being publicly reachable, which is deliberately false during a
+    maintenance-safe deployment. Validibot owns both sides of this contract,
+    so the proxy uses the same stable endpoint paths that Django publishes.
+    Runtime authorization and token exchange still go to Django normally.
+    """
+
+    def __init__(
+        self,
+        *,
+        oidc_configuration: OIDCConfiguration,
+        **kwargs: object,
+    ) -> None:
+        """Initialize the proxy without an eager discovery-network request."""
+        self._configured_oidc_configuration = oidc_configuration
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+
+    def get_oidc_configuration(
+        self,
+        config_url: AnyHttpUrl,
+        strict: bool | None,
+        timeout_seconds: int | None,
+    ) -> OIDCConfiguration:
+        """Return trusted local metadata instead of fetching ``config_url``."""
+        del config_url, strict, timeout_seconds
+        return self._configured_oidc_configuration
+
+
 def _build_oidc_proxy(settings: Settings) -> OIDCProxy:
     """Build the OIDCProxy auth provider with RFC 8707 audience binding.
 
@@ -123,7 +156,23 @@ def _build_oidc_proxy(settings: Settings) -> OIDCProxy:
         An ``OIDCProxy`` whose JWTVerifier enforces the ``aud`` claim.
     """
 
-    return OIDCProxy(
+    issuer = settings.oauth_authorization_server_url.rstrip("/")
+    oidc_configuration = OIDCConfiguration(
+        issuer=issuer,
+        authorization_endpoint=settings.effective_oauth_authorization_endpoint,
+        token_endpoint=settings.effective_oauth_token_endpoint,
+        revocation_endpoint=settings.effective_oauth_revocation_endpoint,
+        jwks_uri=settings.effective_oauth_jwks_url,
+        response_types_supported=["code"],
+        subject_types_supported=["public"],
+        id_token_signing_alg_values_supported=["RS256"],
+        token_endpoint_auth_methods_supported=["client_secret_post"],
+    )
+
+    return ConfiguredOIDCProxy(
+        oidc_configuration=oidc_configuration,
+        # FastMCP still requires a valid URL here, but ConfiguredOIDCProxy
+        # supplies the configuration locally and never requests this URL.
         config_url=f"{settings.oauth_authorization_server_url.rstrip('/')}/.well-known/openid-configuration",
         client_id=settings.oauth_client_id,
         client_secret=settings.oauth_client_secret,
@@ -190,13 +239,19 @@ async def root(request: Request) -> JSONResponse:
 async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     """Start and stop the authenticated MCP sub-app lifespan.
 
-    The license gate runs first. It raises ``LicenseCheckError`` and
-    aborts startup if the community deployment does not advertise the
-    ``mcp_server`` feature — i.e. if validibot-pro/enterprise is not
-    installed on the API the MCP server fronts. See ``license_check``.
+    The license gate runs first when MCP is enabled. It raises
+    ``LicenseCheckError`` and aborts startup if the community deployment does
+    not advertise the ``mcp_server`` feature — i.e. if
+    validibot-pro/enterprise is not installed on the API the MCP server
+    fronts. Maintenance deployments explicitly disable MCP, allowing a
+    zero-capacity internal revision to become ready while Django is offline.
+    The gate runs again when maintenance is removed and MCP is re-enabled.
     """
 
-    await verify_license_or_die()
+    if _settings.mcp_enabled:
+        await verify_license_or_die()
+    else:
+        _logger.info("MCP disabled; deferring the license check until it is enabled")
     async with _authenticated_http_app.router.lifespan_context(_authenticated_http_app):
         try:
             yield

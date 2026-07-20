@@ -190,7 +190,13 @@ restores full maintenance mode on success or failure. Its Cloud SQL transitions
 are asynchronous and poll both instance state and active provider operations,
 so scheduled maintenance cannot outlive the local CLI wait; the default
 30-minute deadline can be overridden with
-`GCP_SQL_TRANSITION_TIMEOUT_SECONDS`.
+`GCP_SQL_TRANSITION_TIMEOUT_SECONDS`. Cleanup is best-effort across individual
+Cloud Run, scheduler, and queue operations: it skips resources already in the
+desired offline state, records failures, and continues to the database stop
+before returning a non-zero status. Optional MCP revisions are deployed with
+`VALIDIBOT_MCP_ENABLED=false`; `maintenance-off` makes web reachable first and
+then restores the configured MCP value so its normal startup license check can
+succeed without weakening the gate.
 
 #### MCP server commands
 

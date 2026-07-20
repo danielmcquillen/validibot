@@ -38,6 +38,9 @@ VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL=http://web:8000
 # IDP_OIDC_MCP_SERVER_CLIENT_SECRET in .envs/.local/.django.
 # VALIDIBOT_OAUTH_CLIENT_ID=validibot-mcp-server
 # VALIDIBOT_OAUTH_CLIENT_SECRET=
+# Validibot's standard authorize/token/revoke/JWKS paths are derived locally.
+# Override the complete endpoint URLs only when testing compatible custom
+# routing; see docs/dev_docs/deployment/environment-configuration.md.
 
 # ── x402 payments ──────────────────────────────────────────────────────
 #

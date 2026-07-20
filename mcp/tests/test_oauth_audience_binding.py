@@ -20,14 +20,12 @@ token verifier enforces the effective resource audience. If someone drops the
 ``audience=`` argument again, ``token_verifier.audience`` reverts to ``None``
 and the first test fails loudly.
 
-The upstream OIDC discovery document is mocked with ``respx`` because
-``OIDCProxy.__init__`` eagerly fetches ``config_url`` over HTTP.
+The proxy must also construct its provider metadata without an HTTP request.
+That property keeps an internal, disabled Cloud Run revision deployable while
+the upstream Django service is deliberately offline for maintenance.
 """
 
 from __future__ import annotations
-
-import respx
-from httpx import Response
 
 from validibot_mcp.config import Settings
 from validibot_mcp.server import _build_oidc_proxy
@@ -37,19 +35,6 @@ from validibot_mcp.server import _build_oidc_proxy
 # below ("<mcp_base_url>/mcp"), since the OIDC adapter stamps the same value as
 # the ``aud`` claim on issued tokens.
 _EXPECTED_AUDIENCE = "https://mcp.example.test/mcp"
-
-# Minimal-but-strict OIDC discovery document. ``OIDCConfiguration`` enforces the
-# presence of these fields in strict mode, so the mock must supply them all or
-# proxy construction raises before we can inspect the verifier.
-_DISCOVERY_DOC = {
-    "issuer": "https://auth.example.test",
-    "authorization_endpoint": "https://auth.example.test/authorize",
-    "token_endpoint": "https://auth.example.test/token",
-    "jwks_uri": "https://auth.example.test/.well-known/jwks.json",
-    "response_types_supported": ["code"],
-    "subject_types_supported": ["public"],
-    "id_token_signing_alg_values_supported": ["RS256"],
-}
 
 
 def _settings_with_oauth() -> Settings:
@@ -68,7 +53,6 @@ def _settings_with_oauth() -> Settings:
     )
 
 
-@respx.mock
 def test_oidc_proxy_binds_resource_audience_on_verifier() -> None:
     """The built proxy's token verifier must enforce the resource audience.
 
@@ -78,10 +62,6 @@ def test_oidc_proxy_binds_resource_audience_on_verifier() -> None:
     RFC 8707 violation). Asserting the verifier carries the effective audience
     proves the ``aud`` claim is actually checked against this MCP surface.
     """
-
-    respx.get(
-        "https://auth.example.test/.well-known/openid-configuration",
-    ).mock(return_value=Response(200, json=_DISCOVERY_DOC))
 
     settings = _settings_with_oauth()
     proxy = _build_oidc_proxy(settings)
@@ -95,7 +75,6 @@ def test_oidc_proxy_binds_resource_audience_on_verifier() -> None:
     assert proxy._token_validator.audience == _EXPECTED_AUDIENCE
 
 
-@respx.mock
 def test_custom_resource_audience_override_is_honoured() -> None:
     """An explicit ``VALIDIBOT_OAUTH_RESOURCE_AUDIENCE`` override must propagate.
 
@@ -104,10 +83,6 @@ def test_custom_resource_audience_override_is_honoured() -> None:
     verifier must enforce *that* value, otherwise tokens minted for the real
     audience would be rejected while the wrong audience went unchecked.
     """
-
-    respx.get(
-        "https://auth.example.test/.well-known/openid-configuration",
-    ).mock(return_value=Response(200, json=_DISCOVERY_DOC))
 
     override = "https://gateway.example.test/mcp"
     settings = Settings(
@@ -120,3 +95,62 @@ def test_custom_resource_audience_override_is_honoured() -> None:
     proxy = _build_oidc_proxy(settings)
 
     assert proxy._token_validator.audience == override
+
+
+def test_oidc_proxy_uses_validibot_endpoints_without_remote_discovery() -> None:
+    """Proxy construction must work while the Django issuer is unreachable.
+
+    WHY: maintenance deployment makes Django internal-only before staging the
+    MCP revision. FastMCP's normal eager discovery request would fail that
+    deployment even though the MCP service is also disabled and internal.
+    Building from the stable Validibot OIDC routes removes the boot-time
+    network dependency without changing live OAuth forwarding.
+    """
+
+    proxy = _build_oidc_proxy(_settings_with_oauth())
+
+    assert str(proxy.oidc_config.issuer) == "https://auth.example.test"
+    assert (
+        str(proxy.oidc_config.authorization_endpoint)
+        == "https://auth.example.test/identity/o/authorize"
+    )
+    assert (
+        str(proxy.oidc_config.token_endpoint) == "https://auth.example.test/identity/o/api/token"
+    )
+    assert (
+        str(proxy.oidc_config.revocation_endpoint)
+        == "https://auth.example.test/identity/o/api/revoke"
+    )
+    assert str(proxy.oidc_config.jwks_uri) == "https://auth.example.test/.well-known/jwks.json"
+
+
+def test_oidc_endpoint_overrides_support_custom_routing() -> None:
+    """Self-hosters can override each locally configured provider endpoint.
+
+    WHY: Validibot's defaults are correct for the bundled django-allauth
+    provider, but a reverse proxy may expose compatible endpoints elsewhere.
+    Explicit settings keep that supported without returning to boot-time
+    discovery over the network.
+    """
+
+    settings = Settings(
+        mcp_base_url="https://mcp.example.test",
+        oauth_authorization_server_url="https://auth.example.test",
+        oauth_client_secret="test-secret",
+        oauth_authorization_endpoint="https://gateway.example.test/oauth/authorize",
+        oauth_token_endpoint="https://gateway.example.test/oauth/token",
+        oauth_revocation_endpoint="https://gateway.example.test/oauth/revoke",
+        oauth_jwks_url="https://gateway.example.test/oauth/jwks",
+    )
+
+    proxy = _build_oidc_proxy(settings)
+
+    assert (
+        str(proxy.oidc_config.authorization_endpoint)
+        == "https://gateway.example.test/oauth/authorize"
+    )
+    assert str(proxy.oidc_config.token_endpoint) == "https://gateway.example.test/oauth/token"
+    assert (
+        str(proxy.oidc_config.revocation_endpoint) == "https://gateway.example.test/oauth/revoke"
+    )
+    assert str(proxy.oidc_config.jwks_uri) == "https://gateway.example.test/oauth/jwks"

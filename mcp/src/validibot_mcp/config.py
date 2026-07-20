@@ -9,6 +9,12 @@ Environment variables:
     VALIDIBOT_MCP_BASE_URL: Public base URL of the MCP service.
     VALIDIBOT_OAUTH_AUTHORIZATION_SERVER_URL: Base URL of the upstream
         authorization server that issues MCP OAuth tokens.
+    VALIDIBOT_OAUTH_AUTHORIZATION_ENDPOINT: Optional authorization endpoint
+        override. Defaults to Validibot's django-allauth OIDC path.
+    VALIDIBOT_OAUTH_TOKEN_ENDPOINT: Optional token endpoint override. Defaults
+        to Validibot's django-allauth OIDC path.
+    VALIDIBOT_OAUTH_REVOCATION_ENDPOINT: Optional revocation endpoint override.
+        Defaults to Validibot's django-allauth OIDC path.
     VALIDIBOT_OAUTH_JWKS_URL: Optional JWKS URL override for JWT validation.
         Defaults to ``<authorization_server>/.well-known/jwks.json``.
     VALIDIBOT_OAUTH_RESOURCE_AUDIENCE: Audience that must appear on MCP OAuth
@@ -17,7 +23,8 @@ Environment variables:
         access tokens. Defaults to ``validibot:mcp``.
     VALIDIBOT_API_BASE_URL: Base URL of the Validibot REST API.
     VALIDIBOT_MCP_ENABLED: Global kill switch (default True). Set to False
-        to return 503 on all tool calls without redeploying.
+        to return 503 on all tool calls. Apply the environment change by
+        creating a new service revision or restarting the container.
     VALIDIBOT_MCP_SERVICE_KEY: Shared secret for MCP→Django service auth
         in local development (bypasses Cloud Run OIDC).
     VALIDIBOT_MCP_SERVICE_AUDIENCE: Optional explicit audience used when the
@@ -61,6 +68,16 @@ class Settings(BaseSettings):
     # legacy API token path is available.
     oauth_client_id: str = "validibot-mcp-server"
     oauth_client_secret: str = ""
+
+    # Optional endpoint overrides. The MCP server constructs the small OIDC
+    # configuration it needs locally instead of fetching discovery metadata at
+    # process startup. This lets a disabled/internal Cloud Run revision become
+    # ready while the Django service is intentionally offline for maintenance.
+    # Defaults match Validibot's django-allauth OIDC provider; operators with a
+    # differently routed compatible provider can override each endpoint.
+    oauth_authorization_endpoint: str = ""
+    oauth_token_endpoint: str = ""
+    oauth_revocation_endpoint: str = ""
 
     # Optional JWKS URL override. When blank, derived from the authorization
     # server's standard allauth OIDC JWKS endpoint.
@@ -117,6 +134,27 @@ class Settings(BaseSettings):
         if self.oauth_jwks_url:
             return self.oauth_jwks_url
         return f"{self.oauth_authorization_server_url.rstrip('/')}/.well-known/jwks.json"
+
+    @property
+    def effective_oauth_authorization_endpoint(self) -> str:
+        """Return the upstream OAuth authorization endpoint."""
+        if self.oauth_authorization_endpoint:
+            return self.oauth_authorization_endpoint
+        return f"{self.oauth_authorization_server_url.rstrip('/')}/identity/o/authorize"
+
+    @property
+    def effective_oauth_token_endpoint(self) -> str:
+        """Return the upstream OAuth token endpoint."""
+        if self.oauth_token_endpoint:
+            return self.oauth_token_endpoint
+        return f"{self.oauth_authorization_server_url.rstrip('/')}/identity/o/api/token"
+
+    @property
+    def effective_oauth_revocation_endpoint(self) -> str:
+        """Return the upstream OAuth token-revocation endpoint."""
+        if self.oauth_revocation_endpoint:
+            return self.oauth_revocation_endpoint
+        return f"{self.oauth_authorization_server_url.rstrip('/')}/identity/o/api/revoke"
 
     @property
     def effective_oauth_resource_audience(self) -> str:

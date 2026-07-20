@@ -1,30 +1,34 @@
 """
-Tests for the MCP startup license gate.
+Tests for the MCP enable-time license gate.
 
-``verify_license_or_die()`` is the boot-time check that prevents a
+``verify_license_or_die()`` is the check that prevents an enabled
 community-only Validibot deployment from running the MCP server. It
 calls the Validibot REST API's ``GET /api/v1/license/features/``
 endpoint and only returns when the ``mcp_server`` feature is present.
 
 These tests cover the three outcomes that matter operationally:
 
-1. The feature is licensed — boot proceeds silently.
-2. The feature is not licensed — boot raises a ``LicenseCheckError``
+1. The feature is licensed — enabled startup proceeds silently.
+2. The feature is not licensed — startup raises a ``LicenseCheckError``
    pointing the operator at the pricing page.
 3. The API cannot be reached — boot raises a ``LicenseCheckError``
    with a diagnostic that names the URL and the underlying httpx error.
 
-The license-check fixture in ``conftest.py`` patches ``verify_license_or_die``
-on the server module so these are the only tests in the suite that exercise
-the real implementation.
+Maintenance is the deliberate exception: a disabled, internal revision skips
+the API request so Cloud Run can stage it while Django is offline. MCP's global
+gate returns 503 in that state, and maintenance-off re-enables it so the next
+revision performs the normal license check.
 """
 
 from __future__ import annotations
+
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 import respx
 
+from validibot_mcp import server
 from validibot_mcp.config import get_settings
 from validibot_mcp.license_check import LicenseCheckError, verify_license_or_die
 
@@ -117,3 +121,26 @@ async def test_verify_license_fails_when_api_is_unreachable(
 
     assert api_base_url in str(excinfo.value)
     assert "/api/v1/license/features/" in str(excinfo.value)
+
+
+async def test_disabled_maintenance_revision_skips_startup_license_request(
+    monkeypatch,
+) -> None:
+    """A disabled MCP revision must become ready while Django is offline.
+
+    WHY: maintenance-safe GCP deployment intentionally makes Django internal
+    before staging MCP. The revision is also internal and has
+    ``VALIDIBOT_MCP_ENABLED=false``, so serving tools is impossible; skipping
+    the otherwise fail-closed license request is safe and avoids a circular
+    readiness dependency. Re-enabling MCP creates a revision that performs the
+    check normally.
+    """
+
+    license_check = AsyncMock()
+    monkeypatch.setattr(server, "verify_license_or_die", license_check)
+    monkeypatch.setattr(server._settings, "mcp_enabled", False)
+
+    async with server._lifespan(server.app):
+        pass
+
+    license_check.assert_not_awaited()

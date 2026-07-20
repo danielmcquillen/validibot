@@ -133,7 +133,7 @@ Validibot ships a standalone [Model Context Protocol](https://modelcontextprotoc
 - `validate_file` — submit a file for validation and get back a run reference
 - `get_run_status` / `wait_for_run` — poll, or block until the run reaches a verdict
 
-The server is a thin protocol-translation layer: it forwards REST calls to Validibot's API (via the built-in `mcp_api` app) and carries no validation logic of its own. The source is open (AGPL-3.0), but the server checks the deployment's license at startup and only serves traffic when the `mcp_server` feature is enabled (included with Pro). See the [MCP documentation](https://dev.validibot.com/mcp/) for setup.
+The server is a thin protocol-translation layer: it forwards REST calls to Validibot's API (via the built-in `mcp_api` app) and carries no validation logic of its own. The source is open (AGPL-3.0), but every enabled revision checks the deployment's license at startup and only serves traffic when the `mcp_server` feature is enabled (included with Pro). A maintenance revision starts disabled and internal, then performs the same check when the deployment is brought online. See the [MCP documentation](https://dev.validibot.com/mcp/) for setup.
 
 ## Quick Start
 

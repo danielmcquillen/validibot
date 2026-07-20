@@ -97,10 +97,12 @@ flip `DJANGO_SETTINGS_MODULE` to `config.settings.production_pro` in
 workflows, and runs are preserved across the upgrade. Pro migrations
 are additive — they add tables but never reshape community tables.
 
-There is no runtime license check inside the application. A running
-Pro instance keeps running even if outbound internet is fully cut
-off. License expiry blocks future package downloads (your next
-upgrade fails); it does not affect the running install.
+There is no remote license phone-home inside Django. A running Pro instance
+keeps running if outbound internet is fully cut off. License expiry blocks
+future package downloads (your next upgrade fails); it does not affect the
+installed application. The optional MCP container does make a local startup
+request to that same deployment's `/api/v1/license/features/` endpoint when
+enabled, solely to confirm that the installed package registered `mcp_server`.
 
 ## First install (one-page summary)
 

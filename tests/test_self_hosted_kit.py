@@ -721,8 +721,12 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         )
 
         assert "--ingress internal --min=0" in block
-        assert '"$WORKER_SERVICE" "$MCP_SERVICE"' in block
+        assert "ensure_offline_service" in block
+        assert "already internal with zero minimum capacity" in block
+        assert 'ensure_offline_service "$WORKER_SERVICE" 0 1' in block
+        assert 'ensure_offline_service "$MCP_SERVICE" 1' in block
         assert "metadata.labels.validator" in block
+        assert "VALIDIBOT_MCP_ENABLED=false" in block
         assert 'queues pause "$QUEUE_NAME"' in block
         assert 'queues pause "$PROVIDER_QUEUE_NAME"' in block
         assert "--activation-policy NEVER" in block
@@ -730,6 +734,8 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "another operation was already in progress" in block
         assert "GCP_SQL_TRANSITION_TIMEOUT_SECONDS" in block
         assert "sql operations list" in block
+        assert "MAINTENANCE_ERRORS" in block
+        assert "completed all possible safeguards" in block
 
     def test_maintenance_database_start_polls_provider_state_asynchronously(self):
         """A slow Cloud SQL control-plane operation must not defeat cleanup.
@@ -792,7 +798,27 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert block.rindex('--ingress "$WEB_INGRESS"') > block.index(
             "scheduler jobs resume"
         )
+        assert "VALIDIBOT_MCP_ENABLED=$MCP_ENABLED" in block
         assert "desired-min-instances" in block
+
+    def test_mcp_maintenance_deploy_is_disabled_until_stage_reopens(self):
+        """An offline MCP revision must not require the offline Django API.
+
+        The FastMCP startup license gate calls Django whenever MCP is enabled.
+        Maintenance deployment therefore stamps the kill switch off; the main
+        maintenance-off recipe restores the operator's configured value only
+        after web ingress is public again.
+        """
+        mcp_module = (REPO_ROOT / "just" / "mcp" / "mod.just").read_text(
+            encoding="utf-8",
+        )
+        deploy_start = mcp_module.index("deploy stage:")
+        deploy_end = mcp_module.index("# ── Load Balancer Integration", deploy_start)
+        deploy_block = mcp_module[deploy_start:deploy_end]
+
+        assert 'GCP_DEPLOY_MAINTENANCE:-0}" = "1"' in deploy_block
+        assert "MCP_ENABLED=false" in deploy_block
+        assert "VALIDIBOT_MCP_ENABLED=${MCP_ENABLED}" in deploy_block
 
     def test_validator_release_mirror_copies_attested_digest_without_rebuild(self):
         """The GAR production mirror must preserve the signed GHCR image bytes.

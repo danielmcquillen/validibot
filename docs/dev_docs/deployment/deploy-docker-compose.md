@@ -143,7 +143,7 @@ you opt in:
    flag is truthy.
 
    **License gate.** The MCP code itself lives in this repo at
-   `mcp/` and is free to build, but at startup the server calls
+   `mcp/` and is free to build, but whenever an enabled revision starts the server calls
    `GET /api/v1/license/features/` against the Django API and
    refuses to serve traffic unless `mcp_server` is advertised —
    which only happens when `validibot-pro` (or enterprise) is

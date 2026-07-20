@@ -52,3 +52,11 @@ VALIDIBOT_MCP_SERVICE_KEY=replace-me-with-a-long-random-string
 # `openssl rand -hex 32`.
 # VALIDIBOT_OAUTH_CLIENT_ID=validibot-mcp-server
 # VALIDIBOT_OAUTH_CLIENT_SECRET=
+
+# Validibot's authorize/token/revoke/JWKS paths are derived locally from the
+# authorization-server URL, avoiding a discovery-network request at startup.
+# If a compatible provider is routed differently, override complete URLs here:
+# VALIDIBOT_OAUTH_AUTHORIZATION_ENDPOINT=https://app.your-domain.example/oauth/authorize
+# VALIDIBOT_OAUTH_TOKEN_ENDPOINT=https://app.your-domain.example/oauth/token
+# VALIDIBOT_OAUTH_REVOCATION_ENDPOINT=https://app.your-domain.example/oauth/revoke
+# VALIDIBOT_OAUTH_JWKS_URL=https://app.your-domain.example/oauth/jwks

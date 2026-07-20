@@ -193,13 +193,13 @@ async def _close_mcp_http_clients():
 
 @pytest.fixture(autouse=True, scope="session")
 def _skip_license_check():
-    """Neutralise the startup license gate for the whole test suite.
+    """Neutralise the enabled-revision license gate for the test suite.
 
-    ``verify_license_or_die()`` runs inside the Starlette lifespan whenever
-    a test (typically the transport tests) boots the real ASGI app. In
-    production it calls ``GET /api/v1/license/features/`` against the
-    Validibot API; in tests we would otherwise need either a respx mock
-    on every test that spins up the app, or a live Validibot deployment.
+    ``verify_license_or_die()`` runs inside the Starlette lifespan whenever an
+    enabled test revision (typically the transport tests) boots the real ASGI
+    app. In production it calls ``GET /api/v1/license/features/`` against the
+    Validibot API; in tests we would otherwise need either a respx mock on every
+    test that spins up the app, or a live Validibot deployment.
     Short-circuiting to ``None`` is simpler and preserves the licensing
     semantics — the gate itself is exercised directly in
     ``test_license_check.py`` where the real implementation is imported

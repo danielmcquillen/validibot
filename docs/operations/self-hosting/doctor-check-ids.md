@@ -163,8 +163,9 @@ self-hosted setup uses local filesystem.
 **Fix:** No action — this is the success case.
 
 ### `VB205` Validator storage capability and isolation
-**Severity:** ok for local per-attempt mounts; warn for generation-pinned GCS
-with a shared runtime identity; error for unsupported or unproven combinations
+**Severity:** ok for local mounts or a fully isolated downscoped-token GCS
+runtime; warn while a GCP runtime may still have ambient storage authority;
+error for unsupported or internally inconsistent combinations
 **Trigger:** Always emitted. Doctor pairs `DATA_STORAGE_BACKEND` with
 `VALIDATOR_RUNNER` and reports the effective validator I/O mode separately from
 ordinary storage reachability.
@@ -177,20 +178,33 @@ whether a compromised validator is prevented from reaching another attempt.
 - `local_attempt_mount` + `attempt_scoped`: Docker receives one attempt's input
   mount read-only and output mount read-write. This is the supported
   self-hosted mode.
+- `gcs_downscoped_token` + `attempt_scoped`: the validator receives a
+  short-lived read/create token limited to one attempt prefix, and its attached
+  runtime identity has been proved unable to access storage without that
+  token. This is the fully rolled-out GCP mode.
+- `gcs_downscoped_token` + `reduced_shared_runtime_identity`: attempt-scoped
+  tokens are active, but the operator has not yet completed and recorded the
+  ambient-IAM removal proof. Integrity is enforced, but isolation remains a
+  warning.
 - `gcs_generation` + `reduced_shared_runtime_identity`: generation-pinned reads,
-  generation-zero writes, size, and SHA-256 protect integrity, but the current
-  Cloud Run job service account may still have access beyond one attempt.
+  generation-zero writes, size, and SHA-256 protect integrity, but
+  attempt-scoped token delivery is not enabled and the Cloud Run runtime
+  service account may still have access beyond one attempt.
 - `unsupported`: S3/S3-compatible conditional and version semantics have not
   yet been implemented and capability-tested, or the configured runner/storage
   pair has no verified contract. Doctor fails closed instead of inferring
   safety from a provider label.
 
 **Fix:** For self-hosting, use local data storage with the Docker runner. For
-GCP, treat the warning as an honest reduced-isolation state until
-attempt-scoped runtime credentials or a server-mediated broker are available.
-Do not use an S3 or custom storage path for external validators until its
-conditional writes, immutable reads, and runtime scope are implemented and
-tested.
+GCP, deploy capability-aware images and enable
+`GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED`, then run
+`just gcp validator-storage-capability-probe <stage>`. Remove and prove the
+absence of ambient storage authority with
+`just gcp validator-storage-isolation <stage>`, repeat a representative
+validation, and only then set
+`GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`. Do not use an S3
+or custom storage path for external validators until its conditional writes,
+immutable reads, and runtime scope are implemented and tested.
 
 ---
 

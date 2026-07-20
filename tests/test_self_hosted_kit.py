@@ -588,8 +588,23 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         fits for ``prod``, ``staging``, and ``dev``.
         """
         text = self._gcp_mod_text()
+        django_example = (
+            REPO_ROOT / ".envs.example" / ".production" / ".google-cloud" / ".django"
+        ).read_text(encoding="utf-8")
 
         assert "${APP_NAME}-validator-invoker" not in text
+        assert "your-app-name-validator-invoker-prod" not in django_example
+        assert "your-app-name-val-invoker-prod" in django_example
+        assert (
+            "DJANGO_CSRF_TRUSTED_ORIGINS=https://your-subdomain.example.com"
+            in django_example
+        )
+        assert "VALIDATOR_BACKEND_IMAGE_POLICY=digest" in django_example
+        assert "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=false" in django_example
+        assert (
+            "GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=false"
+            in django_example
+        )
         for stage in ("prod", "staging", "dev"):
             assert (
                 len(f"validibot-val-invoker-{stage}")
@@ -663,6 +678,68 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "gcloud artifacts docker images list" in block
         assert 'IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"' in block
         assert '--image "$IMAGE_REF"' in block
+
+    def test_validator_controller_can_verify_live_resources_before_routing(self):
+        """The runtime identity must be able to prove provider configuration.
+
+        Job and Service deployment imports fail closed unless Django can read
+        the exact live resource and the Service invoker policy. The custom
+        role still uses its historical ID, but it must include only the reads
+        needed for verification plus the two retained-Job launch permissions.
+        """
+        block = self._block_between(
+            "# Step 0b: Create the custom validator-controller role",
+            "# Step 1: Create service account",
+        )
+        expected_permissions = (
+            "run.jobs.get,run.jobs.run,run.jobs.runWithOverrides,"
+            "run.services.get,run.services.getIamPolicy"
+        )
+        role_creation_paths = 2
+
+        assert (
+            block.count(f'--permissions="{expected_permissions}"')
+            == role_creation_paths
+        )
+        assert 'JOB_RUNNER_ROLE_ID="${APP_NAME//-/_}_job_runner"' in block
+
+    def test_validator_dashboard_rendering_treats_regex_as_data(self):
+        """Dashboard templating must accept the validator alternation regex.
+
+        The Service matcher contains pipe characters, so injecting it into a
+        delimiter-based sed replacement fails on BSD sed. Passing every value
+        through jq keeps the JSON valid and makes the recipe portable.
+        """
+        block = self._block_between(
+            "validator-observability stage:",
+            "# Exercise the real GCS Credential Access Boundary token",
+        )
+
+        assert '--arg service_regex "$SERVICE_REGEX"' in block
+        assert 'gsub("__SERVICE_REGEX__"; $service_regex)' in block
+        assert "s|__SERVICE_REGEX__|$SERVICE_REGEX|g" not in block
+
+    def test_validator_service_inventory_reads_annotation_keys_through_json(self):
+        """Service inventory must handle annotation keys containing slashes.
+
+        Gcloud's value projection parser treats the slash in an autoscaling
+        annotation as expression syntax. JSON plus jq preserves the literal
+        key and lets the operator inventory work on both GNU/Linux and macOS.
+        """
+        block = self._block_between(
+            "validator-services stage:",
+            "# Cleanup (Phase 5 of ADR-2026-04-27)",
+        )
+
+        assert "SERVICE_JSON=$(gcloud run services describe" in block
+        assert 'annotations["run.googleapis.com/minScale"]' in block
+        assert 'annotations["run.googleapis.com/maxScale"]' in block
+        assert 'annotations["autoscaling.knative.dev/minScale"]' in block
+        assert 'annotations["autoscaling.knative.dev/maxScale"]' in block
+        broken_projection = (
+            "--format='value(metadata.name,status.latestReadyRevisionName"
+        )
+        assert broken_projection not in block
 
     def test_validator_inventory_reads_current_cloud_run_job_schema(self):
         """The inventory must read the image path emitted by current gcloud.
@@ -819,6 +896,42 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert 'GCP_DEPLOY_MAINTENANCE:-0}" = "1"' in deploy_block
         assert "MCP_ENABLED=false" in deploy_block
         assert "VALIDIBOT_MCP_ENABLED=${MCP_ENABLED}" in deploy_block
+
+    def test_mcp_secret_access_is_bound_to_the_exact_stage_secret(self):
+        """MCP compromise must not expose Django or unrelated secrets.
+
+        Setup historically granted Secret Manager access at project scope even
+        though MCP needs only its own stage environment. Both first-time setup
+        and later secret upload must converge to the resource-level binding and
+        remove the known legacy project binding.
+        """
+        mcp_module = (REPO_ROOT / "just" / "mcp" / "mod.just").read_text(
+            encoding="utf-8",
+        )
+        setup_start = mcp_module.index("setup stage:")
+        setup_end = mcp_module.index("# ── Secrets", setup_start)
+        setup_block = mcp_module[setup_start:setup_end]
+        secrets_start = mcp_module.index("secrets stage:")
+        secrets_end = mcp_module.index("# ── Deploy", secrets_start)
+        secrets_block = mcp_module[secrets_start:secrets_end]
+
+        assert "gcloud projects add-iam-policy-binding" not in setup_block
+        assert "gcloud secrets add-iam-policy-binding" in setup_block
+        assert "gcloud secrets add-iam-policy-binding" in secrets_block
+        assert "gcloud projects remove-iam-policy-binding" in setup_block
+        assert "gcloud projects remove-iam-policy-binding" in secrets_block
+        assert "select((.condition // null) == null)" in setup_block
+        assert "select((.condition // null) == null)" in secrets_block
+
+        security_block = self._block_between(
+            "security-audit stage:",
+            "# Database Access",
+        )
+        assert "Checking MCP Secret Manager scope" in security_block
+        assert 'MCP_SECRET="mcp-env"' in security_block
+        assert 'MCP_SECRET="mcp-env-{{stage}}"' in security_block
+        assert 'PROJECT_SECRET_ACCESS" -eq 0' in security_block
+        assert 'EXACT_SECRET_ACCESS" -eq 1' in security_block
 
     def test_validator_release_mirror_copies_attested_digest_without_rebuild(self):
         """The GAR production mirror must preserve the signed GHCR image bytes.

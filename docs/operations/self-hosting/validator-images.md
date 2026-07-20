@@ -21,13 +21,19 @@ The current shipped advanced validators:
 |---|---|---|
 | `energyplus` | `validibot-validator-backend-energyplus:<git_sha>` | Building energy simulation |
 | `fmu` | `validibot-validator-backend-fmu:<git_sha>` | Functional Mock-up Unit simulation |
+| `shacl` | `validibot-validator-backend-shacl:<git_sha>` | RDF graph validation |
+| `schematron` | `validibot-validator-backend-schematron:<git_sha>` | Schematron XML validation |
 
-Self-hosted operators **build validator images locally** from a sibling checkout of `validibot-validator-backends`. There's no public image registry pull for validators (the source is open under AGPL but the images aren't currently pushed to GHCR). Build with:
+Self-hosted recipes **build validator images locally** from a sibling checkout
+of `validibot-validator-backends` by default. Signed backend releases also
+publish all four images to GHCR with attestations and SPDX SBOM assets; hosted
+GCP mirrors those exact digests into Artifact Registry rather than rebuilding
+them. Build the self-hosted images with:
 
 ```bash
 just self-hosted validator-build energyplus
 just self-hosted validator-build fmu
-just self-hosted validators-build-all      # builds both
+just self-hosted validators-build-all      # builds all four
 ```
 
 The build stamps OCI labels (`org.opencontainers.image.version`, `revision`, `source`, `io.validibot.validator-backend.slug`) onto the image, so a future `docker inspect` can read the human-readable backend version straight from the image metadata.
@@ -73,7 +79,8 @@ For verifying the *advanced* validators specifically (EnergyPlus, FMU), the oper
 
 A failed advanced-validator run points at:
 
-- Docker socket unreachable (self-hosted) or Cloud Run Job invoker permissions (GCP);
+- Docker socket unreachable (self-hosted), provider-queue/Service invoker IAM,
+  or retained Job controller permissions (GCP);
 - validator image not built locally (see Inventory above) or pull credentials wrong (cloud);
 - storage misconfiguration (data root not writable, run workspace can't be created);
 - network policy blocking required outbound calls (most validators run with `network=none` by default).
@@ -97,9 +104,12 @@ Policy values:
 |---|---|
 | `tag` | Default for community quick-start. Image references like `ghcr.io/validibot/energyplus:24.2.0`. |
 | `digest` | Production-recommended. Image references include `@sha256:...` digests pinned at deploy time. |
-| `signed-digest` | Future enterprise/high-trust. Requires cosign-verified digests. |
+| `signed-digest` | High-trust deployments. Requires digest pinning plus enabled/configured cosign verification. |
 
-`signed-digest` support and optional cosign verification are planned future hardening work.
+`signed-digest` and optional cosign verification are implemented, but they are
+separate from the hosted release mirror's GitHub attestation check. Enable the
+policy only after configuring the cosign verification key and proving the
+runtime verification path; otherwise doctor and launch fail closed.
 
 !!! warning "Enable `digest` only once your images are digest-pinned"
     The policy is **enforced at launch**. When it is `digest` (or

@@ -47,7 +47,7 @@ This ensures:
 | `roles/cloudkms.signerVerifier` | KMS key | Sign validation credentials |
 | `roles/iam.serviceAccountTokenCreator` | Self | Create OIDC tokens for Cloud Tasks |
 | `roles/iam.serviceAccountUser` | Self | Act as the service account |
-| Custom `validibot_job_runner` | Validator jobs | Trigger jobs with env overrides |
+| Custom `validibot_job_runner` | Project | Read validator Job/Service configuration and Service IAM; trigger Jobs with env overrides |
 
 ### Validator Service Account
 
@@ -94,7 +94,7 @@ Only relevant on deployments that run the MCP server. Provisioned by
 
 | Role | Scope | Purpose |
 | ---- | ----- | ------- |
-| `roles/secretmanager.secretAccessor` | Project | Read the `mcp-env` secret (OAuth client secret, optional MCP-only facilitator credentials) |
+| `roles/secretmanager.secretAccessor` | Exact stage `mcp-env` secret | Read only the MCP OAuth/runtime environment; setup removes the legacy project-wide binding |
 | `roles/run.invoker` | Django web service | Mint OIDC identity tokens to call `/api/v1/mcp/*` on Django |
 
 The MCP SA deliberately does **not** have:
@@ -103,6 +103,10 @@ The MCP SA deliberately does **not** have:
 - `cloudtasks.enqueuer` (no task queue access)
 - `roles/storage.objectAdmin` (no storage access)
 - KMS roles (no credential signing)
+
+`just gcp security-audit <stage>` verifies that MCP has no project-level role,
+has no user-managed key, and has exactly one `secretAccessor` binding on its
+stage `mcp-env` secret.
 
 This is the most constrained SA in the deployment. Even a full MCP
 container compromise only exposes the OAuth client secret and lets
@@ -138,8 +142,18 @@ just gcp mcp setup prod
 
 The `just gcp validator-deploy` command additionally grants:
 
-- `validibot_job_runner` on the job to the main SA (so web/worker can trigger it)
+- `validibot_job_runner` on the job to the main SA (so web/worker can inspect
+  and trigger it; `init-stage` also grants this custom role at project scope so
+  deployment sync and drift checks can read validator Services and their IAM)
 - `roles/run.invoker` on the worker service to the validator SA (so the job can POST callbacks)
+
+The custom role keeps its historical ID but is intentionally narrower than
+`roles/run.viewer`. Its permissions are `run.jobs.get`, `run.jobs.run`,
+`run.jobs.runWithOverrides`, `run.services.get`, and
+`run.services.getIamPolicy`. The read permissions let deployment registration
+verify exact digests, ready revisions, resource settings, and the sole Service
+invoker before changing a route. It cannot list unrelated resources or modify
+Service configuration or IAM.
 
 After capability-aware images and Django are deployed, first prove the
 downscoped token's provider behavior:

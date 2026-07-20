@@ -68,7 +68,7 @@ Production docs recommend exact-version tags or digest pins, not `latest`.
 ```bash
 # .envs/.production/.self-hosted/.build
 VALIDIBOT_IMAGE_TAG=0.8.0          # exact version
-VALIDATOR_BACKEND_IMAGE_POLICY=digest   # or 'signed-digest' once Phase 5 ships
+VALIDATOR_BACKEND_IMAGE_POLICY=digest   # or signed-digest after configuring cosign verification
 ```
 
 The doctor command warns if `latest` is used in a `self-hosted` or `self-hosted-hardened` profile.

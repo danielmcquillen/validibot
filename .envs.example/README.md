@@ -225,6 +225,7 @@ no-op cleanly where the stack does not need it.
 | `DJANGO_API_KEY_DIGEST_KEY` | HMAC key used to store API/user bearer tokens as digests. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"` and never reuse `DJANGO_SECRET_KEY`. | - | Production only |
 | `DJANGO_DEBUG`           | Enable debug mode                                    | `True` (local)          | No              |
 | `DJANGO_ALLOWED_HOSTS`   | Comma-separated list of allowed hosts                | `*` (local)             | Production only |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | Comma-separated full origins allowed for CSRF-protected requests, including `https://` | - | Production only |
 | `DJANGO_ADMIN_URL`       | Admin URL path (randomize for production!)           | `admin/`                | No              |
 | `DEPLOYMENT_TARGET`      | Deployment platform (`docker_compose`, `gcp`, `aws`) | -                       | Production only |
 

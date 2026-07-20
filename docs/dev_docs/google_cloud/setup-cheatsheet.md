@@ -265,7 +265,10 @@ First, update `.envs/.production/.google-cloud/.django` with production values:
 
 - `DJANGO_SECRET_KEY` - Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`
 - `DJANGO_API_KEY_DIGEST_KEY` - Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` and keep it separate from `DJANGO_SECRET_KEY`
-- `DJANGO_ALLOWED_HOSTS` - `.run.app,.validibot.com`
+- `DJANGO_ALLOWED_HOSTS` - Exact Cloud Run and custom hostnames; never a
+  wildcard such as `.run.app`
+- `DJANGO_CSRF_TRUSTED_ORIGINS` - Full public HTTPS origins allowed to submit
+  CSRF-protected requests, for example `https://app.validibot.com`
 - `SITE_URL` - Public base URL (typically `https://validibot.com` once the load balancer + DNS is set up)
 - `WORKER_URL` - Worker service `*.run.app` URL (used for validator callbacks and scheduled tasks)
 - `DATABASE_URL` - Cloud SQL Unix socket format (see below)
@@ -319,13 +322,16 @@ gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
 
 ### Update a secret
 
-When you change `.envs/.production/.google-cloud/.django`, add a new version:
+When you change `.envs/.production/.google-cloud/.django`, use the surgical
+Django secret recipe so the version and target are explicit:
 
 ```bash
-gcloud secrets versions add django-env --data-file=.envs/.production/.google-cloud/.django
+source .envs/.production/.google-cloud/.just
+just gcp django secrets prod
 
-# Then redeploy Cloud Run to pick up changes
-gcloud run services update $GCP_APP_NAME-web --region=$GCP_REGION
+# Then deploy normally, or keep an offline stage offline:
+just gcp deploy-all prod
+# just gcp deploy-maintenance prod
 ```
 
 ### List secrets

@@ -44,7 +44,7 @@ sequenceDiagram
 
 IAM roles involved:
 
-- **Web/Worker service account** (`$GCP_APP_NAME-cloudrun-{stage}`): Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `VALIDIBOT_INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
+- **Web/Worker service account** (`$GCP_APP_NAME-cloudrun-{stage}`): Custom `validibot_job_runner` role (the historical ID now represents the validator controller) so Django can read exact Job/Service configuration, verify Service invoker IAM, and call the Jobs API with overrides for `VALIDIBOT_INPUT_URI`.
 - **Validator runtime service account** (`$GCP_APP_NAME-validator-{stage}`): Used by both Services and Jobs. It has `roles/run.invoker` on the worker for callbacks and renewal, but **no project or bucket storage role**. Django supplies a short-lived Credential Access Boundary token limited to one attempt prefix and the `roles/storage.objectViewer` + `roles/storage.objectCreator` permission ceiling.
 - **Provider-task invoker** (`$GCP_APP_NAME-val-invoker-{stage}`): Has no project roles. It is the only `roles/run.invoker` member on the four private validator Services and is attached only to provider-queue tasks. The abbreviated resource name stays within Google's 30-character service-account ID limit for `prod`, `staging`, and `dev`.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
@@ -56,14 +56,27 @@ reconciliation is authoritative and their transport task is deterministic.
 
 ### Custom IAM Role
 
-The standard `roles/run.invoker` role only includes `run.jobs.run`, but triggering jobs with environment variable overrides (like `VALIDIBOT_INPUT_URI`) requires `run.jobs.runWithOverrides`. We use a project-level custom role:
+The standard `roles/run.invoker` role only includes `run.jobs.run`, but
+triggering Jobs with environment variable overrides (like
+`VALIDIBOT_INPUT_URI`) requires `run.jobs.runWithOverrides`. Deployment import
+and hourly drift verification must also read each exact Job or Service and the
+Service invoker policy before trusting it. We use a narrow project-level custom
+role rather than the much broader `roles/run.viewer`:
 
 ```bash
 # Role: projects/$GCP_PROJECT_ID/roles/validibot_job_runner
-# Permissions: run.jobs.run, run.jobs.runWithOverrides
+# Permissions:
+#   run.jobs.get
+#   run.jobs.run
+#   run.jobs.runWithOverrides
+#   run.services.get
+#   run.services.getIamPolicy
 ```
 
-This role is automatically granted by the `just gcp validator-deploy` command.
+The role ID is retained for compatibility. `just gcp init-stage` reconciles the
+role and its project-level binding; `just gcp validator-deploy` also retains a
+resource-level binding on each Job. The role cannot list unrelated resources,
+change a Service, or change IAM.
 
 Why env + GCS pointer: Cloud Run Jobs only accept per-run overrides via env/command; we keep large envelopes in GCS and pass the input URI plus its short-lived attempt token as execution overrides. Cloud Run documents that environment values are visible to project viewers, so treat execution-view permission as privileged. The token is still bounded to one attempt and a short lifetime, is never logged or persisted by Validibot, and cannot delete or replace an existing object.
 
@@ -335,7 +348,13 @@ The third rule is the security-critical one. A typo in a strict-intent setting (
 
 ### Strict-mode lookup failures
 
-Under `digest` and `signed-digest` policies, the launcher needs to read the Cloud Run Job's *configured* image to validate it against the policy. If that lookup fails (the Job doesn't exist, the service account lacks `run.viewer`, the project ID is wrong), the launcher cannot verify the image — and under strict intent that is a launch-blocking configuration error, not a "let's hope for the best" fallback. The launcher refuses to trigger the Job and surfaces a clear error message naming the missing prerequisite.
+Under `digest` and `signed-digest` policies, the launcher needs to read the
+Cloud Run Job's *configured* image to validate it against the policy. If that
+lookup fails (the Job doesn't exist, the service account lacks
+`run.jobs.get`, or the project ID is wrong), the launcher cannot verify the
+image — and under strict intent that is a launch-blocking configuration error,
+not a "let's hope for the best" fallback. The launcher refuses to trigger the
+Job and surfaces a clear error message naming the missing prerequisite.
 
 Under the default `tag` policy a lookup failure is non-fatal — the launcher proceeds and execution metadata is captured best-effort.
 

@@ -2708,25 +2708,27 @@ init-stage stage: _require-gcp-config
     echo "   APIs enabled"
     echo ""
 
-    # Step 0b: Create the custom job-runner role the Cloud Run SA needs to
-    # trigger validator Cloud Run Jobs. It is GRANTED in Step 2 (and on each
-    # validator job in ``validator-deploy``); creating it here — rather than
-    # out of band — means a fresh project is never left green-but-broken with
-    # a binding to a role that does not exist. Create-or-reconcile, idempotent.
+    # Step 0b: Create the custom validator-controller role the Cloud Run SA
+    # needs to inspect validator Jobs/Services and trigger retained Jobs. The
+    # historical role ID is retained for compatibility. It is GRANTED in Step
+    # 2 (and on each validator job in ``validator-deploy``); creating it here —
+    # rather than out of band — means a fresh project is never left
+    # green-but-broken with a binding to a role that does not exist.
+    # Create-or-reconcile, idempotent.
     JOB_RUNNER_ROLE_ID="${APP_NAME//-/_}_job_runner"
     echo "0b. Ensuring custom IAM role: $JOB_RUNNER_ROLE_ID"
     if gcloud iam roles describe "$JOB_RUNNER_ROLE_ID" --project={{gcp_project}} &>/dev/null; then
         gcloud iam roles update "$JOB_RUNNER_ROLE_ID" \
             --project={{gcp_project}} \
-            --permissions="run.jobs.run,run.jobs.runWithOverrides" \
+            --permissions="run.jobs.get,run.jobs.run,run.jobs.runWithOverrides,run.services.get,run.services.getIamPolicy" \
             --quiet >/dev/null
         echo "   Role exists (permissions reconciled)"
     else
         gcloud iam roles create "$JOB_RUNNER_ROLE_ID" \
             --project={{gcp_project}} \
-            --title="Validibot Job Runner" \
-            --description="Trigger Validibot validator Cloud Run Jobs" \
-            --permissions="run.jobs.run,run.jobs.runWithOverrides" \
+            --title="Validibot Validator Controller" \
+            --description="Inspect Validibot validator resources and trigger retained Jobs" \
+            --permissions="run.jobs.get,run.jobs.run,run.jobs.runWithOverrides,run.services.get,run.services.getIamPolicy" \
             --stage=GA \
             --quiet >/dev/null
         echo "   Created"
@@ -4329,11 +4331,20 @@ validator-observability stage: _require-gcp-config
     DASHBOARD_CONFIG=$(mktemp)
     DASHBOARD_UPDATE=$(mktemp)
     trap 'rm -f "$DASHBOARD_CONFIG" "$DASHBOARD_UPDATE"' EXIT
-    sed \
-        -e "s/__STAGE__/{{stage}}/g" \
-        -e "s/__REGION__/{{gcp_region}}/g" \
-        -e "s/__PROVIDER_QUEUE__/$PROVIDER_QUEUE/g" \
-        -e "s|__SERVICE_REGEX__|$SERVICE_REGEX|g" \
+    # Render through jq instead of sed: the service regex deliberately
+    # contains alternation pipes, which are unsafe in delimiter-based sed
+    # substitutions and fail on BSD sed (the default on macOS).
+    jq \
+        --arg stage "{{stage}}" \
+        --arg region "{{gcp_region}}" \
+        --arg provider_queue "$PROVIDER_QUEUE" \
+        --arg service_regex "$SERVICE_REGEX" \
+        'walk(if type == "string" then
+            gsub("__STAGE__"; $stage)
+            | gsub("__REGION__"; $region)
+            | gsub("__PROVIDER_QUEUE__"; $provider_queue)
+            | gsub("__SERVICE_REGEX__"; $service_regex)
+        else . end)' \
         "$DASHBOARD_TEMPLATE" > "$DASHBOARD_CONFIG"
     DASHBOARD_DISPLAY="Validibot {{stage}} validator execution"
     DASHBOARD_NAME=$(gcloud monitoring dashboards list \
@@ -5695,6 +5706,7 @@ verify-deployment-quick stage: _require-gcp-config
 #   3. Worker ingress posture (should be internal)
 #   4. Public bucket access (should only be on public/ prefix)
 #   5. Validator Services remain private with only the dedicated invoker
+#   6. Optional MCP can read only its exact stage secret
 #
 # Usage: just gcp security-audit prod
 [arg('stage', pattern='dev|staging|prod')]
@@ -5720,19 +5732,31 @@ security-audit stage: _require-gcp-config
         MAIN_SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
         PROVIDER_INVOKER="${APP_NAME}-val-invoker-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        MCP_SA="${APP_NAME}-mcp-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        MCP_SECRET="mcp-env"
         WORKER_SERVICE="${APP_NAME}-worker"
         STORAGE_BUCKET="${APP_NAME}-storage"
     else
         MAIN_SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         PROVIDER_INVOKER="${APP_NAME}-val-invoker-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        MCP_SA="${APP_NAME}-mcp-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        MCP_SECRET="mcp-env-{{stage}}"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
         STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
+    fi
+    AUDITED_SAS=("$MAIN_SA" "$VALIDATOR_SA" "$PROVIDER_INVOKER")
+    if gcloud iam service-accounts describe "$MCP_SA" \
+        --project={{gcp_project}} &>/dev/null; then
+        AUDITED_SAS+=("$MCP_SA")
+        MCP_PRESENT=1
+    else
+        MCP_PRESENT=0
     fi
 
     # 1. Check for user-managed SA keys (should be zero)
     echo "1. Checking for user-managed SA keys..."
-    for sa in "$MAIN_SA" "$VALIDATOR_SA" "$PROVIDER_INVOKER"; do
+    for sa in "${AUDITED_SAS[@]}"; do
         sa_short="${sa%%@*}"
         KEYS=$(gcloud iam service-accounts keys list \
             --iam-account="$sa" \
@@ -5752,7 +5776,7 @@ security-audit stage: _require-gcp-config
 
     # 2. Check SA role assignments
     echo "2. Checking SA role assignments..."
-    for sa in "$MAIN_SA" "$VALIDATOR_SA" "$PROVIDER_INVOKER"; do
+    for sa in "${AUDITED_SAS[@]}"; do
         sa_short="${sa%%@*}"
         echo "   $sa_short:"
         ROLES=$(gcloud projects get-iam-policy {{gcp_project}} \
@@ -5765,8 +5789,8 @@ security-audit stage: _require-gcp-config
             echo "$ROLES" | while read -r role; do
                 echo "     - $role"
             done
-            if [ "$sa" = "$PROVIDER_INVOKER" ]; then
-                echo "     WARN: provider invoker must have no project-level roles"
+            if [ "$sa" != "$MAIN_SA" ]; then
+                echo "     WARN: dedicated validator/MCP identities must have no project-level roles"
                 ((WARN+=1))
             fi
         fi
@@ -5848,6 +5872,43 @@ security-audit stage: _require-gcp-config
                 ((WARN+=1))
             fi
         done <<< "$SERVICES"
+    fi
+    echo ""
+
+    # 6. MCP may read its own stage secret, never every project secret.
+    echo "6. Checking MCP Secret Manager scope..."
+    if [ "$MCP_PRESENT" -eq 0 ]; then
+        echo "   SKIP: MCP service account not provisioned"
+    elif ! gcloud secrets describe "$MCP_SECRET" \
+        --project={{gcp_project}} &>/dev/null; then
+        echo "   WARN: MCP service account exists but $MCP_SECRET does not"
+        ((WARN+=1))
+    else
+        PROJECT_POLICY=$(gcloud projects get-iam-policy {{gcp_project}} --format=json)
+        SECRET_POLICY=$(gcloud secrets get-iam-policy "$MCP_SECRET" \
+            --project={{gcp_project}} --format=json)
+        MCP_MEMBER="serviceAccount:$MCP_SA"
+        PROJECT_SECRET_ACCESS=$(jq -r --arg member "$MCP_MEMBER" '
+            [.bindings[]?
+             | select(.role == "roles/secretmanager.secretAccessor")
+             | .members[]?
+             | select(. == $member)]
+            | length
+        ' <<< "$PROJECT_POLICY")
+        EXACT_SECRET_ACCESS=$(jq -r --arg member "$MCP_MEMBER" '
+            [.bindings[]?
+             | select(.role == "roles/secretmanager.secretAccessor")
+             | .members[]?
+             | select(. == $member)]
+            | length
+        ' <<< "$SECRET_POLICY")
+        if [ "$PROJECT_SECRET_ACCESS" -eq 0 ] && [ "$EXACT_SECRET_ACCESS" -eq 1 ]; then
+            echo "   PASS: MCP can read only $MCP_SECRET"
+            ((PASS+=1))
+        else
+            echo "   WARN: MCP secret scope is unexpected (project=$PROJECT_SECRET_ACCESS exact=$EXACT_SECRET_ACCESS)"
+            ((WARN+=1))
+        fi
     fi
     echo ""
 
@@ -6850,10 +6911,22 @@ validator-services stage: _require-gcp-config
         "SERVICE" "READY REVISION" "CONC" "MIN" "MAX" "IMAGE"
     while IFS= read -r SERVICE; do
         [ -z "$SERVICE" ] && continue
-        gcloud run services describe "$SERVICE" \
+        SERVICE_JSON=$(gcloud run services describe "$SERVICE" \
             --region={{gcp_region}} \
             --project={{gcp_project}} \
-            --format='value(metadata.name,status.latestReadyRevisionName,spec.template.spec.containerConcurrency,spec.template.metadata.annotations.autoscaling\.knative\.dev/minScale,spec.template.metadata.annotations.autoscaling\.knative\.dev/maxScale,spec.template.spec.containers[0].image)' \
+            --format=json)
+        jq -r '[
+            .metadata.name,
+            .status.latestReadyRevisionName,
+            (.spec.template.spec.containerConcurrency // ""),
+            (.metadata.annotations["run.googleapis.com/minScale"]
+                // .spec.template.metadata.annotations["autoscaling.knative.dev/minScale"]
+                // "0"),
+            (.metadata.annotations["run.googleapis.com/maxScale"]
+                // .spec.template.metadata.annotations["autoscaling.knative.dev/maxScale"]
+                // ""),
+            .spec.template.spec.containers[0].image
+        ] | @tsv' <<< "$SERVICE_JSON" \
             | awk -F'\t' '{printf "%-48s %-28s %-5s %-7s %-7s %s\n", $1, $2, $3, $4, $5, $6}'
     done <<< "$SERVICES"
     echo ""

@@ -123,7 +123,10 @@ DATABASE_URL=postgres://validibot_user:<url-encoded-password>@/validibot?host=/c
 Where `<db-instance>` is `$GCP_APP_NAME-db-dev`, `$GCP_APP_NAME-db-staging`, or `$GCP_APP_NAME-db` (for prod).
 
 While you're in the env file, also generate and set
-`DJANGO_API_KEY_DIGEST_KEY` and `DJANGO_MFA_ENCRYPTION_KEY`. The API-key
+`DJANGO_API_KEY_DIGEST_KEY` and `DJANGO_MFA_ENCRYPTION_KEY`. Also set
+`DJANGO_ALLOWED_HOSTS` to the exact Cloud Run/custom hostnames and
+`DJANGO_CSRF_TRUSTED_ORIGINS` to the full public HTTPS origin, for example
+`https://app.validibot.com`. The API-key
 digest key must be separate from `DJANGO_SECRET_KEY`; production refuses
 to start without it so bearer tokens are never stored using Django's
 session/signing key as a fallback.
@@ -260,11 +263,19 @@ just gcp logs <stage>
 # List all resources
 just gcp list-resources <stage>
 
-# Verify deployment inventory, queues, IAM, callbacks, and timeout chain
+# Verify deployment inventory, queues, IAM, callbacks, and timeout chain.
 just gcp doctor <stage> --strict
 ```
 
-Optionally, update `DJANGO_ALLOWED_HOSTS` in your stage's env file with the service URL, then run `just gcp secrets <stage>` and `just gcp deploy <stage>` again.
+Strict doctor intentionally fails on any warning. During the staged GCS
+capability rollout, run ordinary doctor first; `VB205` remains a warning until
+the live capability probe, ambient-IAM removal, and representative validation
+have all passed. Strict doctor is the final gate after that evidence exists.
+
+Update both `DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS` in your
+stage env file before verification, then run `just gcp django secrets <stage>`
+and redeploy. The first setting takes hostnames; the second takes full origins
+including `https://`.
 
 ## Regular Deployments
 
@@ -356,7 +367,12 @@ gcloud compute ssl-certificates describe $GCP_APP_NAME-cert --global \
 
 ### App configuration (both options)
 
-- Make sure `DJANGO_ALLOWED_HOSTS` (in `.envs/.production/.django`) includes your domain(s) (for example `validibot.com` and `www.validibot.com`). Then run `just gcp secrets prod` and redeploy.
+- Make sure `DJANGO_ALLOWED_HOSTS` (in
+  `.envs/.production/.google-cloud/.django`) includes each exact Cloud Run or
+  custom hostname. Set `DJANGO_CSRF_TRUSTED_ORIGINS` to each corresponding
+  full HTTPS origin (for example `https://app.validibot.com`). Do not use a
+  wildcard `.run.app` host. Then run `just gcp django secrets prod` and
+  redeploy.
 - Set these base URLs in your env file (they serve different purposes):
   - `SITE_URL`: public web base URL (prod: `https://validibot.com`; dev/staging: the web `*.run.app` URL is fine).
   - `WORKER_URL`: internal worker base URL (the worker `*.run.app` URL). Validator Services, retained Jobs, and Cloud Scheduler target the worker service; callbacks should never go to the public domain.

@@ -125,6 +125,10 @@ defines:
   the format (not just presence). Generate with:
   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 - `DATABASE_URL`, `POSTGRES_*` — Cloud SQL connection.
+- `DJANGO_ALLOWED_HOSTS` — exact Cloud Run and custom hostnames; do not use a
+  wildcard `.run.app` suffix.
+- `DJANGO_CSRF_TRUSTED_ORIGINS` — full HTTPS origins for CSRF-protected
+  requests, including the public `SITE_URL` origin.
 - `MFA_TOTP_ISSUER` — authenticator-app label (e.g. "Validibot Cloud").
 - `STORAGE_BUCKET` — media / submission bucket, printed at the end of
   `init-stage`.

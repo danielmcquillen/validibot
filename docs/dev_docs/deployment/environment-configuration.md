@@ -213,6 +213,7 @@ The quick version of "where does each variable go":
 | Variable | File | Why |
 |---|---|---|
 | `DJANGO_SECRET_KEY`, `DJANGO_API_KEY_DIGEST_KEY`, `DATABASE_URL`, `SITE_URL` | `.django` | Read by Django at process startup |
+| `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | `.django` | Hostnames accepted by Django and full HTTPS origins allowed to submit CSRF-protected requests. GCP production must include its public application origin in both forms. |
 | `IDP_OIDC_PRIVATE_KEY_B64` | `.django` | Signs JWT access tokens |
 | `IDP_OIDC_MCP_SERVER_CLIENT_SECRET` | `.django` | Paired OAuth client secret; Django verifies it when MCP exchanges codes for tokens |
 | `VALIDIBOT_MCP_BASE_URL` | `.build` on GCP; `.django`/`.mcp` for local/self-hosted runtime files | Public MCP URL. GCP stamps one `.build` value into both services; local/self-hosted compose still passes it through runtime env files. |
@@ -472,7 +473,7 @@ quickly the transport decides a delivery was lost:
 | `CELERY_VISIBILITY_TIMEOUT_SECONDS` | `3600` | Self-hosted Redis | Must exceed `CELERY_TASK_TIME_LIMIT` (1800 seconds), otherwise Redis can deliver a healthy long task to another worker. |
 | `CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS` | `600` | GCP | Bounds the short application-worker HTTP orchestration request; accepted range is 15–1800 seconds. Validator compute runs separately in a selected Service or retained Job. |
 | `GCP_VALIDATOR_TASK_QUEUE_NAME` | empty | GCP | Separate stage-level queue used only for bounded validator Service deliveries. Production convention: `<app>-validator-provider`. |
-| `GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT` | empty | GCP | Dedicated OIDC principal with `run.invoker` only on registered private validator Services. |
+| `GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT` | empty | GCP | Dedicated OIDC principal with `run.invoker` only on registered private validator Services. Use `<app>-val-invoker-<stage>@<project>.iam.gserviceaccount.com`; `init-stage` derives this abbreviated name to stay within Google's 30-character service-account ID limit. Upload the Django environment after setting it. |
 | `GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS` | `1800` | GCP | Exact Cloud Tasks HTTP deadline for validator Service requests; changing it requires revisiting the Service transport contract. |
 | `VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS` | `300` | GCP | Bounded retry window after an attempt deadline when a status-capable provider API is temporarily unavailable. After the grace period, the attempt's absolute deadline remains authoritative. |
 | `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED` | `false` | GCP | Enables per-execution Credential Access Boundary token delivery and stages every validator input into one attempt prefix. Enable only after capability-aware backend images are deployed. |
@@ -480,6 +481,12 @@ quickly the transport decides a delivery was lost:
 
 Transport retries never authorize a second provider launch after an attempt
 has reached `DISPATCHING`, `RUNNING`, or `UNKNOWN`.
+
+The committed GCP production template sets
+`VALIDATOR_BACKEND_IMAGE_POLICY=digest`. Production release recipes register
+exact Artifact Registry digests, so allowing a floating tag at launch would be
+weaker than the deployment contract. Keep `tag` only for development or
+self-hosted quick-starts that have not yet pinned images.
 
 **Audience contract.** Cloud Tasks and Cloud Scheduler sign tokens
 with `aud = <service URL origin>` — path and query are NOT included.

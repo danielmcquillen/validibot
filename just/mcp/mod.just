@@ -247,12 +247,46 @@ setup stage: _require-gcp-config
     fi
     echo ""
 
-    echo "   Granting roles/secretmanager.secretAccessor..."
-    gcloud projects add-iam-policy-binding {{gcp_project}} \
-        --member="serviceAccount:$SA_EMAIL" \
-        --role="roles/secretmanager.secretAccessor" \
-        --condition=None \
-        --quiet &>/dev/null || true
+    if [ "{{stage}}" = "prod" ]; then
+        SECRET_NAME="mcp-env"
+    else
+        SECRET_NAME="mcp-env-{{stage}}"
+    fi
+    if gcloud secrets describe "$SECRET_NAME" \
+        --project={{gcp_project}} &>/dev/null; then
+        echo "   Granting roles/secretmanager.secretAccessor on $SECRET_NAME..."
+        gcloud secrets add-iam-policy-binding "$SECRET_NAME" \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role="roles/secretmanager.secretAccessor" \
+            --project={{gcp_project}} \
+            --quiet >/dev/null
+    else
+        echo "   Secret $SECRET_NAME does not exist yet; 'mcp secrets' will bind it."
+    fi
+
+    # Older setup versions granted secretAccessor at project scope. Remove
+    # that known unconditional binding only after the exact-secret binding is
+    # present (or let ``mcp secrets`` do both when creating a new secret).
+    PROJECT_POLICY=$(gcloud projects get-iam-policy {{gcp_project}} --format=json)
+    if jq -e --arg member "serviceAccount:$SA_EMAIL" '
+        .bindings[]?
+        | select(.role == "roles/secretmanager.secretAccessor")
+        | select((.condition // null) == null)
+        | .members[]?
+        | select(. == $member)
+    ' <<< "$PROJECT_POLICY" >/dev/null; then
+        if gcloud secrets describe "$SECRET_NAME" \
+            --project={{gcp_project}} &>/dev/null; then
+            echo "   Removing legacy project-wide secretAccessor binding..."
+            gcloud projects remove-iam-policy-binding {{gcp_project}} \
+                --member="serviceAccount:$SA_EMAIL" \
+                --role="roles/secretmanager.secretAccessor" \
+                --condition=None \
+                --quiet >/dev/null
+        else
+            echo "   Keeping legacy binding until $SECRET_NAME can be created and bound."
+        fi
+    fi
 
     # run.invoker on the Django web service lets the MCP server fetch
     # Cloud Run OIDC identity tokens that Django accepts for
@@ -371,6 +405,35 @@ secrets stage: _require-gcp-config
             --replication-policy=user-managed \
             --locations={{gcp_region}} \
             --project={{gcp_project}}
+    fi
+
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        SA_NAME="${APP_NAME}-mcp-prod"
+    else
+        SA_NAME="${APP_NAME}-mcp-{{stage}}"
+    fi
+    SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
+    echo "Restricting MCP secret access to $SECRET_NAME..."
+    gcloud secrets add-iam-policy-binding "$SECRET_NAME" \
+        --member="serviceAccount:$SA_EMAIL" \
+        --role="roles/secretmanager.secretAccessor" \
+        --project={{gcp_project}} \
+        --quiet >/dev/null
+
+    PROJECT_POLICY=$(gcloud projects get-iam-policy {{gcp_project}} --format=json)
+    if jq -e --arg member "serviceAccount:$SA_EMAIL" '
+        .bindings[]?
+        | select(.role == "roles/secretmanager.secretAccessor")
+        | select((.condition // null) == null)
+        | .members[]?
+        | select(. == $member)
+    ' <<< "$PROJECT_POLICY" >/dev/null; then
+        gcloud projects remove-iam-policy-binding {{gcp_project}} \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role="roles/secretmanager.secretAccessor" \
+            --condition=None \
+            --quiet >/dev/null
     fi
 
     echo "Uploading MCP secrets from $ENV_FILE to $SECRET_NAME..."

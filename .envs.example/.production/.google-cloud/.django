@@ -24,6 +24,7 @@ DJANGO_ADMIN_URL=admin/
 # Specific Cloud Run hostnames plus custom domain
 # Security: Do NOT use wildcards like .run.app - that allows any Cloud Run service
 DJANGO_ALLOWED_HOSTS=your-service-name.region.run.app,your-subdomain.example.com
+DJANGO_CSRF_TRUSTED_ORIGINS=https://your-subdomain.example.com
 # Generate a secret key with:
 # python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
 # Generate an API key digest key with:
@@ -166,7 +167,7 @@ GCS_TASK_QUEUE_NAME=your-app-name-tasks
 CLOUD_TASKS_SERVICE_ACCOUNT=your-app-name-cloudrun-prod@your-project.iam.gserviceaccount.com
 # Separate long-delivery queue and OIDC identity for private validator Services.
 GCP_VALIDATOR_TASK_QUEUE_NAME=your-app-name-validator-provider
-GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT=your-app-name-validator-invoker-prod@your-project.iam.gserviceaccount.com
+GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT=your-app-name-val-invoker-prod@your-project.iam.gserviceaccount.com
 GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS=1800
 VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS=300
 
@@ -189,9 +190,9 @@ TASK_OIDC_AUDIENCE=https://your-worker-service.region.run.app
 # validator runtime SA (Job/Service callbacks and capability renewal).
 TASK_OIDC_ALLOWED_SERVICE_ACCOUNTS=your-app-name-cloudrun-prod@your-project.iam.gserviceaccount.com,your-app-name-validator-prod@your-project.iam.gserviceaccount.com
 
-# Validation infrastructure (Cloud Run Jobs)
-# GCS_VALIDATION_BUCKET is the bucket validator Cloud Run Jobs stage run files
-# in (gs://<bucket>/runs/<org_id>/<run_id>/). You do NOT set it on GCP:
+# Validation infrastructure (primary Cloud Run Services + retained Jobs)
+# GCS_VALIDATION_BUCKET is the bucket validator runtimes stage run files in
+# (gs://<bucket>/runs/<org_id>/<run_id>/). You do NOT set it on GCP:
 # config/settings/production.py derives it from STORAGE_BUCKET inside the
 # DEPLOYMENT_TARGET=gcp branch (`GCS_VALIDATION_BUCKET = STORAGE_BUCKET`), so any
 # value placed here is overwritten and ignored. It is read from the environment
@@ -208,6 +209,14 @@ GCS_WEATHER_DATA_DIR=weather_data
 # Cloud Run job names are derived from the validator's slug
 # (e.g. slug="energyplus" -> "validibot-validator-backend-energyplus").
 # No per-validator env vars are required here.
+# Production GCP releases are deployed and registered by digest. Enforce that
+# immutable identity at launch; use `tag` only for local quick-start workflows.
+VALIDATOR_BACKEND_IMAGE_POLICY=digest
+# Roll these two flags out in order. Enable capabilities only after compatible
+# images are deployed. Set the isolation assertion true only after the live GCS
+# capability probe, ambient-IAM removal, and representative validation pass.
+GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=false
+GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=false
 
 # SHACL VALIDATOR
 # ==============================================================================

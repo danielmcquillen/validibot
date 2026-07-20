@@ -2,15 +2,16 @@
 
 Integration tests verify that Validibot's cloud integrations work correctly.
 They run against real infrastructure - a local Postgres instance, GCS buckets,
-Cloud Run Jobs, and Selenium-driven browser tests. Unlike unit tests, they
-exercise the actual infrastructure layer but don't test the full HTTP request
-lifecycle (that's what [E2E tests](./run-e2e-tests.md) are for).
+retained Cloud Run Jobs, and Selenium-driven browser tests. Unlike unit tests,
+they exercise individual infrastructure layers but don't test the full HTTP
+request lifecycle or the primary validator Service handoff (that's what a
+deployed-environment E2E test is for).
 
 For an overview of all test layers, see the [Testing Overview](./testing.md).
 
 ## What integration tests cover
 
-- Cloud Run Job execution (launching validator containers)
+- Retained Cloud Run Job execution and status lookup
 - GCS storage operations (uploading, downloading, signed URLs)
 - Selenium browser tests (UI flows with a real browser)
 - Database operations against a real Postgres instance
@@ -51,7 +52,7 @@ The `just local test-integration` recipe:
 
 ## Required environment variables
 
-For Cloud Run Job tests:
+For the retained Cloud Run Job integration tests:
 
 ```bash
 export GCP_PROJECT_ID=your-project
@@ -78,16 +79,19 @@ These vars are typically exported in your shell (often via
 ## Cloud E2E tests (staging)
 
 The integration test directory also includes tests that verify the complete
-validation flow against a deployed staging environment, including Cloud Run
-Job callbacks. These require a deployed environment where Cloud Run Jobs can
-call back to Django.
+validation flow against a deployed staging environment. The attempt resolves
+the active `ValidatorExecutionDeployment`: normally a private Cloud Run
+Service reached by the provider queue, or a retained Job for an over-budget or
+explicit rollback route. Either runtime must be able to call back to Django.
 
 What the cloud E2E flow tests:
 
 1. Submit file via API
 2. Django creates ValidationRun
-3. Django launches a Cloud Run Job (Jobs API)
-4. Job executes and calls back to the Django worker (via `WORKER_URL`)
+3. Django pins the exact deployment and dispatches it: deterministic provider
+   Cloud Task for a Service, or Jobs API call for a retained Job
+4. The selected runtime executes and calls back to the Django worker (via
+   `WORKER_URL`)
 5. Worker processes the callback and updates the database
 6. Test polls API until completion
 7. Test verifies status and findings
@@ -162,7 +166,9 @@ Ensure all required environment variables are set. Run
 
 - Check Cloud Logging for the validation run
 - Verify the callback URL is correct and reachable
-- Check Cloud Run Job execution status
+- Inspect the attempt's pinned deployment. For Services, correlate its
+  deterministic provider task and revision logs; for Jobs, check the Cloud Run
+  execution status.
 
 ### Integration tests fail on GCS
 

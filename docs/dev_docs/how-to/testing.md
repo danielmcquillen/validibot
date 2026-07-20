@@ -11,7 +11,7 @@ which suite to run when debugging a failure.
 |-------|----------|-------------------|------------|-------|
 | **Unit** | `validibot/*/tests/` | Individual functions, classes, models | `pytest` | Fast (seconds) |
 | **Use case** | `tests/tests_use_cases/` | Business scenarios end-to-end in-process | `pytest` | Fast (seconds) |
-| **Integration** | `tests/tests_integration/` | Cloud infra (GCS, Cloud Run Jobs, Selenium) | `just local test-integration` | Medium (minutes) |
+| **Integration** | `tests/tests_integration/` | Cloud infra (GCS, retained Cloud Run Jobs, Selenium) | `just local test-integration` | Medium (minutes) |
 | **E2E stress** | `tests/tests_e2e/test_stress.py` | Concurrent HTTP load against live stack | `just local test-e2e` | Medium (minutes) |
 | **E2E workflow** | `tests/tests_e2e/test_energyplus_template.py` | Real Docker-based simulations, full pipeline | `just local-cloud e2e-tests` | Slow (2-5 min/test) |
 
@@ -36,9 +36,10 @@ pytest tests/tests_use_cases/test_shacl_validation.py
 ```
 
 **Integration tests** run against real infrastructure - a local Postgres
-instance, GCS buckets, Cloud Run Jobs. They verify that Validibot's cloud
-integrations work correctly but don't test the full request lifecycle. They
-require Docker and (for cloud tests) GCP credentials.
+instance, GCS buckets, and retained Cloud Run Jobs. They verify those cloud
+adapters but do not exercise the full request lifecycle or primary validator
+Service handoff. That path requires E2E testing against a deployed environment.
+The tests require Docker and (for cloud tests) GCP credentials.
 
 **E2E tests** run against a fully running Validibot environment (Docker Compose
 stack). They make real HTTP requests to the API and exercise the complete
@@ -96,7 +97,7 @@ error unless the team has consciously accepted additional debt.
 
 ## Detailed guides
 
-- **[Integration Tests](./run-integration-tests.md)** — Cloud Run Jobs, GCS,
+- **[Integration Tests](./run-integration-tests.md)** — retained Cloud Run Jobs, GCS,
   Selenium browser tests
 - **[E2E and Stress Tests](./run-e2e-tests.md)** — Concurrent stress tests and
   EnergyPlus simulation tests against a live stack

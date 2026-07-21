@@ -13,6 +13,11 @@ from django.db import models
 class Migration(migrations.Migration):
     """Create deployment records and make attempt provider naming neutral."""
 
+    # The attempt table is the high-volume execution ledger. Concurrent index
+    # operations and a NOT VALID/VALIDATE foreign key keep upgrades writable
+    # while PostgreSQL builds and verifies the new structures.
+    atomic = False
+
     dependencies = [
         ("validations", "0028_executionattempt_input_evidence_snapshot"),
     ]
@@ -23,21 +28,55 @@ class Migration(migrations.Migration):
             old_name="provider_job_name",
             new_name="provider_resource_name",
         ),
-        migrations.RemoveConstraint(
-            model_name="executionattempt",
-            name="uq_attempt_provider_execution",
-        ),
-        migrations.AddConstraint(
-            model_name="executionattempt",
-            constraint=models.UniqueConstraint(
-                condition=~models.Q(provider_execution_id=""),
-                fields=(
-                    "runner_type",
-                    "provider_resource_name",
-                    "provider_execution_id",
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql=(
+                        'DROP INDEX CONCURRENTLY IF EXISTS '
+                        '"uq_attempt_provider_execution"'
+                    ),
+                    reverse_sql=(
+                        'CREATE UNIQUE INDEX CONCURRENTLY '
+                        '"uq_attempt_provider_execution" ON '
+                        '"validations_executionattempt" '
+                        '("runner_type", "provider_resource_name", '
+                        '"provider_execution_id") '
+                        'WHERE NOT ("provider_execution_id" = \'\')'
+                    ),
                 ),
-                name="uq_attempt_provider_execution",
-            ),
+                migrations.RunSQL(
+                    sql=(
+                        'CREATE UNIQUE INDEX CONCURRENTLY '
+                        '"uq_attempt_provider_execution" ON '
+                        '"validations_executionattempt" '
+                        '("runner_type", "provider_resource_name", '
+                        '"provider_execution_id") '
+                        'WHERE NOT ("provider_execution_id" = \'\')'
+                    ),
+                    reverse_sql=(
+                        'DROP INDEX CONCURRENTLY IF EXISTS '
+                        '"uq_attempt_provider_execution"'
+                    ),
+                ),
+            ],
+            state_operations=[
+                migrations.RemoveConstraint(
+                    model_name="executionattempt",
+                    name="uq_attempt_provider_execution",
+                ),
+                migrations.AddConstraint(
+                    model_name="executionattempt",
+                    constraint=models.UniqueConstraint(
+                        condition=~models.Q(provider_execution_id=""),
+                        fields=(
+                            "runner_type",
+                            "provider_resource_name",
+                            "provider_execution_id",
+                        ),
+                        name="uq_attempt_provider_execution",
+                    ),
+                ),
+            ],
         ),
         migrations.CreateModel(
             name="ValidatorExecutionDeployment",
@@ -253,19 +292,69 @@ class Migration(migrations.Migration):
                 ],
             },
         ),
-        migrations.AddField(
-            model_name="executionattempt",
-            name="deployment",
-            field=models.ForeignKey(
-                blank=True,
-                help_text=(
-                    "Exact managed-provider deployment selected before dispatch. "
-                    "Empty only for historical, local, and self-hosted attempts."
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql=(
+                        'ALTER TABLE "validations_executionattempt" '
+                        'ADD COLUMN "deployment_id" uuid NULL'
+                    ),
+                    reverse_sql=(
+                        'ALTER TABLE "validations_executionattempt" '
+                        'DROP COLUMN "deployment_id"'
+                    ),
                 ),
-                null=True,
-                on_delete=django.db.models.deletion.PROTECT,
-                related_name="execution_attempts",
-                to="validations.validatorexecutiondeployment",
-            ),
+                migrations.RunSQL(
+                    sql=(
+                        'CREATE INDEX CONCURRENTLY '
+                        '"validations_executionattempt_deployment_id_idx" ON '
+                        '"validations_executionattempt" ("deployment_id")'
+                    ),
+                    reverse_sql=(
+                        'DROP INDEX CONCURRENTLY IF EXISTS '
+                        '"validations_executionattempt_deployment_id_idx"'
+                    ),
+                ),
+                migrations.RunSQL(
+                    sql=(
+                        'ALTER TABLE "validations_executionattempt" ADD CONSTRAINT '
+                        '"validations_executionattempt_deployment_id_fk" '
+                        'FOREIGN KEY ("deployment_id") REFERENCES '
+                        '"validations_validatorexecutiondeployment" ("id") '
+                        'DEFERRABLE INITIALLY DEFERRED NOT VALID'
+                    ),
+                    reverse_sql=(
+                        'ALTER TABLE "validations_executionattempt" DROP CONSTRAINT '
+                        'IF EXISTS '
+                        '"validations_executionattempt_deployment_id_fk"'
+                    ),
+                ),
+                migrations.RunSQL(
+                    sql=(
+                        'ALTER TABLE "validations_executionattempt" VALIDATE '
+                        'CONSTRAINT '
+                        '"validations_executionattempt_deployment_id_fk"'
+                    ),
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name="executionattempt",
+                    name="deployment",
+                    field=models.ForeignKey(
+                        blank=True,
+                        help_text=(
+                            "Exact managed-provider deployment selected before "
+                            "dispatch. Empty only for historical, local, and "
+                            "self-hosted attempts."
+                        ),
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="execution_attempts",
+                        to="validations.validatorexecutiondeployment",
+                    ),
+                ),
+            ],
         ),
     ]

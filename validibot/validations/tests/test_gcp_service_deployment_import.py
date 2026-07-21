@@ -262,6 +262,11 @@ def test_registration_activates_service_and_preserves_explicit_job_rollback():
     job.refresh_from_db()
     assert service.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
     assert job.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
+    deactivation = AuditLogEntry.objects.get(
+        action=AuditAction.VALIDATOR_DEPLOYMENT_DEACTIVATED,
+        target_id=str(service.pk),
+    )
+    assert deactivation.metadata["replacement_deployment_id"] == str(job.pk)
 
 
 @pytest.mark.django_db

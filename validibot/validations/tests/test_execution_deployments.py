@@ -38,6 +38,9 @@ from validibot.validations.services.execution.deployments import (
 from validibot.validations.services.execution.deployments import (
     update_execution_deployment_capacity,
 )
+from validibot.validations.services.execution.gcp_service_dispatch import (
+    _prepare_pinned_service_dispatch,
+)
 from validibot.validations.services.execution_attempts import (
     get_or_create_execution_attempt,
 )
@@ -329,6 +332,22 @@ def test_ready_deployment_requires_a_new_revision_for_identity_changes():
 
 
 @pytest.mark.django_db
+def test_ready_deployment_cannot_downgrade_to_reopen_immutable_fields():
+    """Readiness cannot be laundered through DRAFT to rewrite provenance."""
+    deployment = _save_ready(
+        _job_deployment(validator=ValidatorFactory()),
+        role=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    deployment.readiness_state = ExecutionDeploymentReadiness.DRAFT
+
+    with pytest.raises(ValidationError, match="cannot return"):
+        deployment.save(update_fields=["readiness_state", "modified"])
+
+    deployment.refresh_from_db()
+    assert deployment.readiness_state == ExecutionDeploymentReadiness.READY
+
+
+@pytest.mark.django_db
 def test_ready_deployment_allows_fresh_verification_observations():
     """Operators may refresh readiness evidence without revising route identity."""
     verified = _job_capabilities()
@@ -495,6 +514,38 @@ def test_emergency_block_service_requires_reason_and_writes_audit_event():
         action=AuditAction.VALIDATOR_DEPLOYMENT_BLOCKED,
         target_id=str(deployment.pk),
     ).exists()
+
+
+@pytest.mark.django_db
+def test_dispatch_claim_rechecks_a_block_applied_after_attempt_pinning():
+    """A locked pre-contact check must keep blocked pinned work at PENDING."""
+    validator = ValidatorFactory()
+    deployment = _save_ready(
+        _service_deployment(validator=validator),
+        role=ExecutionDeploymentRoutingRole.PRIMARY,
+    )
+    attempt, _created = get_or_create_execution_attempt(
+        ValidationStepRunFactory(),
+        validator=validator,
+        managed=True,
+        effective_budget_seconds=ATTEMPT_BUDGET_SECONDS,
+    )
+    set_execution_deployment_block(
+        deployment,
+        blocked=True,
+        reason="Provider incident",
+    )
+
+    with pytest.raises(RuntimeError, match="emergency blocked"):
+        _prepare_pinned_service_dispatch(
+            attempt=attempt,
+            expected_service_name=deployment.provider_configuration["service_name"],
+            expected_image_digest=DIGEST,
+            pending_inputs=None,
+        )
+
+    attempt.refresh_from_db()
+    assert attempt.state == "PENDING"
 
 
 @pytest.mark.django_db

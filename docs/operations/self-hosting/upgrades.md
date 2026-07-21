@@ -143,6 +143,13 @@ For pilot installs and production deployments, take the backup. The default is m
 
 The dashboard returns connection errors during the blip. CLI and MCP clients see a reset and should retry.
 
+The provider-selectable validator deployment migration keeps the high-volume
+execution-attempt ledger writable while it builds replacement uniqueness and
+foreign-key indexes: indexes are created concurrently and the foreign key is
+added without validation, then validated online. PostgreSQL still takes brief
+metadata locks for the column rename and nullable column add, so run the normal
+migration window and retain the pre-upgrade backup.
+
 If you need zero downtime on self-hosted, deploy on GCP — single-VM doesn't promise zero-downtime upgrades across breaking schema changes. That's the cost of "boring."
 
 ## Queued and in-flight validation runs

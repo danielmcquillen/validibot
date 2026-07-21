@@ -62,6 +62,34 @@ def _record_operator_audit(
     )
 
 
+def _record_displaced_route_audits(
+    deployments: list[ValidatorExecutionDeployment],
+    *,
+    replacement: ValidatorExecutionDeployment,
+    modified_at,
+) -> None:
+    """Record why every route displaced by an activation became inactive."""
+    for deployment in deployments:
+        previous_role = deployment.routing_role
+        deployment.routing_role = ExecutionDeploymentRoutingRole.INACTIVE
+        deployment.activated_at = None
+        deployment.modified = modified_at
+        _record_operator_audit(
+            deployment,
+            action=AuditAction.VALIDATOR_DEPLOYMENT_DEACTIVATED,
+            changes={
+                "routing_role": [
+                    previous_role,
+                    ExecutionDeploymentRoutingRole.INACTIVE,
+                ]
+            },
+            metadata={
+                "replacement_deployment_id": str(replacement.pk),
+                "replacement_routing_role": replacement.routing_role,
+            },
+        )
+
+
 def record_execution_deployment_verification(
     deployment: ValidatorExecutionDeployment,
     *,
@@ -375,17 +403,30 @@ def activate_execution_deployment(
             f"Deployment {selected.pk} is emergency blocked."
         )
     _validated_capabilities(selected)
-    ValidatorExecutionDeployment.objects.select_for_update().filter(
-        validator_id=selected.validator_id,
-        routing_role=routing_role,
-    ).exclude(pk=selected.pk).update(
+    displaced = list(
+        ValidatorExecutionDeployment.objects.select_for_update()
+        .filter(
+            validator_id=selected.validator_id,
+            routing_role=routing_role,
+        )
+        .exclude(pk=selected.pk)
+    )
+    now = timezone.now()
+    ValidatorExecutionDeployment.objects.filter(
+        pk__in=[item.pk for item in displaced]
+    ).update(
         routing_role=ExecutionDeploymentRoutingRole.INACTIVE,
         activated_at=None,
-        modified=timezone.now(),
+        modified=now,
     )
     selected.routing_role = routing_role
-    selected.activated_at = timezone.now()
+    selected.activated_at = now
     selected.save(update_fields=["routing_role", "activated_at", "modified"])
+    _record_displaced_route_audits(
+        displaced,
+        replacement=selected,
+        modified_at=now,
+    )
     if previous_role != routing_role:
         _record_operator_audit(
             selected,
@@ -445,6 +486,16 @@ def activate_service_with_job_compatibility(
     selected_previous_role = selected.routing_role
     compatibility_previous_role = compatibility.routing_role
     now = timezone.now()
+    displaced = [
+        item
+        for item in routes
+        if item.pk not in {selected.pk, compatibility.pk}
+        and item.routing_role
+        in {
+            ExecutionDeploymentRoutingRole.PRIMARY,
+            ExecutionDeploymentRoutingRole.LONG_RUNNING,
+        }
+    ]
     ValidatorExecutionDeployment.objects.filter(
         validator_id=selected.validator_id,
         routing_role=ExecutionDeploymentRoutingRole.LONG_RUNNING,
@@ -467,6 +518,11 @@ def activate_service_with_job_compatibility(
     selected.routing_role = ExecutionDeploymentRoutingRole.PRIMARY
     selected.activated_at = now
     selected.save(update_fields=["routing_role", "activated_at", "modified"])
+    _record_displaced_route_audits(
+        displaced,
+        replacement=selected,
+        modified_at=now,
+    )
     if (
         selected_previous_role != selected.routing_role
         or compatibility_previous_role != compatibility.routing_role

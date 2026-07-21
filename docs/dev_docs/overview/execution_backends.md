@@ -114,6 +114,20 @@ ExecutionBackend (high-level orchestration)
 
 This separation means new deployment targets only need a new runner (for container execution) and a new backend (for storage integration), without duplicating orchestration logic.
 
+For a managed Service, dispatch has a second fail-closed boundary immediately
+before provider contact. The dispatcher locks the attempt and deployment,
+rechecks that the deployment is still `READY` and not emergency blocked, and
+moves a pending attempt to `DISPATCHING` in the same transaction. It also
+compares the live deployment FK with the immutable attempt snapshot. The
+provider URL, revision, audience, resource name, image digest, and execution
+limit then come from that snapshot rather than mutable launch arguments.
+
+Activating a route writes an audit entry for both the newly active deployment
+and any previous slot occupant that becomes inactive. This makes rollback and
+operator investigation visible from either deployment's history. Once a
+deployment reaches `READY`, it may remain ready or move to `RETIRED`; it cannot
+return to `DRAFT`, `VERIFYING`, or `FAILED` to reopen immutable route fields.
+
 | Layer | Docker Compose | GCP |
 |-------|---------------|-----|
 | Backend | `DockerComposeExecutionBackend` | `CloudRunServiceExecutionBackend` / `CloudRunJobsExecutionBackend` |
@@ -422,9 +436,12 @@ All strategies use Docker container labels (`org.validibot.managed`, `org.validi
 ### GCP Cloud Run
 
 Cloud Run Jobs are ephemeral. Validator Services reuse a bounded HTTP parent
-but create a fresh one-shot child and scratch directory for every request.
-Cloud infrastructure needs no per-container cleanup; attempt scratch cleanup
-is enforced by the runtime, and application recovery is handled by the
+but create a fresh one-shot child, operating-system session, and scratch
+directory for every request. A hard deadline sends `SIGTERM` and then
+`SIGKILL`, if required, to the complete child process group. Native tools such
+as EnergyPlus therefore cannot survive their Python child on a reused warm
+instance. Cloud infrastructure needs no per-container cleanup; attempt scratch
+cleanup is enforced by the runtime, and application recovery is handled by the
 reconciliation system.
 
 ## Error Recovery

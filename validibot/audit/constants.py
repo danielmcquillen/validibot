@@ -54,6 +54,10 @@ class AuditAction(TextChoices):
         "validator_deployment_activated",
         _("Validator Deployment Activated"),
     )
+    VALIDATOR_DEPLOYMENT_DEACTIVATED = (
+        "validator_deployment_deactivated",
+        _("Validator Deployment Deactivated"),
+    )
     VALIDATOR_DEPLOYMENT_REGISTERED = (
         "validator_deployment_registered",
         _("Validator Deployment Registered"),
@@ -240,6 +244,7 @@ RETENTION_COLD_DAYS: dict[AuditAction, int] = {
     AuditAction.VALIDATOR_UPDATED: 365 * 2,
     AuditAction.VALIDATOR_REMOVED: 365 * 2,
     AuditAction.VALIDATOR_DEPLOYMENT_ACTIVATED: 365 * 3,
+    AuditAction.VALIDATOR_DEPLOYMENT_DEACTIVATED: 365 * 3,
     AuditAction.VALIDATOR_DEPLOYMENT_REGISTERED: 365 * 3,
     AuditAction.VALIDATOR_DEPLOYMENT_VERIFIED: 365 * 3,
     AuditAction.VALIDATOR_DEPLOYMENT_CAPACITY_UPDATED: 365 * 3,

@@ -317,6 +317,13 @@ image digest as the trust-critical backend identity.
   is the data boundary
 - **Safe rollbacks**: New attempts return to retained Jobs while in-flight
   Service attempts keep their exact deployment snapshot
+- **Pre-contact block enforcement**: A pinned but still-pending Service attempt
+  is locked and rechecked immediately before dispatch. An emergency block or
+  loss of readiness stops provider contact without silently choosing another
+  backend
+- **Snapshot-authoritative dispatch**: The provider task uses the attempt's
+  immutable route, revision, audience, image digest, and execution limits. A
+  conflicting live deployment row fails closed
 
 ## Image-pinning policy: `VALIDATOR_BACKEND_IMAGE_POLICY`
 
@@ -384,11 +391,15 @@ The `cleanup_stuck_runs` management command handles both execution shapes:
 6. Service cancellation deletes the deterministic provider task when possible
    and durably fences the attempt. A request already executing may finish, but
    its late output/callback cannot change the terminal decision
+7. Each request child starts in a new operating-system session. A hard deadline
+   terminates the complete process group, escalating from `SIGTERM` to
+   `SIGKILL`, so domain-runner grandchildren cannot leak into the next request
 
 ### Where execution metadata is stored
 
-Execution metadata is persisted on `ValidationExecutionAttempt`, including the
-exact `execution_deployment`, provider task/execution identity, deployment
+Execution metadata is persisted on `ExecutionAttempt`, including the exact
+`deployment`, immutable `deployment_snapshot`, provider task/execution identity,
+deployment
 revision, backend digest, deadlines, envelopes, and timing stages. Legacy Job
 stats may also appear in `step_run.output`:
 

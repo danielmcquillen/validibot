@@ -2127,7 +2127,27 @@ class ValidatorExecutionDeployment(TimeStampedModel):
                 .values("readiness_state", *self.IMMUTABLE_AFTER_READY_FIELDS)
                 .first()
             )
-            if previous is not None and previous["readiness_state"] in {
+            previous_readiness = previous["readiness_state"] if previous else None
+            if (
+                previous_readiness == ExecutionDeploymentReadiness.READY
+                and self.readiness_state
+                not in {
+                    ExecutionDeploymentReadiness.READY,
+                    ExecutionDeploymentReadiness.RETIRED,
+                }
+            ):
+                errors["readiness_state"] = (
+                    "A ready deployment may remain ready or retire; it cannot return "
+                    "to an editable readiness state."
+                )
+            elif (
+                previous_readiness == ExecutionDeploymentReadiness.RETIRED
+                and self.readiness_state != ExecutionDeploymentReadiness.RETIRED
+            ):
+                errors["readiness_state"] = (
+                    "A retired deployment cannot return to an editable readiness state."
+                )
+            if previous is not None and previous_readiness in {
                 ExecutionDeploymentReadiness.READY,
                 ExecutionDeploymentReadiness.RETIRED,
             }:

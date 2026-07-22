@@ -29,6 +29,28 @@ validators/
 docs_build/
 # Exclude test and dev files
 tests/
+# The production acceptance command uses exactly these source-controlled
+# canaries. Keep the rest of the test suite out of the runtime image.
+!tests/
+tests/*
+!tests/assets/
+tests/assets/*
+!tests/assets/fmu/
+tests/assets/fmu/*
+!tests/assets/fmu/Feedthrough.fmu
+!tests/assets/idf/
+tests/assets/idf/*
+!tests/assets/idf/window_glazing_template.idf
+!tests/assets/shacl/
+tests/assets/shacl/*
+!tests/assets/shacl/example_person_shapes.ttl
+!tests/assets/shacl/valid_person.ttl
+!tests/assets/schematron/
+tests/assets/schematron/*
+!tests/assets/schematron/calibration/
+tests/assets/schematron/calibration/*
+!tests/assets/schematron/calibration/calibration-rules-demo.sch
+!tests/assets/schematron/calibration/calibration-certificate-valid.xml
 *.md
 README*
 LICENSE*

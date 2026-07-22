@@ -235,7 +235,8 @@ no-op cleanly where the stack does not need it.
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------- | --------------- |
 | `DJANGO_MFA_ENCRYPTION_KEY`    | Fernet key encrypting TOTP secrets + recovery-code seeds at rest. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Never reuse across environments. | -                | Yes             |
 | `MFA_TOTP_ISSUER`              | Label shown in users' authenticator apps next to their email (e.g. "Validibot Cloud").                                               | `Validibot`      | No              |
-| `DJANGO_ADMIN_FORCE_ALLAUTH`   | Routes `/admin/login/` through allauth so admin inherits MFA enforcement, rate limiting, and session rotation. Flip to `False` only as a break-glass when allauth itself is broken (redeploy required). See [`docs/dev_docs/how-to/configure-mfa.md`](../docs/dev_docs/how-to/configure-mfa.md). | `False`          | No (but recommended `True` in production) |
+| `DJANGO_ADMIN_FORCE_ALLAUTH`   | Routes `/admin/login/` through allauth so admin inherits login rate limiting, session rotation, and the normal MFA challenge. | `True` in production | No |
+| `DJANGO_ADMIN_REQUIRE_MFA`     | Requires every staff/superuser to have a primary factor and prove MFA in the current session before any admin view runs. Set this and `DJANGO_ADMIN_FORCE_ALLAUTH` to `False` only for documented break-glass recovery. | `True` in production | No |
 
 #### Infrastructure
 

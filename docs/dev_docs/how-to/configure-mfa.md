@@ -4,8 +4,62 @@ Validibot ships with opt-in multi-factor authentication (MFA) powered by
 [django-allauth's MFA module](https://docs.allauth.org/en/latest/mfa/).
 Authenticator apps (TOTP) and recovery codes are enabled out of the box; any
 user can turn MFA on from their **Security** settings page and turn it off
-again at any time. MFA is never forced — policies that require it belong in
-the Pro/Enterprise tiers.
+again at any time. Regular application users are not forced to enrol. In
+production, staff and superusers are the deliberate exception: Django admin
+requires both an enrolled factor and proof that the current session completed
+an MFA step.
+
+## Mandatory MFA for Django admin
+
+Two settings work together to protect privileged browser access:
+
+```python
+DJANGO_ADMIN_FORCE_ALLAUTH = True
+DJANGO_ADMIN_REQUIRE_MFA = True
+```
+
+`DJANGO_ADMIN_FORCE_ALLAUTH` sends the initial admin sign-in through allauth,
+instead of Django's password-only admin form. This gives the login allauth's
+rate limiting, session rotation, and normal MFA challenge for enrolled users.
+
+`DJANGO_ADMIN_REQUIRE_MFA` is the stronger policy boundary. Before any Django
+admin view runs, `AdminMFAMiddleware` checks that:
+
+1. the staff or superuser still has a primary TOTP or WebAuthn factor; and
+2. this browser session contains an allauth MFA authentication record tied to
+   an authenticator that still exists.
+
+The second check matters because enrolment alone does not prove that the
+current session used MFA. It also means that a trusted-browser cookie cannot
+silently turn admin into password-only access. A trusted user is challenged
+once for the admin session. Removing the authenticator invalidates the old
+session evidence immediately.
+
+Both settings default to `True` in production. Local and test settings leave
+the requirement off by default so routine development does not require an
+authenticator app. Set `DJANGO_ADMIN_REQUIRE_MFA=True` locally when testing the
+hardened flow.
+
+An authenticated staff user without MFA is redirected to TOTP setup. After
+setup and recovery-code storage, returning to admin triggers one MFA
+confirmation for the current session. An enrolled staff user with a
+password-only session goes directly to that confirmation step.
+
+### Break-glass recovery
+
+If allauth MFA itself is unusable and the management-command recovery below
+cannot repair it, temporarily set both values to `False` and redeploy:
+
+```dotenv
+DJANGO_ADMIN_REQUIRE_MFA=False
+DJANGO_ADMIN_FORCE_ALLAUTH=False
+```
+
+This is an explicit emergency downgrade to password-only admin access. Keep
+the window short, restrict network access if possible, repair the MFA data,
+then restore both values to `True` and redeploy. Changing only
+`DJANGO_ADMIN_FORCE_ALLAUTH` is not sufficient: the admin-wide middleware will
+continue enforcing MFA while `DJANGO_ADMIN_REQUIRE_MFA` remains enabled.
 
 ## Required environment variable: `DJANGO_MFA_ENCRYPTION_KEY`
 
@@ -88,14 +142,11 @@ a possible failure mode. It also fails loudly on a missing email rather
 than silently deleting zero rows — silent success during an incident is
 worse than a loud error.
 
-Why this lives in a management command rather than the Django admin: the
-admin panel is itself authenticated through Django's built-in login
-(which does *not* route through allauth MFA), so a locked-out staff user
-can still reach admin — but any other recovery channel that depends on
-allauth login would share the same failure. A management command
-runnable as a Cloud Run Job is the one recovery path that works even if
-every admin account is locked out and the admin panel is later
-network-restricted.
+Why this lives in a management command rather than the Django admin: production
+admin access is deliberately protected by the same MFA data that may be
+damaged. A management command runnable as a Cloud Run Job remains available
+even if every administrator is locked out, so recovery does not depend on the
+failing authentication path.
 
 ## Other settings
 
@@ -270,6 +321,11 @@ override extends `app_base.html` and emits the expected breadcrumb trail,
 that the `mfa_breadcrumbs` tag returns the right shape, and that the
 `mfa_index` URL redirects to the Security page without rendering
 allauth's unbranded index template.
+
+`validibot/users/tests/test_admin_mfa.py` covers the privileged-access policy:
+unenrolled staff are sent to setup, password-only staff sessions are
+challenged, a current MFA session reaches admin, and deleting the authenticator
+immediately invalidates that session's admin assurance.
 
 We deliberately don't re-test allauth's TOTP cryptography or state machine —
 those live upstream and already have good coverage. If you add a new

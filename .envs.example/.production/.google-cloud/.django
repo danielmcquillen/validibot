@@ -306,21 +306,16 @@ DJANGO_MFA_ENCRYPTION_KEY=replace-with-generated-fernet-key
 
 # DJANGO ALLAUTH
 # ==============================================================================
-# DJANGO_ADMIN_FORCE_ALLAUTH routes Django's built-in /admin/login/ view
-# through the django-allauth authentication flow, so that admin sign-in
-# inherits allauth's rate limiting, session rotation, and — most
-# importantly — MFA enforcement on users who have enrolled a second
-# factor. Without this flag, admin logs in via a plain Django form that
-# bypasses allauth entirely, meaning a staff user with MFA configured
-# can still enter the admin with only a password.
+# DJANGO_ADMIN_FORCE_ALLAUTH routes the initial admin sign-in through allauth.
+# DJANGO_ADMIN_REQUIRE_MFA then requires every staff or superuser session to
+# prove MFA before any admin view runs, including users who had not previously
+# enrolled a factor.
 #
-# Leave this True in production. Flip to False ONLY as a break-glass
-# when allauth itself is broken (e.g. a bad MFA key, a corrupted
-# Authenticator row the `clear_mfa` management command can't fix from
-# a Cloud Run Job). A redeploy is required for the change to take
-# effect — see docs/dev_docs/how-to/configure-mfa.md for the full
-# recovery procedure.
+# Leave both True in production. Set both False only for a short break-glass
+# recovery window when allauth itself is broken. A redeploy is required — see
+# docs/dev_docs/how-to/configure-mfa.md for the full recovery procedure.
 DJANGO_ADMIN_FORCE_ALLAUTH=True
+DJANGO_ADMIN_REQUIRE_MFA=True
 
 # ==============================================================================
 # ADD-ON CONFIGURATION  —  Pro / Enterprise (self-hosted)

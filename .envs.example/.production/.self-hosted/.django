@@ -87,16 +87,13 @@ DJANGO_SECURE_SSL_REDIRECT=true
 #   python -c "import secrets; print(secrets.token_urlsafe(16) + '/')"
 DJANGO_ADMIN_URL=admin/
 
-# DJANGO_ADMIN_FORCE_ALLAUTH routes Django's built-in /admin/login/
-# view through the django-allauth flow, so admin sign-in inherits
-# allauth's rate limiting, session rotation, and MFA enforcement on
-# users who have enrolled a second factor. Without this flag, admin
-# logs in via a plain Django form that bypasses allauth entirely.
-#
-# Leave True in production. Flip to False ONLY as a break-glass when
-# allauth itself is broken. A container restart is required for the
-# change to take effect — see docs/dev_docs/how-to/configure-mfa.md.
+# Route the initial admin sign-in through allauth, then require every staff or
+# superuser session to prove MFA before any admin view runs. Leave both True in
+# production. Set both False only for a short break-glass recovery window when
+# allauth itself is broken. A container restart is required for the change to
+# take effect — see docs/dev_docs/how-to/configure-mfa.md.
 DJANGO_ADMIN_FORCE_ALLAUTH=True
+DJANGO_ADMIN_REQUIRE_MFA=True
 
 # Multi-factor authentication. MFA_TOTP_ISSUER is the label shown in
 # users' authenticator apps. Use something like "Acme Corp Validibot

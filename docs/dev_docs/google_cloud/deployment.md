@@ -231,11 +231,23 @@ release to equal GHCR/GAR digests, refreshes retained
 Jobs, and creates distinct private Services such as
 `validibot-validator-service-energyplus-v0-15-0`. Registration observes the
 ready provider state but leaves Jobs primary. Complete the live acceptance in
-the rollout record before running:
+the rollout record with the single maintenance-safe command:
 
 ```bash
-VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-activate prod
+just gcp validator-acceptance prod v0.15.0
 ```
+
+Before deploying the application image used by that command, set
+`GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true`; keep the ambient-isolation
+assertion false until the live proof passes. The stage must already be in
+maintenance mode. The acceptance command verifies the signed release, removes
+the legacy validator storage binding, activates the candidate internally, runs
+the four real canaries and 20-attempt bursts, retains one private JSON report,
+exercises rollback to Jobs, reactivates the accepted Services, and restores
+full maintenance mode. If any check fails, it restores the legacy storage
+binding and Job routes before shutting the stage down. On success it prints the
+one-time exact `secrets` command for making the now-proven ambient-isolation
+assertion truthful before the stage comes online.
 
 Development may use the backend repo's local build/push recipes; production
 intentionally refuses that unsigned path.

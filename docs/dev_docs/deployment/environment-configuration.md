@@ -477,7 +477,7 @@ quickly the transport decides a delivery was lost:
 | `GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS` | `1800` | GCP | Exact Cloud Tasks HTTP deadline for validator Service requests; changing it requires revisiting the Service transport contract. |
 | `VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS` | `300` | GCP | Bounded retry window after an attempt deadline when a status-capable provider API is temporarily unavailable. After the grace period, the attempt's absolute deadline remains authoritative. |
 | `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED` | `false` | GCP | Enables per-execution Credential Access Boundary token delivery and stages every validator input into one attempt prefix. Enable only after capability-aware backend images are deployed. |
-| `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED` | `false` | GCP | Operator assertion that the validator Cloud Run service account has no effective object access. Set true only after both `just gcp validator-storage-capability-probe <stage>` and `just gcp validator-storage-isolation <stage>` succeed and a normal advanced validation passes with ambient IAM removed; `VB205` remains WARN otherwise. |
+| `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED` | `false` | GCP | Operator assertion that the validator Cloud Run service account has no effective object access. Set true only after `just gcp validator-acceptance <stage> <release>` proves Policy Troubleshooter denial, the live capability boundary, and representative execution with ambient IAM removed; `VB205` remains WARN otherwise. |
 
 Transport retries never authorize a second provider launch after an attempt
 has reached `DISPATCHING`, `RUNNING`, or `UNKNOWN`.

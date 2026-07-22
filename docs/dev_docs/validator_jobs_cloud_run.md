@@ -148,11 +148,22 @@ just gcp validator-deployments-sync prod
 VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-register prod
 ```
 
-Registration does not activate Services. Complete smoke, duplicate-delivery,
-deadline, output-salvage, GCS, and latency acceptance first. Then run
-`VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp
-validator-services-activate prod`. The matching rollback command routes new
-attempts back to Jobs before reducing Service minimums to zero.
+Registration does not activate Services. With production already in
+maintenance mode, run the routine immutable-I/O, smoke, burst, latency, and
+route-rollback acceptance as one operation:
+
+```bash
+just gcp validator-acceptance prod v0.15.0
+```
+
+The deployed environment must already enable validator GCS capabilities; keep
+the ambient-isolation assertion false until this live proof passes. A
+successful command leaves Services primary but keeps the whole application
+offline and prints the exact one-time secret finalization command. A failure
+restores the legacy storage binding and Job routes. Forced duplicate
+delivery, deadline, callback-loss salvage, and rollback during an in-flight
+request remain the separate failure-mode acceptance exercises in the internal
+rollout record.
 
 `validator-release-mirror` verifies the signed tag and GHCR attestation before
 copying by digest into GAR; it does not rebuild. The following verify step
@@ -232,14 +243,14 @@ Roll out in dependency order so old containers are never stranded without their
 historical storage identity:
 
 1. Deploy a published capability-aware `validibot-validator-backends` release
-   and the matching Django code. For the July 2026 Service rollout this is
-   `v0.15.0`:
+   and the matching Django code. For the July 2026 Service rollout baseline:
 
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp validator-release-mirror v0.15.0
-   just gcp validator-release-verify v0.15.0
-   VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validators-deploy-all prod
+   just gcp validator-release-mirror v0.15.1
+   just gcp validator-release-verify v0.15.1
+   VALIDATOR_BACKEND_RELEASE_TAG=v0.15.1 just gcp validators-deploy-all prod
+   VALIDATOR_BACKEND_RELEASE_TAG=v0.15.1 just gcp validator-services-deploy-all prod
    ```
 
 2. Set `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true` and keep
@@ -250,50 +261,33 @@ historical storage identity:
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
    just gcp secrets prod
-   just gcp deploy-all prod
+   just gcp deploy-maintenance prod
    ```
 
-3. Exercise the real downscoped token against temporary provider objects. The
-   command proves allowed read/create, denied cross-attempt read/create,
-   denied overwrite/delete, and generation-fenced cleanup:
+3. Run the one acceptance operation while the stage remains offline:
 
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp validator-storage-capability-probe prod
+   just gcp validator-acceptance prod v0.15.1
    ```
 
-4. Run a representative advanced validation while the old ambient role still
-   exists. Include an artifact-producing path and, before final rollout, a job
-   long enough to exercise token renewal.
+   This command now performs the old steps 3–6: it removes known ambient IAM,
+   requires Policy Troubleshooter denial, probes allowed and forbidden
+   downscoped-token operations, runs the four artifact-producing canaries and
+   20-attempt bursts, and retains private JSON. Failure automatically restores
+   the legacy conditional binding and Job routes.
 
-5. Remove the known historical bindings and require Policy Troubleshooter to
-   return `CANNOT_ACCESS` for effective object get/list/create/update/delete:
-
-   ```bash
-   cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp validator-storage-isolation prod
-   ```
-
-   Unknown or conditional results fail closed. The recipe prints the exact
-   conditional IAM rollback command before removal.
-
-6. Repeat the representative advanced validation with ambient IAM removed. If
-   the capability path fails, use the printed rollback command before further
-   diagnosis.
-
-7. Only after both provider probes and normal execution pass, set
-   `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`, then sync,
-   redeploy, and run doctor:
+4. Only after the command passes, set
+   `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`, then run the
+   exact finalization command printed by the acceptance command:
 
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
    just gcp secrets prod
-   just gcp deploy-all prod
-   just gcp doctor prod --json
    ```
 
-   `VB205` becomes OK only when both flags are true. Preserve the probe and
-   doctor JSON with the deployment record.
+   `VB205` becomes OK only when both flags are true. The acceptance JSON is the
+   retained provider proof; no console output needs to be copied by hand.
 
 ### Deploy-time environment variables
 

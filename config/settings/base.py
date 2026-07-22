@@ -331,6 +331,10 @@ MIDDLEWARE = [
     "csp.middleware.CSPMiddleware",
     "django_permissions_policy.PermissionsPolicyMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    # Production enables this gate so every staff/superuser session must
+    # prove a current allauth MFA factor before any admin view is dispatched.
+    # It remains installed but is a no-op for local/test settings by default.
+    "validibot.users.middleware.AdminMFAMiddleware",
 ]
 
 # STATIC
@@ -446,6 +450,11 @@ MANAGERS = ADMINS
 # https://cookiecutter-django.readthedocs.io/en/latest/settings.html#other-environment-settings
 # Force the `admin` sign in process to go through the `django-allauth` workflow
 DJANGO_ADMIN_FORCE_ALLAUTH = env.bool("DJANGO_ADMIN_FORCE_ALLAUTH", default=False)
+# Require staff and superusers to enrol a primary MFA factor and prove it in
+# the current session before Django dispatches any admin view. Production
+# overrides the default to True; local development stays friction-free unless
+# a developer explicitly opts in to exercise the hardened path.
+DJANGO_ADMIN_REQUIRE_MFA = env.bool("DJANGO_ADMIN_REQUIRE_MFA", default=False)
 
 # LOGGING
 # ------------------------------------------------------------------------------

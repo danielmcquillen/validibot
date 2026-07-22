@@ -2554,6 +2554,14 @@ management-cmd stage command: _require-gcp-config
 
     # Generate unique job name
     JOB_NAME="manage-$(date +%s)"
+    cleanup_management_job() {
+        gcloud run jobs delete "$JOB_NAME" \
+            --region {{gcp_region}} \
+            --project {{gcp_project}} \
+            --quiet >/dev/null 2>&1 || true
+    }
+    trap cleanup_management_job EXIT
+    trap 'exit 130' INT TERM
 
     echo "Running: python manage.py {{command}}"
     echo "Stage: {{stage}}"
@@ -2571,6 +2579,7 @@ management-cmd stage command: _require-gcp-config
         --set-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
         --memory 1Gi \
+        --task-timeout="${GCP_MANAGEMENT_COMMAND_TIMEOUT:-600s}" \
         --execution-environment gen2 \
         --command "/bin/bash" \
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py {{command}}" \
@@ -2595,7 +2604,8 @@ management-cmd stage command: _require-gcp-config
     # Clean up job after completion
     echo ""
     echo "Cleaning up job..."
-    gcloud run jobs delete "$JOB_NAME" --region {{gcp_region}} --project {{gcp_project}} --quiet
+    cleanup_management_job
+    trap - EXIT INT TERM
 
     echo "Command completed on {{stage}}"
 
@@ -4213,6 +4223,135 @@ validator-deployments-list stage: _require-gcp-config
 [arg('stage', pattern='dev|staging|prod')]
 validator-latency-report stage since_hours="168" minimum_samples="20": _require-gcp-config
     just gcp management-cmd {{stage}} "report_validator_execution_latency --since-hours={{since_hours}} --minimum-samples={{minimum_samples}} --json"
+
+# Run the complete private validator acceptance while public traffic stays
+# offline. The recipe opens only the two internal task queues, restores full
+# maintenance mode on every exit, rolls failed candidates back to Jobs, and
+# leaves a successful candidate active for the next online window.
+# Usage: just gcp validator-acceptance prod v0.15.1
+[arg('stage', pattern='dev|staging|prod')]
+validator-acceptance stage release_tag attempts="20": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: release_tag must be vX.Y.Z." >&2
+        exit 1
+    fi
+    if ! [[ "{{attempts}}" =~ ^[1-9][0-9]*$ ]] || [ "{{attempts}}" -gt 20 ]; then
+        echo "Error: attempts must be between 1 and 20." >&2
+        exit 1
+    fi
+    if [ "{{stage}}" = "prod" ] && [ "{{attempts}}" -ne 20 ]; then
+        echo "Error: production acceptance requires exactly 20 attempts per backend." >&2
+        exit 1
+    fi
+
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        QUEUE_NAME="${APP_NAME}-tasks"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
+        STORAGE_BUCKET="${APP_NAME}-storage"
+        VALIDATOR_SA_EMAIL="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
+    else
+        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
+        STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
+        VALIDATOR_SA_EMAIL="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+    fi
+    ROUTES_ACTIVATED=0
+    STORAGE_ISOLATION_APPLIED=0
+    ACCEPTANCE_PASSED=0
+
+    pause_acceptance_queues() {
+        gcloud tasks queues pause "$QUEUE_NAME" \
+            --location {{gcp_region}} --project {{gcp_project}} --quiet \
+            >/dev/null 2>&1 || true
+        gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
+            --location {{gcp_region}} --project {{gcp_project}} --quiet \
+            >/dev/null 2>&1 || true
+    }
+    restore_acceptance_state() {
+        local original_status=$?
+        local cleanup_status=$original_status
+        trap - EXIT INT TERM
+        set +e
+        pause_acceptance_queues
+        if [ "$ACCEPTANCE_PASSED" != "1" ] && [ "$STORAGE_ISOLATION_APPLIED" = "1" ]; then
+            echo "Acceptance did not pass; restoring the legacy run-prefix storage binding..."
+            gcloud storage buckets add-iam-policy-binding "gs://$STORAGE_BUCKET" \
+                --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
+                --role=roles/storage.objectAdmin \
+                --condition="expression=resource.name.startsWith('projects/_/buckets/$STORAGE_BUCKET/objects/runs/'),title=validator-runs-prefix-only" \
+                --project={{gcp_project}} \
+                --quiet >/dev/null \
+                || cleanup_status=1
+        fi
+        if [ "$ACCEPTANCE_PASSED" != "1" ] && [ "$ROUTES_ACTIVATED" = "1" ]; then
+            echo "Acceptance did not pass; restoring Job routes..."
+            VALIDATOR_BACKEND_RELEASE_TAG={{release_tag}} \
+                just gcp validator-services-rollback {{stage}} \
+                || cleanup_status=1
+        fi
+        just gcp _enforce-maintenance {{stage}} || cleanup_status=1
+        exit "$cleanup_status"
+    }
+    assert_queue_empty() {
+        local queue="$1"
+        local task
+        task=$(gcloud tasks tasks list \
+            --queue "$queue" \
+            --location {{gcp_region}} \
+            --project {{gcp_project}} \
+            --limit 1 \
+            --format='value(name)')
+        if [ -n "$task" ]; then
+            echo "Error: queue $queue contains existing work; acceptance will not mix with it." >&2
+            exit 1
+        fi
+    }
+
+    just gcp _maintenance-assert-offline {{stage}}
+    trap restore_acceptance_state EXIT
+    trap 'exit 130' INT TERM
+    assert_queue_empty "$QUEUE_NAME"
+    assert_queue_empty "$PROVIDER_QUEUE_NAME"
+    just gcp validator-release-verify {{release_tag}}
+    just gcp validator-storage-isolation {{stage}}
+    STORAGE_ISOLATION_APPLIED=1
+    just gcp _maintenance-start-database {{stage}}
+
+    VALIDATOR_BACKEND_RELEASE_TAG={{release_tag}} \
+        just gcp validator-services-activate {{stage}}
+    ROUTES_ACTIVATED=1
+    gcloud tasks queues resume "$QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    gcloud tasks queues resume "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+
+    GCP_MANAGEMENT_COMMAND_TIMEOUT=3600s \
+        just gcp management-cmd {{stage}} \
+        "run_validator_acceptance --release-tag={{release_tag}} --attempts={{attempts}} --timeout-seconds=3000 --require-persisted-report --ambient-isolation-verified"
+
+    # Exercise the same operator rollback path used during an incident, then
+    # return the accepted Services to primary and re-observe their live state.
+    pause_acceptance_queues
+    VALIDATOR_BACKEND_RELEASE_TAG={{release_tag}} \
+        just gcp validator-services-rollback {{stage}}
+    VALIDATOR_BACKEND_RELEASE_TAG={{release_tag}} \
+        just gcp validator-services-activate {{stage}}
+    just gcp management-cmd {{stage}} "verify_gcp_validator_deployments --json"
+
+    ACCEPTANCE_PASSED=1
+    echo "Validator acceptance passed for {{release_tag}} on {{stage}}."
+    echo "The private JSON report is in the stage validation bucket."
+    if [ "{{stage}}" = "prod" ]; then
+        ENV_FILE=".envs/.production/.google-cloud/.django"
+    else
+        ENV_FILE=".envs/.{{stage}}/.google-cloud/.django"
+    fi
+    echo "One-time finalization before bringing {{stage}} online:"
+    echo "  Set GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true in $ENV_FILE"
+    echo "  just gcp secrets {{stage}}"
 
 # Reconcile the validator dashboard, log metrics, and alert policies. Policies
 # create incidents even without a notification channel; set comma-separated

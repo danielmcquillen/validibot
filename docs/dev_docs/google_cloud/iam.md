@@ -163,22 +163,24 @@ cd /Users/danielmcquillen/projects/validibot/validibot
 just gcp validator-storage-capability-probe prod
 ```
 
-Then remove historical validator storage bindings and evaluate the service
-account's effective object permissions with
+The maintenance-safe acceptance command removes historical validator storage
+bindings and evaluates the service account's effective object permissions with
 [Policy Troubleshooter](https://cloud.google.com/policy-intelligence/docs/troubleshoot-access):
 
 ```bash
 cd /Users/danielmcquillen/projects/validibot/validibot
-just gcp validator-storage-isolation prod
+just gcp validator-acceptance prod v0.15.1
 ```
 
-That recipe removes the known legacy bindings, rejects remaining direct
+That operation removes the known legacy bindings, rejects remaining direct
 predefined `roles/storage*` bindings, and fails unless effective object
 get/list/create/update/delete permissions are conclusively `CANNOT_ACCESS`.
 Policy Troubleshooter evaluates inherited, group, primitive, custom-role, and
 conditional policy paths; an unknown result is not proof and stops the recipe.
-Before setting `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`,
-also repeat a normal advanced validation with ambient IAM removed.
+It also runs the real capability probe and representative validators. On
+failure it restores the legacy conditional binding automatically. Set
+`GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true` only after this
+command passes, using the exact finalization command it prints.
 
 ## Application Default Credentials (ADC)
 

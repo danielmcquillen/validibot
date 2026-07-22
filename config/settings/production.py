@@ -662,6 +662,18 @@ else:
 # ADMIN
 # ------------------------------------------------------------------------------
 ADMIN_URL = env("DJANGO_ADMIN_URL", default="admin/")
+# Production fails closed for privileged browser access. Routing the initial
+# sign-in through allauth prevents the plain Django password form from being a
+# bypass; the separate middleware gate also requires an enrolled factor and an
+# MFA authentication record tied to the current session.
+DJANGO_ADMIN_FORCE_ALLAUTH = env.bool("DJANGO_ADMIN_FORCE_ALLAUTH", default=True)
+DJANGO_ADMIN_REQUIRE_MFA = env.bool("DJANGO_ADMIN_REQUIRE_MFA", default=True)
+
+if DJANGO_ADMIN_REQUIRE_MFA and not ACCOUNT_ALLOW_LOGIN:  # noqa: F405
+    raise ImproperlyConfigured(
+        "DJANGO_ADMIN_REQUIRE_MFA requires DJANGO_ACCOUNT_ALLOW_LOGIN=True "
+        "so staff can enrol and complete the allauth MFA challenge.",
+    )
 
 # LOGGING
 # ------------------------------------------------------------------------------

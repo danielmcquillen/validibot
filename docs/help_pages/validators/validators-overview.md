@@ -11,6 +11,7 @@ Validators are the components that check your data. Each validator step uses one
 | **JSON Schema** | Validates JSON structure against a schema | JSON |
 | **XML Schema** | Validates XML against an XSD | XML |
 | **[Tabular](tabular-validator.md)** | Validates rows against a Table Schema (column types, ranges, uniqueness) plus cross-field CEL row rules | CSV |
+| **[Portfolio Manager](portfolio-manager-validator.md)** | Validates ENERGY STAR Portfolio Manager reports, Washington Form C readiness, EUIt comparisons, and ZIP collections | XLS, XLSX, XML, ZIP |
 | **Basic** | Custom rules using CEL expressions | JSON, YAML |
 | **AI** | Natural language validation rules | Any text |
 

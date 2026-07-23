@@ -39,6 +39,7 @@ from validibot.workflows.forms import AiAssistStepConfigForm
 from validibot.workflows.forms import EnergyPlusStepConfigForm
 from validibot.workflows.forms import FMUValidatorStepConfigForm
 from validibot.workflows.forms import JsonSchemaStepConfigForm
+from validibot.workflows.forms import PortfolioManagerStepConfigForm
 from validibot.workflows.forms import ShaclStepConfigForm
 from validibot.workflows.forms import TabularStepConfigForm
 from validibot.workflows.forms import XmlSchemaStepConfigForm
@@ -1727,6 +1728,123 @@ def build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
     }
 
 
+def build_portfolio_manager_config(
+    form: PortfolioManagerStepConfigForm,
+) -> dict[str, Any]:
+    """Build the semantic convenience settings sent to the isolated backend."""
+    cleaned = form.cleaned_data
+    default_euit = cleaned.get("default_euit_kbtu_ft2_yr")
+    near_percent = cleaned.get("near_target_percent")
+    return {
+        "submission_structure": cleaned.get("submission_structure") or "single_report",
+        "profile": cleaned.get("profile") or "generic",
+        "default_euit_kbtu_ft2_yr": (
+            float(default_euit) if default_euit is not None else None
+        ),
+        "compare_to_euit": bool(cleaned.get("compare_to_euit")),
+        "near_target_percent": (
+            float(near_percent) if near_percent is not None else 10
+        ),
+        "require_complete_reporting_period": bool(
+            cleaned.get("require_complete_reporting_period")
+        ),
+        "minimum_reporting_period_months": (
+            cleaned.get("minimum_reporting_period_months") or 12
+        ),
+        "maximum_reporting_period_age_months": cleaned.get(
+            "maximum_reporting_period_age_months"
+        ),
+        "require_benchmark_ready": bool(cleaned.get("require_benchmark_ready")),
+        "require_form_c_ready": bool(cleaned.get("require_form_c_ready")),
+        "require_weather_normalized_site_eui": bool(
+            cleaned.get("require_weather_normalized_site_eui")
+        ),
+        "require_washington_standard_id": bool(
+            cleaned.get("require_washington_standard_id")
+        ),
+        "require_energy_star_score": bool(cleaned.get("require_energy_star_score")),
+        "meter_less_than_12_months_policy": cleaned.get(
+            "meter_less_than_12_months_policy"
+        )
+        or "allow",
+        "meter_gap_policy": cleaned.get("meter_gap_policy") or "allow",
+        "meter_overlap_policy": cleaned.get("meter_overlap_policy") or "allow",
+        "no_meters_selected_policy": cleaned.get("no_meters_selected_policy")
+        or "allow",
+        "long_meter_entry_policy": cleaned.get("long_meter_entry_policy") or "allow",
+        "estimated_energy_policy": cleaned.get("estimated_energy_policy") or "allow",
+        "other_alert_policy": cleaned.get("other_alert_policy") or "allow",
+        "max_archive_members": cleaned.get("max_archive_members") or 250,
+        "max_member_bytes": ((cleaned.get("max_member_size_mb") or 20) * 1_000_000),
+        "max_uncompressed_bytes": (
+            (cleaned.get("max_uncompressed_size_mb") or 250) * 1_000_000
+        ),
+    }
+
+
+def _sync_portfolio_manager_resources(
+    step: WorkflowStep,
+    form: PortfolioManagerStepConfigForm,
+) -> None:
+    """Replace or remove the step-owned, schema-validated EBL resource."""
+    from validibot.validations.constants import PORTFOLIO_MANAGER_EBL_RESOURCE
+
+    upload = form.cleaned_data.get("expected_buildings_list")
+    remove = form.cleaned_data.get("remove_expected_buildings_list", False)
+    structure = form.cleaned_data.get("submission_structure")
+    if remove or structure != "zip_collection":
+        step.step_resources.filter(
+            role=WorkflowStepResource.EXPECTED_BUILDINGS_LIST,
+        ).delete()
+        return
+    if upload:
+        step.step_resources.filter(
+            role=WorkflowStepResource.EXPECTED_BUILDINGS_LIST,
+        ).delete()
+        upload.seek(0)
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.EXPECTED_BUILDINGS_LIST,
+            step_resource_file=upload,
+            filename=upload.name,
+            resource_type=PORTFOLIO_MANAGER_EBL_RESOURCE,
+        )
+
+
+def _sync_portfolio_manager_value_binding(step: WorkflowStep) -> None:
+    """Persist the form's direct EUIt as the declared input's fixed value."""
+    from validibot.validations.constants import BindingSourceScope
+    from validibot.validations.constants import StepIODirection
+    from validibot.validations.constants import StepIOMedium
+    from validibot.validations.models import StepInputBinding
+    from validibot.validations.models import StepIODefinition
+
+    io_definition = (
+        StepIODefinition.objects.filter(
+            validator_id=step.validator_id,
+            contract_key="default_euit_kbtu_ft2_yr",
+            direction=StepIODirection.INPUT,
+            io_medium=StepIOMedium.VALUE,
+        )
+        .order_by("pk")
+        .first()
+    )
+    if io_definition is None:
+        return
+
+    configured_value = (step.config or {}).get("default_euit_kbtu_ft2_yr")
+    StepInputBinding.objects.update_or_create(
+        workflow_step=step,
+        io_definition=io_definition,
+        defaults={
+            "source_scope": BindingSourceScope.CONSTANT,
+            "source_data_path": "",
+            "default_value": configured_value,
+            "is_required": False,
+        },
+    )
+
+
 def _sync_fmu_step_io(
     step: WorkflowStep,
     fmu_vars: list[dict[str, Any]] | None,
@@ -1889,6 +2007,8 @@ def save_workflow_step(
         config, fmu_vars = build_fmu_config(form, step)
     elif vtype == ValidationType.AI_ASSIST:
         config = build_ai_config(form)
+    elif vtype == ValidationType.PORTFOLIO_MANAGER:
+        config = build_portfolio_manager_config(form)
     else:
         config = {}
 
@@ -1947,12 +2067,17 @@ def save_workflow_step(
     elif vtype == ValidationType.FMU and getattr(form, "is_system_validator", False):
         _sync_fmu_resources(step, form)
         _sync_fmu_step_io(step, fmu_vars)
+    elif vtype == ValidationType.PORTFOLIO_MANAGER:
+        _sync_portfolio_manager_resources(step, form)
+        _sync_step_file_port_bindings(step, form)
 
     # Ensure bindings exist for validator-owned step inputs so the
     # input resolution engine activates.
     from validibot.validations.services.input_bindings import ensure_step_input_bindings
 
     ensure_step_input_bindings(step)
+    if vtype == ValidationType.PORTFOLIO_MANAGER:
+        _sync_portfolio_manager_value_binding(step)
 
     return step
 

@@ -48,8 +48,10 @@ See Also:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Literal
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
@@ -297,6 +299,46 @@ class SchematronStepConfig(ContainerExecutionStepConfig):
     """Semantic config for isolated Schematron validator execution."""
 
 
+class PortfolioManagerStepConfig(ContainerExecutionStepConfig):
+    """Semantic configuration for Portfolio Manager report validation."""
+
+    submission_structure: Literal["single_report", "zip_collection"] = "single_report"
+    profile: Literal[
+        "generic",
+        "benchmark_readiness",
+        "washington_cbps_tier1_euit",
+    ] = "generic"
+    default_euit_kbtu_ft2_yr: Decimal | None = Field(default=None, gt=0)
+    compare_to_euit: bool = False
+    near_target_percent: Decimal = Field(default=Decimal("10"), ge=0, le=100)
+    require_complete_reporting_period: bool = False
+    minimum_reporting_period_months: int = Field(default=12, ge=1, le=36)
+    maximum_reporting_period_age_months: int | None = Field(
+        default=None,
+        ge=0,
+        le=120,
+    )
+    require_benchmark_ready: bool = False
+    require_form_c_ready: bool = False
+    require_weather_normalized_site_eui: bool = False
+    require_washington_standard_id: bool = False
+    require_energy_star_score: bool = False
+    meter_less_than_12_months_policy: Literal["allow", "warning", "error"] = "allow"
+    meter_gap_policy: Literal["allow", "warning", "error"] = "allow"
+    meter_overlap_policy: Literal["allow", "warning", "error"] = "allow"
+    no_meters_selected_policy: Literal["allow", "warning", "error"] = "allow"
+    long_meter_entry_policy: Literal["allow", "warning", "error"] = "allow"
+    estimated_energy_policy: Literal["allow", "warning", "error"] = "allow"
+    other_alert_policy: Literal["allow", "warning", "error"] = "allow"
+    max_archive_members: int = Field(default=250, ge=1, le=1_000)
+    max_member_bytes: int = Field(default=20_000_000, ge=1, le=100_000_000)
+    max_uncompressed_bytes: int = Field(
+        default=250_000_000,
+        ge=1,
+        le=1_000_000_000,
+    )
+
+
 class BasicStepConfig(BaseStepConfig):
     """Semantic config for Basic assertion validator steps.
 
@@ -457,6 +499,7 @@ STEP_CONFIG_MODELS: dict[str, type[BaseModel]] = {
     "XML_SCHEMA": XmlSchemaStepConfig,
     "TABULAR": TabularStepConfig,
     "SCHEMATRON": SchematronStepConfig,
+    "PORTFOLIO_MANAGER": PortfolioManagerStepConfig,
     "SHACL": ShaclStepConfig,
     "ENERGYPLUS": EnergyPlusStepConfig,
     "FMU": FmuStepConfig,

@@ -27,6 +27,7 @@ MANAGED_VALIDATION_TYPES = (
     ValidationType.FMU,
     ValidationType.SHACL,
     ValidationType.SCHEMATRON,
+    ValidationType.PORTFOLIO_MANAGER,
 )
 
 

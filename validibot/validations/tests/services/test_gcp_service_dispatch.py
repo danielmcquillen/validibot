@@ -14,6 +14,7 @@ from uuid import uuid4
 import pytest
 from django.test import override_settings
 from django.utils import timezone
+from google.api_core.exceptions import ServiceUnavailable
 
 from validibot.core.tasks.dispatch.http_task_client import HttpTaskCreationResult
 from validibot.validations.constants import ExecutionAttemptState
@@ -41,6 +42,7 @@ from validibot.validations.services.execution.gcp_service_dispatch import (
 from validibot.validations.services.execution.gcp_service_dispatch import (
     dispatch_cloud_run_service_validation,
 )
+from validibot.validations.validators.base.base import ValidationResult
 
 PROJECT_ID = "validibot-prod"
 REGION = "australia-southeast1"
@@ -493,8 +495,7 @@ def test_service_backend_cancels_the_exact_provider_task(monkeypatch):
     _attempt_value, deployment = _attempt()
     client = MagicMock()
     monkeypatch.setattr(
-        "validibot.validations.services.execution.gcp_service."
-        "tasks_v2.CloudTasksClient",
+        "validibot.validations.services.execution.gcp_service.get_cloud_tasks_client",
         MagicMock(return_value=client),
     )
     backend = CloudRunServiceExecutionBackend(deployment=deployment)
@@ -506,3 +507,31 @@ def test_service_backend_cancels_the_exact_provider_task(monkeypatch):
 
     assert canceled is True
     client.delete_task.assert_called_once_with(name=task_name)
+
+
+def test_service_backend_cancellation_api_failure_returns_false(monkeypatch):
+    """A provider outage must not escape the best-effort cancellation contract."""
+    _attempt_value, deployment = _attempt()
+    client = MagicMock()
+    client.delete_task.side_effect = ServiceUnavailable("provider unavailable")
+    monkeypatch.setattr(
+        "validibot.validations.services.execution.gcp_service.get_cloud_tasks_client",
+        MagicMock(return_value=client),
+    )
+    backend = CloudRunServiceExecutionBackend(deployment=deployment)
+
+    canceled = backend.cancel("projects/p/locations/r/queues/q/tasks/t")
+
+    assert canceled is False
+
+
+def test_service_backend_failure_diagnostic_names_the_service_route():
+    """A Service launch failure must direct operators to the right resource."""
+    _attempt_value, deployment = _attempt()
+    backend = CloudRunServiceExecutionBackend(deployment=deployment)
+
+    response = backend._launch_result_to_response(
+        ValidationResult(passed=False, issues=[], stats={})
+    )
+
+    assert response.error_message == "Failed to launch Cloud Run Service"

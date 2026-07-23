@@ -17,6 +17,7 @@ from validibot_shared.validations.envelopes import ResourceFileItem
 from validibot_shared.validations.envelopes import SupportedMimeType
 
 from validibot.submissions.constants import SubmissionDataFormat
+from validibot.validations.constants import PORTFOLIO_MANAGER_EBL_RESOURCE
 from validibot.validations.constants import ResourceFileType
 
 
@@ -106,9 +107,19 @@ def validate_input_file_item(
         observed_role=item.role,
         source_description=f"input file '{item.uri}'",
     )
+    observed_data_format = _data_format_from_known_uri(item.uri or item.name)
+    if (
+        port.data_format == SubmissionDataFormat.PORTFOLIO_MANAGER_REPORT
+        and _extension_from_uri(item.uri or item.name)
+        in _accepted_extensions_for_port(port)
+    ):
+        # Portfolio Manager is one domain format with several carriers. XML
+        # alone would otherwise be classified as generic XML, while XLS/XLSX/
+        # ZIP have no generic Validibot data-format identity at all.
+        observed_data_format = SubmissionDataFormat.PORTFOLIO_MANAGER_REPORT
     _validate_data_format(
         port=port,
-        observed_data_format=_data_format_from_known_uri(item.uri or item.name),
+        observed_data_format=observed_data_format,
         source_description=f"input file '{item.uri}'",
     )
     _validate_media_type(
@@ -141,8 +152,8 @@ def validate_resource_file_item(
     _validate_media_type(
         port=port,
         observed_media_type=(
-            _media_type_from_known_uri(item.uri)
-            or _media_type_for_resource_type(item.type)
+            _media_type_for_resource_type(item.type)
+            or _media_type_from_known_uri(item.uri)
         ),
         source_description=f"resource file '{item.uri}'",
     )
@@ -325,6 +336,8 @@ def _media_type_for_resource_type(resource_type: str) -> str:
 
     if resource_type == ResourceFileType.ENERGYPLUS_WEATHER:
         return SupportedMimeType.ENERGYPLUS_EPW.value
+    if resource_type == PORTFOLIO_MANAGER_EBL_RESOURCE:
+        return SupportedMimeType.APPLICATION_JSON.value
     return ""
 
 

@@ -91,7 +91,9 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
         """Get or create Cloud Run Jobs client."""
         if self._jobs_client is None:
             try:
-                from google.cloud import run_v2
+                from validibot.validations.services.cloud_run.job_client import (
+                    get_cloud_run_jobs_client,
+                )
             except ImportError as e:
                 msg = (
                     "google-cloud-run is required for Cloud Run runner. "
@@ -99,15 +101,17 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
                 )
                 raise ImportError(msg) from e
 
-            self._jobs_client = run_v2.JobsClient()
+            self._jobs_client = get_cloud_run_jobs_client()
         return self._jobs_client
 
     def _get_executions_client(self):
         """Get or create Cloud Run Executions client."""
         if self._executions_client is None:
-            from google.cloud import run_v2
+            from validibot.validations.services.cloud_run.job_client import (
+                get_cloud_run_executions_client,
+            )
 
-            self._executions_client = run_v2.ExecutionsClient()
+            self._executions_client = get_cloud_run_executions_client()
         return self._executions_client
 
     def is_available(self) -> bool:

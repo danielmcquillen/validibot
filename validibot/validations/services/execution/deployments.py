@@ -55,8 +55,10 @@ def _record_operator_audit(
         changes=changes,
         metadata={
             "validator_id": str(deployment.validator_id),
+            "provider_type": deployment.provider_type,
             "deployment_kind": deployment.deployment_kind,
             "deployment_revision": deployment.deployment_revision,
+            "routing_role": deployment.routing_role,
             "provider_resource_name": deployment.provider_resource_name,
             **(metadata or {}),
         },

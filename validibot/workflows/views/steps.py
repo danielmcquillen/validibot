@@ -480,6 +480,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                     ValidationType.AI_ASSIST,
                     ValidationType.ENERGYPLUS,
                     ValidationType.FMU,
+                    ValidationType.PORTFOLIO_MANAGER,
                 },
                 str(_("No advanced validators available yet.")),
             ),

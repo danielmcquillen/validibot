@@ -30,6 +30,7 @@ SERVICE_SLUGS = {
     ValidationType.FMU: "fmu",
     ValidationType.SHACL: "shacl",
     ValidationType.SCHEMATRON: "schematron",
+    ValidationType.PORTFOLIO_MANAGER: "portfolio-manager",
 }
 _RELEASE_TAG = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
 

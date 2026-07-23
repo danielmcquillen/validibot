@@ -1797,6 +1797,7 @@ class WorkflowStepResource(models.Model):
     WEATHER_FILE = "WEATHER_FILE"
     MODEL_TEMPLATE = "MODEL_TEMPLATE"
     FMU_MODEL = "FMU_MODEL"
+    EXPECTED_BUILDINGS_LIST = "EXPECTED_BUILDINGS_LIST"
 
     step = models.ForeignKey(
         "workflows.WorkflowStep",
@@ -1895,6 +1896,28 @@ class WorkflowStepResource(models.Model):
         from validibot.core.filesafety import sha256_field_file
 
         if self.is_step_owned:
+            from validibot.validations.constants import PORTFOLIO_MANAGER_EBL_RESOURCE
+
+            if self.resource_type == PORTFOLIO_MANAGER_EBL_RESOURCE:
+                from django.core.exceptions import ValidationError
+                from validibot_shared.portfolio_manager import (
+                    validate_expected_buildings_list_json,
+                )
+                from validibot_shared.portfolio_manager.envelopes import MAX_EBL_BYTES
+
+                try:
+                    self.step_resource_file.open("rb")
+                    content = self.step_resource_file.read(MAX_EBL_BYTES + 1)
+                    self.step_resource_file.seek(0)
+                    validate_expected_buildings_list_json(content)
+                except (OSError, ValueError) as exc:
+                    raise ValidationError(
+                        {
+                            "step_resource_file": (
+                                f"Expected Buildings List is invalid: {exc}"
+                            )
+                        }
+                    ) from exc
             new_hash = sha256_field_file(self.step_resource_file)
             if (
                 self.pk

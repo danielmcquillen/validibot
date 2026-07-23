@@ -150,7 +150,7 @@ just gcp validator-deploy-all prod v0.15.0
 ```
 
 The complete deploy command verifies and mirrors the signed release, then
-deploys all four Jobs and all four release-specific Services without
+deploys every managed backend Job and release-specific Service without
 registering or activating them. With production already in maintenance mode,
 run the immutable-I/O, smoke, burst, latency, and route-rollback acceptance as
 one operation:

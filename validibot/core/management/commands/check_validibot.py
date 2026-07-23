@@ -1021,6 +1021,7 @@ class Command(BaseCommand):
                     ValidationType.FMU,
                     ValidationType.SHACL,
                     ValidationType.SCHEMATRON,
+                    ValidationType.PORTFOLIO_MANAGER,
                 ),
                 is_enabled=True,
                 release_state=ValidatorReleaseState.PUBLISHED,

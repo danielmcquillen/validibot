@@ -42,6 +42,7 @@ EXPECTED_TWENTY_SAMPLE_P50 = 10.0
 EXPECTED_TWENTY_SAMPLE_P95 = 19.0
 EXPECTED_ENERGYPLUS_U_FACTOR = 2.0
 EXPECTED_FMU_INPUT = 42.0
+EXPECTED_PORTFOLIO_MANAGER_PROPERTY_ID = "9876543"
 REPRESENTATIVE_SAMPLE_SIZE = 20
 SHA256_HEX_LENGTH = 64
 
@@ -360,15 +361,20 @@ def test_submission_fixtures_are_deterministic_and_domain_representative():
     fmu_text, _, _ = builder._submission_fixture(BACKENDS[1])
     shacl_text, _, _ = builder._submission_fixture(BACKENDS[2])
     schematron_text, _, _ = builder._submission_fixture(BACKENDS[3])
+    portfolio_manager_text, _, _ = builder._submission_fixture(BACKENDS[4])
 
     assert json.loads(energyplus_text)["U_FACTOR"] == EXPECTED_ENERGYPLUS_U_FACTOR
     assert json.loads(fmu_text)["real_continuous_in"] == EXPECTED_FMU_INPUT
     assert "ValidPerson" in shacl_text or "Person" in shacl_text
     assert "calibration" in schematron_text.lower()
+    assert (
+        f"<propertyId>{EXPECTED_PORTFOLIO_MANAGER_PROPERTY_ID}</propertyId>"
+        in portfolio_manager_text
+    )
 
 
 @pytest.mark.django_db
-def test_fixture_builder_creates_and_reuses_all_four_real_workflows():
+def test_fixture_builder_creates_and_reuses_all_managed_workflows():
     """A deployed command must provision complete canaries without manual setup."""
     call_command("sync_validators", stdout=StringIO(), stderr=StringIO())
     call_command("seed_weather_files", stdout=StringIO(), stderr=StringIO())
@@ -393,6 +399,7 @@ def test_runtime_image_includes_only_explicit_acceptance_assets():
     assert "tests/*" in dockerignore
     assert "!tests/assets/fmu/Feedthrough.fmu" in dockerignore
     assert "!tests/assets/idf/window_glazing_template.idf" in dockerignore
+    assert "!tests/assets/portfolio_manager/property-report-valid.xml" in dockerignore
     assert "!tests/assets/shacl/valid_person.ttl" in dockerignore
     assert (
         "!tests/assets/schematron/calibration/calibration-rules-demo.sch"

@@ -93,6 +93,7 @@ class ValidatorFactory(DjangoModelFactory):
             in (
                 ValidationType.ENERGYPLUS,
                 ValidationType.FMU,
+                ValidationType.PORTFOLIO_MANAGER,
             )
         )
     )
@@ -107,6 +108,7 @@ class ValidatorFactory(DjangoModelFactory):
                 ValidationType.FMU,
                 ValidationType.AI_ASSIST,
                 ValidationType.CUSTOM_VALIDATOR,
+                ValidationType.PORTFOLIO_MANAGER,
                 ValidationType.SHACL,
                 ValidationType.THERM,
             )

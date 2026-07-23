@@ -149,4 +149,91 @@
       applyMode();
     })();
   </script>
+  <script nonce="{{ CSP_NONCE }}">
+    (function initPortfolioManagerModeToggle() {
+      const radios = document.querySelectorAll(
+        'input[name="submission_structure"]'
+      );
+      if (!radios.length) return;
+
+      const bulkFieldIds = [
+        'portfolio-manager-bulk-settings'
+      ];
+
+      function applyPortfolioManagerMode() {
+        const selected = document.querySelector(
+          'input[name="submission_structure"]:checked'
+        );
+        const isBulk = selected && selected.value === 'zip_collection';
+        bulkFieldIds.forEach(function(id) {
+          const field = document.getElementById(id);
+          if (field) field.classList.toggle('d-none', !isBulk);
+        });
+        const euitLabel = document.querySelector(
+          'label[for="id_default_euit_kbtu_ft2_yr"]'
+        );
+        if (euitLabel) {
+          euitLabel.textContent = isBulk ?
+            "{% trans 'Default EUIt (kBtu/ft²/year)' %}" :
+            "{% trans 'EUIt (kBtu/ft²/year)' %}";
+        }
+      }
+
+      radios.forEach(function(radio) {
+        radio.addEventListener('change', applyPortfolioManagerMode);
+      });
+      applyPortfolioManagerMode();
+    })();
+  </script>
+  <script nonce="{{ CSP_NONCE }}">
+    (function initPortfolioManagerProfileDefaults() {
+      const profile = document.getElementById('id_profile');
+      if (!profile) return;
+
+      function check(id) {
+        const field = document.getElementById(id);
+        if (field) field.checked = true;
+      }
+
+      function applyProfileDefaults() {
+        if (profile.value === 'benchmark_readiness') {
+          check('id_require_complete_reporting_period');
+          check('id_require_benchmark_ready');
+        }
+        if (profile.value === 'washington_cbps_tier1_euit') {
+          check('id_require_complete_reporting_period');
+          check('id_require_benchmark_ready');
+          check('id_require_form_c_ready');
+          check('id_require_weather_normalized_site_eui');
+          check('id_require_washington_standard_id');
+          [
+            'meter_less_than_12_months_policy',
+            'meter_gap_policy',
+            'meter_overlap_policy',
+            'no_meters_selected_policy',
+            'long_meter_entry_policy'
+          ].forEach(function(name) {
+            const field = document.getElementById('id_' + name);
+            if (field) field.value = 'error';
+          });
+          const estimated = document.getElementById(
+            'id_estimated_energy_policy'
+          );
+          if (estimated) estimated.value = 'warning';
+          const other = document.getElementById('id_other_alert_policy');
+          if (other) other.value = 'warning';
+          const months = document.getElementById(
+            'id_minimum_reporting_period_months'
+          );
+          if (months) months.value = '12';
+          const age = document.getElementById(
+            'id_maximum_reporting_period_age_months'
+          );
+          if (age && !age.value) age.value = '24';
+        }
+      }
+
+      profile.addEventListener('change', applyProfileDefaults);
+    })();
+  </script>
 {% endblock app_content %}

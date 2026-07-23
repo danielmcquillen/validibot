@@ -31,6 +31,7 @@ from validibot.validations.services.execution_attempts import (
 from validibot.validations.services.execution_attempts import (
     transition_execution_attempt,
 )
+from validibot.validations.services.execution_logging import execution_log_context
 from validibot.validations.tests.factories import CallbackReceiptFactory
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
@@ -127,6 +128,31 @@ class TestExecutionAttemptModel:
 
         assert not ExecutionAttempt.objects.filter(pk=attempt_id).exists()
         assert not CallbackReceipt.objects.filter(pk=receipt_id).exists()
+
+    def test_execution_log_context_includes_immutable_route_identity(self):
+        """Every shared lifecycle log should say whether Service or Job ran."""
+        attempt = ExecutionAttemptFactory(
+            runner_type="CloudRunServiceExecutionBackend",
+            deployment_snapshot={
+                "deployment_id": "11111111-1111-4111-8111-111111111111",
+                "provider_type": "GCP",
+                "deployment_kind": "CLOUD_RUN_SERVICE",
+                "provider_resource_name": (
+                    "projects/p/locations/r/services/validator-service"
+                ),
+            },
+        )
+
+        context = execution_log_context(
+            attempt.step_run.validation_run,
+            step_run=attempt.step_run,
+            attempt=attempt,
+        )
+
+        assert context["runner_type"] == "CloudRunServiceExecutionBackend"
+        assert context["execution_provider_type"] == "GCP"
+        assert context["execution_deployment_kind"] == "CLOUD_RUN_SERVICE"
+        assert context["provider_resource_name"].endswith("/validator-service")
 
 
 @pytest.mark.django_db

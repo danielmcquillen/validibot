@@ -25,6 +25,7 @@ from django.utils.html import format_html
 from django.utils.html import format_html_join
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
+from validibot_shared.portfolio_manager.envelopes import MAX_EBL_BYTES
 
 from validibot.core.deployment import (
     supports_author_selectable_validator_execution_profiles,
@@ -4813,6 +4814,407 @@ class SchematronStepConfigForm(BaseStepConfigForm):
         return cleaned
 
 
+class PortfolioManagerStepConfigForm(BaseStepConfigForm):
+    """Author-friendly configuration for single and portfolio report validation."""
+
+    supports_execution_profile = True
+    submission_structure = forms.ChoiceField(
+        label=_("Submission structure"),
+        choices=[
+            ("single_report", _("Single property report (.xls, .xlsx, or .xml)")),
+            ("zip_collection", _("ZIP collection of property reports")),
+        ],
+        widget=forms.RadioSelect,
+        initial="single_report",
+        help_text=_(
+            "Each report must represent one property or grouped parent and one "
+            "reporting cycle."
+        ),
+    )
+    profile = forms.ChoiceField(
+        label=_("Validation profile"),
+        choices=[
+            ("generic", _("Portfolio Manager report contract")),
+            ("benchmark_readiness", _("Benchmark readiness")),
+            (
+                "washington_cbps_tier1_euit",
+                _("Washington CBPS Tier 1 EUIt"),
+            ),
+        ],
+        initial="generic",
+        help_text=_(
+            "Profiles apply visible Portfolio Manager checks. They do not "
+            "calculate EUIt or issue a legal compliance determination."
+        ),
+    )
+    default_euit_kbtu_ft2_yr = forms.DecimalField(
+        label=_("EUIt (kBtu/ft²/year)"),
+        required=False,
+        min_value=0.000001,
+        max_digits=12,
+        decimal_places=4,
+        help_text=_(
+            "Optional target. In ZIP mode it is the default for every property "
+            "unless a matched EBL row provides its own EUIt. The configured "
+            "value is retained as a declared, traceable validator input."
+        ),
+    )
+    compare_to_euit = forms.BooleanField(
+        label=_("Require Weather Normalized Site EUI to meet the resolved EUIt"),
+        required=False,
+        help_text=_(
+            "When enabled, a property fails this built-in check when WNEUI is "
+            "greater than its EBL or default EUIt. Leave it off to express "
+            "custom tolerance in CEL."
+        ),
+    )
+    near_target_percent = forms.DecimalField(
+        label=_("Near-target tolerance (%)"),
+        required=False,
+        min_value=0,
+        max_value=100,
+        max_digits=6,
+        decimal_places=2,
+        initial=10,
+        help_text=_(
+            "Defines the informational near_euit output; it does not change "
+            "pass/fail unless an assertion uses that output."
+        ),
+    )
+    require_complete_reporting_period = forms.BooleanField(
+        label=_("Require a complete reporting period"),
+        required=False,
+        help_text=_(
+            "Require both period dates and at least the configured number of "
+            "consecutive calendar months."
+        ),
+    )
+    minimum_reporting_period_months = forms.IntegerField(
+        label=_("Minimum reporting period (months)"),
+        required=False,
+        min_value=1,
+        max_value=36,
+        initial=12,
+    )
+    maximum_reporting_period_age_months = forms.IntegerField(
+        label=_("Maximum reporting-period age (months)"),
+        required=False,
+        min_value=0,
+        max_value=120,
+        help_text=_(
+            "Optional freshness check measured from the validation run date. "
+            "Washington CBPS defaults to 24 months."
+        ),
+    )
+    require_benchmark_ready = forms.BooleanField(
+        label=_("Require benchmark-ready core metrics"),
+        required=False,
+    )
+    require_form_c_ready = forms.BooleanField(
+        label=_("Require Washington Form C-ready metrics"),
+        required=False,
+        help_text=_(
+            "Checks the Z6.3 bundle: national median Site EUI; Site Energy and "
+            "Site EUI; weather-normalized Site Energy, Site EUI, electricity "
+            "and natural-gas use/intensity; onsite renewable and grid "
+            "electricity metrics; natural-gas use; renewable percentage; HDD, "
+            "CDD, weather station name, and weather station ID. Fuel or "
+            "renewable fields may explicitly report N/A, but they cannot be "
+            "omitted from the export."
+        ),
+    )
+    require_weather_normalized_site_eui = forms.BooleanField(
+        label=_("Require Weather Normalized Site EUI"),
+        required=False,
+    )
+    require_washington_standard_id = forms.BooleanField(
+        label=_("Require the State of Washington Clean Buildings Standard ID"),
+        required=False,
+        help_text=_(
+            "Requires the named Portfolio Manager Standard ID to be present; "
+            "it does not ask for one program-wide literal ID."
+        ),
+    )
+    require_energy_star_score = forms.BooleanField(
+        label=_("Require an ENERGY STAR score"),
+        required=False,
+        help_text=_("Use only for property types eligible for an ENERGY STAR score."),
+    )
+    ALERT_POLICY_CHOICES = [
+        ("allow", _("Allow")),
+        ("warning", _("Warning")),
+        ("error", _("Error")),
+    ]
+    meter_less_than_12_months_policy = forms.ChoiceField(
+        label=_("Energy meter has less than 12 full calendar months"),
+        choices=ALERT_POLICY_CHOICES,
+        initial="allow",
+        required=False,
+    )
+    meter_gap_policy = forms.ChoiceField(
+        label=_("Energy meter has gaps"),
+        choices=ALERT_POLICY_CHOICES,
+        initial="allow",
+        required=False,
+    )
+    meter_overlap_policy = forms.ChoiceField(
+        label=_("Energy meter has overlaps"),
+        choices=ALERT_POLICY_CHOICES,
+        initial="allow",
+        required=False,
+    )
+    no_meters_selected_policy = forms.ChoiceField(
+        label=_("No energy meters selected for metrics"),
+        choices=ALERT_POLICY_CHOICES,
+        initial="allow",
+        required=False,
+    )
+    long_meter_entry_policy = forms.ChoiceField(
+        label=_("Energy meter has a single entry longer than 65 days"),
+        choices=ALERT_POLICY_CHOICES,
+        initial="allow",
+        required=False,
+    )
+    estimated_energy_policy = forms.ChoiceField(
+        label=_("Estimated energy values"),
+        choices=ALERT_POLICY_CHOICES,
+        initial="allow",
+        required=False,
+    )
+    other_alert_policy = forms.ChoiceField(
+        label=_("Other included Portfolio Manager Alert Metrics"),
+        choices=ALERT_POLICY_CHOICES,
+        initial="allow",
+        required=False,
+    )
+    expected_buildings_list = forms.FileField(
+        label=_("Expected Buildings List (JSON)"),
+        required=False,
+        help_text=_(
+            "Optional in ZIP mode. Upload the versioned EBL JSON roster used "
+            "for identity reconciliation and per-building EUIt overrides."
+        ),
+    )
+    remove_expected_buildings_list = forms.BooleanField(
+        label=_("Remove the currently assigned Expected Buildings List"),
+        required=False,
+    )
+    max_archive_members = forms.IntegerField(
+        label=_("Maximum reports in one ZIP"),
+        required=False,
+        min_value=1,
+        max_value=1000,
+        initial=250,
+    )
+    max_member_size_mb = forms.IntegerField(
+        label=_("Maximum size of each report (MB)"),
+        required=False,
+        min_value=1,
+        max_value=100,
+        initial=20,
+    )
+    max_uncompressed_size_mb = forms.IntegerField(
+        label=_("Maximum total uncompressed size (MB)"),
+        required=False,
+        min_value=1,
+        max_value=1000,
+        initial=250,
+    )
+
+    def __init__(self, *args, step=None, **kwargs):
+        super().__init__(*args, step=step, **kwargs)
+        config = getattr(step, "config", None) or {}
+        for field_name in (
+            "submission_structure",
+            "profile",
+            "default_euit_kbtu_ft2_yr",
+            "compare_to_euit",
+            "near_target_percent",
+            "require_complete_reporting_period",
+            "minimum_reporting_period_months",
+            "maximum_reporting_period_age_months",
+            "require_benchmark_ready",
+            "require_form_c_ready",
+            "require_weather_normalized_site_eui",
+            "require_washington_standard_id",
+            "require_energy_star_score",
+            "meter_less_than_12_months_policy",
+            "meter_gap_policy",
+            "meter_overlap_policy",
+            "no_meters_selected_policy",
+            "long_meter_entry_policy",
+            "estimated_energy_policy",
+            "other_alert_policy",
+            "max_archive_members",
+        ):
+            if field_name in config:
+                self.fields[field_name].initial = config[field_name]
+        if "max_member_bytes" in config:
+            self.fields["max_member_size_mb"].initial = max(
+                1,
+                int(config["max_member_bytes"]) // 1_000_000,
+            )
+        if "max_uncompressed_bytes" in config:
+            self.fields["max_uncompressed_size_mb"].initial = max(
+                1,
+                int(config["max_uncompressed_bytes"]) // 1_000_000,
+            )
+        existing = (
+            step.step_resources.filter(role="EXPECTED_BUILDINGS_LIST").first()
+            if step and step.pk
+            else None
+        )
+        if existing:
+            summary = ""
+            try:
+                from validibot_shared.portfolio_manager import (
+                    validate_expected_buildings_list_json,
+                )
+
+                existing.step_resource_file.open("rb")
+                ebl = validate_expected_buildings_list_json(
+                    existing.step_resource_file.read(MAX_EBL_BYTES + 1)
+                )
+                existing.step_resource_file.seek(0)
+                target_count = sum(
+                    building.euit is not None for building in ebl.buildings
+                )
+                identity_label = ebl.id_field.name or ebl.id_field.kind
+                summary = _(
+                    " Identity: %(identity)s; %(entries)s buildings; "
+                    "%(targets)s per-building EUIt values."
+                ) % {
+                    "identity": identity_label,
+                    "entries": len(ebl.buildings),
+                    "targets": target_count,
+                }
+            except (OSError, ValueError):
+                summary = ""
+            self.fields["expected_buildings_list"].help_text = _(
+                "Currently assigned: %(name)s.%(summary)s Upload a new JSON "
+                "file to replace it."
+            ) % {"name": existing.filename, "summary": summary}
+        else:
+            self.fields.pop("remove_expected_buildings_list", None)
+        self.helper.layout = self._build_layout()
+
+    def _build_layout(self) -> Layout:
+        """Group the domain controls into a readable progressive editor."""
+        general_fields = ["name", "description", "submission_structure", "profile"]
+        if "execution_profile" in self.fields:
+            general_fields.append("execution_profile")
+        bulk_fields = [
+            "expected_buildings_list",
+            "max_archive_members",
+            "max_member_size_mb",
+            "max_uncompressed_size_mb",
+        ]
+        if "remove_expected_buildings_list" in self.fields:
+            bulk_fields.insert(1, "remove_expected_buildings_list")
+        return Layout(
+            *general_fields,
+            HTML("<hr class='my-4'><h3 class='h6 mb-3'>EUIt target</h3>"),
+            "default_euit_kbtu_ft2_yr",
+            "compare_to_euit",
+            "near_target_percent",
+            HTML(
+                "<hr class='my-4'><h3 class='h6 mb-3'>"
+                "Reporting period and required metrics</h3>"
+            ),
+            "require_complete_reporting_period",
+            "minimum_reporting_period_months",
+            "maximum_reporting_period_age_months",
+            "require_benchmark_ready",
+            "require_form_c_ready",
+            "require_weather_normalized_site_eui",
+            "require_washington_standard_id",
+            "require_energy_star_score",
+            HTML(
+                "<hr class='my-4'><h3 class='h6 mb-3'>"
+                "Portfolio Manager data quality</h3>"
+            ),
+            "meter_less_than_12_months_policy",
+            "meter_gap_policy",
+            "meter_overlap_policy",
+            "no_meters_selected_policy",
+            "long_meter_entry_policy",
+            "estimated_energy_policy",
+            "other_alert_policy",
+            Div(
+                HTML(
+                    "<hr class='my-4'><h3 class='h6 mb-3'>ZIP collection settings</h3>"
+                ),
+                *bulk_fields,
+                css_id="portfolio-manager-bulk-settings",
+            ),
+            "notes",
+        )
+
+    def clean(self):
+        """Validate the EBL schema immediately and apply explicit profile defaults."""
+        cleaned = super().clean()
+        structure = cleaned.get("submission_structure") or "single_report"
+        upload = cleaned.get("expected_buildings_list")
+        if upload:
+            if not upload.name.casefold().endswith(".json"):
+                self.add_error(
+                    "expected_buildings_list",
+                    _("Expected Buildings List files must use the .json extension."),
+                )
+            if upload.size > MAX_EBL_BYTES:
+                self.add_error(
+                    "expected_buildings_list",
+                    _("Expected Buildings List files must be 5 MB or smaller."),
+                )
+            else:
+                from validibot_shared.portfolio_manager import (
+                    validate_expected_buildings_list_json,
+                )
+
+                upload.seek(0)
+                raw = upload.read()
+                upload.seek(0)
+                try:
+                    validate_expected_buildings_list_json(raw)
+                except ValueError as exc:
+                    self.add_error(
+                        "expected_buildings_list",
+                        _("Invalid Expected Buildings List: %(error)s")
+                        % {"error": exc},
+                    )
+        if structure != "zip_collection" and upload:
+            self.add_error(
+                "expected_buildings_list",
+                _("An Expected Buildings List is available only in ZIP mode."),
+            )
+        if upload and cleaned.get("remove_expected_buildings_list"):
+            self.add_error(
+                "expected_buildings_list",
+                _("Upload a replacement or remove the current EBL, not both."),
+            )
+        profile = cleaned.get("profile")
+        if profile == "benchmark_readiness":
+            cleaned["require_complete_reporting_period"] = True
+            cleaned["require_benchmark_ready"] = True
+        elif profile == "washington_cbps_tier1_euit":
+            cleaned["require_complete_reporting_period"] = True
+            cleaned["minimum_reporting_period_months"] = 12
+            if cleaned.get("maximum_reporting_period_age_months") is None:
+                cleaned["maximum_reporting_period_age_months"] = 24
+            cleaned["require_benchmark_ready"] = True
+            cleaned["require_form_c_ready"] = True
+            cleaned["require_weather_normalized_site_eui"] = True
+            cleaned["require_washington_standard_id"] = True
+            cleaned["meter_less_than_12_months_policy"] = "error"
+            cleaned["meter_gap_policy"] = "error"
+            cleaned["meter_overlap_policy"] = "error"
+            cleaned["no_meters_selected_policy"] = "error"
+            cleaned["long_meter_entry_policy"] = "error"
+            cleaned["estimated_energy_policy"] = "warning"
+            cleaned["other_alert_policy"] = "warning"
+        return cleaned
+
+
 def get_config_form_class(validation_type: str) -> type[forms.Form]:
     mapping: dict[str, type[forms.Form]] = {
         ValidationType.BASIC: BasicStepConfigForm,
@@ -4821,6 +5223,7 @@ def get_config_form_class(validation_type: str) -> type[forms.Form]:
         ValidationType.SCHEMATRON: SchematronStepConfigForm,
         ValidationType.SHACL: ShaclStepConfigForm,
         ValidationType.TABULAR: TabularStepConfigForm,
+        ValidationType.PORTFOLIO_MANAGER: PortfolioManagerStepConfigForm,
         ValidationType.ENERGYPLUS: EnergyPlusStepConfigForm,
         ValidationType.FMU: FMUValidatorStepConfigForm,
         ValidationType.AI_ASSIST: AiAssistStepConfigForm,

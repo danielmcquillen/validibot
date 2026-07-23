@@ -128,7 +128,9 @@ dependencies = [
   # versions to the strict file-identity contract introduced in 0.16.0.
   # 0.19.0 records the immutable execution deployment selected for each
   # managed attempt in portable evidence manifests.
-  "validibot-shared==0.19.0",
+  # 0.20.0 adds the strict Portfolio Manager XLS/XLSX/XML/ZIP envelope,
+  # Expected Buildings List schema, property facts, and portfolio outputs.
+  "validibot-shared==0.20.0",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in
@@ -346,6 +348,11 @@ ignore = [
 
 [tool.ruff.lint.isort]
 force-single-line = true
+
+[tool.uv.sources]
+# Coordinated cross-repository development uses the sibling checkout until the
+# new shared contract release has been published.
+validibot-shared = { path = "../validibot-shared", editable = true }
 
 [dependency-groups]
 dev = [

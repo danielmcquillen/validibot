@@ -1,15 +1,15 @@
 """
 Execution backend factory.
 
-Provides a factory function to get the appropriate execution backend
-based on the DEPLOYMENT_TARGET setting.
-
-The VALIDATOR_RUNNER setting can override the default if needed.
+Managed attempts select an adapter from their immutable provider deployment.
+Unmanaged/local execution falls back to the deployment target and the legacy
+``VALIDATOR_RUNNER`` override.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -25,13 +25,69 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class ManagedExecutionBackendRoute:
+    """One authoritative provider/deployment-kind adapter registration."""
+
+    backend_class: type[ExecutionBackend]
+    runner_type: str
+
+
+@lru_cache(maxsize=1)
+def _managed_execution_backend_routes() -> dict[
+    tuple[str, str], ManagedExecutionBackendRoute
+]:
+    """Build the process's authoritative managed adapter registrations."""
+    from validibot.validations.constants import ExecutionDeploymentKind
+    from validibot.validations.constants import ExecutionProviderType
+    from validibot.validations.services.execution.gcp import (
+        CloudRunJobsExecutionBackend,
+    )
+    from validibot.validations.services.execution.gcp_service import (
+        CloudRunServiceExecutionBackend,
+    )
+
+    return {
+        (
+            ExecutionProviderType.GCP,
+            ExecutionDeploymentKind.CLOUD_RUN_JOB,
+        ): ManagedExecutionBackendRoute(
+            backend_class=CloudRunJobsExecutionBackend,
+            runner_type="CloudRunJobsExecutionBackend",
+        ),
+        (
+            ExecutionProviderType.GCP,
+            ExecutionDeploymentKind.CLOUD_RUN_SERVICE,
+        ): ManagedExecutionBackendRoute(
+            backend_class=CloudRunServiceExecutionBackend,
+            runner_type="CloudRunServiceExecutionBackend",
+        ),
+    }
+
+
+def get_managed_execution_backend_route(
+    deployment: ValidatorExecutionDeployment,
+) -> ManagedExecutionBackendRoute:
+    """Resolve the adapter and stable attempt identifier for a pinned route."""
+    key = (deployment.provider_type, deployment.deployment_kind)
+    route = _managed_execution_backend_routes().get(key)
+    if route is None:
+        msg = (
+            "No execution backend implemented for managed deployment: "
+            f"{deployment.provider_type}/{deployment.deployment_kind}"
+        )
+        raise ValueError(msg)
+    return route
+
+
 def get_execution_backend(
     deployment: ValidatorExecutionDeployment | None = None,
 ) -> ExecutionBackend:
     """
-    Get the execution backend for the configured deployment target.
+    Get the execution backend for a pinned route or unmanaged target.
 
-    The VALIDATOR_RUNNER setting can override the default selection.
+    A supplied managed deployment is authoritative. ``VALIDATOR_RUNNER`` only
+    influences the unmanaged/local fallback when no deployment is supplied.
 
     Returns:
         ExecutionBackend instance for the current deployment target.
@@ -40,35 +96,8 @@ def get_execution_backend(
         ValueError: If DEPLOYMENT_TARGET is not set or no backend exists.
     """
     if deployment is not None:
-        from validibot.validations.constants import ExecutionDeploymentKind
-        from validibot.validations.constants import ExecutionProviderType
-        from validibot.validations.services.execution.gcp import (
-            CloudRunJobsExecutionBackend,
-        )
-        from validibot.validations.services.execution.gcp_service import (
-            CloudRunServiceExecutionBackend,
-        )
-
-        if deployment.provider_type != ExecutionProviderType.GCP:
-            msg = (
-                "No execution backend implemented for managed provider: "
-                f"{deployment.provider_type}"
-            )
-            raise ValueError(msg)
-        backend_classes: dict[str, type[CloudRunJobsExecutionBackend]] = {
-            ExecutionDeploymentKind.CLOUD_RUN_JOB: CloudRunJobsExecutionBackend,
-            ExecutionDeploymentKind.CLOUD_RUN_SERVICE: (
-                CloudRunServiceExecutionBackend
-            ),
-        }
-        backend_class = backend_classes.get(deployment.deployment_kind)
-        if backend_class is None:
-            msg = (
-                "No execution backend implemented for deployment kind: "
-                f"{deployment.deployment_kind}"
-            )
-            raise ValueError(msg)
-        return backend_class(deployment=deployment)
+        route = get_managed_execution_backend_route(deployment)
+        return route.backend_class(deployment=deployment)
 
     return _get_default_execution_backend()
 

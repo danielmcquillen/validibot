@@ -749,19 +749,24 @@ generate-secret-key:
 validator-build name:
     #!/usr/bin/env bash
     set -euo pipefail
+    IMAGE_SLUG="{{name}}"
+    IMAGE_SLUG="${IMAGE_SLUG//_/-}"
     docker build --platform linux/amd64 \
         -f ../validibot-validator-backends/validator_backends/{{name}}/Dockerfile \
         ${VALIDATOR_BACKEND_VERSION:+--build-arg VALIDATOR_BACKEND_VERSION="${VALIDATOR_BACKEND_VERSION}"} \
         --build-arg VALIDATOR_BACKEND_REVISION="{{validator_backend_git_sha}}" \
         --build-arg VALIDATOR_BACKEND_SLUG="{{name}}" \
-        -t validibot-validator-backend-{{name}}:{{validator_backend_git_sha}} \
-        -t validibot-validator-backend-{{name}}:latest \
+        -t validibot-validator-backend-${IMAGE_SLUG}:{{validator_backend_git_sha}} \
+        -t validibot-validator-backend-${IMAGE_SLUG}:latest \
         ../validibot-validator-backends
 
 # Build all validator images
 validators-build-all:
     just self-hosted validator-build energyplus
     just self-hosted validator-build fmu
+    just self-hosted validator-build shacl
+    just self-hosted validator-build schematron
+    just self-hosted validator-build portfolio_manager
 
 # =============================================================================
 # Operator-Facing Stub Recipes (Phase 0 of ADR-2026-04-27)
@@ -2121,6 +2126,7 @@ validators:
         echo "    just self-hosted validators-build-all"
         echo "    just self-hosted validator-build energyplus"
         echo "    just self-hosted validator-build fmu"
+        echo "    just self-hosted validator-build portfolio_manager"
         exit 0
     fi
 

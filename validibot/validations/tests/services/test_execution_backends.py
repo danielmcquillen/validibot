@@ -51,6 +51,8 @@ from validibot_shared.validations.envelopes import SupportedMimeType
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.validations.constants import ExecutionAttemptState
+from validibot.validations.constants import ExecutionDeploymentKind
+from validibot.validations.constants import ExecutionProviderType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.services.cloud_run.envelope_builder import (
@@ -62,8 +64,14 @@ from validibot.validations.services.execution.docker_compose import (
     DockerComposeExecutionBackend,
 )
 from validibot.validations.services.execution.gcp import CloudRunJobsExecutionBackend
+from validibot.validations.services.execution.gcp_service import (
+    CloudRunServiceExecutionBackend,
+)
 from validibot.validations.services.execution.registry import clear_backend_cache
 from validibot.validations.services.execution.registry import get_execution_backend
+from validibot.validations.services.execution.registry import (
+    get_managed_execution_backend_route,
+)
 from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.tests.factories import ExecutionAttemptFactory
 from validibot.validations.tests.factories import ValidationRunFactory
@@ -359,6 +367,34 @@ class TestBackendFactory:
 
         with pytest.raises(ValueError, match="Unknown VALIDATOR_RUNNER"):
             get_execution_backend()
+
+    def test_pinned_service_route_selects_service_adapter_and_identifier(self):
+        """Adapter construction and attempt evidence must share one registry."""
+        deployment = MagicMock(
+            provider_type=ExecutionProviderType.GCP,
+            deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_SERVICE,
+        )
+
+        route = get_managed_execution_backend_route(deployment)
+        backend = get_execution_backend(deployment)
+
+        assert route.backend_class is CloudRunServiceExecutionBackend
+        assert route.runner_type == "CloudRunServiceExecutionBackend"
+        assert isinstance(backend, CloudRunServiceExecutionBackend)
+
+    def test_pinned_job_route_selects_job_adapter_and_identifier(self):
+        """The compatibility route must retain its distinct adapter identity."""
+        deployment = MagicMock(
+            provider_type=ExecutionProviderType.GCP,
+            deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB,
+        )
+
+        route = get_managed_execution_backend_route(deployment)
+        backend = get_execution_backend(deployment)
+
+        assert route.backend_class is CloudRunJobsExecutionBackend
+        assert route.runner_type == "CloudRunJobsExecutionBackend"
+        assert isinstance(backend, CloudRunJobsExecutionBackend)
 
 
 # ==============================================================================

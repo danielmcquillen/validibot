@@ -25,6 +25,60 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _validation_run_execution_route_data(
+    run: ValidationRun,
+) -> dict[str, str | list[str]]:
+    """Summarize immutable attempt routes for product analytics.
+
+    A workflow may execute more than one advanced step and can legitimately use
+    both a Service and a Job. Singular fields make the common case convenient;
+    plural fields preserve mixed-route truth without choosing one arbitrarily.
+    """
+    from validibot.validations.models import ExecutionAttempt
+
+    attempts = ExecutionAttempt.objects.filter(step_run__validation_run=run).values(
+        "runner_type",
+        "deployment_snapshot",
+        "deployment__provider_type",
+        "deployment__deployment_kind",
+    )
+    runner_types: set[str] = set()
+    provider_types: set[str] = set()
+    deployment_kinds: set[str] = set()
+    for attempt in attempts:
+        snapshot = attempt["deployment_snapshot"]
+        if not isinstance(snapshot, dict):
+            snapshot = {}
+        runner_type = str(attempt["runner_type"] or "")
+        provider_type = str(
+            snapshot.get("provider_type") or attempt["deployment__provider_type"] or ""
+        )
+        deployment_kind = str(
+            snapshot.get("deployment_kind")
+            or attempt["deployment__deployment_kind"]
+            or ""
+        )
+        if runner_type:
+            runner_types.add(runner_type)
+        if provider_type:
+            provider_types.add(provider_type)
+        if deployment_kind:
+            deployment_kinds.add(deployment_kind)
+
+    payload: dict[str, str | list[str]] = {}
+    for singular, values in (
+        ("execution_runner_type", runner_types),
+        ("execution_provider_type", provider_types),
+        ("execution_deployment_kind", deployment_kinds),
+    ):
+        if not values:
+            continue
+        ordered = sorted(values)
+        payload[singular] = ordered[0] if len(ordered) == 1 else "MIXED"
+        payload[f"{singular}s"] = ordered
+    return payload
+
+
 class TrackingEventService:
     """Encapsulates helpers for recording tracking events."""
 
@@ -205,6 +259,8 @@ class TrackingEventService:
             payload["validation_run_id"] = validation_run_id
         if extra_data:
             payload.update(extra_data)
+        if run is not None:
+            payload.update(_validation_run_execution_route_data(run))
 
         cleaned_payload = {k: v for k, v in payload.items() if v is not None}
 

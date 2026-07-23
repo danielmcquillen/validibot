@@ -4,7 +4,7 @@ The importer is the Phase 1 bridge: production Jobs already exist, so Validibot
 must read and verify their exact immutable facts without redeploying them or
 manufacturing provenance for older attempts.  These tests cover digest and
 resource validation, shared provider resources, idempotency, activation, and
-the four-backend management-command inventory.
+the five-backend management-command inventory.
 """
 
 from types import SimpleNamespace
@@ -31,7 +31,7 @@ REGION = "australia-southeast1"
 RUNTIME_IDENTITY = "validator-runtime@validibot-prod.iam.gserviceaccount.com"
 DIGEST = "sha256:" + "d" * 64
 REVISION = "3b4ef06"
-MANAGED_BACKEND_COUNT = 4
+MANAGED_BACKEND_COUNT = 5
 JOB_TIMEOUT_SECONDS = 3600
 JOB_CPU_MILLIS = 2000
 JOB_MEMORY_MIB = 4096
@@ -128,14 +128,14 @@ def test_registration_is_idempotent_and_does_not_rewrite_historical_attempts():
     "validibot.validations.management.commands.sync_gcp_validator_deployments."
     "_resolve_cloud_run_job_name",
     side_effect=lambda validation_type: (
-        f"validibot-validator-backend-{validation_type.lower()}"
+        f"validibot-validator-backend-{validation_type.lower().replace('_', '-')}"
     ),
 )
 @patch(
     "validibot.validations.management.commands.sync_gcp_validator_deployments."
     "run_v2.JobsClient",
 )
-def test_command_imports_and_activates_all_four_current_backend_types(
+def test_command_imports_and_activates_all_five_current_backend_types(
     jobs_client_class,
     resolve_job_name,
     settings,
@@ -148,6 +148,7 @@ def test_command_imports_and_activates_all_four_current_backend_types(
         ValidationType.FMU,
         ValidationType.SHACL,
         ValidationType.SCHEMATRON,
+        ValidationType.PORTFOLIO_MANAGER,
     ):
         ValidatorFactory(validation_type=validation_type)
     jobs_client_class.return_value.get_job.side_effect = lambda *, name: _job(name)
@@ -163,5 +164,6 @@ def test_command_imports_and_activates_all_four_current_backend_types(
         ValidationType.FMU,
         ValidationType.SHACL,
         ValidationType.SCHEMATRON,
+        ValidationType.PORTFOLIO_MANAGER,
     }
     assert resolve_job_name.call_count == MANAGED_BACKEND_COUNT

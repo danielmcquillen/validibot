@@ -48,7 +48,7 @@ REVISION = "validibot-validator-service-shacl-00001-abc"
 SERVICE_TIMEOUT_SECONDS = 1649
 SERVICE_CPU_MILLIS = 2000
 SERVICE_MEMORY_MIB = 4096
-MANAGED_BACKEND_COUNT = 4
+MANAGED_BACKEND_COUNT = 5
 
 
 def _resource(service_name: str) -> str:
@@ -361,7 +361,7 @@ def test_registered_service_sync_audits_provider_capacity_convergence(
     "validibot.validations.management.commands.sync_gcp_validator_services."
     "run_v2.ServicesClient"
 )
-def test_command_verifies_all_four_service_types_without_activating(
+def test_command_verifies_all_five_service_types_without_activating(
     services_client_class,
     settings,
 ):
@@ -376,6 +376,7 @@ def test_command_verifies_all_four_service_types_without_activating(
         ValidationType.FMU,
         ValidationType.SHACL,
         ValidationType.SCHEMATRON,
+        ValidationType.PORTFOLIO_MANAGER,
     ):
         ValidatorFactory(validation_type=validation_type)
     client = services_client_class.return_value

@@ -90,6 +90,11 @@ class CloudRunJobsExecutionBackend(ExecutionBackend):
         return True
 
     @property
+    def provider_resource_label(self) -> str:
+        """Return the operator-facing provider primitive used by this adapter."""
+        return "Cloud Run Job"
+
+    @property
     def status_lookup_capability(self) -> ProviderStatusLookupCapability:
         """Cloud Run Jobs expose durable execution status through the Jobs API."""
         return ProviderStatusLookupCapability.SUPPORTED
@@ -246,7 +251,9 @@ class CloudRunJobsExecutionBackend(ExecutionBackend):
                 for issue in result.issues
                 if getattr(issue, "message", None)
             ]
-            error_message = "\n".join(messages) or "Failed to launch Cloud Run Job"
+            error_message = "\n".join(messages) or (
+                f"Failed to launch {self.provider_resource_label}"
+            )
             # Preserve a reserved failure code + meta (e.g.
             # ``schematron.rules_invalid`` with ``meta.infra_error``) from the
             # launcher, so a LAUNCH-time infrastructure failure renders the same
@@ -305,6 +312,8 @@ class CloudRunJobsExecutionBackend(ExecutionBackend):
                 return self._execute_shacl(request)
             if validator_type == "SCHEMATRON":
                 return self._execute_schematron(request)
+            if validator_type == "PORTFOLIO_MANAGER":
+                return self._execute_portfolio_manager(request)
             return ExecutionResponse(
                 execution_id="",
                 is_complete=True,
@@ -313,13 +322,14 @@ class CloudRunJobsExecutionBackend(ExecutionBackend):
 
         except Exception as e:
             logger.exception(
-                "Failed to launch Cloud Run Job for run %s",
+                "Failed to launch %s for run %s",
+                self.provider_resource_label,
                 request.run_id,
             )
             return ExecutionResponse(
                 execution_id="",
                 is_complete=True,
-                error_message=f"Failed to launch Cloud Run Job: {e}",
+                error_message=f"Failed to launch {self.provider_resource_label}: {e}",
             )
 
     def _execute_energyplus(self, request: ExecutionRequest) -> ExecutionResponse:
@@ -405,6 +415,25 @@ class CloudRunJobsExecutionBackend(ExecutionBackend):
 
         return self._launch_result_to_response(result)
 
+    def _execute_portfolio_manager(
+        self,
+        request: ExecutionRequest,
+    ) -> ExecutionResponse:
+        """Launch the isolated Portfolio Manager report backend."""
+        from validibot.validations.services.cloud_run.launcher import (
+            launch_portfolio_manager_validation,
+        )
+
+        result = launch_portfolio_manager_validation(
+            run=request.run,
+            validator=request.validator,
+            submission=request.submission,
+            ruleset=request.step.ruleset,
+            step=request.step,
+            **self._launcher_kwargs(request.validator_type),
+        )
+        return self._launch_result_to_response(result)
+
     def _execute_fmu(self, request: ExecutionRequest) -> ExecutionResponse:
         """
         Execute FMU validation via Cloud Run.
@@ -426,7 +455,8 @@ class CloudRunJobsExecutionBackend(ExecutionBackend):
 
         # Launch via existing code
         logger.info(
-            "Launching FMU Cloud Run Job for run %s (validator=%s)",
+            "Launching FMU %s for run %s (validator=%s)",
+            self.provider_resource_label,
             request.run_id,
             request.validator.slug if request.validator else "unknown",
         )
@@ -444,13 +474,15 @@ class CloudRunJobsExecutionBackend(ExecutionBackend):
         if not execution_id:
             logger.error(
                 "FMU launch returned empty execution_id for run %s. "
-                "Stats: %s. The Cloud Run Job may not have been created.",
+                "Stats: %s. The %s may not have been created.",
                 request.run_id,
                 stats,
+                self.provider_resource_label,
             )
         else:
             logger.info(
-                "FMU Cloud Run Job dispatched for run %s: execution_id=%s",
+                "FMU %s dispatched for run %s: execution_id=%s",
+                self.provider_resource_label,
                 request.run_id,
                 execution_id,
             )

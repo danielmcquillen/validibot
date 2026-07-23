@@ -31,6 +31,7 @@ from django.conf import settings
 from django.utils import timezone
 from validibot_shared.canonicalization import sha256_hex_for_model
 
+from validibot.validations.constants import PORTFOLIO_MANAGER_MAX_SUBMISSION_BYTES
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
 from validibot.validations.services.attempt_paths import attempt_bundle_relpath
@@ -1269,3 +1270,146 @@ def launch_schematron_validation(
             ),
         ]
         return ValidationResult(passed=False, issues=issues, stats={})
+
+
+def launch_portfolio_manager_validation(
+    *,
+    run: ValidationRun,
+    validator: Validator,
+    submission: Submission,
+    ruleset: Ruleset | None,
+    step: WorkflowStep,
+    job_name: str | None = None,
+    expected_image_digest: str | None = None,
+    provider_dispatch=None,
+) -> ValidationResult:
+    """Stage exact report bytes and launch the isolated Portfolio Manager backend."""
+    del ruleset
+    current_step_run = None
+    try:
+        current_step_run = run.current_step_run
+        if not current_step_run:
+            msg = f"No active step run for run {run.id}"
+            raise ValueError(msg)  # noqa: TRY301
+        already_launched = _check_already_launched(current_step_run)
+        if already_launched:
+            return already_launched
+
+        bundle = _attempt_execution_bundle(run=run, step_run=current_step_run)
+        execution_bundle_uri = bundle.execution_bundle_uri
+        input_envelope_uri = bundle.input_envelope_uri
+        suffix = Path(submission.original_filename or "").suffix.casefold()
+        if suffix not in {".xls", ".xlsx", ".xml", ".zip"}:
+            msg = "Portfolio Manager submission has an unsupported extension"
+            raise ValueError(msg)  # noqa: TRY301
+        staged_name = f"portfolio-manager-report{suffix}"
+        submission_uri = f"{execution_bundle_uri}/{staged_name}"
+        local_submission_path = (
+            bundle.local_dir / staged_name if bundle.local_dir is not None else None
+        )
+        content_bytes = submission.read_bytes(
+            max_bytes=PORTFOLIO_MANAGER_MAX_SUBMISSION_BYTES
+        )
+        content_type = {
+            ".xls": "application/vnd.ms-excel",
+            ".xlsx": (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            ".xml": "application/xml",
+            ".zip": "application/zip",
+        }[suffix]
+        if bundle.is_gcs:
+            submission_file = upload_file(
+                content=content_bytes,
+                uri=submission_uri,
+                content_type=content_type,
+            )
+        else:
+            if local_submission_path is None:
+                msg = "Local attempt bundle did not provide a filesystem path"
+                raise RuntimeError(msg)  # noqa: TRY301
+            create_local_bytes(local_submission_path, content_bytes)
+            submission_file = local_bytes_identity(
+                content=content_bytes,
+                uri=submission_uri,
+            )
+
+        callback_url = build_validation_callback_url()
+        callback_credentials = _issue_callback_credentials_for_step(current_step_run)
+        envelope = build_input_envelope(
+            run=run,
+            callback_url=callback_url,
+            callback_id=callback_credentials.callback_id,
+            callback_nonce=callback_credentials.callback_nonce,
+            callback_nonce_commitment=(callback_credentials.callback_nonce_commitment),
+            execution_bundle_uri=execution_bundle_uri,
+            input_file_uris={
+                "portfolio_manager_report": submission_file,
+                "primary_file_uri": submission_file,
+            },
+        )
+        envelope = _prepare_attempt_capability_envelope(
+            envelope,
+            execution_bundle_uri=execution_bundle_uri,
+        )
+        if bundle.is_gcs:
+            upload_envelope(envelope, input_envelope_uri)
+        else:
+            upload_envelope_local(envelope, Path(input_envelope_uri))
+
+        job_name = job_name or _resolve_cloud_run_job_name("PORTFOLIO_MANAGER")
+        dispatch = provider_dispatch or _dispatch_cloud_run_validation
+        execution_name, _ = dispatch(
+            step_run=current_step_run,
+            job_name=job_name,
+            input_envelope_uri=input_envelope_uri,
+            execution_bundle_uri=execution_bundle_uri,
+            envelope=envelope,
+            submission=submission,
+            step=step,
+            expected_image_digest=expected_image_digest,
+        )
+        return ValidationResult(
+            passed=None,
+            issues=[],
+            stats={
+                "job_status": CloudRunJobStatus.PENDING,
+                "job_name": job_name,
+                "execution_name": execution_name,
+                "input_uri": input_envelope_uri,
+                "execution_bundle_uri": execution_bundle_uri,
+                "output_values": {},
+            },
+        )
+    except ProviderDispatchAmbiguousError:
+        logger.warning(
+            "Cloud Run acceptance is unknown for Portfolio Manager run %s",
+            run.id,
+        )
+        return _ambiguous_dispatch_result()
+    except Exception:
+        if _attempt_requires_reconciliation(current_step_run):
+            logger.exception(
+                "Portfolio Manager launch follow-up failed after provider claim"
+            )
+            return _ambiguous_dispatch_result()
+        logger.exception(
+            "Failed to launch Portfolio Manager backend for run %s",
+            run.id,
+        )
+        return ValidationResult(
+            passed=False,
+            issues=[
+                ValidationIssue(
+                    path="",
+                    message=(
+                        "The Portfolio Manager validation backend could not be "
+                        "launched. The error has been logged for investigation."
+                    ),
+                    severity=Severity.ERROR,
+                    code="portfolio_manager.backend_unavailable",
+                    meta={"infra_error": True},
+                )
+            ],
+            stats={},
+        )

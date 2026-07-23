@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
+from google.api_core.exceptions import GoogleAPIError
 from google.api_core.exceptions import NotFound
-from google.cloud import tasks_v2
 
+from validibot.core.tasks.dispatch.http_task_client import get_cloud_tasks_client
 from validibot.validations.constants import ProviderStatusLookupCapability
 from validibot.validations.services.execution.gcp import CloudRunJobsExecutionBackend
 from validibot.validations.services.execution.gcp_service_dispatch import (
@@ -16,6 +18,8 @@ from validibot.validations.services.execution.gcp_service_dispatch import (
 if TYPE_CHECKING:
     from validibot.validations.models import ValidatorExecutionDeployment
     from validibot.validations.services.execution.base import ExecutionResponse
+
+logger = logging.getLogger(__name__)
 
 
 class CloudRunServiceExecutionBackend(CloudRunJobsExecutionBackend):
@@ -30,6 +34,11 @@ class CloudRunServiceExecutionBackend(CloudRunJobsExecutionBackend):
         """Cloud Run requests do not expose durable per-request status."""
         return ProviderStatusLookupCapability.UNSUPPORTED
 
+    @property
+    def provider_resource_label(self) -> str:
+        """Return the truthful primitive used by Service dispatch."""
+        return "Cloud Run Service"
+
     def check_status(self, execution_id: str) -> ExecutionResponse | None:
         """Return no provider status; output salvage and deadlines reconcile."""
         return None
@@ -42,8 +51,15 @@ class CloudRunServiceExecutionBackend(CloudRunJobsExecutionBackend):
         the already-committed logical fence still makes any callback late.
         """
         try:
-            tasks_v2.CloudTasksClient().delete_task(name=execution_id)
+            get_cloud_tasks_client().delete_task(name=execution_id)
         except NotFound:
+            return False
+        except GoogleAPIError:
+            logger.warning(
+                "Could not delete Cloud Tasks provider delivery %s",
+                execution_id,
+                exc_info=True,
+            )
             return False
         return True
 
@@ -60,8 +76,11 @@ class CloudRunServiceExecutionBackend(CloudRunJobsExecutionBackend):
 
     def _launcher_kwargs(self, validator_type: str) -> dict:
         """Supply Service dispatch while reusing provider-neutral staging."""
+        target_resource_name = self.get_container_image(validator_type)
         return {
-            "job_name": self.get_container_image(validator_type),
+            # ``job_name`` is the launcher's legacy parameter name. The value is
+            # intentionally neutral here and may identify a Job or a Service.
+            "job_name": target_resource_name,
             "expected_image_digest": self.service_deployment.backend_image_digest,
             "provider_dispatch": dispatch_cloud_run_service_validation,
         }

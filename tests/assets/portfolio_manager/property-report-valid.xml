@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <property>
+    <propertyId>9876543</propertyId>
+    <propertyName>Validibot Acceptance Library</propertyName>
+    <yearEnding>2025-12-31</yearEnding>
+    <grossFloorArea>75000</grossFloorArea>
+    <siteEUI>41.2</siteEUI>
+    <weatherNormalizedSiteEUI>39.5</weatherNormalizedSiteEUI>
+    <sourceEUI>86.4</sourceEUI>
+    <energyStarScore>82</energyStarScore>
+    <standardId name="State of Washington Clean Buildings Standard">
+      <id>WA-ACCEPTANCE-9876543</id>
+    </standardId>
+  </property>
+</response>

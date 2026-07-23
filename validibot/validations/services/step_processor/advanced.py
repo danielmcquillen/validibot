@@ -93,10 +93,11 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # Create durable identity before any provider work. A redelivery that
         # observes an already-claimed attempt must not call the provider again;
         # reconciliation owns that case.
-        from validibot.core.constants import DeploymentTarget
-        from validibot.core.deployment import get_deployment_target
         from validibot.core.deployment import (
             supports_author_selectable_validator_execution_profiles,
+        )
+        from validibot.core.deployment import (
+            uses_managed_validator_execution_deployments,
         )
         from validibot.validations.services.execution import get_execution_backend
         from validibot.validations.services.execution.deployments import (
@@ -109,7 +110,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
             get_or_create_execution_attempt,
         )
 
-        managed = get_deployment_target() == DeploymentTarget.GCP
+        managed = uses_managed_validator_execution_deployments()
         default_backend = None if managed else get_execution_backend()
         execution_profile = (
             effective_execution_profile(step=self.workflow_step)

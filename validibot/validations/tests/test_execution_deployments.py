@@ -632,10 +632,17 @@ def test_emergency_block_service_requires_reason_and_writes_audit_event():
     )
 
     assert blocked.emergency_blocked is True
-    assert AuditLogEntry.objects.filter(
+    audit_entry = AuditLogEntry.objects.get(
         action=AuditAction.VALIDATOR_DEPLOYMENT_BLOCKED,
         target_id=str(deployment.pk),
-    ).exists()
+    )
+    assert audit_entry.metadata["provider_type"] == ExecutionProviderType.GCP
+    assert audit_entry.metadata["deployment_kind"] == (
+        ExecutionDeploymentKind.CLOUD_RUN_JOB
+    )
+    assert audit_entry.metadata["routing_role"] == (
+        ExecutionDeploymentRoutingRole.PRIMARY
+    )
 
 
 @pytest.mark.django_db

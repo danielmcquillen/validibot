@@ -16,6 +16,11 @@ _AUTHOR_SELECTABLE_VALIDATOR_PROFILE_TARGETS = frozenset(
         DeploymentTarget.GCP,
     }
 )
+_MANAGED_VALIDATOR_EXECUTION_TARGETS = frozenset(
+    {
+        DeploymentTarget.GCP,
+    }
+)
 
 
 def get_deployment_target() -> DeploymentTarget:
@@ -83,6 +88,20 @@ def supports_author_selectable_validator_execution_profiles(
     """
     resolved_target = target or get_deployment_target()
     return resolved_target in _AUTHOR_SELECTABLE_VALIDATOR_PROFILE_TARGETS
+
+
+def uses_managed_validator_execution_deployments(
+    *,
+    target: DeploymentTarget | None = None,
+) -> bool:
+    """Return whether attempts must pin an operator-managed provider route.
+
+    This is deliberately separate from profile selection: a future provider may
+    use managed deployments before it exposes more than one author-facing
+    workload profile.
+    """
+    resolved_target = target or get_deployment_target()
+    return resolved_target in _MANAGED_VALIDATOR_EXECUTION_TARGETS
 
 
 def get_validibot_runtime_version() -> str:

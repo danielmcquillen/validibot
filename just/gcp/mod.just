@@ -2849,7 +2849,7 @@ init-stage stage: _require-gcp-config
     echo ""
 
     # The provider queue uses a distinct OIDC principal. It has no project
-    # roles and receives run.invoker only on the four validator Services.
+    # roles and receives run.invoker only on the managed validator Services.
     echo "2d. Creating provider-task invoker: $PROVIDER_INVOKER_NAME"
     if gcloud iam service-accounts describe "$PROVIDER_INVOKER_EMAIL" --project={{gcp_project}} &>/dev/null; then
         echo "   Provider-task invoker already exists"
@@ -3678,19 +3678,25 @@ scheduler-resume job_name:
 validator-build name:
     #!/usr/bin/env bash
     set -euo pipefail
+    IMAGE_SLUG="{{name}}"
+    IMAGE_SLUG="${IMAGE_SLUG//_/-}"
     docker build --platform linux/amd64 \
         -f ../validibot-validator-backends/validator_backends/{{name}}/Dockerfile \
         ${VALIDATOR_BACKEND_VERSION:+--build-arg VALIDATOR_BACKEND_VERSION="${VALIDATOR_BACKEND_VERSION}"} \
         --build-arg VALIDATOR_BACKEND_REVISION="{{validator_backend_git_sha}}" \
         --build-arg VALIDATOR_BACKEND_SLUG="{{name}}" \
-        -t {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{validator_backend_git_sha}} \
-        -t {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:latest \
+        -t {{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}:{{validator_backend_git_sha}} \
+        -t {{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}:latest \
         ../validibot-validator-backends
 
 # Push a validator container
 validator-push name:
-    docker push {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:{{validator_backend_git_sha}}
-    docker push {{validator_repo}}/{{app_name}}-validator-backend-{{name}}:latest
+    #!/usr/bin/env bash
+    set -euo pipefail
+    IMAGE_SLUG="{{name}}"
+    IMAGE_SLUG="${IMAGE_SLUG//_/-}"
+    docker push {{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}:{{validator_backend_git_sha}}
+    docker push {{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}:latest
 
 # Build and push in one step
 validator-build-push name: (validator-build name) (validator-push name)
@@ -3701,12 +3707,14 @@ validator-build-push name: (validator-build name) (validator-push name)
 _validator-release-verify-image name release_tag:
     #!/usr/bin/env bash
     set -euo pipefail
+    IMAGE_SLUG="{{name}}"
+    IMAGE_SLUG="${IMAGE_SLUG//_/-}"
     if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "Error: backend release tag must be vX.Y.Z." >&2
         exit 1
     fi
     git -C ../validibot-validator-backends verify-tag "{{release_tag}}" >/dev/null
-    GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-{{name}}"
+    GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-${IMAGE_SLUG}"
     GHCR_DIGEST=$(docker buildx imagetools inspect "${GHCR_IMAGE}:{{release_tag}}" \
         | awk '/^Digest:/ {print $2; exit}')
     if [[ ! "$GHCR_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
@@ -3715,7 +3723,7 @@ _validator-release-verify-image name release_tag:
     fi
     gh attestation verify "oci://${GHCR_IMAGE}@${GHCR_DIGEST}" \
         --owner danielmcquillen >/dev/null
-    GAR_IMAGE="{{validator_repo}}/{{app_name}}-validator-backend-{{name}}"
+    GAR_IMAGE="{{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}"
     GAR_DIGEST=$(gcloud artifacts docker images list "$GAR_IMAGE" \
         --include-tags \
         --filter="tags:{{release_tag}}" \
@@ -3728,13 +3736,14 @@ _validator-release-verify-image name release_tag:
     fi
     echo "Verified {{name}} {{release_tag}} at ${GHCR_DIGEST}."
 
-# Verify the signed release and GAR mirror for all four backend images.
+# Verify the signed release and GAR mirror for every managed backend image.
 # Usage: just gcp validator-release-verify v0.15.0
 validator-release-verify release_tag: _require-gcp-config
     just gcp _validator-release-verify-image energyplus {{release_tag}}
     just gcp _validator-release-verify-image fmu {{release_tag}}
     just gcp _validator-release-verify-image shacl {{release_tag}}
     just gcp _validator-release-verify-image schematron {{release_tag}}
+    just gcp _validator-release-verify-image portfolio_manager {{release_tag}}
 
 # Copy one verified GHCR release image into GAR without rebuilding it. The
 # source digest is attested first; verification after the copy proves that the
@@ -3743,12 +3752,14 @@ validator-release-verify release_tag: _require-gcp-config
 _validator-release-mirror-image name release_tag:
     #!/usr/bin/env bash
     set -euo pipefail
+    IMAGE_SLUG="{{name}}"
+    IMAGE_SLUG="${IMAGE_SLUG//_/-}"
     if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "Error: backend release tag must be vX.Y.Z." >&2
         exit 1
     fi
     git -C ../validibot-validator-backends verify-tag "{{release_tag}}" >/dev/null
-    GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-{{name}}"
+    GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-${IMAGE_SLUG}"
     GHCR_DIGEST=$(docker buildx imagetools inspect "${GHCR_IMAGE}:{{release_tag}}" \
         | awk '/^Digest:/ {print $2; exit}')
     if [[ ! "$GHCR_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
@@ -3757,7 +3768,7 @@ _validator-release-mirror-image name release_tag:
     fi
     gh attestation verify "oci://${GHCR_IMAGE}@${GHCR_DIGEST}" \
         --owner danielmcquillen >/dev/null
-    GAR_IMAGE="{{validator_repo}}/{{app_name}}-validator-backend-{{name}}"
+    GAR_IMAGE="{{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}"
     echo "Mirroring verified {{name}} {{release_tag}} (${GHCR_DIGEST}) to GAR..."
     docker buildx imagetools create \
         --tag "${GAR_IMAGE}:{{release_tag}}" \
@@ -3771,6 +3782,7 @@ validator-release-mirror release_tag: _require-gcp-config
     just gcp _validator-release-mirror-image fmu {{release_tag}}
     just gcp _validator-release-mirror-image shacl {{release_tag}}
     just gcp _validator-release-mirror-image schematron {{release_tag}}
+    just gcp _validator-release-mirror-image portfolio_manager {{release_tag}}
 
 # Deploy one validator's Cloud Run Job. This is the Job-only diagnostic
 # surface; routine release staging uses validator-deploy / validator-deploy-all
@@ -3781,10 +3793,17 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
+    IMAGE_SLUG="{{name}}"
+    IMAGE_SLUG="${IMAGE_SLUG//_/-}"
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
         exit 1
     fi
+    case "{{name}}" in
+        energyplus) JOB_CPU=4; JOB_MEMORY=8Gi ;;
+        fmu|shacl|schematron|portfolio_manager) JOB_CPU=2; JOB_MEMORY=4Gi ;;
+        *) echo "Error: unknown validator Job '{{name}}'" >&2; exit 1 ;;
+    esac
     # Compute stage-specific names.
     #
     # JOB_NAME convention (May 2026 standardisation): all stages use
@@ -3802,12 +3821,12 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
     # Legacy jobs created under the older ``${APP_NAME}-validator-{name}``
     # pattern can be deleted once nothing points at them.
     if [ "{{stage}}" = "prod" ]; then
-        JOB_NAME="${APP_NAME}-validator-backend-{{name}}"
+        JOB_NAME="${APP_NAME}-validator-backend-${IMAGE_SLUG}"
         MAIN_SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker"
     else
-        JOB_NAME="${APP_NAME}-validator-backend-{{name}}-{{stage}}"
+        JOB_NAME="${APP_NAME}-validator-backend-${IMAGE_SLUG}-{{stage}}"
         MAIN_SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
@@ -3837,7 +3856,7 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
     # image policy can enforce digest pinning without trusting a mutable tag.
     # ``artifacts docker images list`` avoids requiring the optional
     # Container Analysis API used by ``images describe``.
-    IMAGE_REPOSITORY="{{validator_repo}}/{{app_name}}-validator-backend-{{name}}"
+    IMAGE_REPOSITORY="{{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}"
     IMAGE_DIGEST=$(gcloud artifacts docker images list "$IMAGE_REPOSITORY" \
         --include-tags \
         --filter="tags:${IMAGE_TAG}" \
@@ -3858,6 +3877,8 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
         --image "$IMAGE_REF" \
         --region {{gcp_region}} \
         --service-account "$VALIDATOR_SA" \
+        --cpu "$JOB_CPU" \
+        --memory "$JOB_MEMORY" \
         --max-retries 0 \
         --task-timeout {{gcp_validator_task_timeout}} \
         --execution-environment gen2 \
@@ -3892,7 +3913,7 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
         echo "   Deploy the worker first (just gcp deploy-worker {{stage}}), then re-run validator-job-deploy."
     fi
 
-# Deploy all four validator Jobs without deploying Services. This is a
+# Deploy all managed validator Jobs without deploying Services. This is a
 # diagnostic/recovery surface; routine releases use validator-deploy-all.
 # Usage: just gcp validator-jobs-deploy-all prod v0.15.1
 [arg('stage', pattern='dev|staging|prod')]
@@ -3901,6 +3922,7 @@ validator-jobs-deploy-all stage release_tag="": _require-gcp-config
     just gcp validator-job-deploy fmu {{stage}} "{{release_tag}}"
     just gcp validator-job-deploy shacl {{stage}} "{{release_tag}}"
     just gcp validator-job-deploy schematron {{stage}} "{{release_tag}}"
+    just gcp validator-job-deploy portfolio_manager {{stage}} "{{release_tag}}"
 
 # Deploy one digest-pinned private validator Cloud Run Service. The same image
 # retains its one-shot Job entrypoint; VALIDIBOT_EXECUTION_SHAPE selects the
@@ -3911,6 +3933,8 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
+    IMAGE_SLUG="{{name}}"
+    IMAGE_SLUG="${IMAGE_SLUG//_/-}"
     if [ "{{stage}}" = "prod" ]; then
         PROVIDER_INVOKER="${APP_NAME}-val-invoker-prod@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
@@ -3926,6 +3950,7 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
         fmu) CPU=2; MEMORY=4Gi; DEFAULT_MAX_INSTANCES=4 ;;
         shacl) CPU=2; MEMORY=4Gi; DEFAULT_MAX_INSTANCES=8 ;;
         schematron) CPU=2; MEMORY=4Gi; DEFAULT_MAX_INSTANCES=8 ;;
+        portfolio_manager) CPU=2; MEMORY=4Gi; DEFAULT_MAX_INSTANCES=8 ;;
         *) echo "Error: unknown validator Service '{{name}}'" >&2; exit 1 ;;
     esac
     MIN_INSTANCES="${VALIDATOR_SERVICE_MIN_INSTANCES:-0}"
@@ -3961,7 +3986,7 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
         IMAGE_TAG="{{validator_backend_git_sha}}"
         BACKEND_RELEASE="{{validator_backend_version}}"
     fi
-    SERVICE_NAME="${APP_NAME}-validator-service-{{name}}"
+    SERVICE_NAME="${APP_NAME}-validator-service-${IMAGE_SLUG}"
     if [ -n "$RELEASE_TAG" ]; then
         RELEASE_LABEL="${RELEASE_TAG//./-}"
         if [[ ! "$RELEASE_LABEL" =~ ^[a-z0-9-]+$ ]]; then
@@ -3974,7 +3999,7 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
         SERVICE_NAME="${SERVICE_NAME}-{{stage}}"
     fi
 
-    IMAGE_REPOSITORY="{{validator_repo}}/{{app_name}}-validator-backend-{{name}}"
+    IMAGE_REPOSITORY="{{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}"
     IMAGE_DIGEST=$(gcloud artifacts docker images list "$IMAGE_REPOSITORY" \
         --include-tags \
         --filter="tags:${IMAGE_TAG}" \
@@ -4043,16 +4068,17 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
         --quiet >/dev/null
     echo "$SERVICE_NAME is private, concurrency=1, min=$MIN_INSTANCES, max=$MAX_INSTANCES."
 
-# Provision all four Services without deploying Jobs or changing application
+# Provision all managed Services without deploying Jobs or changing application
 # routing. This is a diagnostic/recovery surface; routine releases use
 # validator-deploy-all.
-# Deploy all four validator Services only (diagnostic/recovery).
+# Deploy all managed validator Services only (diagnostic/recovery).
 [arg('stage', pattern='dev|staging|prod')]
 validator-services-deploy-all stage release_tag="": _require-gcp-config
     just gcp validator-service-deploy energyplus {{stage}} "{{release_tag}}"
     just gcp validator-service-deploy fmu {{stage}} "{{release_tag}}"
     just gcp validator-service-deploy shacl {{stage}} "{{release_tag}}"
     just gcp validator-service-deploy schematron {{stage}} "{{release_tag}}"
+    just gcp validator-service-deploy portfolio_manager {{stage}} "{{release_tag}}"
 
 # Stage one complete validator backend release without changing application
 # routing. The signed image is mirrored once, then the matching Job and Service
@@ -4068,7 +4094,7 @@ validator-deploy name stage release_tag: _require-gcp-config
         exit 1
     fi
     case "{{name}}" in
-        energyplus|fmu|shacl|schematron) ;;
+        energyplus|fmu|shacl|schematron|portfolio_manager) ;;
         *) echo "Error: unknown managed validator '{{name}}'." >&2; exit 1 ;;
     esac
     if [ "{{stage}}" = "prod" ]; then
@@ -4080,8 +4106,8 @@ validator-deploy name stage release_tag: _require-gcp-config
     echo "Staged {{name}} {{release_tag}} as a Job and Service on {{stage}}; routing is unchanged."
 
 # Stage every managed validator backend from one signed release. This is the
-# routine operator command: mirror all four images, deploy all four Jobs, then
-# deploy all four release-specific Services. It never registers or activates a
+# routine operator command: mirror every image, deploy every Job, then deploy
+# every release-specific Service. It never registers or activates a
 # route; validator-acceptance owns private testing and promotion.
 # Usage: just gcp validator-deploy-all prod v0.15.1
 [arg('stage', pattern='dev|staging|prod')]
@@ -4139,7 +4165,7 @@ validator-services-activate stage: _require-gcp-config
     RELEASE_SUFFIX=""
     if [ -n "$RELEASE_TAG" ]; then RELEASE_SUFFIX="-${RELEASE_TAG//./-}"; fi
     declare -A CURRENT_SERVICES=()
-    for name in energyplus fmu shacl schematron; do
+    for name in energyplus fmu shacl schematron portfolio-manager; do
         SERVICE_NAME="{{app_name}}-validator-service-${name}${RELEASE_SUFFIX}"
         if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
         CURRENT_SERVICES["$SERVICE_NAME"]=1
@@ -4174,6 +4200,8 @@ validator-services-activate stage: _require-gcp-config
 validator-service-capacity name stage release_tag minimum maximum: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    SERVICE_SLUG="{{name}}"
+    SERVICE_SLUG="${SERVICE_SLUG//_/-}"
     if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "Error: release_tag must be vX.Y.Z." >&2
         exit 1
@@ -4185,7 +4213,7 @@ validator-service-capacity name stage release_tag minimum maximum: _require-gcp-
     fi
     RELEASE_LABEL="{{release_tag}}"
     RELEASE_LABEL="${RELEASE_LABEL//./-}"
-    SERVICE_NAME="{{app_name}}-validator-service-{{name}}-${RELEASE_LABEL}"
+    SERVICE_NAME="{{app_name}}-validator-service-${SERVICE_SLUG}-${RELEASE_LABEL}"
     if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
     gcloud run services update "$SERVICE_NAME" \
         --region={{gcp_region}} \
@@ -4218,7 +4246,7 @@ validator-services-rollback stage: _require-gcp-config
         RELEASE_SUFFIX="-${RELEASE_TAG//./-}"
         RELEASE_ARG="--backend-release-tag=$RELEASE_TAG"
     fi
-    for name in energyplus fmu shacl schematron; do
+    for name in energyplus fmu shacl schematron portfolio-manager; do
         SERVICE_NAME="{{app_name}}-validator-service-${name}${RELEASE_SUFFIX}"
         if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
         gcloud run services update "$SERVICE_NAME" \
@@ -4231,7 +4259,7 @@ validator-services-rollback stage: _require-gcp-config
     # Re-read and audit the live zero-minimum capacity without reactivating it.
     just gcp management-cmd {{stage}} "sync_gcp_validator_services $RELEASE_ARG"
 
-# Retire all four immutable Service resources for an old release. The recipe
+# Retire all immutable Service resources for an old release. The recipe
 # first forces min=0, re-verifies live state, and proves every deployment is
 # inactive and drained. Provider deletion is recorded only after all deletes
 # succeed. Historical deployment rows and attempt evidence are retained.
@@ -4251,7 +4279,7 @@ validator-services-retire stage release_tag: _require-gcp-config
     RELEASE_LABEL="{{release_tag}}"
     RELEASE_LABEL="${RELEASE_LABEL//./-}"
     ALL_PRESENT=1
-    for name in energyplus fmu shacl schematron; do
+    for name in energyplus fmu shacl schematron portfolio-manager; do
         SERVICE_NAME="{{app_name}}-validator-service-${name}-${RELEASE_LABEL}"
         if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
         if gcloud run services describe "$SERVICE_NAME" \
@@ -4274,7 +4302,7 @@ validator-services-retire stage release_tag: _require-gcp-config
     fi
     just gcp management-cmd {{stage}} "retire_validator_service_release {{release_tag}} --json"
 
-    for name in energyplus fmu shacl schematron; do
+    for name in energyplus fmu shacl schematron portfolio-manager; do
         SERVICE_NAME="{{app_name}}-validator-service-${name}-${RELEASE_LABEL}"
         if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
         if gcloud run services describe "$SERVICE_NAME" \
@@ -4375,7 +4403,7 @@ validator-acceptance stage release_tag attempts="20": _require-gcp-config
         release_label="${release_label//./-}"
         local missing=0
         local backend job job_release service service_release
-        for backend in energyplus fmu shacl schematron; do
+        for backend in energyplus fmu shacl schematron portfolio-manager; do
             job="${APP_NAME}-validator-backend-${backend}"
             if [ "{{stage}}" != "prod" ]; then job="${job}-{{stage}}"; fi
             job_release=$(gcloud run jobs describe "$job" \
@@ -4456,11 +4484,11 @@ validator-observability stage: _require-gcp-config
     if [ "{{stage}}" = "prod" ]; then
         PROVIDER_QUEUE="${APP_NAME}-validator-provider"
         WORKER_SERVICE="${APP_NAME}-worker"
-        SERVICE_REGEX="${APP_NAME}-validator-service-(energyplus|fmu|shacl|schematron)-v[0-9]+-[0-9]+-[0-9]+"
+        SERVICE_REGEX="${APP_NAME}-validator-service-(energyplus|fmu|shacl|schematron|portfolio-manager)-v[0-9]+-[0-9]+-[0-9]+"
     else
         PROVIDER_QUEUE="${APP_NAME}-validator-provider-{{stage}}"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
-        SERVICE_REGEX="${APP_NAME}-validator-service-(energyplus|fmu|shacl|schematron)(-v[0-9]+-[0-9]+-[0-9]+)?-{{stage}}"
+        SERVICE_REGEX="${APP_NAME}-validator-service-(energyplus|fmu|shacl|schematron|portfolio-manager)(-v[0-9]+-[0-9]+-[0-9]+)?-{{stage}}"
     fi
     CHANNELS_JSON=$(jq -cn --arg value "${VALIDATOR_MONITORING_NOTIFICATION_CHANNELS:-}" \
         '$value | split(",") | map(gsub("^[[:space:]]+|[[:space:]]+$"; "")) | map(select(length > 0))')
@@ -4552,7 +4580,7 @@ validator-observability stage: _require-gcp-config
     upsert_policy "Validibot {{stage}} validator provider delivery errors" "Provider task returned an error" "$QUEUE_ERROR_FILTER" 0 0s ALIGN_SUM
     upsert_policy "Validibot {{stage}} validator startup latency" "Service pending/startup p95 exceeds target" "$PENDING_LATENCY_FILTER" "${VALIDATOR_SERVICE_PENDING_P95_ALERT_MS:-30000}" 300s ALIGN_PERCENTILE_95
     upsert_policy "Validibot {{stage}} validator saturation" "Service requests remain pending" "$PENDING_FILTER" 0 300s ALIGN_MAX
-    upsert_policy "Validibot {{stage}} unexpected warm validator capacity" "Idle instances exceed the approved total" "$IDLE_FILTER" "${VALIDATOR_SERVICE_EXPECTED_MAX_IDLE_INSTANCES:-4}" 900s ALIGN_MAX REDUCE_SUM
+    upsert_policy "Validibot {{stage}} unexpected warm validator capacity" "Idle instances exceed the approved total" "$IDLE_FILTER" "${VALIDATOR_SERVICE_EXPECTED_MAX_IDLE_INSTANCES:-5}" 900s ALIGN_MAX REDUCE_SUM
     upsert_policy "Validibot {{stage}} validator callback failures" "Callback processing failed" "metric.type=\"logging.googleapis.com/user/$CALLBACK_METRIC\" resource.type=\"cloud_run_revision\"" 0 0s ALIGN_SUM
     upsert_policy "Validibot {{stage}} validator attempt timeouts" "Attempt reached its absolute deadline" "metric.type=\"logging.googleapis.com/user/$TIMEOUT_METRIC\" resource.type=\"cloud_run_revision\"" 0 0s ALIGN_SUM
     upsert_policy "Validibot {{stage}} validator deployment drift" "Hourly provider verification detected drift" "metric.type=\"logging.googleapis.com/user/$DRIFT_METRIC\" resource.type=\"cloud_run_revision\"" 0 0s ALIGN_SUM

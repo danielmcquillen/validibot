@@ -632,11 +632,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
 
         # Build the workspace.
         builder = RunWorkspaceBuilder(storage=self.storage)
-        primary_content = request.submission.get_content()
-        if isinstance(primary_content, str):
-            primary_bytes = primary_content.encode("utf-8")
-        else:
-            primary_bytes = primary_content
+        primary_bytes = request.submission.read_bytes()
         primary_filename = request.submission.original_filename or "submission"
 
         workspace = builder.build(

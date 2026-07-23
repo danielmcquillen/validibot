@@ -14,6 +14,7 @@ from validibot.core.constants import DeploymentTarget
 from validibot.core.deployment import (
     supports_author_selectable_validator_execution_profiles,
 )
+from validibot.core.deployment import uses_managed_validator_execution_deployments
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.tests.factories import ValidatorFactory
@@ -68,6 +69,15 @@ def test_gcp_capability_is_declared_centrally():
     assert supports_author_selectable_validator_execution_profiles(
         target=DeploymentTarget.GCP
     )
+
+
+def test_managed_execution_targets_are_declared_centrally():
+    """Provider-backed attempts should not depend on scattered GCP comparisons."""
+    assert uses_managed_validator_execution_deployments(target=DeploymentTarget.GCP)
+    assert not uses_managed_validator_execution_deployments(
+        target=DeploymentTarget.SELF_HOSTED
+    )
+    assert not uses_managed_validator_execution_deployments(target=DeploymentTarget.AWS)
 
 
 @override_settings(DEPLOYMENT_TARGET=DeploymentTarget.GCP)

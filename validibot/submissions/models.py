@@ -414,6 +414,33 @@ class Submission(TimeStampedModel):
             )
         return ""
 
+    def read_bytes(self, *, max_bytes: int | None = None) -> bytes:
+        """Return exact submission bytes, optionally enforcing a hard ceiling.
+
+        Binary validators must not pass XLS/XLSX/ZIP data through
+        :meth:`get_content`, which decodes file bytes as replacement-text for
+        presentation-oriented callers. Reading one sentinel byte beyond the
+        ceiling proves oversize input without loading an unbounded file.
+        """
+        if self.content_purged_at:
+            return b""
+        if self.content:
+            data = self.content.encode("utf-8")
+            if max_bytes is not None and len(data) > max_bytes:
+                raise ValueError("Submission exceeds the configured byte limit.")
+            return data
+        if not self.input_file:
+            return b""
+        with self.input_file.open("rb") as file_handle:
+            with contextlib.suppress(Exception):
+                file_handle.seek(0)
+            data = file_handle.read(None if max_bytes is None else max_bytes + 1)
+        if not isinstance(data, bytes):
+            data = str(data).encode("utf-8")
+        if max_bytes is not None and len(data) > max_bytes:
+            raise ValueError("Submission exceeds the configured byte limit.")
+        return data
+
     @property
     def is_content_available(self) -> bool:
         """Check if content is still available (not purged)."""

@@ -304,6 +304,7 @@ class RulesetType(TextChoices):
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     THERM = "THERM", _("THERM")
     TABULAR = "TABULAR", _("Tabular")
+    PORTFOLIO_MANAGER = "PORTFOLIO_MANAGER", _("Portfolio Manager")
 
 
 class ValidationType(TextChoices):
@@ -349,6 +350,7 @@ class ValidationType(TextChoices):
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
     THERM = "THERM", _("THERM Thermal Analysis")
     TABULAR = "TABULAR", _("Tabular Validator")
+    PORTFOLIO_MANAGER = "PORTFOLIO_MANAGER", _("Portfolio Manager Validator")
     # SYSMLV2 = "SYSMLV2", _("SysMLv2 Model Validator")
 
 
@@ -395,6 +397,7 @@ ADVANCED_VALIDATION_TYPES = {
     ValidationType.FMU,
     ValidationType.CUSTOM_VALIDATOR,
     ValidationType.AI_ASSIST,
+    ValidationType.PORTFOLIO_MANAGER,
 }
 # NOTE on SHACL: it is "advanced" purely for ROUTING — SHACL parses untrusted RDF
 # and runs author-supplied SPARQL, which must execute inside the isolated
@@ -487,6 +490,8 @@ DEFAULT_COMPUTE_TIERS: dict[str, str] = {
     # Tabular is in-process and human-scale (bounded by the reader's caps),
     # so it is a low-compute validator metered by launch count.
     ValidationType.TABULAR: ComputeTier.LOW,
+    # Spreadsheet/XML/ZIP parsing is isolated for safety, not heavy compute.
+    ValidationType.PORTFOLIO_MANAGER: ComputeTier.LOW,
     # ValidationType.SYSMLV2: ComputeTier.LOW,
 }
 
@@ -733,6 +738,11 @@ ENERGYPLUS_MODEL_TEMPLATE = "energyplus_model_template"
 FMU_MODEL_RESOURCE = "fmu"
 # Resource type for a step-owned FMU uploaded by a workflow author. Used on
 # ``WorkflowStepResource`` rows with ``role=FMU_MODEL``.
+
+PORTFOLIO_MANAGER_EBL_RESOURCE = "portfolio_manager_ebl_v1"
+PORTFOLIO_MANAGER_MAX_SUBMISSION_BYTES = 500_000_000
+# Versioned JSON Expected Buildings List uploaded for one Portfolio Manager
+# workflow step.
 
 
 # ---------------------------------------------------------------------------

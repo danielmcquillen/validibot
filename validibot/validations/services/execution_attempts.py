@@ -187,7 +187,6 @@ def get_or_create_execution_attempt(
     complements the partial unique constraint that permits only one active
     attempt.
     """
-    from validibot.validations.constants import ExecutionDeploymentKind
     from validibot.validations.models import ExecutionAttempt
     from validibot.validations.models import ValidationStepRun
     from validibot.validations.services.execution.deployments import (
@@ -195,6 +194,9 @@ def get_or_create_execution_attempt(
     )
     from validibot.validations.services.execution.deployments import (
         resolve_execution_deployment,
+    )
+    from validibot.validations.services.execution.registry import (
+        get_managed_execution_backend_route,
     )
 
     budget_seconds = (
@@ -241,12 +243,9 @@ def get_or_create_execution_attempt(
                 for_update=True,
             )
             deployment_snapshot = build_deployment_snapshot(deployment)
-            resolved_runner_type = {
-                ExecutionDeploymentKind.CLOUD_RUN_JOB: ("CloudRunJobsExecutionBackend"),
-                ExecutionDeploymentKind.CLOUD_RUN_SERVICE: (
-                    "CloudRunServiceExecutionBackend"
-                ),
-            }[ExecutionDeploymentKind(deployment.deployment_kind)]
+            resolved_runner_type = get_managed_execution_backend_route(
+                deployment
+            ).runner_type
         if not resolved_runner_type:
             msg = "Execution attempt allocation requires a runner type."
             raise ValueError(msg)

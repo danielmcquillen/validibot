@@ -113,6 +113,12 @@ BACKENDS = (
         RulesetType.SCHEMATRON,
         15.0,
     ),
+    BackendSpec(
+        "portfolio_manager",
+        ValidationType.PORTFOLIO_MANAGER,
+        RulesetType.PORTFOLIO_MANAGER,
+        20.0,
+    ),
 )
 
 
@@ -209,7 +215,7 @@ class AcceptanceReport:
 
 
 class AcceptanceFixtureBuilder:
-    """Create or reuse the four private acceptance workflows."""
+    """Create or reuse the private managed-validator acceptance workflows."""
 
     def __init__(self) -> None:
         self.user, self.org, self.project = self._ensure_actor()
@@ -279,6 +285,8 @@ class AcceptanceFixtureBuilder:
             return self._create_shacl(spec, validator)
         if spec.validation_type == ValidationType.SCHEMATRON:
             return self._create_schematron(spec, validator)
+        if spec.validation_type == ValidationType.PORTFOLIO_MANAGER:
+            return self._create_portfolio_manager(spec, validator)
         raise ValueError(f"Unsupported acceptance backend: {spec.key}")
 
     def _current_validator(self, spec: BackendSpec) -> Validator:
@@ -514,6 +522,31 @@ class AcceptanceFixtureBuilder:
         ensure_step_input_bindings(step)
         return self._scenario_for_existing(spec, workflow)
 
+    def _create_portfolio_manager(
+        self,
+        spec: BackendSpec,
+        validator: Validator,
+    ) -> AcceptanceScenario:
+        """Create a single-report XML canary that exercises metric extraction."""
+        workflow, step = self._create_workflow(
+            spec,
+            validator,
+            allowed_file_types=[SubmissionFileType.XML],
+            step_config={
+                "submission_structure": "single_report",
+                "profile": "generic",
+                "default_euit_kbtu_ft2_yr": "40",
+                "compare_weather_normalized_site_eui_to_target": True,
+                "near_target_percent": "10",
+            },
+        )
+        ensure_step_input_bindings(step)
+        StepInputBinding.objects.filter(
+            workflow_step=step,
+            io_definition__contract_key="default_euit_kbtu_ft2_yr",
+        ).update(default_value="40")
+        return self._scenario_for_existing(spec, workflow)
+
     def _submission_fixture(self, spec: BackendSpec) -> tuple[str, str, str]:
         """Return exact source-controlled input bytes for one backend."""
         if spec.validation_type == ValidationType.ENERGYPLUS:
@@ -555,6 +588,12 @@ class AcceptanceFixtureBuilder:
                     "schematron/calibration/calibration-certificate-valid.xml"
                 ),
                 "calibration-certificate-valid.xml",
+                SubmissionFileType.XML,
+            )
+        if spec.validation_type == ValidationType.PORTFOLIO_MANAGER:
+            return (
+                self._asset_text("portfolio_manager/property-report-valid.xml"),
+                "property-report-valid.xml",
                 SubmissionFileType.XML,
             )
         raise ValueError(f"Unsupported acceptance backend: {spec.key}")

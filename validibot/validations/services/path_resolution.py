@@ -340,6 +340,11 @@ def resolve_step_input(
         if effective_path.startswith("s."):
             effective_path = effective_path[2:]
             result.source_data_path_used = effective_path
+    elif scope == BindingSourceScope.CONSTANT:
+        # Constant bindings store the resolved literal in ``default_value``.
+        # There is intentionally no external data path to query: the value is
+        # versioned with the binding and is therefore its own source.
+        source = {}
     else:
         # SYSTEM scope — reserved for future use
         source = {}
@@ -358,13 +363,14 @@ def resolve_step_input(
         )
         return result
 
-    logger.warning(
-        "Validator input '%s' could not be resolved from %s at path '%s'. "
-        "Check that the data path matches the submission structure.",
-        io_definition.contract_key,
-        scope,
-        effective_path,
-    )
+    if scope != BindingSourceScope.CONSTANT:
+        logger.warning(
+            "Validator input '%s' could not be resolved from %s at path '%s'. "
+            "Check that the data path matches the submission structure.",
+            io_definition.contract_key,
+            scope,
+            effective_path,
+        )
 
     # Path didn't resolve — try default value.
     if binding.default_value is not None:

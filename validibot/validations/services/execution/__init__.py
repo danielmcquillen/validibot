@@ -14,8 +14,8 @@ Validator (energyplus.py) → ExecutionBackend → Infrastructure
                               ↓
               ┌───────────────┼───────────────┐
               ↓               ↓               ↓
-   DockerComposeBackend   GCPBackend      AWSBackend
-    (Celery+Docker)    (Cloud Run+GCS)  (SQS+ECS)
+   DockerComposeBackend   Managed route adapter      AWSBackend
+    (Celery+Docker)      (Service or retained Job)   (future)
 ```
 
 ## Execution Models
@@ -25,36 +25,28 @@ Different backends have different execution characteristics:
 - **Synchronous (Docker Compose)**: Worker blocks until container completes.
   Results are returned immediately via `execute()`.
 
-- **Asynchronous (GCP)**: Job is triggered and returns immediately.
-  Results arrive later via HTTP callback. `execute()` returns None.
+- **Asynchronous (GCP)**: The attempt pins either a request-driven Cloud Run
+  Service or a retained Cloud Run Job. Dispatch returns a pending response and
+  results arrive later via HTTP callback.
 
 ## Usage
 
-```python
-from validibot.validations.services.execution import get_execution_backend
-
-backend = get_execution_backend()
-
-if backend.is_async:
-    # Results will come via callback
-    backend.execute(validator_type, input_envelope)
-    step_run.status = "RUNNING"
-else:
-    # Results available immediately
-    output = backend.execute(validator_type, input_envelope)
-    process_output(output)
-```
+Callers allocate an execution attempt first. Managed attempts pass the pinned
+``ValidatorExecutionDeployment`` to ``get_execution_backend(deployment)``;
+local and self-hosted callers use ``get_execution_backend()``.
 
 ## Backend Selection
 
-The backend is selected based on the `DEPLOYMENT_TARGET` setting:
+Unmanaged backend selection is based on ``DEPLOYMENT_TARGET``:
 
 - `"test"`, `"local_docker_compose"`, `"self_hosted"` → DockerComposeExecutionBackend
-
-- `"gcp"` → CloudRunJobsExecutionBackend (Cloud Run Jobs)
 - `"aws"` → AWSBatchExecutionBackend (future)
 
-The `VALIDATOR_RUNNER` setting can override this if needed.
+On GCP, the attempt resolver pins an activated managed deployment before
+provider contact. Its provider/deployment-kind pair then selects
+``CloudRunServiceExecutionBackend`` or ``CloudRunJobsExecutionBackend``.
+``VALIDATOR_RUNNER`` remains a local/legacy runner setting; it does not override
+the adapter for a pinned managed attempt.
 """
 
 from validibot.validations.services.execution.base import ExecutionBackend

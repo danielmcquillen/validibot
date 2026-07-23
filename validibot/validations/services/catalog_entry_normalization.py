@@ -34,6 +34,7 @@ LEGACY_SOURCE_SCOPE_MAP = {
     "submission_metadata": BindingSourceScope.SUBMISSION_METADATA,
     "system": BindingSourceScope.SYSTEM,
     "upstream_step": BindingSourceScope.UPSTREAM_STEP,
+    "constant": BindingSourceScope.CONSTANT,
 }
 
 _SUBMISSION_SOURCE_KEYS = frozenset(

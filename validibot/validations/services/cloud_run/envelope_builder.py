@@ -20,6 +20,9 @@ from validibot_shared.energyplus.envelopes import EnergyPlusInputs
 from validibot_shared.fmu.envelopes import FMUInputEnvelope
 from validibot_shared.fmu.envelopes import FMUInputs
 from validibot_shared.fmu.envelopes import FMUSimulationConfig
+from validibot_shared.portfolio_manager import PortfolioManagerInputs
+from validibot_shared.portfolio_manager import build_portfolio_manager_input_envelope
+from validibot_shared.portfolio_manager import mime_type_for_portfolio_manager_filename
 from validibot_shared.shacl.envelopes import build_shacl_input_envelope
 from validibot_shared.shacl.envelopes import mime_type_for_rdf_format
 from validibot_shared.validations.envelopes import ATTEMPT_CONTRACT_VERSION
@@ -34,6 +37,7 @@ from validibot_shared.validations.envelopes import ValidatorType
 from validibot_shared.validations.envelopes import WorkflowInfo
 
 from validibot.validations.constants import FMU_MODEL_RESOURCE
+from validibot.validations.constants import PORTFOLIO_MANAGER_MAX_SUBMISSION_BYTES
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ResourceFileType
@@ -747,6 +751,117 @@ def _resolve_input_file_artifact_port_item(
     return item, binding.source_scope
 
 
+def _resolve_resource_file_artifact_port_items(
+    *,
+    run,
+    step,
+    contract_key: str,
+    resource_uri_overrides: dict[str, FileIdentity] | None,
+) -> list[ResourceFileItem] | None:
+    """Resolve one declared workflow-resource port with traceable provenance.
+
+    ``None`` means the validator catalog has not been synced and lets callers
+    use their narrow legacy fallback. An empty list is a successfully resolved
+    optional port with no assigned resource.
+    """
+    from validibot.validations.constants import StepIODirection
+    from validibot.validations.constants import StepIOMedium
+    from validibot.validations.models import StepInputBinding
+    from validibot.validations.models import StepIODefinition
+
+    port = (
+        StepIODefinition.objects.filter(
+            validator_id=step.validator_id,
+            direction=StepIODirection.INPUT,
+            io_medium=StepIOMedium.ARTIFACT,
+            contract_key=contract_key,
+        )
+        .order_by("pk")
+        .first()
+    )
+    if port is None:
+        return None
+
+    binding = (
+        StepInputBinding.objects.filter(
+            workflow_step=step,
+            io_definition=port,
+        )
+        .select_related("io_definition")
+        .first()
+    )
+    if binding is None:
+        msg = (
+            f"Artifact port '{port.contract_key}' on step {step.id} "
+            "has no StepInputBinding."
+        )
+        _record_artifact_input_trace(
+            run=run,
+            port=port,
+            source_scope="",
+            source_data_path="",
+            resolved=False,
+            error_message=msg,
+        )
+        raise ValueError(msg)
+
+    try:
+        artifact_ports.validate_source_scope(port, binding.source_scope)
+    except ValueError as exc:
+        _record_artifact_input_trace(
+            run=run,
+            port=port,
+            source_scope=binding.source_scope,
+            source_data_path=binding.source_data_path,
+            resolved=False,
+            error_message=str(exc),
+        )
+        raise
+
+    if binding.source_scope != BindingSourceScope.WORKFLOW_RESOURCE:
+        msg = (
+            f"Resource port '{port.contract_key}' cannot materialize source "
+            f"scope '{binding.source_scope}'."
+        )
+        _record_artifact_input_trace(
+            run=run,
+            port=port,
+            source_scope=binding.source_scope,
+            source_data_path=binding.source_data_path,
+            resolved=False,
+            error_message=msg,
+        )
+        raise ValueError(msg)
+
+    try:
+        items = _resolve_workflow_resource_port(
+            step=step,
+            port=port,
+            binding=binding,
+            resource_uri_overrides=resource_uri_overrides,
+        )
+    except ValueError as exc:
+        _record_artifact_input_trace(
+            run=run,
+            port=port,
+            source_scope=binding.source_scope,
+            source_data_path=binding.source_data_path,
+            resolved=False,
+            error_message=str(exc),
+        )
+        raise
+
+    _record_artifact_input_trace(
+        run=run,
+        port=port,
+        source_scope=binding.source_scope,
+        source_data_path=binding.source_data_path,
+        resolved=True,
+        value_snapshot=[_resource_file_item_snapshot(item) for item in items],
+    )
+    return items
+
+
 def _resolve_upstream_artifact_ref(*, run, step, port, binding) -> dict:
     """Resolve and type-check an upstream artifact reference."""
 
@@ -895,7 +1010,12 @@ def _resolve_submission_file_identity(
         port.contract_key,
         f"{port.contract_key}_uri",
     ]
-    if port.contract_key in {"primary_model", "data_graph", "xml_document"}:
+    if port.contract_key in {
+        "primary_model",
+        "data_graph",
+        "xml_document",
+        "portfolio_manager_report",
+    }:
         candidates.append("primary_file_uri")
 
     del step_config  # Stored config may contain URIs, never immutable identities.
@@ -1190,6 +1310,21 @@ def _build_schematron_input_file_item(
         name=_filename_from_uri(file.uri) or "submission.xml",
         mime_type=SupportedMimeType.APPLICATION_XML,
         role=port.role or "xml-document",
+        port_key=port.contract_key,
+        **file.envelope_fields(),
+    )
+
+
+def _build_portfolio_manager_input_file_item(
+    port,
+    file: FileIdentity,
+) -> InputFileItem:
+    """Build a report item whose carrier is inferred from its immutable filename."""
+    name = _filename_from_uri(file.uri) or "portfolio-manager-report"
+    return InputFileItem(
+        name=name,
+        mime_type=mime_type_for_portfolio_manager_filename(name),
+        role=port.role or "portfolio-manager-report",
         port_key=port.contract_key,
         **file.envelope_fields(),
     )
@@ -1747,6 +1882,148 @@ def build_input_envelope(
         )
         if xml_document_item is not None:
             envelope.input_files = [xml_document_item]
+        return envelope
+
+    if validator.validation_type == ValidationType.PORTFOLIO_MANAGER:
+        resolved_report = _resolve_input_file_artifact_port_item(
+            run=run,
+            step=step,
+            step_config=step_config,
+            input_file_uris=input_file_uris,
+            contract_key="portfolio_manager_report",
+            item_builder=_build_portfolio_manager_input_file_item,
+        )
+        report_item = None
+        if resolved_report is not None:
+            report_item, _source_scope = resolved_report
+            submission_file = FileIdentity.from_envelope_item(report_item)
+        else:
+            submission_file = (input_file_uris or {}).get("primary_file_uri")
+            if submission_file is None:
+                msg = (
+                    f"Step {step.id} has no immutable primary file for "
+                    "Portfolio Manager"
+                )
+                raise ValueError(msg)
+
+        from validibot.workflows.models import WorkflowStepResource
+
+        ebl_resources = _resolve_resource_file_artifact_port_items(
+            run=run,
+            step=step,
+            contract_key="expected_buildings_list",
+            resource_uri_overrides=resource_uri_overrides,
+        )
+        if ebl_resources is None:
+            ebl_resources = resolve_step_resources(
+                step,
+                role=WorkflowStepResource.EXPECTED_BUILDINGS_LIST,
+                resource_uri_overrides=resource_uri_overrides,
+            )
+        if len(ebl_resources) > 1:
+            msg = f"Step {step.id} has more than one Expected Buildings List"
+            raise ValueError(msg)
+        ebl_resource = ebl_resources[0] if ebl_resources else None
+        if ebl_resource is not None:
+            ebl_resource.port_key = "expected_buildings_list"
+
+        config = step.config or {}
+        resolved_inputs = current_step_run.input_values or {}
+        default_euit = resolved_inputs.get("default_euit_kbtu_ft2_yr")
+        if default_euit is None:
+            default_euit = config.get("default_euit_kbtu_ft2_yr")
+        reference_datetime = (
+            run.started_at or current_step_run.started_at or run.created
+        )
+        portfolio_inputs = PortfolioManagerInputs(
+            submission_structure=config.get(
+                "submission_structure",
+                "single_report",
+            ),
+            profile=config.get("profile", "generic"),
+            default_euit_kbtu_ft2_yr=default_euit,
+            compare_to_euit=bool(config.get("compare_to_euit", False)),
+            near_target_percent=config.get("near_target_percent", 10),
+            require_complete_reporting_period=bool(
+                config.get("require_complete_reporting_period", False)
+            ),
+            minimum_reporting_period_months=config.get(
+                "minimum_reporting_period_months",
+                12,
+            ),
+            maximum_reporting_period_age_months=config.get(
+                "maximum_reporting_period_age_months"
+            ),
+            reporting_period_reference_date=reference_datetime.date(),
+            require_benchmark_ready=bool(config.get("require_benchmark_ready", False)),
+            require_form_c_ready=bool(config.get("require_form_c_ready", False)),
+            require_weather_normalized_site_eui=bool(
+                config.get("require_weather_normalized_site_eui", False)
+            ),
+            require_washington_standard_id=bool(
+                config.get("require_washington_standard_id", False)
+            ),
+            require_energy_star_score=bool(
+                config.get("require_energy_star_score", False)
+            ),
+            meter_less_than_12_months_policy=config.get(
+                "meter_less_than_12_months_policy",
+                "allow",
+            ),
+            meter_gap_policy=config.get("meter_gap_policy", "allow"),
+            meter_overlap_policy=config.get("meter_overlap_policy", "allow"),
+            no_meters_selected_policy=config.get(
+                "no_meters_selected_policy",
+                "allow",
+            ),
+            long_meter_entry_policy=config.get(
+                "long_meter_entry_policy",
+                "allow",
+            ),
+            estimated_energy_policy=config.get(
+                "estimated_energy_policy",
+                "allow",
+            ),
+            other_alert_policy=config.get("other_alert_policy", "allow"),
+            max_input_bytes=PORTFOLIO_MANAGER_MAX_SUBMISSION_BYTES,
+            max_archive_members=config.get("max_archive_members", 250),
+            max_member_bytes=config.get("max_member_bytes", 20_000_000),
+            max_uncompressed_bytes=config.get(
+                "max_uncompressed_bytes",
+                250_000_000,
+            ),
+        )
+        context = ExecutionContext(
+            callback_id=callback_id,
+            callback_nonce=callback_nonce,
+            callback_nonce_commitment=callback_nonce_commitment,
+            callback_url=callback_url,
+            execution_bundle_uri=execution_bundle_uri,
+            execution_attempt_id=execution_attempt_id,
+            step_run_id=step_run_id,
+            attempt_contract_version=ATTEMPT_CONTRACT_VERSION,
+            expected_output_uri=expected_output_uri,
+            skip_callback=skip_callback,
+        )
+        envelope = build_portfolio_manager_input_envelope(
+            run_id=str(run.id),
+            validator=validator,
+            org_id=str(run.org.id),
+            org_name=run.org.name,
+            workflow_id=str(run.workflow.id),
+            step_id=str(step.id),
+            step_name=step.name,
+            submission_name=_filename_from_uri(submission_file.uri),
+            submission_uri=submission_file.uri,
+            submission_size_bytes=submission_file.size_bytes,
+            submission_sha256=submission_file.sha256,
+            submission_storage_version=submission_file.storage_version,
+            inputs=portfolio_inputs,
+            context=context,
+            expected_buildings_list=ebl_resource,
+        )
+        if report_item is not None:
+            envelope.input_files = [report_item]
         return envelope
 
     msg = f"Unsupported validator type: {validator.validation_type}"

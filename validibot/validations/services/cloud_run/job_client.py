@@ -18,6 +18,8 @@ between Django and Cloud Run Jobs.
 from __future__ import annotations
 
 import logging
+import time
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from google.cloud import run_v2
@@ -32,6 +34,42 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def get_cloud_run_jobs_client():
+    """Return one lazy Cloud Run Jobs client per application process."""
+    started = time.perf_counter()
+    client = run_v2.JobsClient()
+    logger.info(
+        "Initialized shared Cloud Run Jobs client",
+        extra={
+            "gcp_client": "JobsClient",
+            "client_initialization_ms": (time.perf_counter() - started) * 1000,
+        },
+    )
+    return client
+
+
+@lru_cache(maxsize=1)
+def get_cloud_run_executions_client():
+    """Return one lazy Cloud Run Executions client per application process."""
+    started = time.perf_counter()
+    client = run_v2.ExecutionsClient()
+    logger.info(
+        "Initialized shared Cloud Run Executions client",
+        extra={
+            "gcp_client": "ExecutionsClient",
+            "client_initialization_ms": (time.perf_counter() - started) * 1000,
+        },
+    )
+    return client
+
+
+def clear_cloud_run_client_caches() -> None:
+    """Clear process client caches for tests or a settings reset."""
+    get_cloud_run_jobs_client.cache_clear()
+    get_cloud_run_executions_client.cache_clear()
 
 
 def run_validator_job(
@@ -85,7 +123,7 @@ def run_validator_job(
     else:
         job_path = f"projects/{project_id}/locations/{region}/jobs/{job_name}"
 
-    client = run_v2.JobsClient()
+    client = get_cloud_run_jobs_client()
 
     environment = [
         run_v2.EnvVar(name="VALIDIBOT_INPUT_URI", value=input_uri),
@@ -118,7 +156,30 @@ def run_validator_job(
     # which would block until the job completes (potentially minutes/hours).
     # Instead, extract the execution name from the operation metadata and
     # return immediately. Job completion is handled via callbacks.
-    operation: Operation = client.run_job(request=request)
+    rpc_started = time.perf_counter()
+    try:
+        operation: Operation = client.run_job(request=request)
+    except Exception:
+        logger.warning(
+            "Cloud Run Job dispatch failed",
+            extra={
+                "gcp_client": "JobsClient",
+                "gcp_operation": "run_job",
+                "gcp_rpc_duration_ms": (time.perf_counter() - rpc_started) * 1000,
+                "provider_resource_name": job_path,
+            },
+            exc_info=True,
+        )
+        raise
+    logger.info(
+        "Cloud Run Job dispatch accepted",
+        extra={
+            "gcp_client": "JobsClient",
+            "gcp_operation": "run_job",
+            "gcp_rpc_duration_ms": (time.perf_counter() - rpc_started) * 1000,
+            "provider_resource_name": job_path,
+        },
+    )
 
     # The operation metadata contains the execution info. Access it directly
     # without blocking. If metadata is missing, fall back to a short wait on
@@ -174,8 +235,18 @@ def get_job_configured_image(
         job_path = f"projects/{project_id}/locations/{region}/jobs/{job_name}"
 
     try:
-        client = run_v2.JobsClient()
+        client = get_cloud_run_jobs_client()
+        rpc_started = time.perf_counter()
         job = client.get_job(name=job_path)
+        logger.debug(
+            "Cloud Run Job metadata lookup completed",
+            extra={
+                "gcp_client": "JobsClient",
+                "gcp_operation": "get_job",
+                "gcp_rpc_duration_ms": (time.perf_counter() - rpc_started) * 1000,
+                "provider_resource_name": job_path,
+            },
+        )
         containers = getattr(getattr(job, "template", None), "template", None)
         # Cloud Run Job structure: Job.template (ExecutionTemplate) →
         # template (TaskTemplate) → containers[0].image
@@ -218,8 +289,18 @@ def get_execution_image_digest(execution_name: str) -> str | None:
     every failure mode is logged at debug level and yields ``None``.
     """
     try:
-        client = run_v2.ExecutionsClient()
+        client = get_cloud_run_executions_client()
+        rpc_started = time.perf_counter()
         execution = client.get_execution(name=execution_name)
+        logger.debug(
+            "Cloud Run execution metadata lookup completed",
+            extra={
+                "gcp_client": "ExecutionsClient",
+                "gcp_operation": "get_execution",
+                "gcp_rpc_duration_ms": (time.perf_counter() - rpc_started) * 1000,
+                "provider_execution_id": execution_name,
+            },
+        )
         containers = getattr(getattr(execution, "template", None), "containers", None)
         if not containers:
             return None
@@ -251,7 +332,7 @@ def get_execution_status(execution_name: str) -> dict:
         >>> status = get_execution_status(execution_name)
         >>> print(status["completion_status"])  # SUCCEEDED, FAILED, CANCELLED, etc.
     """
-    client = run_v2.ExecutionsClient()
+    client = get_cloud_run_executions_client()
     execution = client.get_execution(name=execution_name)
 
     # Map the condition to a simple status

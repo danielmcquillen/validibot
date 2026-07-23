@@ -26,19 +26,25 @@ Each backend handles:
 
 ## Backend Selection
 
-`VALIDATOR_RUNNER` selects local Docker versus managed GCP. On GCP, the
-attempt resolver first pins an eligible `ValidatorExecutionDeployment`; its
-deployment kind then selects the exact Service or Job adapter:
+`DEPLOYMENT_TARGET` determines whether validator execution uses local containers
+or operator-managed provider routes. On GCP, the attempt resolver first pins an
+eligible `ValidatorExecutionDeployment`; its provider/deployment-kind pair then
+selects the exact Service or Job adapter:
 
-| Setting Value        | Backend                         | Execution Model |
-| -------------------- | ------------------------------- | --------------- |
-| `"docker"`           | `DockerComposeExecutionBackend` | Synchronous     |
-| `"google_cloud_run"` | `CloudRunServiceExecutionBackend` or `CloudRunJobsExecutionBackend` | Asynchronous |
+| Deployment target | Backend | Execution model |
+| --- | --- | --- |
+| Test, local, or self-hosted | `DockerComposeExecutionBackend` | Synchronous |
+| GCP managed Service route | `CloudRunServiceExecutionBackend` | Asynchronous |
+| GCP managed Job route | `CloudRunJobsExecutionBackend` | Asynchronous |
 
-If `VALIDATOR_RUNNER` is not set, the system auto-detects:
+`VALIDATOR_RUNNER` remains an unmanaged/legacy runner setting used by local
+execution and diagnostics. It does not override a deployment already pinned to
+a managed attempt.
 
-- If `GCP_PROJECT_ID` is set → Uses GCP backend
-- Otherwise → Uses Docker backend (Docker Compose)
+Managed routes currently exist for shipped validator backends. User-supplied
+custom container images run through the Docker backend on local and self-hosted
+deployments; GCP execution fails closed unless that exact validator has an
+operator-verified and activated managed deployment.
 
 ## Execution Models
 

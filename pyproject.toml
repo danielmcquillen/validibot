@@ -10,7 +10,7 @@ allow-direct-references = true
 [project]
 name = "validibot"
 version = "0.13.0"
-description = "Open-source data validation platform for energy models, simulations, and structured data"
+description = "Open-source data validation platform"
 requires-python = ">=3.13"
 license = { text = "AGPL-3.0-only" }
 authors = [

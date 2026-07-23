@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files first for better caching
 COPY pyproject.toml uv.lock ${APP_HOME}/
 COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/install-commercial-package
+COPY --chmod=755 compose/common/install-published-shared.sh /usr/local/bin/install-published-shared
 
 # Install dependencies with dev group for local work
 # --no-install-project skips installing validibot itself (it's not a package, just a Django project)
@@ -48,7 +49,13 @@ COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/ins
 # mounted Docker socket. Without it DockerValidatorRunner.is_available() returns
 # False and every advanced validator reports "Validation backend is not
 # available." This mirrors the CI install (.github/workflows/ci.yml).
-RUN uv sync --group dev --extra docker-runner --frozen --no-install-project
+#
+# The lock records validibot-shared as an editable sibling for host development.
+# That sibling is outside the Docker build context, so skip its editable source
+# and install the exact published project pin explicitly.
+RUN uv sync --group dev --extra docker-runner --frozen --no-install-project \
+      --no-install-package validibot-shared \
+    && install-published-shared ${APP_HOME}/.venv/bin/python ${APP_HOME}/pyproject.toml
 RUN install-commercial-package ${APP_HOME}/.venv/bin/python
 
 # Copy the rest of the project

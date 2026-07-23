@@ -66,7 +66,9 @@ Used for Docker Compose deployments where validators run as local Docker contain
 ### Asynchronous (GCP Cloud Run)
 
 Used for GCP deployments where workflow authors choose a provider-neutral
-execution profile. Fast-response attempts normally run on private Cloud Run
+execution profile. The authoring UI discovers this through the central
+deployment-capability policy rather than testing a provider name or probing its
+environment. Fast-response attempts normally run on private Cloud Run
 Services; long-running attempts use retained Cloud Run Jobs.
 
 ```

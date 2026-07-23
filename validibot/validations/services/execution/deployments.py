@@ -228,10 +228,16 @@ def effective_execution_budget_seconds(*, step) -> int:
 
     Fast-response steps use the Service-eligible default. Long-running steps
     receive the site-wide validator ceiling without asking a solo operator or
-    workflow author to coordinate a second timeout field. Machine-authored
-    workflow imports may still request a narrower explicit timeout.
+    workflow author to coordinate a second timeout field. Deployment targets
+    with only one local execution route use the site-wide ceiling directly;
+    they do not inherit GCP's HTTP transport limit. Machine-authored workflow
+    imports may still request a narrower explicit timeout.
     """
     from django.conf import settings
+
+    from validibot.core.deployment import (
+        supports_author_selectable_validator_execution_profiles,
+    )
 
     profile = effective_execution_profile(step=step)
     configured = (getattr(step, "config", None) or {}).get("execution_timeout_seconds")
@@ -239,9 +245,12 @@ def effective_execution_budget_seconds(*, step) -> int:
         configured
         if configured is not None
         else (
-            getattr(settings, "VALIDATOR_TIMEOUT_SECONDS", 3600)
-            if profile == ValidatorExecutionProfile.LONG_RUNNING
-            else getattr(settings, "VALIDATOR_DEFAULT_EXECUTION_SECONDS", 1500)
+            getattr(settings, "VALIDATOR_DEFAULT_EXECUTION_SECONDS", 1500)
+            if (
+                supports_author_selectable_validator_execution_profiles()
+                and profile == ValidatorExecutionProfile.FAST_RESPONSE
+            )
+            else getattr(settings, "VALIDATOR_TIMEOUT_SECONDS", 3600)
         )
     )
     if isinstance(value, bool):

@@ -1895,14 +1895,25 @@ def save_workflow_step(
     # Container execution shape is a semantic part of the workflow contract.
     # Omit the stable default to keep legacy and newly-authored fast-response
     # steps canonical; selecting long-running adds the one explicit override.
+    existing_config = getattr(step, "config", None) or {}
     execution_profile = form.cleaned_data.get("execution_profile")
     if execution_profile == ValidatorExecutionProfile.LONG_RUNNING:
         config["execution_profile"] = execution_profile
+    elif (
+        "execution_profile" not in form.fields
+        and getattr(form, "supports_execution_profile", False)
+        and existing_config.get("execution_profile")
+        == ValidatorExecutionProfile.LONG_RUNNING
+    ):
+        # A workflow imported from a profile-capable deployment may be edited
+        # on self-hosted Validibot, where the choice is intentionally hidden.
+        # Preserve its versioned intent so a harmless edit does not damage a
+        # later export back to a deployment that supports both routes.
+        config["execution_profile"] = ValidatorExecutionProfile.LONG_RUNNING
 
     # Machine-authored imports may carry a narrower explicit deadline even
     # though the human UI intentionally exposes only the two simple profiles.
     # Do not silently discard that contract when an author edits another field.
-    existing_config = getattr(step, "config", None) or {}
     if "execution_timeout_seconds" in existing_config:
         config["execution_timeout_seconds"] = existing_config[
             "execution_timeout_seconds"

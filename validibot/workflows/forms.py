@@ -26,6 +26,9 @@ from django.utils.html import format_html_join
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
+from validibot.core.deployment import (
+    supports_author_selectable_validator_execution_profiles,
+)
 from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.cel_columns import referenced_column_aggregates
@@ -1952,7 +1955,10 @@ class BaseStepConfigForm(forms.Form):
         super().__init__(*args, **kwargs)
         if not self.show_display_schema:
             self.fields.pop("display_schema", None)
-        if not self.supports_execution_profile:
+        if not (
+            self.supports_execution_profile
+            and supports_author_selectable_validator_execution_profiles()
+        ):
             self.fields.pop("execution_profile", None)
         self.helper = FormHelper()
         self.helper.form_tag = False

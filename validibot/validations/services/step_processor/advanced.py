@@ -14,6 +14,7 @@ from typing import Any
 from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
+from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.models import ValidationFinding
 from validibot.validations.services.step_processor.base import ValidationStepProcessor
 from validibot.validations.services.step_processor.result import StepProcessingResult
@@ -94,6 +95,9 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # reconciliation owns that case.
         from validibot.core.constants import DeploymentTarget
         from validibot.core.deployment import get_deployment_target
+        from validibot.core.deployment import (
+            supports_author_selectable_validator_execution_profiles,
+        )
         from validibot.validations.services.execution import get_execution_backend
         from validibot.validations.services.execution.deployments import (
             effective_execution_budget_seconds,
@@ -107,7 +111,11 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         managed = get_deployment_target() == DeploymentTarget.GCP
         default_backend = None if managed else get_execution_backend()
-        execution_profile = effective_execution_profile(step=self.workflow_step)
+        execution_profile = (
+            effective_execution_profile(step=self.workflow_step)
+            if supports_author_selectable_validator_execution_profiles()
+            else ValidatorExecutionProfile.FAST_RESPONSE
+        )
         execution_budget_seconds = effective_execution_budget_seconds(
             step=self.workflow_step
         )

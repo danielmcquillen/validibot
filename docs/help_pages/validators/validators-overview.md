@@ -26,8 +26,8 @@ Advanced validators (available with Pro):
 
 ## Fast response or long-running
 
-Container-based step editors (EnergyPlus, FMU, SHACL, and Schematron) include
-one **Execution profile** choice:
+On Validibot Cloud, container-based step editors (EnergyPlus, FMU, SHACL, and
+Schematron) include one **Execution profile** choice:
 
 - **Fast response** is the default. Choose it for interactive checks that you
   expect to finish within about 25 minutes.
@@ -38,6 +38,11 @@ Choose the profile when you configure the workflow step. Submitters do not need
 to choose it for every run, and a run never changes profile after it starts.
 Validibot maps the profile to the available compute, so workflow authors do not
 need to know about cloud-provider Jobs, Services, queues, or rollback routes.
+
+Self-hosted Validibot has one local container execution route, so it does not
+show this setting. Its operator-configured validator timeout applies instead.
+If you import a Cloud workflow into self-hosted Validibot, the stored profile is
+preserved for a later export even though it is not shown in the editor.
 
 Validators can declare value or artifact inputs and outputs. Those ports form
 the step contract; they are not automatically workflow signals. See

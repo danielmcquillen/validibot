@@ -1,13 +1,19 @@
 """Tests for workflow-author validator execution profiles.
 
 The profile is deliberately one small semantic step setting rather than a
-provider-specific infrastructure field. These tests protect the authoring
-surface, canonical config storage, and the ability to switch a step back to the
-stable fast-response default without leaving stale routing intent behind.
+provider-specific infrastructure field. These tests protect the
+capability-aware authoring surface, canonical config storage, cross-deployment
+portability, and the ability to switch a step back to the stable fast-response
+default without leaving stale routing intent behind.
 """
 
 import pytest
+from django.test import override_settings
 
+from validibot.core.constants import DeploymentTarget
+from validibot.core.deployment import (
+    supports_author_selectable_validator_execution_profiles,
+)
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.tests.factories import ValidatorFactory
@@ -24,8 +30,9 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 from validibot.workflows.views_helpers import save_workflow_step
 
 
-def test_only_container_step_forms_expose_the_execution_profile():
-    """Authors should see the choice only where separate compute is possible."""
+@override_settings(DEPLOYMENT_TARGET=DeploymentTarget.GCP)
+def test_only_gcp_container_step_forms_expose_the_execution_profile():
+    """GCP authors should see the choice only for separately routed compute."""
     assert "execution_profile" in EnergyPlusStepConfigForm().fields
     assert "execution_profile" in FMUValidatorStepConfigForm().fields
     assert "execution_profile" in ShaclStepConfigForm().fields
@@ -33,6 +40,37 @@ def test_only_container_step_forms_expose_the_execution_profile():
     assert "execution_profile" not in BasicStepConfigForm().fields
 
 
+@pytest.mark.parametrize(
+    "deployment_target",
+    [
+        DeploymentTarget.TEST,
+        DeploymentTarget.LOCAL_DOCKER_COMPOSE,
+        DeploymentTarget.SELF_HOSTED,
+        DeploymentTarget.AWS,
+    ],
+)
+def test_single_route_deployments_hide_the_execution_profile(
+    settings,
+    deployment_target,
+):
+    """A platform with one execution route must not expose a fake choice."""
+    settings.DEPLOYMENT_TARGET = deployment_target
+
+    assert not supports_author_selectable_validator_execution_profiles()
+    assert "execution_profile" not in EnergyPlusStepConfigForm().fields
+    assert "execution_profile" not in FMUValidatorStepConfigForm().fields
+    assert "execution_profile" not in ShaclStepConfigForm().fields
+    assert "execution_profile" not in SchematronStepConfigForm().fields
+
+
+def test_gcp_capability_is_declared_centrally():
+    """The UI should consume one capability rather than provider-name checks."""
+    assert supports_author_selectable_validator_execution_profiles(
+        target=DeploymentTarget.GCP
+    )
+
+
+@override_settings(DEPLOYMENT_TARGET=DeploymentTarget.GCP)
 @pytest.mark.django_db
 def test_long_running_profile_is_saved_in_the_semantic_step_contract():
     """A large-work choice must survive versioning, export, and later launch."""
@@ -63,6 +101,7 @@ def test_long_running_profile_is_saved_in_the_semantic_step_contract():
     )
 
 
+@override_settings(DEPLOYMENT_TARGET=DeploymentTarget.GCP)
 @pytest.mark.django_db
 def test_switching_back_to_fast_response_removes_the_nondefault_override():
     """The default profile should stay canonical instead of accumulating noise."""
@@ -107,6 +146,41 @@ def test_switching_back_to_fast_response_removes_the_nondefault_override():
     assert updated.typed_config.execution_profile == (
         ValidatorExecutionProfile.FAST_RESPONSE
     )
+
+
+@override_settings(DEPLOYMENT_TARGET=DeploymentTarget.SELF_HOSTED)
+@pytest.mark.django_db
+def test_self_hosted_edit_preserves_an_imported_hidden_profile():
+    """Editing locally must not damage intent needed after export back to GCP."""
+    workflow = WorkflowFactory()
+    validator = ValidatorFactory(
+        validation_type=ValidationType.FMU,
+        is_system=True,
+        supports_assertions=False,
+    )
+    step = WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        name="Imported simulation",
+        config={"execution_profile": ValidatorExecutionProfile.LONG_RUNNING},
+    )
+    form = FMUValidatorStepConfigForm(
+        data={"name": "Renamed imported simulation"},
+        step=step,
+        workflow=workflow,
+        org=workflow.org,
+        validator=validator,
+    )
+
+    assert "execution_profile" not in form.fields
+    assert form.is_valid(), form.errors
+
+    updated = save_workflow_step(workflow, validator, form, step=step)
+
+    assert updated.name == "Renamed imported simulation"
+    assert updated.config == {
+        "execution_profile": ValidatorExecutionProfile.LONG_RUNNING,
+    }
 
 
 @pytest.mark.django_db

@@ -979,7 +979,7 @@ else:
 #
 # Available runners:
 #   - "docker": Local Docker socket (default, for Docker Compose deployments)
-#   - "google_cloud_run": Google Cloud Run Jobs (GCP production)
+#   - "google_cloud_run": Managed Cloud Run Services or Jobs (GCP production)
 #   - "aws_batch": AWS Batch (future)
 #   - Full class path for custom runners
 #
@@ -1002,9 +1002,11 @@ if not (
     raise ImproperlyConfigured(
         "VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS must be between 0 and 1800."
     )
-# Domain budget used by the Fast-response workflow profile. 1500 seconds fits
-# the request-driven Service contract. Long-running steps use the site-wide
-# VALIDATOR_TIMEOUT_SECONDS ceiling and are planned onto the retained route.
+# Domain budget used by the Fast-response workflow profile when the deployment
+# declares author-selectable execution profiles. 1500 seconds fits the GCP
+# request-driven Service contract. Long-running steps and single-route
+# self-hosted/local deployments use the site-wide VALIDATOR_TIMEOUT_SECONDS
+# ceiling.
 VALIDATOR_DEFAULT_EXECUTION_SECONDS = env.int(
     "VALIDATOR_DEFAULT_EXECUTION_SECONDS",
     default=min(1500, VALIDATOR_TIMEOUT_SECONDS),
@@ -1170,9 +1172,9 @@ SHACL_SPARQL_ASKS_PER_STEP_MAX = env.int(
     default=25,
 )
 
-# Cloud Run Job Validator Settings (overridden in production.py)
+# Managed Cloud Run Validator Settings (overridden in production.py)
 # ------------------------------------------------------------------------------
-# These defaults allow local development without Cloud Run Jobs
+# These defaults allow local development without Cloud Run Services or Jobs.
 GCP_PROJECT_ID = env("GCP_PROJECT_ID", default="")
 GCP_REGION = env("GCP_REGION", default="us-west1")
 GCS_VALIDATION_BUCKET = env("GCS_VALIDATION_BUCKET", default="")

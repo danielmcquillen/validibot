@@ -31,7 +31,8 @@ class DeploymentTarget(StrEnum):
             Audience: customers running their own copy.
 
         GCP: Google Cloud Platform - Cloud Run with Cloud Tasks.
-            Cloud Tasks queue, Cloud Run Jobs for validators, GCS storage.
+            Cloud Tasks queues, Cloud Run Services and Jobs for validators,
+            GCS storage.
             Audience: Validibot's hosted cloud offering.
 
         AWS: Amazon Web Services - ECS with SQS (future).

@@ -450,7 +450,7 @@ else:
 # ------------------------------------------------------------------------------
 # The validator runner executes advanced validator containers.
 #
-# GCP: Google Cloud Run Jobs (async with callbacks)
+# GCP: managed Cloud Run Services and Jobs (async with callbacks)
 # Docker Compose: Local Docker socket (synchronous)
 # AWS: AWS Batch (future)
 

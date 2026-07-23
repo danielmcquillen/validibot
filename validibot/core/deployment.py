@@ -11,6 +11,12 @@ from django.conf import settings
 
 from validibot.core.constants import DeploymentTarget
 
+_AUTHOR_SELECTABLE_VALIDATOR_PROFILE_TARGETS = frozenset(
+    {
+        DeploymentTarget.GCP,
+    }
+)
+
 
 def get_deployment_target() -> DeploymentTarget:
     """
@@ -57,6 +63,26 @@ def get_deployment_target() -> DeploymentTarget:
             f"Valid values: {valid_targets}"
         )
         raise ValueError(msg) from None
+
+
+def supports_author_selectable_validator_execution_profiles(
+    *,
+    target: DeploymentTarget | None = None,
+) -> bool:
+    """Return whether authors can choose between validator execution profiles.
+
+    ``DEPLOYMENT_TARGET`` remains the explicit, authoritative description of
+    where Validibot is running.  Product surfaces ask this capability question
+    instead of comparing themselves directly with a provider name, so a future
+    deployment target can opt into multiple execution shapes in one place.
+
+    Self-hosted and local deployments currently have one Docker execution
+    route, so presenting Fast response versus Long-running there would expose a
+    distinction the platform cannot honour.  GCP supports both the request-
+    driven Service route and the retained long-running Job route.
+    """
+    resolved_target = target or get_deployment_target()
+    return resolved_target in _AUTHOR_SELECTABLE_VALIDATOR_PROFILE_TARGETS
 
 
 def get_validibot_runtime_version() -> str:

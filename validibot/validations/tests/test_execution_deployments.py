@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from validibot.audit.constants import AuditAction
 from validibot.audit.models import AuditLogEntry
+from validibot.core.constants import DeploymentTarget
 from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
@@ -536,6 +537,7 @@ def test_long_running_profile_uses_primary_job_during_operator_rollback():
 
 
 @override_settings(
+    DEPLOYMENT_TARGET=DeploymentTarget.GCP,
     VALIDATOR_DEFAULT_EXECUTION_SECONDS=FAST_PROFILE_BUDGET_SECONDS,
     VALIDATOR_TIMEOUT_SECONDS=LONG_PROFILE_BUDGET_SECONDS,
 )
@@ -555,6 +557,28 @@ def test_execution_profiles_supply_simple_stable_default_budgets():
     )
     assert (
         effective_execution_budget_seconds(step=long_step)
+        == LONG_PROFILE_BUDGET_SECONDS
+    )
+
+
+@override_settings(
+    DEPLOYMENT_TARGET=DeploymentTarget.SELF_HOSTED,
+    VALIDATOR_DEFAULT_EXECUTION_SECONDS=FAST_PROFILE_BUDGET_SECONDS,
+    VALIDATOR_TIMEOUT_SECONDS=LONG_PROFILE_BUDGET_SECONDS,
+)
+def test_single_route_self_hosted_uses_the_site_wide_validator_budget():
+    """Local Docker work must not inherit GCP's shorter HTTP task ceiling."""
+    imported_long_step = SimpleNamespace(
+        config={"execution_profile": ValidatorExecutionProfile.LONG_RUNNING}
+    )
+    ordinary_step = SimpleNamespace(config={})
+
+    assert (
+        effective_execution_budget_seconds(step=ordinary_step)
+        == LONG_PROFILE_BUDGET_SECONDS
+    )
+    assert (
+        effective_execution_budget_seconds(step=imported_long_step)
         == LONG_PROFILE_BUDGET_SECONDS
     )
 

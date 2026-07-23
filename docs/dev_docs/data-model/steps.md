@@ -55,7 +55,12 @@ authored workflow. Key relationships:
   author intent, not a provider name. Managed GCP resolves the former through
   the active primary route and the latter through the retained long-running
   route before it contacts a provider. The chosen profile and exact deployment
-  are then captured on the execution attempt.
+  are then captured on the execution attempt. The editor asks the central
+  deployment-capability policy whether this choice is meaningful: GCP exposes
+  it, while self-hosted and local deployments with one Docker route hide it and
+  use their site-wide validator timeout. A hidden imported value remains in the
+  semantic config so editing on one deployment does not damage a later export
+  to another.
 - `display_schema` is limited to validator steps; action steps automatically
   disable it.
 

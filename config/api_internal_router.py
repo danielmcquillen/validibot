@@ -41,7 +41,7 @@ urlpatterns = [
         LogTrackingEventView.as_view(),
         name="tasks-tracking-log-event",
     ),
-    # Validator callbacks (from Cloud Run Jobs)
+    # Validator callbacks (from managed validator Services or Jobs)
     path(
         "validation-callbacks/",
         ValidationCallbackView.as_view(),

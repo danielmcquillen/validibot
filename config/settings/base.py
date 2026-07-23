@@ -1059,13 +1059,10 @@ VALIDATOR_TIER_2_CPU_LIMIT = env(
 
 # Validator backend image policy (Trust ADR Phase 5 Session B)
 # ------------------------------------------------------------------------------
-# Three-rung ladder controlling how strictly validator backend
-# images must be pinned. ``tag`` (default) permits floating tags
-# like ``:latest`` — the community quick-start posture. ``digest``
-# requires sha256 digest pinning (``registry/path@sha256:...``) and
-# rejects tag-only references at launch time — recommended for
-# production self-hosted deployments. ``signed-digest`` adds cosign
-# verification on top of digest pinning.
+# Every deployment target may choose ``tag``, ``digest``, or
+# ``signed-digest``. GCP production templates select ``digest`` while local
+# development keeps the community-friendly ``tag`` default. Managed release
+# tooling may impose a stricter minimum without removing this core choice.
 VALIDATOR_BACKEND_IMAGE_POLICY = env(
     "VALIDATOR_BACKEND_IMAGE_POLICY",
     default="tag",

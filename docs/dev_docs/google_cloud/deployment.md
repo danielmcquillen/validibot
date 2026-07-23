@@ -216,38 +216,32 @@ concern using the currently deployed image.
 ### Step 6: Deploy Validators
 
 ```bash
-# Production: use one exact signed release for retained Jobs and Services.
-just gcp validator-release-mirror v0.15.0
-just gcp validator-release-verify v0.15.0
-VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validators-deploy-all prod
-VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-deploy-all prod
-just gcp validator-deployments-sync prod
-VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-register prod
+# Production: mirror and deploy one exact signed release to every Job and Service.
+just gcp validator-deploy-all prod v0.15.0
 ```
 
-The mirror command verifies the signed tag and GitHub attestation, then copies
-the exact GHCR digest into GAR without rebuilding it. Production resolves that
-release to equal GHCR/GAR digests, refreshes retained
-Jobs, and creates distinct private Services such as
+The command verifies the signed tag and GitHub attestation, copies the exact
+GHCR digest into GAR without rebuilding it, refreshes retained Jobs, and
+creates distinct private Services such as
 `validibot-validator-service-energyplus-v0-15-0`. Registration observes the
-ready provider state but leaves Jobs primary. Complete the live acceptance in
+ready provider state during the following acceptance operation; deployment
+itself leaves application routing unchanged. Complete the live acceptance in
 the rollout record with the single maintenance-safe command:
 
 ```bash
 just gcp validator-acceptance prod v0.15.0
 ```
 
-Before deploying the application image used by that command, set
-`GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true`; keep the ambient-isolation
-assertion false until the live proof passes. The stage must already be in
-maintenance mode. The acceptance command verifies the signed release, removes
-the legacy validator storage binding, activates the candidate internally, runs
+The stage must already be in maintenance mode. Attempt-scoped token delivery
+and ambient-IAM denial are fixed GCP contracts; there are no storage rollout
+flags to configure. Image strictness remains configurable, and the production
+environment selects `VALIDATOR_BACKEND_IMAGE_POLICY=digest`. The acceptance
+command verifies the signed release, removes any historical validator storage
+binding, proves effective IAM denial, activates the candidate internally, runs
 the four real canaries and 20-attempt bursts, retains one private JSON report,
-exercises rollback to Jobs, reactivates the accepted Services, and restores
-full maintenance mode. If any check fails, it restores the legacy storage
-binding and Job routes before shutting the stage down. On success it prints the
-one-time exact `secrets` command for making the now-proven ambient-isolation
-assertion truthful before the stage comes online.
+exercises rollback to capability-aware Jobs, reactivates the accepted Services,
+and restores full maintenance mode. If any check fails, it restores Job routing
+but never re-grants ambient storage access.
 
 Development may use the backend repo's local build/push recipes; production
 intentionally refuses that unsigned path.
@@ -279,10 +273,10 @@ just gcp list-resources <stage>
 just gcp doctor <stage> --strict
 ```
 
-Strict doctor intentionally fails on any warning. During the staged GCS
-capability rollout, run ordinary doctor first; `VB205` remains a warning until
-the live capability probe, ambient-IAM removal, and representative validation
-have all passed. Strict doctor is the final gate after that evidence exists.
+Strict doctor intentionally fails on any warning. `VB205` describes the fixed
+GCS + Cloud Run storage contract; `just gcp validator-acceptance` separately
+proves the live token boundary, ambient-IAM denial, and representative
+execution before traffic is enabled.
 
 Update both `DJANGO_ALLOWED_HOSTS` and `DJANGO_CSRF_TRUSTED_ORIGINS` in your
 stage env file before verification, then run `just gcp django secrets <stage>`
@@ -565,12 +559,18 @@ just gcp scheduler-run $GCP_APP_NAME-clear-sessions-dev
 just gcp scheduler-delete-all dev
 ```
 
-### Validator Jobs
+### Validator backends
 
 ```bash
-# Deploy a validator job for a stage
-just gcp validator-deploy energyplus dev
-just gcp validator-deploy energyplus prod
+# Routine: deploy one signed release to every Job and Service.
+just gcp validator-deploy-all prod v0.15.1
+
+# Routine: deploy one backend to its matching Job and Service.
+just gcp validator-deploy energyplus prod v0.15.1
+
+# Diagnostic/recovery: deploy just one execution shape.
+just gcp validator-job-deploy energyplus prod v0.15.1
+just gcp validator-service-deploy energyplus prod v0.15.1
 
 # List validator jobs
 gcloud run jobs list --filter="name~$GCP_APP_NAME-validator" --region=$GCP_REGION --project=$GCP_PROJECT_ID

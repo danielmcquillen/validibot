@@ -245,10 +245,6 @@ def dispatch_cloud_run_service_validation(
     attempt = get_active_execution_attempt(step_run)
     if attempt is None:
         raise RuntimeError("Managed Service dispatch requires a pinned deployment.")
-    if not getattr(settings, "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED", False):
-        raise RuntimeError(
-            "Validator Services require attempt-scoped GCS capability mode."
-        )
     queue_name = str(getattr(settings, "GCP_VALIDATOR_TASK_QUEUE_NAME", ""))
     invoker = str(getattr(settings, "GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT", ""))
     if not queue_name or not invoker:

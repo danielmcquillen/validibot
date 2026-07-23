@@ -95,7 +95,7 @@ source .envs/.production/.google-cloud/.just
 just gcp init-stage dev
 just gcp secrets dev
 just gcp deploy-all dev
-just gcp validators-deploy-all dev
+just gcp validator-deploy-all dev vX.Y.Z
 ```
 
 `just gcp deploy-all` runs migrations and the guarded, complete application

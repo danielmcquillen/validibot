@@ -209,14 +209,11 @@ GCS_WEATHER_DATA_DIR=weather_data
 # Cloud Run job names are derived from the validator's slug
 # (e.g. slug="energyplus" -> "validibot-validator-backend-energyplus").
 # No per-validator env vars are required here.
-# Production GCP releases are deployed and registered by digest. Enforce that
-# immutable identity at launch; use `tag` only for local quick-start workflows.
+# GCP storage authority is a fixed deployment contract: every attempt receives
+# a prefix-bound token and the validator service account has no ambient object
+# role. Image strictness remains an operator policy on every deployment target;
+# production GCP uses digest-pinned releases by default.
 VALIDATOR_BACKEND_IMAGE_POLICY=digest
-# Roll these two flags out in order. Enable capabilities only after compatible
-# images are deployed. Set the isolation assertion true only after the live GCS
-# capability probe, ambient-IAM removal, and representative validation pass.
-GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=false
-GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=false
 
 # SHACL VALIDATOR
 # ==============================================================================

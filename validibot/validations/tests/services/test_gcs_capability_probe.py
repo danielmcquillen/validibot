@@ -206,7 +206,6 @@ class TestProbeValidatorGCSCapabilityCommand(SimpleTestCase):
     """Verify the management command's configuration and automation contract."""
 
     @override_settings(
-        GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=True,
         GCS_VALIDATION_BUCKET="validation",
         GCP_PROJECT_ID="validibot-project",
     )
@@ -239,23 +238,7 @@ class TestProbeValidatorGCSCapabilityCommand(SimpleTestCase):
             project_id="validibot-project",
         )
 
-    @override_settings(GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=False)
-    @patch(
-        "validibot.validations.management.commands."
-        "probe_validator_gcs_capability.probe_attempt_gcs_runtime_capability"
-    )
-    def test_disabled_capability_path_refuses_to_probe(self, probe):
-        """A probe cannot certify a deployment whose actual path is disabled."""
-        with self.assertRaisesMessage(
-            CommandError,
-            "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED must be true",
-        ):
-            call_command("probe_validator_gcs_capability")
-
-        probe.assert_not_called()
-
     @override_settings(
-        GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=True,
         GCS_VALIDATION_BUCKET="validation",
         GCP_PROJECT_ID="validibot-project",
     )

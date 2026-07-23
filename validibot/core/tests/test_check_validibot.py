@@ -573,8 +573,8 @@ class DoctorStorageCapabilityTests(TestCase):
     """Verify VB205 and its structured storage-capability projection.
 
     Reachable storage is not necessarily attempt-isolated storage. These tests
-    keep the doctor honest about the difference so operators and support tools
-    do not mistake exact-byte verification for cross-attempt confidentiality.
+    keep the doctor honest about the configured execution contract while live
+    provider IAM remains the acceptance recipe's separate responsibility.
     """
 
     @override_settings(DATA_STORAGE_BACKEND="local", VALIDATOR_RUNNER="docker")
@@ -597,21 +597,21 @@ class DoctorStorageCapabilityTests(TestCase):
         DATA_STORAGE_BACKEND="gcs",
         VALIDATOR_RUNNER="google_cloud_run",
     )
-    def test_gcs_reports_integrity_with_reduced_isolation_warning(self):
-        """Shared Cloud Run identity is never described as attempt-scoped."""
+    def test_gcs_reports_the_mandatory_attempt_scoped_contract(self):
+        """GCS + Cloud Run must not advertise a selectable legacy IAM mode."""
         command = Command()
         command._check_storage_capability()
 
         report = command.storage_capability
         self.assertIsNotNone(report)
-        self.assertEqual(report.mode.value, "gcs_generation")
+        self.assertEqual(report.mode.value, "gcs_downscoped_token")
         self.assertTrue(report.integrity_enforced)
-        self.assertFalse(report.attempt_scoped_authority)
+        self.assertTrue(report.attempt_scoped_authority)
 
         check = next(result for result in command.results if result.id == "VB205")
-        self.assertEqual(check.status, CheckStatus.WARN)
-        self.assertIn("reduced_shared_runtime_identity", check.message)
-        self.assertIn("integrity", check.details)
+        self.assertEqual(check.status, CheckStatus.OK)
+        self.assertIn("isolation=attempt_scoped", check.message)
+        self.assertIn("Policy Troubleshooter", check.details)
 
     @override_settings(DATA_STORAGE_BACKEND="s3", VALIDATOR_RUNNER="aws_batch")
     def test_unproven_s3_semantics_fail_closed(self):

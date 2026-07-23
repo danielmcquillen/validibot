@@ -94,6 +94,10 @@ DJANGO_ACCOUNT_ALLOW_LOGIN=true
 # Higher = fewer requests but slower feedback.
 WORKFLOW_RUN_POLL_INTERVAL_SECONDS=3
 
+# Validator backend image policy: tag, digest, or signed-digest.
+# Local and local-cloud builds use mutable development tags by default.
+VALIDATOR_BACKEND_IMAGE_POLICY=tag
+
 # SHACL Validator
 # ------------------------------------------------------------------------------
 # Core SHACL validation is always on. Advanced SHACL-AF constructs —

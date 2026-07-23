@@ -74,7 +74,7 @@ role rather than the much broader `roles/run.viewer`:
 ```
 
 The role ID is retained for compatibility. `just gcp init-stage` reconciles the
-role and its project-level binding; `just gcp validator-deploy` also retains a
+role and its project-level binding; `just gcp validator-job-deploy` also retains a
 resource-level binding on each Job. The role cannot list unrelated resources,
 change a Service, or change IAM.
 
@@ -130,49 +130,49 @@ resolve to the same digest.
 ### Development
 
 ```bash
-just gcp validator-deploy energyplus dev
-just gcp validators-deploy-all dev
-just gcp validator-services-deploy-all dev
+just gcp validator-deploy-all dev v0.15.0
 just gcp validator-deployments-sync dev
 just gcp validator-services-register dev
 ```
 
+For a source-checkout-only Job or Service diagnostic, use the explicit
+`validator-job-deploy` or `validator-service-deploy` command. Routine staging
+uses `validator-deploy` / `validator-deploy-all` so both execution shapes come
+from one release.
+
 ### Production release deployment
 
 ```bash
-just gcp validator-release-mirror v0.15.0
-just gcp validator-release-verify v0.15.0
-VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validators-deploy-all prod
-VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-deploy-all prod
-just gcp validator-deployments-sync prod
-VALIDATOR_BACKEND_RELEASE_TAG=v0.15.0 just gcp validator-services-register prod
+just gcp validator-deploy-all prod v0.15.0
 ```
 
-Registration does not activate Services. With production already in
-maintenance mode, run the routine immutable-I/O, smoke, burst, latency, and
-route-rollback acceptance as one operation:
+The complete deploy command verifies and mirrors the signed release, then
+deploys all four Jobs and all four release-specific Services without
+registering or activating them. With production already in maintenance mode,
+run the immutable-I/O, smoke, burst, latency, and route-rollback acceptance as
+one operation:
 
 ```bash
 just gcp validator-acceptance prod v0.15.0
 ```
 
-The deployed environment must already enable validator GCS capabilities; keep
-the ambient-isolation assertion false until this live proof passes. A
-successful command leaves Services primary but keeps the whole application
-offline and prints the exact one-time secret finalization command. A failure
-restores the legacy storage binding and Job routes. Forced duplicate
-delivery, deadline, callback-loss salvage, and rollback during an in-flight
-request remain the separate failure-mode acceptance exercises in the internal
-rollout record.
+Validator GCS capabilities are unconditional and stage IAM must already deny
+the runtime identity ambient object access. A successful command leaves
+Services primary but keeps the whole application offline. A failure restores
+the capability-aware Job route without re-granting storage access. Forced
+duplicate delivery, deadline, callback-loss salvage, and rollback during an
+in-flight request remain the separate failure-mode acceptance exercises in the
+internal rollout record.
 
-`validator-release-mirror` verifies the signed tag and GHCR attestation before
-copying by digest into GAR; it does not rebuild. The following verify step
-proves the two registries contain byte-identical release images.
+The internal mirror step verifies the signed tag and GHCR attestation before
+copying by digest into GAR; it does not rebuild. Deployment then proves the two
+registries contain byte-identical release images.
 
-### What the deploy command does
+### What the complete deploy command does
 
-1. In development, **builds and pushes** a `linux/amd64` image. In production,
-   verifies and resolves the canonical release image instead
+1. **Verifies and mirrors** the explicit signed release, resolving every image
+   to the same immutable digest in GHCR and GAR. Development checkout builds
+   remain available only through the low-level Job/Service commands.
 2. **Deploys** the retained Cloud Run Job with:
    - Stage-appropriate job name (`$GCP_APP_NAME-validator-backend-energyplus-dev` for dev, `$GCP_APP_NAME-validator-backend-energyplus` for prod). The same name the runtime resolves at dispatch time via `ValidatorConfig.cloud_run_job_name`.
    - Dedicated validator service account (`$GCP_APP_NAME-validator-dev@...` for dev) with no ambient storage role
@@ -185,8 +185,10 @@ proves the two registries contain byte-identical release images.
    - Adds custom `validibot_job_runner` role to the main SA so the web/worker service can trigger the job with env overrides
    - Grants `roles/run.invoker` on the worker to the validator runtime SA
    - Removes every validator Service invoker except the dedicated provider-task identity
-5. **Registers** only after observing the exact ready revision, digest, runtime
-   identity, invoker policy, resources, timeout, concurrency, and capacity
+5. Leaves application routing unchanged. `validator-acceptance` performs
+   registration and activation only after observing the exact ready revision,
+   digest, runtime identity, invoker policy, resources, timeout, concurrency,
+   and capacity.
 
 ### Viewing logs and job status
 
@@ -237,30 +239,28 @@ Stage isolation is enforced by:
    validator identity cannot. Its injected token is limited to one
    stage-bucket attempt prefix.
 
-## Attempt-capability rollout
+## Mandatory attempt-capability contract
 
-Roll out in dependency order so old containers are never stranded without their
-historical storage identity:
+GCS + Cloud Run has one supported execution contract. Token delivery cannot be
+disabled, and the validator runtime identity cannot retain ambient object
+access. Deploy Django and the backend release together while the stage is
+offline; mixed capability-aware and legacy images are not supported:
 
 1. Deploy a published capability-aware `validibot-validator-backends` release
    and the matching Django code. For the July 2026 Service rollout baseline:
 
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp validator-release-mirror v0.15.1
-   just gcp validator-release-verify v0.15.1
-   VALIDATOR_BACKEND_RELEASE_TAG=v0.15.1 just gcp validators-deploy-all prod
-   VALIDATOR_BACKEND_RELEASE_TAG=v0.15.1 just gcp validator-services-deploy-all prod
+   just gcp validator-deploy-all prod v0.15.1
    ```
 
-2. Set `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true` and keep
-   `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=false`, then sync and
-   deploy Django. Doctor remains WARN because the validator metadata identity
-   may still bypass the narrow credential:
+2. Reconcile stage IAM and deploy the matching Django release in maintenance
+   mode. Stage provisioning removes historical validator storage roles; Django
+   always stages attempt inputs and delivers a bounded token:
 
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp secrets prod
+   just gcp init-stage prod
    just gcp deploy-maintenance prod
    ```
 
@@ -271,23 +271,12 @@ historical storage identity:
    just gcp validator-acceptance prod v0.15.1
    ```
 
-   This command now performs the old steps 3–6: it removes known ambient IAM,
-   requires Policy Troubleshooter denial, probes allowed and forbidden
-   downscoped-token operations, runs the four artifact-producing canaries and
-   20-attempt bursts, and retains private JSON. Failure automatically restores
-   the legacy conditional binding and Job routes.
-
-4. Only after the command passes, set
-   `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`, then run the
-   exact finalization command printed by the acceptance command:
-
-   ```bash
-   cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp secrets prod
-   ```
-
-   `VB205` becomes OK only when both flags are true. The acceptance JSON is the
-   retained provider proof; no console output needs to be copied by hand.
+   This command removes any known historical ambient IAM, requires Policy
+   Troubleshooter denial, probes allowed and forbidden downscoped-token
+   operations, runs the four artifact-producing canaries and 20-attempt bursts,
+   and retains private JSON. Failure restores the capability-aware Job route
+   but never restores ambient storage access. No configuration finalization is
+   required after success.
 
 ### Deploy-time environment variables
 
@@ -321,11 +310,10 @@ image digest as the trust-critical backend identity.
 
 ## Image-pinning policy: `VALIDATOR_BACKEND_IMAGE_POLICY`
 
-Self-hosted and legacy Job configurations may point at a tag or digest. The
-setting `VALIDATOR_BACKEND_IMAGE_POLICY` decides what counts as an acceptable
-launch image. Hosted production provisioning is stricter: both Jobs and
-Services are imported only after the signed release resolves to an attested,
-matching GHCR/GAR digest, and the provider resource is digest-pinned.
+Every deployment target may select `tag`, `digest`, or `signed-digest`.
+Production GCP selects `digest` in its environment and its release tooling
+separately verifies the signed release, resolves an attested matching GHCR/GAR
+digest, and deploys the provider resource by that digest.
 
 ### The three policies
 
@@ -333,7 +321,7 @@ matching GHCR/GAR digest, and the provider resource is digest-pinned.
 | ----------------- | -------------------------------------------------------- | --------------------------------------------------- |
 | `tag`             | Anything (tag, digest, latest)                           | Default for community / self-host quick-start       |
 | `digest`          | Image references containing `@sha256:<hex>`              | Production self-hosted: prove which bytes ran       |
-| `signed-digest`   | Digest-pinned **and** cosign verification enabled        | High-trust hosted environments                      |
+| `signed-digest`   | Digest-pinned **and** cosign verification enabled        | High-trust environments                             |
 
 The policy is enforced by `validibot/validations/services/image_policy.py`. Every Cloud Run launcher path (`launcher.py`) consults `enforce_image_policy()` before triggering the job and refuses to launch when the configured image violates the policy.
 
@@ -357,7 +345,8 @@ image — and under strict intent that is a launch-blocking configuration error,
 not a "let's hope for the best" fallback. The launcher refuses to trigger the
 Job and surfaces a clear error message naming the missing prerequisite.
 
-Under the default `tag` policy a lookup failure is non-fatal — the launcher proceeds and execution metadata is captured best-effort.
+Under the default `tag` policy a lookup failure is non-fatal—the
+launcher proceeds and execution metadata is captured best-effort.
 
 ### Doctor check
 
@@ -366,6 +355,7 @@ Run `validibot doctor` to get a stage-aware advisory:
 - `VB711` (error) — invalid `VALIDATOR_BACKEND_IMAGE_POLICY` value (typo).
 - `VB712` (warn / info) — policy is `tag` and the deployment target is `production`. Operators on production targets should pin to `digest` or `signed-digest`.
 - `VB713` (error) — policy is `signed-digest` but `COSIGN_VERIFY_VALIDATOR_BACKEND_IMAGES` is false. Every launch will be refused; either enable cosign verification or relax the policy.
+
 
 ## Reconciliation and lost-callback recovery
 

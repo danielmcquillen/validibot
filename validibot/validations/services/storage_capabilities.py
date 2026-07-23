@@ -1,12 +1,11 @@
 """Describe the effective validator-runtime storage security boundary.
 
 The immutable-I/O ADR requires deployment health output to distinguish
-integrity from confidentiality. A generation-pinned GCS object can be verified
-exactly while the Cloud Run job's shared service account can still read a
-broader prefix than one execution attempt. GCS reaches attempt-scoped authority
-only when narrow token delivery is enabled and ambient runtime storage IAM has
-been removed. Local Docker establishes the equivalent boundary through two
-attempt-specific mounts.
+integrity from confidentiality. GCS + Cloud Run has one supported contract:
+every execution receives narrow token authority and the runtime identity has
+no ambient object access. Stage provisioning and acceptance enforce the IAM
+half outside Django; it is not represented by a configuration assertion. Local
+Docker establishes the equivalent boundary through two attempt-specific mounts.
 
 This module deliberately inspects the paired data-storage and validator-runner
 settings instead of testing whether generic credentials merely exist. Unknown,
@@ -145,107 +144,33 @@ def get_storage_capability_report() -> StorageCapabilityReport:
         )
 
     if storage_backend == "gcs" and validator_runner == "google_cloud_run":
-        capabilities_enabled = bool(
-            getattr(settings, "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED", False)
-        )
-        ambient_storage_disabled = bool(
-            getattr(
-                settings,
-                "GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED",
-                False,
-            )
-        )
-        if capabilities_enabled and ambient_storage_disabled:
-            return StorageCapabilityReport(
-                mode=StorageCapabilityMode.GCS_DOWNSCOPED_TOKEN,
-                isolation=RuntimeStorageIsolation.ATTEMPT_SCOPED,
-                data_storage_backend=storage_backend,
-                validator_runner=validator_runner,
-                integrity_enforced=True,
-                create_only_writes=True,
-                immutable_reads=True,
-                attempt_scoped_authority=True,
-                summary=(
-                    "Cloud Run receives a short-lived read/create token limited "
-                    "to one attempt prefix; external inputs are staged into that "
-                    "prefix before dispatch."
-                ),
-                limitations=(
-                    "Already-issued tokens cannot be revoked and may remain valid "
-                    "for their bounded lifetime; terminal attempts cannot renew.",
-                    "Cloud Run execution-viewer access must remain restricted "
-                    "because per-execution environment overrides contain the "
-                    "short-lived bearer token.",
-                ),
-            )
-
-        if not capabilities_enabled and ambient_storage_disabled:
-            return _unsupported_report(
-                storage_backend=storage_backend,
-                validator_runner=validator_runner,
-                summary=(
-                    "The validator runtime identity has no ambient storage access, "
-                    "but attempt-scoped token delivery is disabled."
-                ),
-                operator_action=(
-                    "Deploy capability-aware validator images, then set "
-                    "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true."
-                ),
-            )
-
-        if capabilities_enabled:
-            limitation = (
-                "Attempt-scoped tokens are delivered, but the configured Cloud "
-                "Run service account is still declared to have ambient storage "
-                "access and compromised code could bypass the narrow client."
-            )
-            return StorageCapabilityReport(
-                mode=StorageCapabilityMode.GCS_DOWNSCOPED_TOKEN,
-                isolation=RuntimeStorageIsolation.REDUCED_SHARED_RUNTIME_IDENTITY,
-                data_storage_backend=storage_backend,
-                validator_runner=validator_runner,
-                integrity_enforced=True,
-                create_only_writes=True,
-                immutable_reads=True,
-                attempt_scoped_authority=False,
-                summary=(
-                    "Cloud Run is receiving attempt-scoped GCS tokens, but the "
-                    "ambient runtime identity has not yet been removed."
-                ),
-                limitations=(limitation,),
-                operator_action=(
-                    "Remove every bucket/project storage role from the validator "
-                    "service account, verify access is denied without the token, "
-                    "then set "
-                    "GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true."
-                ),
-            )
-
-        limitation = (
-            "Cloud Run validator jobs use their configured shared runtime "
-            "service account. GCS generations and SHA-256 protect integrity, "
-            "but that identity may still read other attempts allowed by IAM."
-        )
         return StorageCapabilityReport(
-            mode=StorageCapabilityMode.GCS_GENERATION,
-            isolation=RuntimeStorageIsolation.REDUCED_SHARED_RUNTIME_IDENTITY,
+            mode=StorageCapabilityMode.GCS_DOWNSCOPED_TOKEN,
+            isolation=RuntimeStorageIsolation.ATTEMPT_SCOPED,
             data_storage_backend=storage_backend,
             validator_runner=validator_runner,
             integrity_enforced=True,
             create_only_writes=True,
             immutable_reads=True,
-            attempt_scoped_authority=False,
+            attempt_scoped_authority=True,
             summary=(
-                "GCS inputs are generation-pinned and outputs use create-only "
-                "generation preconditions."
+                "Cloud Run receives a short-lived read/create token limited to "
+                "one attempt prefix; the deployment contract forbids ambient "
+                "runtime object access."
             ),
-            limitations=(limitation,),
+            limitations=(
+                "Already-issued tokens cannot be revoked and may remain valid "
+                "for their bounded lifetime; terminal attempts cannot renew.",
+                "Cloud Run execution-viewer access must remain restricted "
+                "because per-execution environment overrides contain the "
+                "short-lived bearer token.",
+                "Doctor reports the required deployment contract; production "
+                "acceptance separately proves effective IAM denial with Policy "
+                "Troubleshooter.",
+            ),
             operator_action=(
-                "Deploy capability-aware validator images, enable "
-                "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED, remove ambient "
-                "storage roles from the validator service account, and record "
-                "that removal with "
-                "GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true."
+                "Run the GCP validator acceptance recipe before enabling traffic "
+                "and retain its provider proof."
             ),
         )
 

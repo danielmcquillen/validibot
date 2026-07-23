@@ -254,9 +254,7 @@ def build_validation_storage_capability_refresh_url() -> str:
 
 
 def _prepare_attempt_capability_envelope(envelope, *, execution_bundle_uri: str):
-    """Stage all GCS reads into one prefix when capability rollout is enabled."""
-    if not getattr(settings, "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED", False):
-        return envelope
+    """Stage all GCS reads into the one prefix authorized for this attempt."""
     from validibot.validations.services.cloud_run.gcs_runtime_capabilities import (
         prepare_envelope_for_attempt_capability,
     )
@@ -349,7 +347,7 @@ def _run_validator_job_safely(
     input_envelope_sha256: str,
     input_evidence_snapshot: dict,
     output_envelope_uri: str,
-    gcs_capability=None,
+    gcs_capability,
 ) -> str:
     """Launch once and preserve provider-acceptance ambiguity explicitly.
 
@@ -436,9 +434,9 @@ def _enforce_cloud_run_job_image_policy(
 ) -> None:
     """Fail closed when a Cloud Run Job image violates deployment policy.
 
-    Tag policy keeps configured-image discovery best-effort for community
-    deployments. Digest and signed-digest policies require both a successful
-    lookup and a compliant immutable image reference before dispatch.
+    GCP operators retain the same tag/digest/signed-digest choice as other
+    deployments. Strict policies require both provider discovery and an
+    immutable configured image before dispatch.
     """
     policy = get_current_policy()
     configured_image = get_job_configured_image(
@@ -454,8 +452,8 @@ def _enforce_cloud_run_job_image_policy(
             policy.value,
         )
         msg = (
-            f"VALIDATOR_BACKEND_IMAGE_POLICY={policy.value} requires verifying "
-            f"the Cloud Run Job's configured image, but the lookup for "
+            f"Validator image policy '{policy.value}' requires verifying the "
+            f"Cloud Run Job's configured image, but the lookup for "
             f"'{job_name}' returned no image. Refusing to launch under strict "
             "policy. Check that the job exists, its service account can inspect "
             "it, and GCP_PROJECT_ID / GCP_REGION are correct."
@@ -484,7 +482,7 @@ def _enforce_cloud_run_job_image_policy(
         policy_result.message,
     )
     msg = (
-        f"Cloud Run Job '{job_name}' violates VALIDATOR_BACKEND_IMAGE_POLICY: "
+        f"Cloud Run Job '{job_name}' violates validator image policy: "
         f"{policy_result.message}"
     )
     raise RuntimeError(msg)
@@ -544,17 +542,15 @@ def _dispatch_cloud_run_validation(
     else:
         _enforce_cloud_run_job_image_policy(job_name)
     logger.info("Triggering Cloud Run Job: %s", job_name)
-    gcs_capability = None
-    if getattr(settings, "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED", False):
-        from validibot.validations.services.cloud_run.gcs_runtime_capabilities import (
-            issue_attempt_gcs_runtime_capability,
-        )
+    from validibot.validations.services.cloud_run.gcs_runtime_capabilities import (
+        issue_attempt_gcs_runtime_capability,
+    )
 
-        gcs_capability = issue_attempt_gcs_runtime_capability(
-            execution_bundle_uri=execution_bundle_uri,
-            project_id=project_id,
-            refresh_url=build_validation_storage_capability_refresh_url(),
-        )
+    gcs_capability = issue_attempt_gcs_runtime_capability(
+        execution_bundle_uri=execution_bundle_uri,
+        project_id=project_id,
+        refresh_url=build_validation_storage_capability_refresh_url(),
+    )
 
     execution_name = _run_validator_job_safely(
         step_run=step_run,

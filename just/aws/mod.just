@@ -393,18 +393,18 @@ scheduler-list: _not-implemented
 validator-build name: _not-implemented
     @echo "Would build validator: {{name}}"
 
-# Deploy a validator as ECS task
-validator-deploy name stage: _not-implemented
-    @echo "Would deploy validator {{name}} to {{stage}}"
+# Deploy one signed validator release as an ECS task
+validator-deploy name stage release_tag: _not-implemented
+    @echo "Would deploy validator {{name}} {{release_tag}} to {{stage}}"
     @echo ""
     @echo "Implementation:"
     @echo "  - ECS Task Definition for validator"
     @echo "  - IAM role with S3 access"
     @echo "  - Triggered via SQS or direct invocation"
 
-# Deploy all validators
-validators-deploy-all stage: _not-implemented
-    @echo "Would deploy all validators to {{stage}}"
+# Deploy one signed release of all validators
+validator-deploy-all stage release_tag: _not-implemented
+    @echo "Would deploy all validators at {{release_tag}} to {{stage}}"
 
 # =============================================================================
 # Maintenance Mode (STUB)

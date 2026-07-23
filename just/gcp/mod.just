@@ -2721,7 +2721,7 @@ init-stage stage: _require-gcp-config
     # Step 0b: Create the custom validator-controller role the Cloud Run SA
     # needs to inspect validator Jobs/Services and trigger retained Jobs. The
     # historical role ID is retained for compatibility. It is GRANTED in Step
-    # 2 (and on each validator job in ``validator-deploy``); creating it here —
+    # 2 (and on each validator job in ``validator-job-deploy``); creating it here —
     # rather than out of band — means a fresh project is never left
     # green-but-broken with a binding to a role that does not exist.
     # Create-or-reconcile, idempotent.
@@ -2809,9 +2809,9 @@ init-stage stage: _require-gcp-config
     done
     echo ""
 
-    # Step 2c: Create dedicated validator service account (least-privilege for Cloud Run Jobs)
-    # Validators only need GCS access and run.invoker on the worker for callbacks.
-    # They do NOT get secrets, Cloud SQL, Cloud Tasks, or KMS access.
+    # Step 2c: Create the dedicated validator runtime identity. It receives no
+    # ambient GCS role; per-attempt tokens provide all object authority. Its
+    # only application permission is run.invoker on the worker for callbacks.
     if [ "{{stage}}" = "prod" ]; then
         VALIDATOR_SA_NAME="${APP_NAME}-validator-prod"
     else
@@ -3200,7 +3200,7 @@ init-stage stage: _require-gcp-config
     echo "                          - DJANGO_ALLOWED_HOSTS (add Cloud Run URL after first deploy)"
     echo "  2. Upload secrets:      just gcp secrets {{stage}}"
     echo "  3. Deploy services:     just gcp deploy-all {{stage}}  (migrates and initializes automatically)"
-    echo "  4. Deploy validators:   just gcp validators-deploy-all {{stage}}  (optional)"
+    echo "  4. Deploy validators:   just gcp validator-deploy-all {{stage}} vX.Y.Z  (optional)"
     echo ""
     echo "Commercial add-ons (optional):"
     echo "  If you've installed a commercial add-on (e.g. the GCS audit-archive"
@@ -3754,10 +3754,12 @@ validator-release-mirror release_tag: _require-gcp-config
     just gcp _validator-release-mirror-image shacl {{release_tag}}
     just gcp _validator-release-mirror-image schematron {{release_tag}}
 
-# Deploy a Cloud Run Job for a validator to a specific stage
-# Usage: just gcp validator-deploy energyplus dev | just gcp validator-deploy fmu prod
+# Deploy one validator's Cloud Run Job. This is the Job-only diagnostic
+# surface; routine release staging uses validator-deploy / validator-deploy-all
+# so the Job and Service cannot accidentally drift to different releases.
+# Usage: just gcp validator-job-deploy energyplus prod v0.15.1
 [arg('stage', pattern='dev|staging|prod')]
-validator-deploy name stage: _require-gcp-config
+validator-job-deploy name stage release_tag="": _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -3793,11 +3795,14 @@ validator-deploy name stage: _require-gcp-config
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
     fi
 
-    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
+    RELEASE_TAG="{{release_tag}}"
+    if [ -z "$RELEASE_TAG" ]; then
+        RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
+    fi
     if [ "{{stage}}" = "prod" ]; then
         if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Error: production validator deploys require an immutable signed release tag." >&2
-            echo "Usage: VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z just gcp validator-deploy {{name}} prod" >&2
+            echo "Error: production validator Job deploys require an immutable signed release tag." >&2
+            echo "Usage: just gcp validator-job-deploy {{name}} prod vX.Y.Z" >&2
             exit 1
         fi
         IMAGE_TAG="$RELEASE_TAG"
@@ -3810,9 +3815,9 @@ validator-deploy name stage: _require-gcp-config
     fi
 
     # Resolve the pushed revision tag to its immutable GAR digest. Cloud Run
-    # records the exact bytes it will execute, and the application can safely
-    # enforce VALIDATOR_BACKEND_IMAGE_POLICY=digest without trusting a mutable
-    # tag. ``artifacts docker images list`` avoids requiring the optional
+    # records the exact bytes it will execute, and the configured production
+    # image policy can enforce digest pinning without trusting a mutable tag.
+    # ``artifacts docker images list`` avoids requiring the optional
     # Container Analysis API used by ``images describe``.
     IMAGE_REPOSITORY="{{validator_repo}}/{{app_name}}-validator-backend-{{name}}"
     IMAGE_DIGEST=$(gcloud artifacts docker images list "$IMAGE_REPOSITORY" \
@@ -3866,24 +3871,25 @@ validator-deploy name stage: _require-gcp-config
         echo "   Validator SA can invoke $WORKER_SERVICE"
     else
         echo "   WARNING: Worker service $WORKER_SERVICE not found yet."
-        echo "   Deploy the worker first (just gcp deploy-worker {{stage}}), then re-run validator-deploy."
+        echo "   Deploy the worker first (just gcp deploy-worker {{stage}}), then re-run validator-job-deploy."
     fi
 
-# Build and deploy all validator jobs to a stage
-# Usage: just gcp validators-deploy-all dev | just gcp validators-deploy-all prod
+# Deploy all four validator Jobs without deploying Services. This is a
+# diagnostic/recovery surface; routine releases use validator-deploy-all.
+# Usage: just gcp validator-jobs-deploy-all prod v0.15.1
 [arg('stage', pattern='dev|staging|prod')]
-validators-deploy-all stage: _require-gcp-config
-    just gcp validator-deploy energyplus {{stage}}
-    just gcp validator-deploy fmu {{stage}}
-    just gcp validator-deploy shacl {{stage}}
-    just gcp validator-deploy schematron {{stage}}
+validator-jobs-deploy-all stage release_tag="": _require-gcp-config
+    just gcp validator-job-deploy energyplus {{stage}} "{{release_tag}}"
+    just gcp validator-job-deploy fmu {{stage}} "{{release_tag}}"
+    just gcp validator-job-deploy shacl {{stage}} "{{release_tag}}"
+    just gcp validator-job-deploy schematron {{stage}} "{{release_tag}}"
 
 # Deploy one digest-pinned private validator Cloud Run Service. The same image
 # retains its one-shot Job entrypoint; VALIDIBOT_EXECUTION_SHAPE selects the
 # shared HTTP parent only for this Service revision.
-# Usage: just gcp validator-service-deploy energyplus prod
+# Usage: just gcp validator-service-deploy energyplus prod v0.15.1
 [arg('stage', pattern='dev|staging|prod')]
-validator-service-deploy name stage: _require-gcp-config
+validator-service-deploy name stage release_tag="": _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -3916,11 +3922,14 @@ validator-service-deploy name stage: _require-gcp-config
             --project={{gcp_project}} >/dev/null
     done
 
-    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
+    RELEASE_TAG="{{release_tag}}"
+    if [ -z "$RELEASE_TAG" ]; then
+        RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
+    fi
     if [ "{{stage}}" = "prod" ]; then
         if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Error: production validator Services require an immutable signed release tag." >&2
-            echo "Usage: VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z just gcp validator-service-deploy {{name}} prod" >&2
+            echo "Usage: just gcp validator-service-deploy {{name}} prod vX.Y.Z" >&2
             exit 1
         fi
         IMAGE_TAG="$RELEASE_TAG"
@@ -4016,13 +4025,62 @@ validator-service-deploy name stage: _require-gcp-config
         --quiet >/dev/null
     echo "$SERVICE_NAME is private, concurrency=1, min=$MIN_INSTANCES, max=$MAX_INSTANCES."
 
-# Provision all four Services without changing application routing.
+# Provision all four Services without deploying Jobs or changing application
+# routing. This is a diagnostic/recovery surface; routine releases use
+# validator-deploy-all.
+# Deploy all four validator Services only (diagnostic/recovery).
 [arg('stage', pattern='dev|staging|prod')]
-validator-services-deploy-all stage: _require-gcp-config
-    just gcp validator-service-deploy energyplus {{stage}}
-    just gcp validator-service-deploy fmu {{stage}}
-    just gcp validator-service-deploy shacl {{stage}}
-    just gcp validator-service-deploy schematron {{stage}}
+validator-services-deploy-all stage release_tag="": _require-gcp-config
+    just gcp validator-service-deploy energyplus {{stage}} "{{release_tag}}"
+    just gcp validator-service-deploy fmu {{stage}} "{{release_tag}}"
+    just gcp validator-service-deploy shacl {{stage}} "{{release_tag}}"
+    just gcp validator-service-deploy schematron {{stage}} "{{release_tag}}"
+
+# Stage one complete validator backend release without changing application
+# routing. The signed image is mirrored once, then the matching Job and Service
+# are deployed from the same explicit release. Production must already be in
+# maintenance mode because its retained Job name is updated in place.
+# Usage: just gcp validator-deploy energyplus prod v0.15.1
+[arg('stage', pattern='dev|staging|prod')]
+validator-deploy name stage release_tag: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: release_tag must be vX.Y.Z." >&2
+        exit 1
+    fi
+    case "{{name}}" in
+        energyplus|fmu|shacl|schematron) ;;
+        *) echo "Error: unknown managed validator '{{name}}'." >&2; exit 1 ;;
+    esac
+    if [ "{{stage}}" = "prod" ]; then
+        just gcp _maintenance-assert-offline {{stage}}
+    fi
+    just gcp _validator-release-mirror-image "{{name}}" "{{release_tag}}"
+    just gcp validator-job-deploy "{{name}}" {{stage}} "{{release_tag}}"
+    just gcp validator-service-deploy "{{name}}" {{stage}} "{{release_tag}}"
+    echo "Staged {{name}} {{release_tag}} as a Job and Service on {{stage}}; routing is unchanged."
+
+# Stage every managed validator backend from one signed release. This is the
+# routine operator command: mirror all four images, deploy all four Jobs, then
+# deploy all four release-specific Services. It never registers or activates a
+# route; validator-acceptance owns private testing and promotion.
+# Usage: just gcp validator-deploy-all prod v0.15.1
+[arg('stage', pattern='dev|staging|prod')]
+validator-deploy-all stage release_tag: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "Error: release_tag must be vX.Y.Z." >&2
+        exit 1
+    fi
+    if [ "{{stage}}" = "prod" ]; then
+        just gcp _maintenance-assert-offline {{stage}}
+    fi
+    just gcp validator-release-mirror "{{release_tag}}"
+    just gcp validator-jobs-deploy-all {{stage}} "{{release_tag}}"
+    just gcp validator-services-deploy-all {{stage}} "{{release_tag}}"
+    echo "Staged all validator Jobs and Services at {{release_tag}} on {{stage}}; routing is unchanged."
 
 # Register current digest-pinned Jobs as primary routes for new attempts.
 [arg('stage', pattern='dev|staging|prod')]
@@ -4250,16 +4308,11 @@ validator-acceptance stage release_tag attempts="20": _require-gcp-config
     if [ "{{stage}}" = "prod" ]; then
         QUEUE_NAME="${APP_NAME}-tasks"
         PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
-        STORAGE_BUCKET="${APP_NAME}-storage"
-        VALIDATOR_SA_EMAIL="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
     else
         QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
         PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
-        STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
-        VALIDATOR_SA_EMAIL="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
     fi
     ROUTES_ACTIVATED=0
-    STORAGE_ISOLATION_APPLIED=0
     ACCEPTANCE_PASSED=0
 
     pause_acceptance_queues() {
@@ -4276,16 +4329,6 @@ validator-acceptance stage release_tag attempts="20": _require-gcp-config
         trap - EXIT INT TERM
         set +e
         pause_acceptance_queues
-        if [ "$ACCEPTANCE_PASSED" != "1" ] && [ "$STORAGE_ISOLATION_APPLIED" = "1" ]; then
-            echo "Acceptance did not pass; restoring the legacy run-prefix storage binding..."
-            gcloud storage buckets add-iam-policy-binding "gs://$STORAGE_BUCKET" \
-                --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
-                --role=roles/storage.objectAdmin \
-                --condition="expression=resource.name.startsWith('projects/_/buckets/$STORAGE_BUCKET/objects/runs/'),title=validator-runs-prefix-only" \
-                --project={{gcp_project}} \
-                --quiet >/dev/null \
-                || cleanup_status=1
-        fi
         if [ "$ACCEPTANCE_PASSED" != "1" ] && [ "$ROUTES_ACTIVATED" = "1" ]; then
             echo "Acceptance did not pass; restoring Job routes..."
             VALIDATOR_BACKEND_RELEASE_TAG={{release_tag}} \
@@ -4298,7 +4341,7 @@ validator-acceptance stage release_tag attempts="20": _require-gcp-config
     assert_queue_empty() {
         local queue="$1"
         local task
-        task=$(gcloud tasks tasks list \
+        task=$(gcloud tasks list \
             --queue "$queue" \
             --location {{gcp_region}} \
             --project {{gcp_project}} \
@@ -4309,17 +4352,54 @@ validator-acceptance stage release_tag attempts="20": _require-gcp-config
             exit 1
         fi
     }
+    assert_release_resources_exist() {
+        local release_label="{{release_tag}}"
+        release_label="${release_label//./-}"
+        local missing=0
+        local backend job job_release service service_release
+        for backend in energyplus fmu shacl schematron; do
+            job="${APP_NAME}-validator-backend-${backend}"
+            if [ "{{stage}}" != "prod" ]; then job="${job}-{{stage}}"; fi
+            job_release=$(gcloud run jobs describe "$job" \
+                --region {{gcp_region}} \
+                --project {{gcp_project}} \
+                --format='value(metadata.labels.release)' 2>/dev/null || true)
+            if [ "$job_release" != "$release_label" ]; then
+                echo "Missing candidate Job: $job (expected release $release_label)" >&2
+                missing=1
+            fi
+
+            service="${APP_NAME}-validator-service-${backend}-${release_label}"
+            if [ "{{stage}}" != "prod" ]; then service="${service}-{{stage}}"; fi
+            service_release=$(gcloud run services describe "$service" \
+                --region {{gcp_region}} \
+                --project {{gcp_project}} \
+                --format='value(metadata.labels.release)' 2>/dev/null || true)
+            if [ "$service_release" != "$release_label" ]; then
+                echo "Missing candidate Service: $service (expected release $release_label)" >&2
+                missing=1
+            fi
+        done
+        if [ "$missing" = "1" ]; then
+            echo "Stage the complete signed backend release first:" >&2
+            echo "  just gcp validator-deploy-all {{stage}} {{release_tag}}" >&2
+            exit 1
+        fi
+    }
 
     just gcp _maintenance-assert-offline {{stage}}
     trap restore_acceptance_state EXIT
     trap 'exit 130' INT TERM
     assert_queue_empty "$QUEUE_NAME"
     assert_queue_empty "$PROVIDER_QUEUE_NAME"
+    assert_release_resources_exist
     just gcp validator-release-verify {{release_tag}}
     just gcp validator-storage-isolation {{stage}}
-    STORAGE_ISOLATION_APPLIED=1
     just gcp _maintenance-start-database {{stage}}
 
+    # Refresh the retained Jobs from the same release before they become the
+    # tested rollback route. This keeps acceptance and rollback on one patch.
+    just gcp management-cmd {{stage}} "sync_gcp_validator_deployments --activate-primary"
     VALIDATOR_BACKEND_RELEASE_TAG={{release_tag}} \
         just gcp validator-services-activate {{stage}}
     ROUTES_ACTIVATED=1
@@ -4344,14 +4424,7 @@ validator-acceptance stage release_tag attempts="20": _require-gcp-config
     ACCEPTANCE_PASSED=1
     echo "Validator acceptance passed for {{release_tag}} on {{stage}}."
     echo "The private JSON report is in the stage validation bucket."
-    if [ "{{stage}}" = "prod" ]; then
-        ENV_FILE=".envs/.production/.google-cloud/.django"
-    else
-        ENV_FILE=".envs/.{{stage}}/.google-cloud/.django"
-    fi
-    echo "One-time finalization before bringing {{stage}} online:"
-    echo "  Set GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true in $ENV_FILE"
-    echo "  just gcp secrets {{stage}}"
+    echo "Storage isolation and capability delivery are fixed deployment invariants; no configuration finalization is required."
 
 # Reconcile the validator dashboard, log metrics, and alert policies. Policies
 # create incidents even without a notification channel; set comma-separated
@@ -4519,9 +4592,10 @@ validator-observability stage: _require-gcp-config
 validator-storage-capability-probe stage: _require-gcp-config
     just gcp management-cmd {{stage}} "probe_validator_gcs_capability --json"
 
-# Remove historical ambient GCS access after capability-aware validator images
-# and Django have both been deployed. This recipe is deliberately separate from
-# validator-deploy so the dependency-order rollout cannot strand old images.
+# Reconcile and prove the mandatory absence of ambient validator GCS access.
+# Fresh stages never grant it; repeated runs remove historical bindings before
+# Policy Troubleshooter checks inherited, group, primitive, custom, and
+# conditional access paths.
 # Usage: just gcp validator-storage-isolation dev|staging|prod
 [arg('stage', pattern='dev|staging|prod')]
 validator-storage-isolation stage: _require-gcp-config
@@ -4536,9 +4610,6 @@ validator-storage-isolation stage: _require-gcp-config
         VALIDATOR_SA_EMAIL="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
     fi
 
-    echo "Rollback command if validator execution fails after IAM removal:"
-    echo "  gcloud storage buckets add-iam-policy-binding gs://$STORAGE_BUCKET --member=serviceAccount:$VALIDATOR_SA_EMAIL --role=roles/storage.objectAdmin --condition='expression=resource.name.startsWith(\"projects/_/buckets/$STORAGE_BUCKET/objects/runs/\"),title=validator-runs-prefix-only' --project={{gcp_project}}"
-    echo ""
     echo "Removing historical validator storage bindings..."
     gcloud storage buckets remove-iam-policy-binding "gs://$STORAGE_BUCKET" \
         --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
@@ -4607,11 +4678,8 @@ validator-storage-isolation stage: _require-gcp-config
     check_effective_permission "storage.objects.list" "$BUCKET_CONTEXT" "storage.googleapis.com/Bucket"
 
     echo "Verified: $VALIDATOR_SA_EMAIL has no effective object read/list/create/update/delete permission."
-    echo "Also run the downscoped-token provider probe before asserting isolation:"
+    echo "Also run the downscoped-token provider probe before enabling traffic:"
     echo "  just gcp validator-storage-capability-probe {{stage}}"
-    echo "Only after those probes pass, set both deployment flags and redeploy Django:"
-    echo "  GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=true"
-    echo "  GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true"
 
 # =============================================================================
 # Validator Assets Management
@@ -6893,23 +6961,20 @@ collect-support-bundle stage *flags: _require-gcp-config
 #
 # What this surface is for:
 #
-#   The trust ADR Phase 5 introduced
-#   ``VALIDATOR_BACKEND_IMAGE_POLICY`` (tag / digest / signed-digest)
-#   and the ``check_validibot`` doctor reports the *deployment-wide*
-#   policy via ``VB712`` and ``VB713``.  But operators also need a
-#   *per-validator* view: which backends are pinned by digest, which
-#   are still on a floating tag, when each was last executed
-#   successfully.  ``just gcp validators prod`` is that view.
+#   ``VALIDATOR_BACKEND_IMAGE_POLICY`` selects tag, digest, or
+#   signed-digest on GCP just as it does elsewhere. ``check_validibot``
+#   reports that deployment-wide choice via ``VB712`` / ``VB713``.
+#   Operators also need a *per-validator* view: which backends satisfy
+#   the configured policy and when each was last executed successfully.
+#   ``just gcp validators prod`` is that view.
 #
 # What this surface is NOT for:
 #
 #   This is read-only inventory, not a deploy / redeploy entry
 #   point — for that, use ``validator-deploy`` or
-#   ``validators-deploy-all``.  It also doesn't run cosign
-#   verification (the runtime does that on each launch); the column
-#   it reports is whether the *configured image string* is
-#   digest-pinned, which is the precondition for cosign verification
-#   and is fast to check from gcloud alone.
+#   ``validator-deploy-all``. It also doesn't repeat signed-release
+#   verification; the column reports whether the configured provider
+#   image is digest-pinned, which is fast to check from gcloud alone.
 
 # List validator backend Cloud Run Jobs with image, pinning, and last-run status.
 [arg('stage', pattern='dev|staging|prod')]
@@ -6918,7 +6983,7 @@ validators stage: _require-gcp-config
     set -euo pipefail
     APP_NAME="{{app_name}}"
 
-    # The validator-deploy recipe labels every validator Job with
+    # The validator-job-deploy recipe labels every validator Job with
     # ``validator=<name>``, so we filter by the label rather than
     # by name pattern.  Label-based filtering is more robust than
     # parsing names that may evolve (e.g. if we ever support
@@ -6947,9 +7012,10 @@ validators stage: _require-gcp-config
     if [ -z "$JOBS" ]; then
         echo "  No validator backends found for stage '{{stage}}'."
         echo ""
-        echo "  Deploy validators with:"
-        echo "    just gcp validators-deploy-all {{stage}}"
-        echo "    just gcp validator-deploy energyplus {{stage}}"
+        echo "  Deploy one signed release to all Jobs and Services with:"
+        echo "    just gcp validator-deploy-all {{stage}} vX.Y.Z"
+        echo "  Or deploy one backend with:"
+        echo "    just gcp validator-deploy energyplus {{stage}} vX.Y.Z"
         exit 0
     fi
 

@@ -140,7 +140,8 @@ just gcp mcp setup dev       # Creates MCP SA + secret/run.invoker bindings
 just gcp mcp setup prod
 ```
 
-The `just gcp validator-deploy` command additionally grants:
+The Job half of `just gcp validator-deploy` (also available directly as
+`just gcp validator-job-deploy`) additionally grants:
 
 - `validibot_job_runner` on the job to the main SA (so web/worker can inspect
   and trigger it; `init-stage` also grants this custom role at project scope so
@@ -155,8 +156,8 @@ verify exact digests, ready revisions, resource settings, and the sole Service
 invoker before changing a route. It cannot list unrelated resources or modify
 Service configuration or IAM.
 
-After capability-aware images and Django are deployed, first prove the
-downscoped token's provider behavior:
+Every supported GCP validator image consumes the mandatory attempt token. Prove
+the downscoped token's provider behavior with:
 
 ```bash
 cd /Users/danielmcquillen/projects/validibot/validibot
@@ -178,9 +179,9 @@ get/list/create/update/delete permissions are conclusively `CANNOT_ACCESS`.
 Policy Troubleshooter evaluates inherited, group, primitive, custom-role, and
 conditional policy paths; an unknown result is not proof and stops the recipe.
 It also runs the real capability probe and representative validators. On
-failure it restores the legacy conditional binding automatically. Set
-`GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true` only after this
-command passes, using the exact finalization command it prints.
+failure it restores the capability-aware Job route but does not restore any
+ambient storage binding. IAM denial is a deployment invariant, not an
+environment assertion.
 
 ## Application Default Credentials (ADC)
 

@@ -149,10 +149,11 @@ A buggy or compromised validator backend on this local path cannot read another
 attempt's input mount or mutate another attempt's output mount. Run
 `just self-hosted doctor --json` and inspect `storage_capability` (also reported
 as `VB205`) to confirm the effective mode. Object-store deployments are not
-automatically equivalent: current GCS execution verifies generations, sizes,
-and SHA-256 hashes but still reports reduced isolation while validator jobs use
-a shared runtime identity. S3-compatible storage remains unsupported until its
-conditional and version semantics are capability-tested. See
+automatically equivalent: supported GCS + Cloud Run execution requires a
+prefix-bound attempt token and a runtime identity with no ambient object
+access; production acceptance proves the provider-side IAM boundary.
+S3-compatible storage remains unsupported until its conditional and version
+semantics are capability-tested. See
 [Security Hardening](security-hardening.md) for the architectural rationale.
 
 ## Optional hardening

@@ -472,19 +472,12 @@ if DEPLOYMENT_TARGET == "gcp":
     # to fail with empty-job-name errors.
     GCS_VALIDATION_BUCKET = STORAGE_BUCKET
     GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="validibot-tasks")
-    # Bounded rollout gates for attempt-scoped Cloud Storage authority. Enable
-    # token delivery after all deployed validator images understand the
-    # downscoped-token environment. Assert ambient access is disabled only
-    # after the separate IAM-removal recipe succeeds. Doctor keeps reporting
-    # reduced isolation until both facts are explicitly configured.
-    GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED = env.bool(
-        "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED",
-        default=False,
-    )
-    GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED = env.bool(
-        "GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED",
-        default=False,
-    )
+    # GCS authority is a fixed Cloud Run contract, not an operator-selectable
+    # rollout mode. Every execution receives one short-lived token restricted
+    # to its attempt prefix. The validator runtime identity must have no
+    # ambient object permissions; stage provisioning removes historical roles
+    # and production acceptance proves effective denial with Policy
+    # Troubleshooter before traffic is enabled.
 
 elif DEPLOYMENT_TARGET == "aws":
     # AWS Batch runner (future implementation)

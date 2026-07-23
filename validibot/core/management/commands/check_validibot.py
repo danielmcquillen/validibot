@@ -695,10 +695,6 @@ class Command(BaseCommand):
 
         if report.isolation is RuntimeStorageIsolation.ATTEMPT_SCOPED:
             status = CheckStatus.OK
-        elif (
-            report.isolation is RuntimeStorageIsolation.REDUCED_SHARED_RUNTIME_IDENTITY
-        ):
-            status = CheckStatus.WARN
         else:
             status = CheckStatus.ERROR
 
@@ -2412,9 +2408,8 @@ class Command(BaseCommand):
               "stage": "dev" | "staging" | "prod" | null,
               "provider": "digitalocean" | null,
               "storage_capability": {
-                "mode": "local_attempt_mount" | "gcs_generation" | ...,
-                "isolation": "attempt_scoped" |
-                  "reduced_shared_runtime_identity" | "unsupported",
+                "mode": "local_attempt_mount" | "gcs_downscoped_token" | ...,
+                "isolation": "attempt_scoped" | "unsupported",
                 ...
               } | null,
               "ran_at": "<ISO 8601 UTC timestamp>",

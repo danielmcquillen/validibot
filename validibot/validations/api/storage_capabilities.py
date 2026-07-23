@@ -58,12 +58,6 @@ class ValidationStorageCapabilityRefreshView(WorkerOnlyAPIView):
                 {"detail": "Execution attempt is terminal."},
                 status=status.HTTP_409_CONFLICT,
             )
-        if not getattr(settings, "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED", False):
-            return Response(
-                {"detail": "Attempt-scoped GCS capabilities are disabled."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
         try:
             refresh_url = (
                 f"{settings.WORKER_URL.rstrip('/')}"

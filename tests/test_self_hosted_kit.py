@@ -352,6 +352,26 @@ class EnvTemplateShapeTests(SimpleTestCase):
         ):
             self.assertIn(setting_name, django_env)
 
+    def test_image_policy_defaults_are_explicit_for_each_operator_profile(self):
+        """Every supplied env profile must make its intended image policy clear.
+
+        Local and self-hosted installs favor mutable development-friendly tags,
+        while the hosted GCP production profile pins digests. Keeping these
+        defaults in the env files also shows operators that all three profiles
+        may deliberately select ``tag``, ``digest``, or ``signed-digest``.
+        """
+        local_env = (REPO_ROOT / ".envs.example" / ".local" / ".django").read_text(
+            encoding="utf-8"
+        )
+        self_hosted_env = (ENVS_EXAMPLE_ROOT / ".django").read_text(encoding="utf-8")
+        gcp_env = (
+            REPO_ROOT / ".envs.example" / ".production" / ".google-cloud" / ".django"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("VALIDATOR_BACKEND_IMAGE_POLICY=tag", local_env)
+        self.assertIn("VALIDATOR_BACKEND_IMAGE_POLICY=tag", self_hosted_env)
+        self.assertIn("VALIDATOR_BACKEND_IMAGE_POLICY=digest", gcp_env)
+
     def test_django_template_has_eight_adr_groups(self):
         """The .django template must include all eight comment groups.
 
@@ -501,6 +521,17 @@ class JustRecipeParityTests(SimpleTestCase):
             f"{self.SELF_HOSTED_MOD} missing — Phase 0 rename problem?"
         )
 
+    def test_self_hosted_module_runs_from_the_repository_root(self):
+        """Operator recipes must resolve documented env and Compose paths.
+
+        Just modules otherwise execute relative to ``just/self-hosted``. The
+        recipes intentionally use repository-root-relative paths, so omitting
+        this setting makes ``just self-hosted check-env`` report that existing
+        production env files are missing.
+        """
+        text = self.SELF_HOSTED_MOD.read_text(encoding="utf-8")
+        self.assertIn("set working-directory := '../..'", text)
+
     def test_old_docker_compose_module_gone(self):
         """The historical just/docker-compose/ directory must be gone.
 
@@ -600,10 +631,10 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             in django_example
         )
         assert "VALIDATOR_BACKEND_IMAGE_POLICY=digest" in django_example
-        assert "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=false" in django_example
+        assert "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED" not in django_example
         assert (
-            "GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=false"
-            in django_example
+            "GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED"
+            not in django_example
         )
         for stage in ("prod", "staging", "dev"):
             assert (
@@ -662,7 +693,7 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             "_deploy-worker"
         )
 
-    def test_validator_deploy_resolves_and_uses_gar_digest(self):
+    def test_validator_job_deploy_resolves_and_uses_gar_digest(self):
         """Production validator Jobs must execute immutable image bytes.
 
         A revision tag is useful for discovery, but it remains mutable. The
@@ -671,13 +702,45 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         safely enforce its digest image policy.
         """
         block = self._block_between(
-            "validator-deploy name stage:",
-            "# Build and deploy all validator jobs",
+            'validator-job-deploy name stage release_tag=""',
+            'validator-jobs-deploy-all stage release_tag=""',
         )
 
         assert "gcloud artifacts docker images list" in block
         assert 'IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"' in block
         assert '--image "$IMAGE_REF"' in block
+
+    def test_complete_validator_deploy_commands_cover_both_execution_shapes(self):
+        """Routine deployment must keep each backend's Job and Service together.
+
+        Operators should not have to remember two provider-specific commands or
+        an environment-variable release tag. The complete single-backend and
+        all-backend recipes therefore take one explicit release, mirror it, and
+        deploy both shapes without registering or activating application routes.
+        """
+        single_block = self._block_between(
+            "validator-deploy name stage release_tag:",
+            "# Stage every managed validator backend",
+        )
+        all_block = self._block_between(
+            "validator-deploy-all stage release_tag:",
+            "# Register current digest-pinned Jobs",
+        )
+        recipe = self._gcp_mod_text()
+
+        assert "_maintenance-assert-offline" in single_block
+        assert "_validator-release-mirror-image" in single_block
+        assert "validator-job-deploy" in single_block
+        assert "validator-service-deploy" in single_block
+        assert "validator-services-activate" not in single_block
+
+        assert "_maintenance-assert-offline" in all_block
+        assert "validator-release-mirror" in all_block
+        assert "validator-jobs-deploy-all" in all_block
+        assert "validator-services-deploy-all" in all_block
+        assert "validator-services-activate" not in all_block
+
+        assert "validators-deploy-all stage:" not in recipe
 
     def test_validator_controller_can_verify_live_resources_before_routing(self):
         """The runtime identity must be able to prove provider configuration.
@@ -1058,7 +1121,7 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         """
         block = self._block_between(
             "validator-build name:",
-            "validators-deploy-all stage:",
+            'validator-jobs-deploy-all stage release_tag=""',
         )
 
         # The deleted resolver script must not be called from this recipe.

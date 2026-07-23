@@ -476,17 +476,20 @@ quickly the transport decides a delivery was lost:
 | `GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT` | empty | GCP | Dedicated OIDC principal with `run.invoker` only on registered private validator Services. Use `<app>-val-invoker-<stage>@<project>.iam.gserviceaccount.com`; `init-stage` derives this abbreviated name to stay within Google's 30-character service-account ID limit. Upload the Django environment after setting it. |
 | `GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS` | `1800` | GCP | Exact Cloud Tasks HTTP deadline for validator Service requests; changing it requires revisiting the Service transport contract. |
 | `VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS` | `300` | GCP | Bounded retry window after an attempt deadline when a status-capable provider API is temporarily unavailable. After the grace period, the attempt's absolute deadline remains authoritative. |
-| `GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED` | `false` | GCP | Enables per-execution Credential Access Boundary token delivery and stages every validator input into one attempt prefix. Enable only after capability-aware backend images are deployed. |
-| `GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED` | `false` | GCP | Operator assertion that the validator Cloud Run service account has no effective object access. Set true only after `just gcp validator-acceptance <stage> <release>` proves Policy Troubleshooter denial, the live capability boundary, and representative execution with ambient IAM removed; `VB205` remains WARN otherwise. |
 
 Transport retries never authorize a second provider launch after an attempt
 has reached `DISPATCHING`, `RUNNING`, or `UNKNOWN`.
 
-The committed GCP production template sets
-`VALIDATOR_BACKEND_IMAGE_POLICY=digest`. Production release recipes register
-exact Artifact Registry digests, so allowing a floating tag at launch would be
-weaker than the deployment contract. Keep `tag` only for development or
-self-hosted quick-starts that have not yet pinned images.
+GCP validator storage controls are deliberately absent from this table because
+they are not operator choices. Every GCS + Cloud Run attempt uses a
+prefix-bound Credential Access Boundary token, and the runtime identity must
+have no ambient object permission. `just gcp init-stage` reconciles the IAM
+posture and `just gcp validator-acceptance` proves it before traffic is enabled.
+
+`VALIDATOR_BACKEND_IMAGE_POLICY` remains an operator choice on every target:
+`tag`, `digest`, or `signed-digest`. The committed GCP production template sets
+`digest`; production release recipes also verify the signed release before
+registering its exact Artifact Registry digest.
 
 **Audience contract.** Cloud Tasks and Cloud Scheduler sign tokens
 with `aud = <service URL origin>` — path and query are NOT included.

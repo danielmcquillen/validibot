@@ -225,12 +225,12 @@ def test_deployment_capabilities_reject_shape_mismatch():
 
 
 def test_deployment_capabilities_reject_false_storage_isolation():
-    """A downscoped token cannot be labelled as shared runtime-identity access."""
+    """A downscoped token cannot be labelled with unsupported isolation."""
     with pytest.raises(ValidationError, match="requires attempt-scoped isolation"):
         parse_deployment_capabilities(
             deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB,
             capabilities=_capabilities(
-                storage_isolation="reduced_shared_runtime_identity",
+                storage_isolation="unsupported",
             ),
         )
 

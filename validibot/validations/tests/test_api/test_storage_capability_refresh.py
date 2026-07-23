@@ -33,7 +33,6 @@ from validibot.validations.tests.factories import ExecutionAttemptFactory
 
 
 @override_settings(
-    GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=True,
     GCP_PROJECT_ID="validibot-project",
     WORKER_URL="https://worker.example",
 )

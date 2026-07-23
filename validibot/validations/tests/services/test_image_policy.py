@@ -1,8 +1,8 @@
 """Tests for the validator backend image-pinning policy gate.
 
-ADR-2026-04-27 Phase 5 Session B — operators ratchet how strictly
-validator backend images must be pinned via the
-``VALIDATOR_BACKEND_IMAGE_POLICY`` setting. Three rungs:
+Operators on every deployment target ratchet how strictly validator backend
+images must be pinned via the ``VALIDATOR_BACKEND_IMAGE_POLICY`` setting.
+Three selectable rungs:
 
 - ``tag`` (default) — floating tags permitted; community quick-start.
 - ``digest`` — image must be pinned by ``@sha256:<hex>``; tag-only
@@ -89,7 +89,15 @@ class TestIsDigestPinned:
 
 
 class TestGetCurrentPolicy:
-    """Reads and validates the deployment setting."""
+    """Read and validate the deployment setting on every provider."""
+
+    @override_settings(
+        DEPLOYMENT_TARGET="gcp",
+        VALIDATOR_BACKEND_IMAGE_POLICY="signed-digest",
+    )
+    def test_gcp_respects_the_operator_policy(self):
+        """GCP is a provider target, not a reason to remove policy choice."""
+        assert get_current_policy() == ValidatorBackendImagePolicy.SIGNED_DIGEST
 
     @override_settings(VALIDATOR_BACKEND_IMAGE_POLICY="tag")
     def test_reads_tag(self):

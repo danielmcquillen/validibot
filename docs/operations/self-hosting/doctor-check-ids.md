@@ -179,32 +179,21 @@ whether a compromised validator is prevented from reaching another attempt.
   mount read-only and output mount read-write. This is the supported
   self-hosted mode.
 - `gcs_downscoped_token` + `attempt_scoped`: the validator receives a
-  short-lived read/create token limited to one attempt prefix, and its attached
-  runtime identity has been proved unable to access storage without that
-  token. This is the fully rolled-out GCP mode.
-- `gcs_downscoped_token` + `reduced_shared_runtime_identity`: attempt-scoped
-  tokens are active, but the operator has not yet completed and recorded the
-  ambient-IAM removal proof. Integrity is enforced, but isolation remains a
-  warning.
-- `gcs_generation` + `reduced_shared_runtime_identity`: generation-pinned reads,
-  generation-zero writes, size, and SHA-256 protect integrity, but
-  attempt-scoped token delivery is not enabled and the Cloud Run runtime
-  service account may still have access beyond one attempt.
+  short-lived read/create token limited to one attempt prefix. GCP provisioning
+  forbids ambient object permissions for the attached runtime identity, and
+  production acceptance proves that provider-side invariant. There is no
+  reduced-isolation GCP configuration mode.
 - `unsupported`: S3/S3-compatible conditional and version semantics have not
   yet been implemented and capability-tested, or the configured runner/storage
   pair has no verified contract. Doctor fails closed instead of inferring
   safety from a provider label.
 
 **Fix:** For self-hosting, use local data storage with the Docker runner. For
-GCP, deploy capability-aware images and enable
-`GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED`, then run
-`just gcp validator-storage-capability-probe <stage>`. Remove and prove the
-absence of ambient storage authority with
-`just gcp validator-storage-isolation <stage>`, repeat a representative
-validation, and only then set
-`GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=true`. Do not use an S3
-or custom storage path for external validators until its conditional writes,
-immutable reads, and runtime scope are implemented and tested.
+GCP, run `just gcp validator-acceptance <stage> <release>` before enabling
+traffic; it proves both the live token boundary and absence of ambient runtime
+storage authority. Do not use an S3 or custom storage path for external
+validators until its conditional writes, immutable reads, and runtime scope
+are implemented and tested.
 
 ---
 
@@ -374,7 +363,7 @@ manually enable validators in Django admin.
 ### `VB711` Validator backend image policy (invalid value)
 **Severity:** error
 **Trigger:** `VALIDATOR_BACKEND_IMAGE_POLICY` is set to something other
-than `tag`, `digest`, or `signed-digest`.
+than `tag`, `digest`, or `signed-digest` on a community/self-hosted deployment.
 **Fix:** Set `VALIDATOR_BACKEND_IMAGE_POLICY` to one of `tag`, `digest`,
 or `signed-digest`, or leave it empty for the `tag` default.
 
@@ -383,9 +372,10 @@ or `signed-digest`, or leave it empty for the `tag` default.
 `tag` on a production target (info on self-hosted quick-start targets)
 **Trigger:** The deployment allows floating image tags for validator
 backend containers, which weakens reproducibility in production.
-**Fix:** Set `VALIDATOR_BACKEND_IMAGE_POLICY=digest` for production
-self-hosted deployments and pin validator backend images via
-`@sha256:<hex>` digests in the deployment config.
+**Fix:** Set `VALIDATOR_BACKEND_IMAGE_POLICY=digest` for production deployments
+and pin validator backend images via `@sha256:<hex>` digests in the deployment
+config. The GCP production template selects `digest` while preserving the same
+three policy choices.
 
 ### `VB713` Signed-digest policy without cosign verification
 **Severity:** error

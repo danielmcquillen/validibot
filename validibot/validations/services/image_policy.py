@@ -1,7 +1,7 @@
 """Validator backend image-pinning policy enforcement.
 
-ADR-2026-04-27 Phase 5 Session B — operators can ratchet how
-strictly validator backend images must be pinned. Three rungs:
+Operators can ratchet how strictly validator backend images must be pinned
+through three rungs on every deployment target:
 
 - ``tag`` (default for community quick-start): floating tags like
   ``:latest`` are permitted. The runner records whatever digest it

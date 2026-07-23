@@ -207,12 +207,11 @@ def get_execution_image_digest(execution_name: str) -> str | None:
     - If the operator pinned the Job to a digest
       (``gcr.io/.../image@sha256:...``), this function returns that
       reference verbatim — a verifier can re-pull and confirm.
-    - If the operator deployed the Job pinned to a tag
+    - If an unmanaged or test Job was deployed with a tag
       (``gcr.io/.../image:v1``), this function returns the tag
       reference. We do NOT resolve the tag to a digest separately
       (that would require a registry round-trip with auth concerns);
-      instead, the Phase 5 Session B ``VALIDATOR_BACKEND_IMAGE_POLICY``
-      gate is what enforces "digest-pinned only" deployments.
+      the configured image-policy gate decides whether dispatch may proceed.
 
     Returns ``None`` when the Execution metadata cannot be fetched or
     has no container image. Digest capture must never break a run, so

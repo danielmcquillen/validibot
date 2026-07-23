@@ -198,6 +198,9 @@ REDIS_URL=redis://redis:6379/0
 # workloads your operators expect.
 VALIDATOR_MEMORY_LIMIT=4g
 VALIDATOR_CPU_LIMIT=2.0
+# Start with tag-based images; operators who pin image references may select
+# digest or signed-digest for stronger supply-chain enforcement.
+VALIDATOR_BACKEND_IMAGE_POLICY=tag
 
 
 # -- 7. PRO / SIGNING -------------------------------------------------------

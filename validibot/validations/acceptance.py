@@ -735,7 +735,7 @@ class ValidatorAcceptanceRunner:
         return validator, primary, compatibility
 
     def _check_storage(self, report: AcceptanceReport) -> None:
-        """Exercise the real downscoped token or record an intentional skip."""
+        """Require IAM denial proof and exercise the real downscoped token."""
         if not self.run_storage_probe:
             report.add(
                 "VA-STORAGE-CAPABILITY",
@@ -743,29 +743,12 @@ class ValidatorAcceptanceRunner:
                 "Live GCS capability probe was disabled for this invocation.",
             )
             return
-        if not getattr(
-            settings,
-            "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED",
-            False,
-        ):
+        if not self.ambient_isolation_verified:
             report.add(
                 "VA-STORAGE-CAPABILITY",
                 "failed",
-                "Attempt-scoped GCS capabilities are not enabled.",
-            )
-            return
-        isolation_asserted = bool(
-            getattr(
-                settings,
-                "GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED",
-                False,
-            )
-        )
-        if not (isolation_asserted or self.ambient_isolation_verified):
-            report.add(
-                "VA-STORAGE-CAPABILITY",
-                "failed",
-                "Ambient validator storage isolation is not asserted.",
+                "Ambient validator storage isolation was not verified by the "
+                "operator recipe.",
             )
             return
         try:
@@ -782,10 +765,7 @@ class ValidatorAcceptanceRunner:
                     else "One or more attempt-scoped GCS operations were unsafe."
                 ),
                 checks=[check.as_dict() for check in result.checks],
-                ambient_storage_access_disabled_asserted=isolation_asserted,
-                ambient_storage_access_verified_for_acceptance=(
-                    self.ambient_isolation_verified
-                ),
+                ambient_storage_access_verified=True,
             )
         except Exception as exc:
             report.add(

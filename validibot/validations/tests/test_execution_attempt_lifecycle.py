@@ -297,6 +297,10 @@ class TestCloudRunSharedDispatch:
         "_enforce_cloud_run_job_image_policy",
     )
     @patch(
+        "validibot.validations.services.cloud_run.gcs_runtime_capabilities."
+        "issue_attempt_gcs_runtime_capability",
+    )
+    @patch(
         "validibot.validations.services.cloud_run.launcher."
         "build_input_evidence_snapshot",
         return_value={"attempt_contract_version": "validibot.attempt.v2"},
@@ -309,6 +313,7 @@ class TestCloudRunSharedDispatch:
         self,
         mock_sha256,
         mock_build_evidence,
+        issue_capability,
         mock_policy,
         mock_run_job,
         mock_get_digest,
@@ -320,6 +325,8 @@ class TestCloudRunSharedDispatch:
         envelope.context.expected_output_uri = "gs://bucket/attempt/output.json"
         submission = MagicMock()
         step = MagicMock()
+        capability = MagicMock(name="attempt_gcs_capability")
+        issue_capability.return_value = capability
 
         execution_name, image_digest = _dispatch_cloud_run_validation(
             step_run=step_run,
@@ -344,6 +351,7 @@ class TestCloudRunSharedDispatch:
         assert mock_run_job.call_args.kwargs["input_evidence_snapshot"] == {
             "attempt_contract_version": "validibot.attempt.v2",
         }
+        assert mock_run_job.call_args.kwargs["gcs_capability"] is capability
         mock_get_digest.assert_called_once_with(execution_name)
         mock_mark_running.assert_called_once_with(
             step_run,
@@ -352,7 +360,6 @@ class TestCloudRunSharedDispatch:
         )
 
     @override_settings(
-        GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=True,
         GCP_PROJECT_ID="project",
         GCP_REGION="region",
         WORKER_URL="https://worker.example",
@@ -448,6 +455,7 @@ class TestCloudRunDispatchAmbiguity:
                 "input_relationships": [],
             },
             output_envelope_uri="gs://bucket/bundle/output.json",
+            gcs_capability=MagicMock(name="attempt_gcs_capability"),
         )
 
         attempt.refresh_from_db()
@@ -481,6 +489,7 @@ class TestCloudRunDispatchAmbiguity:
                 "input_relationships": [],
             },
             "output_envelope_uri": "gs://bucket/bundle/output.json",
+            "gcs_capability": MagicMock(name="attempt_gcs_capability"),
         }
 
         with pytest.raises(ProviderDispatchAmbiguousError):

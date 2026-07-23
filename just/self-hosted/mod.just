@@ -44,6 +44,9 @@
 
 # Use bash for shell commands
 set shell := ["bash", "-cu"]
+# Just modules otherwise run relative to their own source directory. Self-hosted
+# paths are repository-root-relative, matching the operator commands and docs.
+set working-directory := '../..'
 
 # =============================================================================
 # Configuration

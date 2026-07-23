@@ -115,12 +115,8 @@ def test_preflight_failure_stops_before_any_canary_is_created():
     assert report.checks[-1].check_id == "VA-SMOKE-ABORTED"
 
 
-@override_settings(
-    GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=True,
-    GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=False,
-)
-def test_storage_gate_requires_the_deployed_ambient_isolation_assertion():
-    """A downscoped-token pass alone must not conceal broad runtime authority."""
+def test_storage_gate_requires_operator_iam_proof():
+    """A token probe alone must not conceal unverified ambient runtime IAM."""
     runner = ValidatorAcceptanceRunner(release_tag="v1.2.3")
     report = AcceptanceReport(release_tag="v1.2.3", attempts_per_backend=20)
 
@@ -131,17 +127,15 @@ def test_storage_gate_requires_the_deployed_ambient_isolation_assertion():
 
     provider_probe.assert_not_called()
     assert report.checks[-1].status == "failed"
-    assert "Ambient validator storage isolation" in report.checks[-1].summary
+    assert "not verified" in report.checks[-1].summary
 
 
 @override_settings(
-    GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED=True,
-    GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED=False,
     GCS_VALIDATION_BUCKET="private-bucket",
     GCP_PROJECT_ID="validibot-test",
 )
-def test_operator_iam_proof_allows_the_pre_assertion_acceptance_window():
-    """The offline cutover can prove isolation before its truthful flag is set."""
+def test_operator_iam_proof_allows_storage_acceptance():
+    """The offline recipe's Policy Troubleshooter proof unlocks the live probe."""
     runner = ValidatorAcceptanceRunner(
         release_tag="v1.2.3",
         ambient_isolation_verified=True,
@@ -156,13 +150,7 @@ def test_operator_iam_proof_allows_the_pre_assertion_acceptance_window():
         runner._check_storage(report)
 
     assert report.checks[-1].status == "passed"
-    assert (
-        report.checks[-1].details["ambient_storage_access_verified_for_acceptance"]
-        is True
-    )
-    assert (
-        report.checks[-1].details["ambient_storage_access_disabled_asserted"] is False
-    )
+    assert report.checks[-1].details["ambient_storage_access_verified"] is True
 
 
 def test_route_preflight_accepts_only_requested_service_and_ready_job():
@@ -482,10 +470,23 @@ def test_gcp_recipe_is_one_command_with_automatic_safety_cleanup():
     assert "trap restore_acceptance_state EXIT" in acceptance_recipe
     assert "validator-services-rollback" in acceptance_recipe
     assert "validator-services-activate" in acceptance_recipe
+    assert "gcloud tasks list" in acceptance_recipe
+    assert "gcloud tasks tasks list" not in acceptance_recipe
+    assert "assert_release_resources_exist" in acceptance_recipe
+    assert "gcloud run jobs describe" in acceptance_recipe
+    assert (
+        "just gcp validator-deploy-all {{stage}} {{release_tag}}" in acceptance_recipe
+    )
+    assert "validators-deploy-all" not in acceptance_recipe
+    assert "sync_gcp_validator_deployments --activate-primary" in acceptance_recipe
     assert "validator-storage-isolation" in acceptance_recipe
-    assert "restoring the legacy run-prefix storage binding" in acceptance_recipe
+    assert "restoring the legacy run-prefix storage binding" not in acceptance_recipe
     assert "--require-persisted-report" in acceptance_recipe
     assert "--ambient-isolation-verified" in acceptance_recipe
-    assert "just gcp secrets {{stage}}" in acceptance_recipe
+    assert "GCS_VALIDATOR_ATTEMPT_CAPABILITIES_ENABLED" not in acceptance_recipe
+    assert (
+        "GCS_VALIDATOR_RUNTIME_IDENTITY_STORAGE_ACCESS_DISABLED"
+        not in acceptance_recipe
+    )
     assert "production acceptance requires exactly 20" in acceptance_recipe
     assert "maintenance-off" not in acceptance_recipe

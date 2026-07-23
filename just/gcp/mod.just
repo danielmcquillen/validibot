@@ -2695,6 +2695,24 @@ init-stage stage: _require-gcp-config
     SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
     PROVIDER_INVOKER_EMAIL="$PROVIDER_INVOKER_NAME@{{gcp_project}}.iam.gserviceaccount.com"
 
+    # ``init-stage`` is the low-level bootstrap path and needs a running
+    # existing database to inspect/create its database and user.  An offline
+    # stage deliberately has activationPolicy=NEVER; fail before making any
+    # partial changes and direct the operator to the wrapper that briefly
+    # starts Cloud SQL and restores maintenance mode on every exit.
+    if gcloud sql instances describe "$DB_INSTANCE" \
+        --project={{gcp_project}} &>/dev/null; then
+        DB_ACTIVATION_POLICY=$(gcloud sql instances describe "$DB_INSTANCE" \
+            --project={{gcp_project}} \
+            --format="value(settings.activationPolicy)")
+        if [ "$DB_ACTIVATION_POLICY" = "NEVER" ]; then
+            echo "Error: $DB_INSTANCE is stopped for maintenance." >&2
+            echo "Use the maintenance-safe wrapper instead:" >&2
+            echo "  just gcp init-stage-maintenance {{stage}}" >&2
+            exit 1
+        fi
+    fi
+
     # Step 0: Enable the GCP APIs every stage needs. Without these, later
     # steps fail with opaque "API [x] not enabled" errors. Idempotent —
     # enabling an already-enabled API is a no-op.

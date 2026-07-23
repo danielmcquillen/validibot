@@ -263,7 +263,7 @@ offline; mixed capability-aware and legacy images are not supported:
 
    ```bash
    cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp init-stage prod
+   just gcp init-stage-maintenance prod
    just gcp deploy-maintenance prod
    ```
 

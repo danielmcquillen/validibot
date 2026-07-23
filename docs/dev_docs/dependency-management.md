@@ -99,11 +99,28 @@ uv pip list --outdated
 
 ## Working with validibot-shared
 
-The `validibot-shared` package is published to PyPI and installed as a normal dependency. When `validibot-shared` changes:
+The `validibot-shared` package is published to PyPI and installed as a normal,
+exactly pinned dependency. The committed `uv.lock` must resolve it from the
+registry so host development, CI, Docker Compose, self-hosted builds, and hosted
+builds all test and ship the same artifact.
+
+When `validibot-shared` changes:
 
 1. Make changes in `../validibot-shared`
 2. Bump the version and publish to PyPI
-3. In this project, run: `uv lock --upgrade-package validibot-shared && uv sync`
+3. Update the exact version in this project's `pyproject.toml`
+4. Run: `uv lock --upgrade-package validibot-shared && uv sync`
+
+Do not commit a `tool.uv.sources` override for `validibot-shared` to a
+release-ready branch. Before the shared release exists, run a specific command
+against the sibling checkout with uv's ephemeral editable overlay:
+
+```bash
+uv run --with-editable ../validibot-shared pytest
+```
+
+The overlay is intentionally opt-in. Normal `uv sync` and `uv run` commands
+continue to exercise the published wheel recorded in `uv.lock`.
 
 ## Common Workflows
 

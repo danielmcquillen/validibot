@@ -87,24 +87,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Changes to application code won't invalidate the dependency layer.
 COPY pyproject.toml uv.lock ${APP_HOME}/
 COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/install-commercial-package
-COPY --chmod=755 compose/common/install-published-shared.sh /usr/local/bin/install-published-shared
 
 # Install production dependencies (no dev extras).
 #   --frozen: Use the lockfile exactly as resolved
 #   --no-install-project: Don't install validibot itself (it's a Django
 #     project run from the working directory, not a package)
-#   --no-install-package validibot-shared: Keep the host-only editable sibling
-#     out of the image plan. The next command installs the exact public pin from
-#     pyproject.toml because sibling repositories are outside this build context.
 #
 # EXTRA_UV_EXTRAS is a space-separated list of pyproject.toml extras
 # to include. Empty → no --extra flags; "foo" → --extra foo;
 # "foo bar" → --extra foo --extra bar.
 RUN EXTRA_FLAGS=""; \
     for extra in ${EXTRA_UV_EXTRAS}; do EXTRA_FLAGS="${EXTRA_FLAGS} --extra ${extra}"; done; \
-    uv sync --no-dev --no-install-project --frozen \
-      --no-install-package validibot-shared ${EXTRA_FLAGS} \
-    && install-published-shared ${APP_HOME}/.venv/bin/python ${APP_HOME}/pyproject.toml \
+    uv sync --no-dev --no-install-project --frozen ${EXTRA_FLAGS} \
     && install-commercial-package ${APP_HOME}/.venv/bin/python \
     && rm -rf /tmp/uv-cache
 

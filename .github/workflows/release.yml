@@ -97,14 +97,6 @@ jobs:
           fi
           echo "Tag '$TAG_REF' signature verified."
 
-      - name: Checkout validibot-shared dependency
-        run: |
-          git clone --depth 1 --branch v0.13.0 \
-            https://github.com/danielmcquillen/validibot-shared.git \
-            ../validibot-shared
-          test "$(git -C ../validibot-shared rev-parse HEAD)" = \
-            "6ffee76a8b4ff52e54ac9bb0eb80e6f65348381d"
-
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
 

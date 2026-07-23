@@ -98,14 +98,6 @@ jobs:
       - name: Checkout Code Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - name: Checkout validibot-shared dependency
-        run: |
-          git clone --depth 1 --branch v0.18.0 \
-            https://github.com/danielmcquillen/validibot-shared.git \
-            ../validibot-shared
-          test "$(git -C ../validibot-shared rev-parse HEAD)" = \
-            "b081ac71ab138d538022497df33c9bd9c8d0a9ab"
-
       - name: Checkout SHACL validator backend
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

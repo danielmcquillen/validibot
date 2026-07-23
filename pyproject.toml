@@ -349,11 +349,6 @@ ignore = [
 [tool.ruff.lint.isort]
 force-single-line = true
 
-[tool.uv.sources]
-# Coordinated cross-repository development uses the sibling checkout until the
-# new shared contract release has been published.
-validibot-shared = { path = "../validibot-shared", editable = true }
-
 [dependency-groups]
 dev = [
   # Testing

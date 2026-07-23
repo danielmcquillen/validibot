@@ -65,14 +65,16 @@ Used for Docker Compose deployments where validators run as local Docker contain
 
 ### Asynchronous (GCP Cloud Run)
 
-Used for GCP deployments where request-shaped attempts run on private Cloud
-Run Services and attempts over the Service budget use retained Cloud Run Jobs.
+Used for GCP deployments where workflow authors choose a provider-neutral
+execution profile. Fast-response attempts normally run on private Cloud Run
+Services; long-running attempts use retained Cloud Run Jobs.
 
 ```
 1. Validator calls backend.execute(request)
 2. Backend uploads inputs below
    ``gs://<bucket>/runs/<org>/<run>/attempts/<attempt>/``
-3. Resolver pins the exact ready deployment and immutable route/image facts
+3. Resolver maps the authored Fast response or Long-running profile to an
+   active route, then pins its exact immutable route/image facts
 4. Service path creates one deterministic provider Cloud Task; Job path calls
    the Cloud Run Jobs API
 5. Returns ExecutionResponse with is_complete=False
@@ -88,6 +90,8 @@ Run Services and attempts over the Service budget use retained Cloud Run Jobs.
 - Callback-based — results require OIDC plus attempt-bound credentials
 - IAM-secured — a dedicated identity is the sole Service invoker; runtime
   identities have no ambient GCS authority
+- Author-selectable — workflow steps express workload intent without exposing
+  GCP resource names; an attempt never changes routes after provider contact
 
 ## Two-Layer Architecture
 

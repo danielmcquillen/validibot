@@ -313,7 +313,7 @@ GCP deployments use completely different infrastructure:
 - Cloud SQL for database (via Unix socket)
 - Cloud Tasks for background work
 - Private Cloud Run Services for request-shaped validator work, with retained
-  Cloud Run Jobs for attempts over the Service budget and rollback
+  Cloud Run Jobs for author-selected long-running attempts and rollback
 - GCS for file storage (media + submissions)
 
 Infrastructure is provisioned idempotently via

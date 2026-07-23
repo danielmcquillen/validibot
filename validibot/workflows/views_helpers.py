@@ -24,6 +24,7 @@ from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.models import Ruleset
 from validibot.validations.models import Validator
@@ -1890,6 +1891,22 @@ def save_workflow_step(
         config = build_ai_config(form)
     else:
         config = {}
+
+    # Container execution shape is a semantic part of the workflow contract.
+    # Omit the stable default to keep legacy and newly-authored fast-response
+    # steps canonical; selecting long-running adds the one explicit override.
+    execution_profile = form.cleaned_data.get("execution_profile")
+    if execution_profile == ValidatorExecutionProfile.LONG_RUNNING:
+        config["execution_profile"] = execution_profile
+
+    # Machine-authored imports may carry a narrower explicit deadline even
+    # though the human UI intentionally exposes only the two simple profiles.
+    # Do not silently discard that contract when an author edits another field.
+    existing_config = getattr(step, "config", None) or {}
+    if "execution_timeout_seconds" in existing_config:
+        config["execution_timeout_seconds"] = existing_config[
+            "execution_timeout_seconds"
+        ]
 
     if ruleset is not None:
         step.ruleset = ruleset

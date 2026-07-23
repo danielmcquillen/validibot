@@ -66,6 +66,19 @@ class ExecutionDeploymentRoutingRole(TextChoices):
     LONG_RUNNING = "LONG_RUNNING", _("Long-running compatibility")
 
 
+class ValidatorExecutionProfile(TextChoices):
+    """Workflow-author intent for one container-based validator step.
+
+    Authors choose the workload shape, while operators retain control over the
+    concrete provider deployment. A fast-response step normally uses the
+    primary request-driven route; a long-running step uses the retained route
+    with the larger verified execution budget.
+    """
+
+    FAST_RESPONSE = "FAST_RESPONSE", _("Fast response")
+    LONG_RUNNING = "LONG_RUNNING", _("Long-running")
+
+
 class ExecutionShape(TextChoices):
     """How a provider holds and represents an execution."""
 

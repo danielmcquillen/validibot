@@ -27,6 +27,7 @@ from validibot.core.textsafety import sanitize_plain_text
 from validibot.validations.constants import EXECUTION_ATTEMPT_ACTIVE_STATES
 from validibot.validations.constants import EXECUTION_ATTEMPT_TERMINAL_STATES
 from validibot.validations.constants import ExecutionAttemptState
+from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.services.execution_logging import execution_log_context
 
 if TYPE_CHECKING:
@@ -176,6 +177,9 @@ def get_or_create_execution_attempt(
     validator: Validator | None = None,
     managed: bool = False,
     effective_budget_seconds: int | None = None,
+    execution_profile: ValidatorExecutionProfile | str = (
+        ValidatorExecutionProfile.FAST_RESPONSE
+    ),
 ) -> tuple[ExecutionAttempt, bool]:
     """Return the active attempt, creating it before provider work begins.
 
@@ -201,6 +205,11 @@ def get_or_create_execution_attempt(
     if budget_seconds < 1:
         msg = "The effective execution budget must be at least one second."
         raise ValueError(msg)
+    try:
+        requested_profile = ValidatorExecutionProfile(execution_profile)
+    except ValueError as exc:
+        msg = f"Unknown validator execution profile: {execution_profile!r}."
+        raise ValueError(msg) from exc
 
     with transaction.atomic():
         locked_step = (
@@ -228,6 +237,7 @@ def get_or_create_execution_attempt(
             deployment = resolve_execution_deployment(
                 validator=validator,
                 effective_budget_seconds=budget_seconds,
+                execution_profile=requested_profile,
                 for_update=True,
             )
             deployment_snapshot = build_deployment_snapshot(deployment)
@@ -270,8 +280,9 @@ def get_or_create_execution_attempt(
             ),
             timeout_at=now + timedelta(seconds=attempt_deadline_seconds),
             retry_policy_snapshot={
-                "schema_version": 1,
+                "schema_version": 2,
                 "effective_budget_seconds": budget_seconds,
+                "requested_execution_profile": requested_profile.value,
                 "attempt_deadline_seconds": attempt_deadline_seconds,
                 "maximum_provider_dispatches": 1,
                 "provider_acceptance_policy": (

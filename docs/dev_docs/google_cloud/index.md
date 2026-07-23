@@ -26,7 +26,7 @@ The GCP architecture includes:
 - **Cloud SQL** - Managed PostgreSQL database
 - **Cloud Storage** - Object storage for media files
 - **Cloud Tasks** - Application-worker queue plus a separate provider queue for deterministic, OIDC-authenticated validator Service delivery
-- **Cloud Run Jobs** - Retained route for attempts over the Service budget and explicit rollback
+- **Cloud Run Jobs** - Retained route for author-selected long-running attempts and explicit rollback
 - **Cloud Scheduler** - Cron jobs for maintenance tasks
 - **Secret Manager** - Secure credential storage
 

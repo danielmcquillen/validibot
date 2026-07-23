@@ -31,6 +31,18 @@ Re-enable the workflow from the same panel when you are ready to accept submissi
 
 The dedicated editor is specific to the validation type you picked. All forms include a **Step name** field along with convenient navigation at the bottom of the page to jump back to the workflow overview or, when editing, to switch between adjacent steps.
 
+Container-based validators (EnergyPlus, FMU, SHACL, and Schematron) also show
+an **Execution profile**:
+
+- **Fast response** is the default for short, interactive validation work.
+- **Long-running** is for large files or simulations that may need the full
+  validator time allowance.
+
+This is the only infrastructure choice an author needs to make. The workflow
+stores the workload intent as part of its versioned definition; the deployment
+maps it to the appropriate runtime. Existing workflows remain Fast response
+unless an author explicitly changes the step.
+
 The **Step Assertions** panel always shows a **Default assertions** card at the top. This card summarizes the validator-level default assertions that will run before any step-specific assertions and links to a modal listing the full set; from there you can jump to the validator’s read-only detail page if you need to review the defaults in depth. The compact **+** action in the panel header has an **Add assertion** tooltip. It opens the assertion form directly for most validators and first asks for an execution stage on Tabular steps.
 
 ### JSON Schema

@@ -33,7 +33,8 @@ authored workflow. Key relationships:
   (ADR-2026-06-18):
     - **`config`** is the *semantic* bucket — only settings that affect the
       validation result (`schema_type`, `delimiter`, `encoding`, `has_header`,
-      `case_sensitive`, FMU simulation settings, and so on). Its per-validator
+      `case_sensitive`, FMU simulation settings, the container
+      `execution_profile`, and so on). Its per-validator
       Pydantic models (`workflows/step_configs.py`) use `extra="forbid"`, so
       nothing cosmetic or run-injected can land here. Because of that guarantee,
       the workflow-definition digest (`services/contract_snapshot.py`) hashes
@@ -49,6 +50,12 @@ authored workflow. Key relationships:
   it change the validation result? If yes, `config`; if it's only for display or
   is injected at run time, `display_settings`. Both buckets round-trip through
   workflow import/export (VAF).
+- Container-based steps accept `execution_profile=FAST_RESPONSE` (the stable
+  default, omitted from canonical stored JSON) or `LONG_RUNNING`. This is
+  author intent, not a provider name. Managed GCP resolves the former through
+  the active primary route and the latter through the retained long-running
+  route before it contacts a provider. The chosen profile and exact deployment
+  are then captured on the execution attempt.
 - `display_schema` is limited to validator steps; action steps automatically
   disable it.
 

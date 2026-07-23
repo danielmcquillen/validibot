@@ -7,10 +7,12 @@ from occupying the same validator routing slot.
 """
 
 from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
+from django.test import override_settings
 from django.utils import timezone
 
 from validibot.audit.constants import AuditAction
@@ -19,9 +21,16 @@ from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ExecutionProviderType
+from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.models import ValidatorExecutionDeployment
 from validibot.validations.services.execution.deployments import (
     ExecutionDeploymentResolutionError,
+)
+from validibot.validations.services.execution.deployments import (
+    effective_execution_budget_seconds,
+)
+from validibot.validations.services.execution.deployments import (
+    effective_execution_profile,
 )
 from validibot.validations.services.execution.deployments import (
     ensure_execution_deployment_can_retire,
@@ -56,6 +65,8 @@ EXPECTED_SHARED_DEPLOYMENT_COUNT = 2
 ATTEMPT_BUDGET_SECONDS = 900
 DEADLINE_TOLERANCE_SECONDS = 1
 JOB_FINALIZATION_MARGIN_SECONDS = 120
+FAST_PROFILE_BUDGET_SECONDS = 900
+LONG_PROFILE_BUDGET_SECONDS = 3600
 
 
 def _job_configuration(job_name="validibot-energyplus"):
@@ -443,8 +454,8 @@ def test_resolver_selects_primary_service_when_attempt_budget_fits():
 
 
 @pytest.mark.django_db
-def test_service_budget_overflow_selects_long_running_job_before_dispatch():
-    """Work over 25 minutes is planned onto Jobs rather than failed over later."""
+def test_long_running_profile_selects_job_before_dispatch():
+    """An author's large-work choice must pin the retained Job explicitly."""
     validator = ValidatorFactory()
     _save_ready(
         _service_deployment(validator=validator),
@@ -464,9 +475,96 @@ def test_service_budget_overflow_selects_long_running_job_before_dispatch():
     selected = resolve_execution_deployment(
         validator=validator,
         effective_budget_seconds=1800,
+        execution_profile=ValidatorExecutionProfile.LONG_RUNNING,
     )
 
     assert selected == compatibility
+
+
+@pytest.mark.django_db
+def test_fast_response_profile_never_silently_falls_back_to_job():
+    """An oversized fast attempt must fail before contact, not change systems."""
+    validator = ValidatorFactory()
+    _save_ready(
+        _service_deployment(validator=validator),
+        role=ExecutionDeploymentRoutingRole.PRIMARY,
+    )
+    job_capabilities = _job_capabilities()
+    job_capabilities["maximum_execution_seconds"] = 3600
+    _save_ready(
+        _job_deployment(
+            validator=validator,
+            declared_capabilities=job_capabilities,
+            maximum_execution_seconds=3600,
+        ),
+        role=ExecutionDeploymentRoutingRole.LONG_RUNNING,
+    )
+
+    with pytest.raises(
+        ExecutionDeploymentResolutionError,
+        match="Choose the Long-running profile",
+    ):
+        resolve_execution_deployment(
+            validator=validator,
+            effective_budget_seconds=1800,
+            execution_profile=ValidatorExecutionProfile.FAST_RESPONSE,
+        )
+
+
+@pytest.mark.django_db
+def test_long_running_profile_uses_primary_job_during_operator_rollback():
+    """Rollback must keep large authored work usable without a fake Job slot."""
+    validator = ValidatorFactory()
+    job_capabilities = _job_capabilities()
+    job_capabilities["maximum_execution_seconds"] = 3600
+    primary_job = _save_ready(
+        _job_deployment(
+            validator=validator,
+            declared_capabilities=job_capabilities,
+            maximum_execution_seconds=3600,
+        ),
+        role=ExecutionDeploymentRoutingRole.PRIMARY,
+    )
+
+    selected = resolve_execution_deployment(
+        validator=validator,
+        effective_budget_seconds=3600,
+        execution_profile=ValidatorExecutionProfile.LONG_RUNNING,
+    )
+
+    assert selected == primary_job
+
+
+@override_settings(
+    VALIDATOR_DEFAULT_EXECUTION_SECONDS=FAST_PROFILE_BUDGET_SECONDS,
+    VALIDATOR_TIMEOUT_SECONDS=LONG_PROFILE_BUDGET_SECONDS,
+)
+def test_execution_profiles_supply_simple_stable_default_budgets():
+    """Authors should choose one profile without coordinating timeout values."""
+    fast_step = SimpleNamespace(config={})
+    long_step = SimpleNamespace(
+        config={"execution_profile": ValidatorExecutionProfile.LONG_RUNNING}
+    )
+
+    assert effective_execution_profile(step=fast_step) == (
+        ValidatorExecutionProfile.FAST_RESPONSE
+    )
+    assert (
+        effective_execution_budget_seconds(step=fast_step)
+        == FAST_PROFILE_BUDGET_SECONDS
+    )
+    assert (
+        effective_execution_budget_seconds(step=long_step)
+        == LONG_PROFILE_BUDGET_SECONDS
+    )
+
+
+def test_unknown_execution_profile_fails_before_attempt_allocation():
+    """Malformed imported workflow config must not guess a provider route."""
+    step = SimpleNamespace(config={"execution_profile": "BURSTY"})
+
+    with pytest.raises(ExecutionDeploymentResolutionError, match="must be one of"):
+        effective_execution_profile(step=step)
 
 
 @pytest.mark.django_db
@@ -608,4 +706,8 @@ def test_managed_attempt_pins_route_snapshot_and_absolute_deadline():
         <= elapsed_seconds
         <= expected_deadline_seconds + DEADLINE_TOLERANCE_SECONDS
     )
+    assert attempt.retry_policy_snapshot["schema_version"] == 2  # noqa: PLR2004
     assert attempt.retry_policy_snapshot["maximum_provider_dispatches"] == 1
+    assert attempt.retry_policy_snapshot["requested_execution_profile"] == (
+        ValidatorExecutionProfile.FAST_RESPONSE
+    )

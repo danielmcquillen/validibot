@@ -4,7 +4,7 @@ Validator containers run advanced validations such as EnergyPlus, FMU,
 SHACL, and Schematron. They support two deployment modes:
 
 1. **GCP managed execution**: Cloud Run Services are the normal route, with
-   retained Cloud Run Jobs for work over the Service budget and rollback
+   retained Cloud Run Jobs for author-selected long-running work and rollback
 2. **Docker Compose** (Docker): Sync execution with local filesystem storage
 
 ## GCP mode: provider-selectable Services and Jobs
@@ -15,10 +15,13 @@ We deploy one Django image as two Cloud Run services:
 - **$GCP_APP_NAME-worker** (`APP_ROLE=worker`): Private/IAM-only internal API (callbacks).
 
 Every advanced attempt snapshots one verified `ValidatorExecutionDeployment`.
-Attempts with an effective domain budget of at most 1500 seconds use the ready
-primary Cloud Run Service. Longer attempts use the retained Cloud Run Job.
+The workflow step's provider-neutral `execution_profile` selects the route
+before dispatch: `FAST_RESPONSE` uses the ready primary route and
+`LONG_RUNNING` uses the retained long-running route. In normal operation those
+are a Cloud Run Service and Cloud Run Job respectively. During explicit
+operator rollback the Job is primary and can truthfully satisfy either profile.
 Both runtimes call the worker using Google-signed ID tokens and the attempt
-callback nonce. There is no shared callback secret.
+callback nonce. There is no shared callback secret and no runtime failover.
 
 In environments with a custom public domain (production), `SITE_URL` points at the public domain (for example `https://validibot.com`) while `WORKER_URL` points at the worker service `*.run.app` URL. Callbacks and scheduled tasks should always target `WORKER_URL`, never `SITE_URL`.
 

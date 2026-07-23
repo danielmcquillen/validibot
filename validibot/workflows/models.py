@@ -1527,8 +1527,8 @@ class WorkflowStep(TimeStampedModel):
 
     # ── The two step-config buckets (ADR-2026-06-18) ──
     # ``config`` is the SEMANTIC bucket: only settings that change what
-    # validation *does* (schema_type, delimiter, encoding, has_header,
-    # case_sensitive, FMU sim settings, …). Its Pydantic models forbid extra
+    # validation *does* or how its compute is planned (schema_type, delimiter,
+    # execution_profile, case_sensitive, FMU sim settings, …). Its models forbid
     # keys, so the workflow-definition digest can hash this field WHOLESALE and
     # stay provably free of cosmetic or run-injected data.
     # ``display_settings`` is the COSMETIC + runtime-injected bucket

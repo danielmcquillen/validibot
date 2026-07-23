@@ -1002,9 +1002,9 @@ if not (
     raise ImproperlyConfigured(
         "VALIDATOR_STATUS_LOOKUP_GRACE_SECONDS must be between 0 and 1800."
     )
-# Domain budget used when a workflow step does not request a narrower or longer
-# validator execution. 1500 seconds fits the request-driven Service contract;
-# an explicit step budget above it is planned onto the retained Job route.
+# Domain budget used by the Fast-response workflow profile. 1500 seconds fits
+# the request-driven Service contract. Long-running steps use the site-wide
+# VALIDATOR_TIMEOUT_SECONDS ceiling and are planned onto the retained route.
 VALIDATOR_DEFAULT_EXECUTION_SECONDS = env.int(
     "VALIDATOR_DEFAULT_EXECUTION_SECONDS",
     default=min(1500, VALIDATOR_TIMEOUT_SECONDS),

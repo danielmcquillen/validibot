@@ -23,6 +23,7 @@ from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ExecutionProviderType
 from validibot.validations.constants import RuntimeStorageIsolation
 from validibot.validations.constants import StorageCapabilityMode
+from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.services.execution.deployment_schemas import (
     DeploymentRouteSnapshot,
 )
@@ -207,20 +208,41 @@ def retire_execution_deployment(
     return selected
 
 
-def effective_execution_budget_seconds(*, step) -> int:
-    """Return the operator-bounded domain budget requested for one step.
+def effective_execution_profile(*, step) -> ValidatorExecutionProfile:
+    """Return the validated workload profile requested by a workflow step."""
+    raw_value = (getattr(step, "config", None) or {}).get(
+        "execution_profile",
+        ValidatorExecutionProfile.FAST_RESPONSE,
+    )
+    try:
+        return ValidatorExecutionProfile(raw_value)
+    except ValueError as exc:
+        allowed = ", ".join(ValidatorExecutionProfile.values)
+        raise ExecutionDeploymentResolutionError(
+            f"execution_profile must be one of: {allowed}."
+        ) from exc
 
-    Workflow authors may request the explicit long-running compatibility path,
-    but cannot exceed the site-wide validator ceiling. Missing configuration
-    uses the Service-eligible default.
+
+def effective_execution_budget_seconds(*, step) -> int:
+    """Return the operator-bounded domain budget for one authored profile.
+
+    Fast-response steps use the Service-eligible default. Long-running steps
+    receive the site-wide validator ceiling without asking a solo operator or
+    workflow author to coordinate a second timeout field. Machine-authored
+    workflow imports may still request a narrower explicit timeout.
     """
     from django.conf import settings
 
+    profile = effective_execution_profile(step=step)
     configured = (getattr(step, "config", None) or {}).get("execution_timeout_seconds")
     value = (
         configured
         if configured is not None
-        else getattr(settings, "VALIDATOR_DEFAULT_EXECUTION_SECONDS", 1500)
+        else (
+            getattr(settings, "VALIDATOR_TIMEOUT_SECONDS", 3600)
+            if profile == ValidatorExecutionProfile.LONG_RUNNING
+            else getattr(settings, "VALIDATOR_DEFAULT_EXECUTION_SECONDS", 1500)
+        )
     )
     if isinstance(value, bool):
         raise ExecutionDeploymentResolutionError(
@@ -276,14 +298,18 @@ def resolve_execution_deployment(
     *,
     validator: Validator,
     effective_budget_seconds: int,
+    execution_profile: ValidatorExecutionProfile | str = (
+        ValidatorExecutionProfile.FAST_RESPONSE
+    ),
     for_update: bool = False,
 ) -> ValidatorExecutionDeployment:
     """Select the exact active route for a managed attempt before dispatch.
 
-    Budget overflow is the only automatic route change: a primary Service that
-    cannot fit the durable attempt budget selects the explicit long-running Job
-    slot.  Missing, blocked, unready, drifted, or capability-incompatible
-    deployments fail before provider contact.
+    The workflow's profile makes route selection explicit before provider
+    contact. Fast-response work uses the primary route. Long-running work uses
+    the compatibility route, or a primary Job while an operator rollback is in
+    effect. Missing, blocked, unready, drifted, or capability-incompatible
+    deployments fail closed; runtime failure never authorizes route switching.
     """
     from validibot.validations.models import ValidatorExecutionDeployment
 
@@ -291,6 +317,12 @@ def resolve_execution_deployment(
         raise ExecutionDeploymentResolutionError(
             "The effective execution budget must be at least one second."
         )
+    try:
+        profile = ValidatorExecutionProfile(execution_profile)
+    except ValueError as exc:
+        raise ExecutionDeploymentResolutionError(
+            f"Unknown validator execution profile: {execution_profile!r}."
+        ) from exc
     queryset = ValidatorExecutionDeployment.objects.filter(validator=validator)
     if for_update:
         queryset = queryset.select_for_update()
@@ -304,48 +336,55 @@ def resolve_execution_deployment(
         )
     }
     primary = deployments.get(ExecutionDeploymentRoutingRole.PRIMARY)
-    if primary is None:
-        raise ExecutionDeploymentResolutionError(
-            f"Validator {validator.pk} has no activated primary deployment."
-        )
-    if primary.readiness_state != ExecutionDeploymentReadiness.READY:
-        raise ExecutionDeploymentResolutionError(
-            f"Primary deployment {primary.pk} is not ready."
-        )
-    if primary.emergency_blocked:
-        raise ExecutionDeploymentResolutionError(
-            f"Primary deployment {primary.pk} is emergency blocked."
-        )
-    primary_capabilities = _validated_capabilities(primary)
-    if effective_budget_seconds <= primary_capabilities.maximum_execution_seconds:
-        return primary
-    if primary.deployment_kind != ExecutionDeploymentKind.CLOUD_RUN_SERVICE:
-        raise ExecutionDeploymentResolutionError(
-            f"The {effective_budget_seconds}-second attempt budget exceeds primary "
-            f"deployment {primary.pk}'s verified maximum."
-        )
-
     compatibility = deployments.get(ExecutionDeploymentRoutingRole.LONG_RUNNING)
-    if compatibility is None:
-        raise ExecutionDeploymentResolutionError(
-            f"Validator {validator.pk} has no long-running compatibility route."
+
+    if profile == ValidatorExecutionProfile.LONG_RUNNING:
+        selected = compatibility
+        route_label = "Long-running"
+        if (
+            selected is None
+            and primary is not None
+            and primary.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_JOB
+        ):
+            # Operator rollback makes the retained Job primary and clears the
+            # compatibility slot. It remains the truthful long-running route.
+            selected = primary
+            route_label = "Primary Job"
+    else:
+        selected = primary
+        route_label = "Primary"
+
+    if selected is None:
+        missing_role = (
+            "long-running"
+            if profile == ValidatorExecutionProfile.LONG_RUNNING
+            else "primary"
         )
-    if compatibility.readiness_state != ExecutionDeploymentReadiness.READY:
         raise ExecutionDeploymentResolutionError(
-            f"Long-running deployment {compatibility.pk} is not ready."
+            f"Validator {validator.pk} has no activated {missing_role} deployment."
         )
-    if compatibility.emergency_blocked:
+    if selected.readiness_state != ExecutionDeploymentReadiness.READY:
         raise ExecutionDeploymentResolutionError(
-            f"Long-running deployment {compatibility.pk} is emergency blocked."
+            f"{route_label} deployment {selected.pk} is not ready."
         )
-    compatibility_capabilities = _validated_capabilities(compatibility)
-    if effective_budget_seconds > compatibility_capabilities.maximum_execution_seconds:
+    if selected.emergency_blocked:
+        raise ExecutionDeploymentResolutionError(
+            f"{route_label} deployment {selected.pk} is emergency blocked."
+        )
+    capabilities = _validated_capabilities(selected)
+    if effective_budget_seconds > capabilities.maximum_execution_seconds:
+        guidance = (
+            " Choose the Long-running profile for larger work."
+            if profile == ValidatorExecutionProfile.FAST_RESPONSE
+            and selected.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_SERVICE
+            else ""
+        )
         raise ExecutionDeploymentResolutionError(
             f"The {effective_budget_seconds}-second attempt budget exceeds "
-            "long-running "
-            f"deployment {compatibility.pk}'s verified maximum."
+            f"{route_label.lower()} deployment {selected.pk}'s verified maximum."
+            f"{guidance}"
         )
-    return compatibility
+    return selected
 
 
 def build_deployment_snapshot(

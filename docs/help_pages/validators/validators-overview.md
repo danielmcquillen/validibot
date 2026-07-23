@@ -24,6 +24,21 @@ Advanced validators (available with Pro):
 | **EnergyPlus™** | Runs building energy simulations | IDF, epJSON |
 | **FMU** | Runs FMU simulations | FMU packages |
 
+## Fast response or long-running
+
+Container-based step editors (EnergyPlus, FMU, SHACL, and Schematron) include
+one **Execution profile** choice:
+
+- **Fast response** is the default. Choose it for interactive checks that you
+  expect to finish within about 25 minutes.
+- **Long-running** starts more slowly but gives large files and simulations the
+  deployment's full validator time allowance.
+
+Choose the profile when you configure the workflow step. Submitters do not need
+to choose it for every run, and a run never changes profile after it starts.
+Validibot maps the profile to the available compute, so workflow authors do not
+need to know about cloud-provider Jobs, Services, queues, or rollback routes.
+
 Validators can declare value or artifact inputs and outputs. Those ports form
 the step contract; they are not automatically workflow signals. See
 [How Data Flows Through a Workflow](/app/help/concepts/workflow-data/) for the

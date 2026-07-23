@@ -2151,18 +2151,36 @@ def _uploaded_file_identity(*, content, uri, content_type=None):
 
 
 def _stored_resource_identity(step_resource):
-    """Return provider metadata for the mocked launcher's weather resource."""
+    """Return GCS metadata for a reusable weather resource outside the attempt."""
     source = step_resource.validator_resource_file
     return FileIdentity(
-        uri=step_resource.get_storage_uri(),
+        uri=f"gs://test-bucket/validator-resources/{source.pk}/weather.epw",
         size_bytes=1,
         sha256=source.content_hash or "a" * 64,
         storage_version="1700000000000001",
     )
 
 
+def _copied_resource_identity(
+    *,
+    source_uri,
+    source_generation,
+    destination_uri,
+    expected_size_bytes,
+    expected_sha256,
+):
+    """Model the immutable generation copy into the attempt-scoped prefix."""
+    del source_uri, source_generation
+    return FileIdentity(
+        uri=destination_uri,
+        size_bytes=expected_size_bytes,
+        sha256=expected_sha256,
+        storage_version="1700000000000002",
+    )
+
+
 def _launcher_mocks():
-    """Return a dict of patch objects for the four external I/O functions.
+    """Return patch objects for the launcher's external provider I/O.
 
     Usage::
 
@@ -2177,6 +2195,11 @@ def _launcher_mocks():
             "validibot.validations.services.cloud_run.envelope_builder."
             "_stored_step_resource_identity",
             side_effect=_stored_resource_identity,
+        ),
+        "copy_gcs_file_generation": patch(
+            "validibot.validations.services.cloud_run.gcs_runtime_capabilities."
+            "copy_gcs_file_generation",
+            side_effect=_copied_resource_identity,
         ),
         "run_validator_job": patch(
             f"{_PATCH_PREFIX}.run_validator_job",

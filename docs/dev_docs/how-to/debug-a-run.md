@@ -57,9 +57,9 @@ gcloud logging read "resource.labels.service_name=\"$GCP_APP_NAME-worker\" sever
 
 ### Check validator Service or retained Job logs
 
-Normal request-shaped GCP attempts use release-specific Cloud Run Services.
-Attempts over the Service budget, plus explicit rollback traffic, use retained
-Jobs. First inspect the attempt's pinned deployment in Django admin or with
+Fast-response GCP attempts normally use release-specific Cloud Run Services.
+Author-selected long-running attempts, plus explicit rollback traffic, use
+retained Jobs. First inspect the attempt's pinned deployment in Django admin or with
 `just gcp validator-deployments-list prod`; do not guess the execution shape
 from the validator slug.
 

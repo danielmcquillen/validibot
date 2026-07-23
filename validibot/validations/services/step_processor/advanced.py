@@ -98,12 +98,16 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         from validibot.validations.services.execution.deployments import (
             effective_execution_budget_seconds,
         )
+        from validibot.validations.services.execution.deployments import (
+            effective_execution_profile,
+        )
         from validibot.validations.services.execution_attempts import (
             get_or_create_execution_attempt,
         )
 
         managed = get_deployment_target() == DeploymentTarget.GCP
         default_backend = None if managed else get_execution_backend()
+        execution_profile = effective_execution_profile(step=self.workflow_step)
         execution_budget_seconds = effective_execution_budget_seconds(
             step=self.workflow_step
         )
@@ -113,6 +117,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
             validator=self.validator,
             managed=managed,
             effective_budget_seconds=execution_budget_seconds,
+            execution_profile=execution_profile,
         )
         run_context.execution_attempt = attempt
         run_context.execution_deployment = attempt.deployment

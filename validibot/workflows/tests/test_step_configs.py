@@ -235,11 +235,11 @@ class TestPartitionStepConfig:
         assert config == {"schema_type": "2020-12"}
         assert display == {"primary_file_uri": "gs://b/x"}
 
-    def test_unknown_type_treats_all_as_display(self):
-        """An unknown step type has no semantic fields, so everything is display.
+    def test_unknown_type_treats_all_fields_as_display(self):
+        """An unknown type must not guess which fields affect its semantics.
 
-        Falling back to ``BaseStepConfig`` (no declared fields) means nothing is
-        mistakenly hashed for a type we don't recognize.
+        Falling back to an empty ``BaseStepConfig`` keeps arbitrary keys out of
+        the hashed bucket until the type registers an explicit config model.
         """
         config, display = partition_step_config(None, {"a": 1, "b": 2})
 

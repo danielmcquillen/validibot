@@ -37,6 +37,7 @@ from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.regex_safety import UnsafeOrInvalidPatternError
 from validibot.validations.regex_safety import compile_user_pattern
@@ -1868,6 +1869,7 @@ class WorkflowStepTypeForm(forms.Form):
 
 class BaseStepConfigForm(forms.Form):
     show_display_schema = False
+    supports_execution_profile = False
     name = forms.CharField(
         label=_("Step name"),
         max_length=200,
@@ -1906,6 +1908,18 @@ class BaseStepConfigForm(forms.Form):
             "message will be shown."
         ),
     )
+    execution_profile = forms.ChoiceField(
+        label=_("Execution profile"),
+        choices=ValidatorExecutionProfile.choices,
+        required=False,
+        initial=ValidatorExecutionProfile.FAST_RESPONSE,
+        widget=forms.RadioSelect,
+        help_text=_(
+            "Fast response is optimized for short, interactive checks. "
+            "Long-running reserves the full validator time budget for large "
+            "files or simulations. Validibot chooses the underlying compute."
+        ),
+    )
     notes = forms.CharField(
         label=_("Author notes"),
         required=False,
@@ -1938,6 +1952,8 @@ class BaseStepConfigForm(forms.Form):
         super().__init__(*args, **kwargs)
         if not self.show_display_schema:
             self.fields.pop("display_schema", None)
+        if not self.supports_execution_profile:
+            self.fields.pop("execution_profile", None)
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.disable_csrf = True
@@ -1956,8 +1972,25 @@ class BaseStepConfigForm(forms.Form):
             self.fields["show_success_messages"].initial = bool(
                 getattr(step, "show_success_messages", False),
             )
+        if "execution_profile" in self.fields:
+            config = getattr(step, "config", None) or {}
+            self.fields["execution_profile"].initial = config.get(
+                "execution_profile",
+                ValidatorExecutionProfile.FAST_RESPONSE,
+            )
         if step and hasattr(step, "notes") and step.notes:
             self.fields["notes"].initial = step.notes
+
+    def clean_execution_profile(self) -> str:
+        """Preserve an omitted edit value, then use the stable fast default."""
+        value = self.cleaned_data.get("execution_profile")
+        if value:
+            return value
+        config = getattr(self.step, "config", None) or {}
+        return config.get(
+            "execution_profile",
+            ValidatorExecutionProfile.FAST_RESPONSE,
+        )
 
 
 class FMUValidatorStepConfigForm(BaseStepConfigForm):
@@ -1974,6 +2007,8 @@ class FMUValidatorStepConfigForm(BaseStepConfigForm):
       FMU and stores discovered variables as ``StepIODefinition`` rows
       and simulation defaults in ``step.config["fmu_simulation"]``.
     """
+
+    supports_execution_profile = True
 
     # ── FMU upload ────────────────────────────────────────────────
     fmu_file = forms.FileField(
@@ -2053,6 +2088,7 @@ class FMUValidatorStepConfigForm(BaseStepConfigForm):
                 "name",
                 "description",
                 "show_success_messages",
+                "execution_profile",
                 "notes",
             )
             return
@@ -2085,6 +2121,7 @@ class FMUValidatorStepConfigForm(BaseStepConfigForm):
             "name",
             "description",
             "show_success_messages",
+            "execution_profile",
             "fmu_file",
             "remove_fmu",
             Div(
@@ -2373,6 +2410,7 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
     """
 
     show_display_schema = True
+    supports_execution_profile = True
     SHACL_RESULT_HANDLING_CHOICES = (
         (
             SHACL_RESULT_FAIL_IMMEDIATELY,
@@ -2508,6 +2546,7 @@ class ShaclStepConfigForm(ShaclConfigMixin, BaseStepConfigForm):
                 "description",
                 "display_schema",
                 "show_success_messages",
+                "execution_profile",
                 "notes",
                 css_class=APP_FORM_SECTION_CLASS,
             ),
@@ -2774,6 +2813,8 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         )
     """
 
+    supports_execution_profile = True
+
     # ── Mode selector ─────────────────────────────────────────────
     VALIDATION_MODE_DIRECT = "direct"
     VALIDATION_MODE_TEMPLATE = "template"
@@ -2969,6 +3010,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             "name",
             "description",
             "show_success_messages",
+            "execution_profile",
             "validation_mode",
         ]
         if self.file_port_bindings_enabled:
@@ -4622,6 +4664,8 @@ class SchematronStepConfigForm(BaseStepConfigForm):
     inside the sandboxed validator container — Django just performs the
     cheap authoring checks here (well-formed XML, Schematron root, size).
     """
+
+    supports_execution_profile = True
 
     schematron_text = forms.CharField(
         label=_("Schematron rules"),

@@ -5,8 +5,9 @@ physically-separate buckets so that "hash the whole step config" is correct by
 construction:
 
 * **``config``** — the **semantic** bucket. Only settings that change what
-  validation *does* (``schema_type``, ``delimiter``, ``encoding``,
-  ``has_header``, ``case_sensitive``, FMU sim settings, …). Its models forbid
+  validation *does* or how its compute is planned (``schema_type``,
+  ``delimiter``, ``encoding``, ``execution_profile``, ``case_sensitive``, FMU
+  sim settings, …). Its models forbid
   extra keys (see :data:`_SEMANTIC_EXTRA`), so the workflow-definition digest can
   hash this field **wholesale** and stay provably free of cosmetic or
   run-injected data.
@@ -54,6 +55,8 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 
+from validibot.validations.constants import ValidatorExecutionProfile
+
 if TYPE_CHECKING:
     from validibot.workflows.models import WorkflowStep
 
@@ -84,14 +87,36 @@ _SEMANTIC_EXTRA = "forbid"
 class BaseStepConfig(BaseModel):
     """Base model for the **semantic** ``config`` bucket.
 
-    Declares no fields — a step type with no semantic settings (Basic, Custom)
-    uses this directly. Subclasses add only keys that change validation
-    behaviour. ``extra`` is forbidden so an undeclared/cosmetic/run-injected key
-    cannot silently enter the hashed bucket; cosmetic data belongs in
+    A step type with no semantic settings (Basic, Custom) uses this directly.
+    Subclasses add only keys that change validation or execution behaviour.
+    ``extra`` is forbidden so an undeclared/cosmetic/run-injected key cannot
+    silently enter the hashed bucket; cosmetic data belongs in
     ``display_settings`` (see :class:`BaseDisplaySettings`).
     """
 
     model_config = ConfigDict(extra=_SEMANTIC_EXTRA)
+
+
+class ContainerExecutionStepConfig(BaseStepConfig):
+    """Provider-neutral compute intent shared only by container validators."""
+
+    execution_profile: ValidatorExecutionProfile = (
+        ValidatorExecutionProfile.FAST_RESPONSE
+    )
+    """Workload profile requested by the workflow author.
+
+    This is provider-neutral: hosted GCP currently maps fast-response work to
+    the primary Service route and long-running work to the retained Job route.
+    Self-hosted and future providers may implement the same intent differently.
+    """
+
+    execution_timeout_seconds: int | None = Field(default=None, ge=1)
+    """Optional API/import override bounded again by deployment policy at launch.
+
+    The authoring UI intentionally exposes only the simple execution profile.
+    This field preserves the existing machine-authored contract for clients
+    that need a narrower explicit deadline.
+    """
 
 
 class BaseDisplaySettings(BaseModel):
@@ -164,7 +189,7 @@ class TabularStepConfig(BaseStepConfig):
     """Whether the file has a header row."""
 
 
-class ShaclStepConfig(BaseStepConfig):
+class ShaclStepConfig(ContainerExecutionStepConfig):
     """Semantic config for SHACL (RDF graph) validator steps.
 
     The engine knobs below change how validation runs (inference, bundled
@@ -190,7 +215,7 @@ class ShaclStepConfig(BaseStepConfig):
     """How violation severities map to pass/fail."""
 
 
-class EnergyPlusStepConfig(BaseStepConfig):
+class EnergyPlusStepConfig(ContainerExecutionStepConfig):
     """Semantic config for EnergyPlus validator steps.
 
     Simulation and template-matching settings change what is validated, so they
@@ -248,7 +273,7 @@ class FMUSimulationConfig(BaseModel):
     tolerance: float | None = None
 
 
-class FmuStepConfig(BaseStepConfig):
+class FmuStepConfig(ContainerExecutionStepConfig):
     """Semantic config for FMU validator steps.
 
     Both fields are set at *authoring* time (when the author uploads/edits the
@@ -266,6 +291,10 @@ class FmuStepConfig(BaseStepConfig):
     …), used at runtime to resolve ``i.*`` values for step-level uploads.
     Derived from the FMU file at authoring time and read from ``step.config`` by
     ``FMUValidator``, so it stays in the semantic bucket."""
+
+
+class SchematronStepConfig(ContainerExecutionStepConfig):
+    """Semantic config for isolated Schematron validator execution."""
 
 
 class BasicStepConfig(BaseStepConfig):
@@ -424,12 +453,10 @@ class EnergyPlusDisplaySettings(BaseDisplaySettings):
 # Maps ValidationType / action type string → SEMANTIC config model class.
 STEP_CONFIG_MODELS: dict[str, type[BaseModel]] = {
     # Validator types (from ValidationType)
-    # NOTE: SCHEMATRON has no semantic config model — pack identity is the
-    # step's validator FK (a library validator per pack, ADR-2026-07-01 D5),
-    # so there are no step-level semantic keys to hash.
     "JSON_SCHEMA": JsonSchemaStepConfig,
     "XML_SCHEMA": XmlSchemaStepConfig,
     "TABULAR": TabularStepConfig,
+    "SCHEMATRON": SchematronStepConfig,
     "SHACL": ShaclStepConfig,
     "ENERGYPLUS": EnergyPlusStepConfig,
     "FMU": FmuStepConfig,

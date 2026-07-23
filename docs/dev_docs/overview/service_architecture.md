@@ -150,9 +150,10 @@ if isinstance(typed, EnergyPlusStepConfig):
     checks = typed.idf_checks  # list[str], type-checked
 ```
 
-All models use `extra="allow"` so runtime-injected keys (like
-`primary_file_uri` added during container launch) don't cause validation
-errors.
+Semantic config models use `extra="forbid"`; runtime-injected and cosmetic keys
+live in the separate permissive `display_settings` bucket. A container-specific
+semantic base defines the provider-neutral `execution_profile` used only by
+container-based workflow steps.
 
 The `WorkflowStep.typed_config` property provides convenient access:
 
@@ -169,10 +170,10 @@ mismatches at save time rather than at runtime.
 |--------------------|-------|------------|
 | JSON_SCHEMA | `JsonSchemaStepConfig` | `schema_source`, `schema_type`, `schema_text_preview` |
 | XML_SCHEMA | `XmlSchemaStepConfig` | `schema_source`, `schema_type`, `schema_text_preview` |
-| ENERGYPLUS | `EnergyPlusStepConfig` | `idf_checks`, `run_simulation`, `timestep_per_hour` (resource files stored via `WorkflowStepResource`) |
+| ENERGYPLUS | `EnergyPlusStepConfig` | `execution_profile`, `idf_checks`, `run_simulation`, `timestep_per_hour` (resource files stored via `WorkflowStepResource`) |
 | AI_ASSIST | `AiAssistStepConfig` | `template`, `mode`, `cost_cap_cents`, `selectors`, `policy_rules` |
 | BASIC | `BasicStepConfig` | (empty) |
-| FMU | `FmuStepConfig` | (empty) |
+| FMU | `FmuStepConfig` | `execution_profile`, `fmu_simulation` |
 | CUSTOM_VALIDATOR | `CustomValidatorStepConfig` | (empty) |
 | SLACK_MESSAGE | `SlackActionStepConfig` | `message` |
 | SIGNED_CREDENTIAL | `CredentialActionStepConfig` | (empty) |

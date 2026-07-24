@@ -5152,7 +5152,7 @@ class PortfolioManagerStepConfigForm(BaseStepConfigForm):
 
     def clean(self):
         """Validate the EBL schema immediately and apply explicit profile defaults."""
-        cleaned = super().clean()
+        cleaned = super().clean() or {}
         structure = cleaned.get("submission_structure") or "single_report"
         upload = cleaned.get("expected_buildings_list")
         if upload:

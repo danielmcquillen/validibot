@@ -3,6 +3,7 @@ import logging
 from dataclasses import asdict
 from hashlib import sha256
 from typing import Any
+from typing import cast
 from uuid import uuid4
 
 from django import forms
@@ -1819,6 +1820,10 @@ def _sync_portfolio_manager_value_binding(step: WorkflowStep) -> None:
     from validibot.validations.models import StepInputBinding
     from validibot.validations.models import StepIODefinition
 
+    if step.validator_id is None:
+        msg = "Portfolio Manager steps require a validator before binding EUIt"
+        raise ValueError(msg)
+
     io_definition = (
         StepIODefinition.objects.filter(
             validator_id=step.validator_id,
@@ -2008,7 +2013,9 @@ def save_workflow_step(
     elif vtype == ValidationType.AI_ASSIST:
         config = build_ai_config(form)
     elif vtype == ValidationType.PORTFOLIO_MANAGER:
-        config = build_portfolio_manager_config(form)
+        config = build_portfolio_manager_config(
+            cast("PortfolioManagerStepConfigForm", form),
+        )
     else:
         config = {}
 
@@ -2068,7 +2075,10 @@ def save_workflow_step(
         _sync_fmu_resources(step, form)
         _sync_fmu_step_io(step, fmu_vars)
     elif vtype == ValidationType.PORTFOLIO_MANAGER:
-        _sync_portfolio_manager_resources(step, form)
+        _sync_portfolio_manager_resources(
+            step,
+            cast("PortfolioManagerStepConfigForm", form),
+        )
         _sync_step_file_port_bindings(step, form)
 
     # Ensure bindings exist for validator-owned step inputs so the

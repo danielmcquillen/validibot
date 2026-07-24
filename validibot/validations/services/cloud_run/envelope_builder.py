@@ -1326,7 +1326,10 @@ def _build_portfolio_manager_input_file_item(
         mime_type=mime_type_for_portfolio_manager_filename(name),
         role=port.role or "portfolio-manager-report",
         port_key=port.contract_key,
-        **file.envelope_fields(),
+        uri=file.uri,
+        size_bytes=file.size_bytes,
+        sha256=file.sha256,
+        storage_version=file.storage_version,
     )
 
 
@@ -1885,6 +1888,7 @@ def build_input_envelope(
         return envelope
 
     if validator.validation_type == ValidationType.PORTFOLIO_MANAGER:
+        portfolio_submission_file: FileIdentity | None
         resolved_report = _resolve_input_file_artifact_port_item(
             run=run,
             step=step,
@@ -1896,10 +1900,12 @@ def build_input_envelope(
         report_item = None
         if resolved_report is not None:
             report_item, _source_scope = resolved_report
-            submission_file = FileIdentity.from_envelope_item(report_item)
+            portfolio_submission_file = FileIdentity.from_envelope_item(report_item)
         else:
-            submission_file = (input_file_uris or {}).get("primary_file_uri")
-            if submission_file is None:
+            portfolio_submission_file = (input_file_uris or {}).get(
+                "primary_file_uri",
+            )
+            if portfolio_submission_file is None:
                 msg = (
                     f"Step {step.id} has no immutable primary file for "
                     "Portfolio Manager"
@@ -1993,19 +1999,21 @@ def build_input_envelope(
                 250_000_000,
             ),
         )
-        context = ExecutionContext(
-            callback_id=callback_id,
-            callback_nonce=callback_nonce,
-            callback_nonce_commitment=callback_nonce_commitment,
-            callback_url=callback_url,
-            execution_bundle_uri=execution_bundle_uri,
-            execution_attempt_id=execution_attempt_id,
-            step_run_id=step_run_id,
-            attempt_contract_version=ATTEMPT_CONTRACT_VERSION,
-            expected_output_uri=expected_output_uri,
-            skip_callback=skip_callback,
+        context = ExecutionContext.model_validate(
+            {
+                "callback_id": callback_id,
+                "callback_nonce": callback_nonce,
+                "callback_nonce_commitment": callback_nonce_commitment,
+                "callback_url": callback_url,
+                "execution_bundle_uri": execution_bundle_uri,
+                "execution_attempt_id": execution_attempt_id,
+                "step_run_id": step_run_id,
+                "attempt_contract_version": ATTEMPT_CONTRACT_VERSION,
+                "expected_output_uri": expected_output_uri,
+                "skip_callback": skip_callback,
+            },
         )
-        envelope = build_portfolio_manager_input_envelope(
+        portfolio_envelope = build_portfolio_manager_input_envelope(
             run_id=str(run.id),
             validator=validator,
             org_id=str(run.org.id),
@@ -2013,18 +2021,18 @@ def build_input_envelope(
             workflow_id=str(run.workflow.id),
             step_id=str(step.id),
             step_name=step.name,
-            submission_name=_filename_from_uri(submission_file.uri),
-            submission_uri=submission_file.uri,
-            submission_size_bytes=submission_file.size_bytes,
-            submission_sha256=submission_file.sha256,
-            submission_storage_version=submission_file.storage_version,
+            submission_name=_filename_from_uri(portfolio_submission_file.uri),
+            submission_uri=portfolio_submission_file.uri,
+            submission_size_bytes=portfolio_submission_file.size_bytes,
+            submission_sha256=portfolio_submission_file.sha256,
+            submission_storage_version=portfolio_submission_file.storage_version,
             inputs=portfolio_inputs,
             context=context,
             expected_buildings_list=ebl_resource,
         )
         if report_item is not None:
-            envelope.input_files = [report_item]
-        return envelope
+            portfolio_envelope.input_files = [report_item]
+        return portfolio_envelope
 
     msg = f"Unsupported validator type: {validator.validation_type}"
     raise ValueError(msg)

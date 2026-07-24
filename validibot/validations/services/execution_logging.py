@@ -24,6 +24,12 @@ def execution_log_context(
         else {}
     )
     deployment = attempt.deployment if attempt and attempt.deployment_id else None
+    provider_type = snapshot.get("provider_type")
+    if not provider_type and deployment is not None:
+        provider_type = deployment.provider_type
+    deployment_kind = snapshot.get("deployment_kind")
+    if not deployment_kind and deployment is not None:
+        deployment_kind = deployment.deployment_kind
     return {
         "run_id": str(run.pk),
         "step_run_id": step_run.pk if step_run else None,
@@ -35,14 +41,10 @@ def execution_log_context(
             else None
         ),
         "execution_provider_type": (
-            str(snapshot.get("provider_type") or deployment.provider_type)
-            if attempt and (snapshot.get("provider_type") or deployment)
-            else None
+            str(provider_type) if attempt and provider_type else None
         ),
         "execution_deployment_kind": (
-            str(snapshot.get("deployment_kind") or deployment.deployment_kind)
-            if attempt and (snapshot.get("deployment_kind") or deployment)
-            else None
+            str(deployment_kind) if attempt and deployment_kind else None
         ),
         "provider_resource_name": (
             str(

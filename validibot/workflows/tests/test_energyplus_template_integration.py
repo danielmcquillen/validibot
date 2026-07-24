@@ -2201,6 +2201,11 @@ def _launcher_mocks():
             "copy_gcs_file_generation",
             side_effect=_copied_resource_identity,
         ),
+        "issue_gcs_capability": patch(
+            "validibot.validations.services.cloud_run.gcs_runtime_capabilities."
+            "issue_attempt_gcs_runtime_capability",
+            return_value=object(),
+        ),
         "run_validator_job": patch(
             f"{_PATCH_PREFIX}.run_validator_job",
             return_value="executions/test-exec-001",

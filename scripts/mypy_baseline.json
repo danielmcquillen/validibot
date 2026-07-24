@@ -154,7 +154,6 @@
     "validibot/validations/services/input_bindings.py|misc": 3,
     "validibot/validations/services/runners/aws_batch.py|override": 1,
     "validibot/validations/services/runners/docker.py|override": 1,
-    "validibot/validations/services/runners/google_cloud_run.py|assignment": 2,
     "validibot/validations/services/runners/google_cloud_run.py|override": 1,
     "validibot/validations/services/step_orchestrator.py|arg-type": 3,
     "validibot/validations/services/step_orchestrator.py|assignment": 1,

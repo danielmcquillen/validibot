@@ -12,6 +12,7 @@ import logging
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING
+from typing import Protocol
 
 from django.conf import settings
 
@@ -25,11 +26,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class ManagedExecutionBackendFactory(Protocol):
+    """Construct a managed backend from its immutable deployment route."""
+
+    def __call__(
+        self,
+        *,
+        deployment: ValidatorExecutionDeployment,
+    ) -> ExecutionBackend: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ManagedExecutionBackendRoute:
     """One authoritative provider/deployment-kind adapter registration."""
 
-    backend_class: type[ExecutionBackend]
+    backend_class: ManagedExecutionBackendFactory
     runner_type: str
 
 

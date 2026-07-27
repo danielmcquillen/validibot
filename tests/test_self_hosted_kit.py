@@ -53,6 +53,7 @@ KIT_ROOT = REPO_ROOT / "deploy" / "self-hosted"
 ENVS_EXAMPLE_ROOT = REPO_ROOT / ".envs.example" / ".production" / ".self-hosted"
 DOCS_ROOT = REPO_ROOT / "docs" / "operations" / "self-hosting"
 GCP_SERVICE_ACCOUNT_ID_MAX_LENGTH = 30
+EXPECTED_RELEASE_VERIFICATION_CALL_COUNT = 2
 
 # The two host-prep helper scripts the kit ships. Only these two
 # remain as scripts because they have to run *before* ``just`` is
@@ -703,7 +704,7 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         """
         block = self._block_between(
             'validator-job-deploy name stage release_tag=""',
-            'validator-jobs-deploy-all stage release_tag=""',
+            "validator-jobs-deploy-all stage:",
         )
 
         assert "gcloud artifacts docker images list" in block
@@ -714,17 +715,18 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         """Routine deployment must keep each backend's Job and Service together.
 
         Operators should not have to remember two provider-specific commands or
-        an environment-variable release tag. The complete single-backend and
-        all-backend recipes therefore take one explicit release, mirror it, and
-        deploy both shapes without registering or activating application routes.
+        an environment-variable release tag. A single-backend deploy takes one
+        explicit release; the all-backend deploy reads each independent source
+        tag from the inventory. Both paths stage complete Job/Service pairs
+        without registering or activating application routes.
         """
         single_block = self._block_between(
             "validator-deploy name stage release_tag:",
-            "# Stage every managed validator backend",
+            "# Stage every backend at its own exact version",
         )
         all_block = self._block_between(
-            "validator-deploy-all stage release_tag:",
-            "# Register current digest-pinned Jobs",
+            "validator-deploy-all stage:",
+            "# Verify/register one release-specific Job",
         )
         recipe = self._gcp_mod_text()
 
@@ -735,9 +737,10 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "validator-services-activate" not in single_block
 
         assert "_maintenance-assert-offline" in all_block
-        assert "validator-release-mirror" in all_block
-        assert "validator-jobs-deploy-all" in all_block
-        assert "validator-services-deploy-all" in all_block
+        assert 'inventory --backend "$backend" --field source_tag' in all_block
+        assert 'validator-deploy "$backend" {{stage}} "$SOURCE_TAG"' in all_block
+        assert "validator-jobs-deploy-all" not in all_block
+        assert "validator-services-deploy-all" not in all_block
         assert "validator-services-activate" not in all_block
 
         assert "validators-deploy-all stage:" not in recipe
@@ -1007,12 +1010,19 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             "_validator-release-mirror-image name release_tag:",
             "# Mirror all signed release images",
         )
+        verifier = self._block_between(
+            "_validator-release-verify-image name release_tag:",
+            "# Verify the signed release and GAR mirror",
+        )
 
-        assert "git -C ../validibot-validator-backends verify-tag" in block
-        assert "gh attestation verify" in block
+        assert "git -C ../validibot-validator-backends verify-tag" in verifier
+        assert "gh attestation verify" in verifier
+        assert (
+            block.count("_validator-release-verify-image")
+            == EXPECTED_RELEASE_VERIFICATION_CALL_COUNT
+        )
         assert "docker buildx imagetools create" in block
         assert '"${GHCR_IMAGE}@${GHCR_DIGEST}"' in block
-        assert "_validator-release-verify-image" in block
         assert "docker build " not in block
 
     def test_operator_job_updates_converge_identity_and_database_binding(self):
@@ -1112,26 +1122,24 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
     def test_validator_deploy_uses_backend_image_metadata_not_app_version(self):
         """Validator backend images expose OCI metadata, not VALIDATOR_VERSION env.
 
-        The backend version comes from the Dockerfile's
-        ``ARG VALIDATOR_BACKEND_VERSION`` default; the recipe only
-        passes the build-arg when an operator overrides via env var
-        (``${VALIDATOR_BACKEND_VERSION:+--build-arg ...}``). We assert
-        that override path is wired AND that the recipe doesn't shell
-        out to the deleted ``resolve-backend-image-version.py`` helper.
+        The sibling ``backends.toml`` release inventory is the version source.
+        The recipe passes that value explicitly to a Dockerfile with no version
+        default and never falls back to the application release or the deleted
+        ``resolve-backend-image-version.py`` helper.
         """
         block = self._block_between(
             "validator-build name:",
-            'validator-jobs-deploy-all stage release_tag=""',
+            "# Push a validator container",
         )
 
         # The deleted resolver script must not be called from this recipe.
         assert "resolve-backend-image-version.py" not in block
-        # OCI revision + slug are still per-build args (only the version
-        # comes from the Dockerfile default).
+        assert 'inventory --backend "{{name}}" --field release_version' in block
+        assert '--build-arg VALIDATOR_BACKEND_VERSION="$BACKEND_VERSION"' in block
+        # OCI revision + slug remain explicit per-build metadata.
         assert "VALIDATOR_BACKEND_REVISION" in block
-        # Conditional override pattern: only passes --build-arg when
-        # the env var is set, otherwise the Dockerfile default wins.
-        assert "${VALIDATOR_BACKEND_VERSION:+--build-arg" in block
+        assert "VALIDATOR_BACKEND_SLUG" in block
+        assert "${VALIDATOR_BACKEND_VERSION:+--build-arg" not in block
         # Validator-backend SHA is distinct from validibot's git SHA.
         assert "{{validator_backend_git_sha}}" in block
         assert "{{git_sha}}" not in block

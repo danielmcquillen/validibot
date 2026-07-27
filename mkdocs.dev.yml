@@ -19,10 +19,8 @@ theme:
   name: material
   custom_dir: docs/dev_docs/overrides
   language: en
-  favicon: https://validibot.com/static/images/favicons/favicon.ico
-  font:
-    text: Inter
-    code: JetBrains Mono
+  favicon: images/favicon.png
+  font: false
   palette:
     # Light mode (default). The toggle pair gives readers a dark mode.
     # Brand colors for the slate scheme live in stylesheets/extra.css.
@@ -55,6 +53,7 @@ theme:
     - announce.dismiss
 
 extra_css:
+  - stylesheets/fonts.css
   - stylesheets/extra.css
 
 extra:

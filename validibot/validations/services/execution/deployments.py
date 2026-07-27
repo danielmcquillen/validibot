@@ -544,6 +544,12 @@ def retire_backend_release_deployments(
     for deployment in deployments:
         if deployment.readiness_state == ExecutionDeploymentReadiness.RETIRED:
             continue
+        provider_deleted_at = deployment.provider_deleted_at
+        if provider_deleted_at is None:
+            raise ExecutionDeploymentResolutionError(
+                f"Provider deletion has not been confirmed for deployment "
+                f"{deployment.pk}."
+            )
         previous_state = deployment.readiness_state
         deployment.readiness_state = ExecutionDeploymentReadiness.RETIRED
         deployment.retired_at = retired_at
@@ -563,7 +569,7 @@ def retire_backend_release_deployments(
             metadata={
                 "backend_slug": backend_slug,
                 "backend_release": backend_release_identity,
-                "provider_deleted_at": deployment.provider_deleted_at.isoformat(),
+                "provider_deleted_at": provider_deleted_at.isoformat(),
                 "retirement_reason": normalized_reason,
             },
         )
@@ -984,6 +990,9 @@ def _route_locked_pair(
     ]
     for deployment in changed:
         previous_role = previous_roles[deployment.pk]
+        previous_deactivated_at, previous_deactivation_cause = previous_deactivation[
+            deployment.pk
+        ]
         action = (
             AuditAction.VALIDATOR_DEPLOYMENT_DEACTIVATED
             if deployment.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
@@ -996,8 +1005,8 @@ def _route_locked_pair(
                 "routing_role": [previous_role, deployment.routing_role],
                 "deactivated_at": [
                     (
-                        previous_deactivation[deployment.pk][0].isoformat()
-                        if previous_deactivation[deployment.pk][0]
+                        previous_deactivated_at.isoformat()
+                        if previous_deactivated_at
                         else None
                     ),
                     (
@@ -1007,7 +1016,7 @@ def _route_locked_pair(
                     ),
                 ],
                 "deactivation_cause": [
-                    previous_deactivation[deployment.pk][1],
+                    previous_deactivation_cause,
                     deployment.deactivation_cause,
                 ],
             },

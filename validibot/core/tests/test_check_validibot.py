@@ -976,10 +976,51 @@ class DoctorValidatorDeploymentTests(TestCase):
         from validibot.validations.services.execution.gcp_job_import import (
             register_observed_job_deployment,
         )
+        from validibot.validations.services.execution.gcp_service_import import (
+            GCPServiceObservation,
+        )
+        from validibot.validations.services.execution.gcp_service_import import (
+            register_observed_service_deployment,
+        )
         from validibot.validations.tests.factories import ValidatorFactory
 
         validator = ValidatorFactory(validation_type=ValidationType.SHACL)
         digest = "sha256:" + "a" * 64
+        release_record_sha256 = "b" * 64
+        register_observed_service_deployment(
+            validator=validator,
+            project_id="test-project",
+            region="australia-southeast1",
+            observation=GCPServiceObservation(
+                resource_name=(
+                    "projects/test-project/locations/australia-southeast1/"
+                    "services/validibot-validator-service-shacl"
+                ),
+                service_name="validibot-validator-service-shacl",
+                service_url="https://validator-service.example.run.app",
+                revision="shacl-00001",
+                backend_slug="shacl",
+                backend_release_identity="0.14.0",
+                source_release_tag="shacl-v0.14.0",
+                release_record_sha256=release_record_sha256,
+                image_ref=f"example.invalid/shacl@{digest}",
+                image_digest=digest,
+                runtime_service_account=(
+                    "validator-runtime@example.iam.gserviceaccount.com"
+                ),
+                invoker_service_account=(
+                    "validator-invoker@example.iam.gserviceaccount.com"
+                ),
+                request_timeout_seconds=1649,
+                maximum_cpu_millis=2000,
+                maximum_memory_mib=4096,
+                minimum_instances=0,
+                maximum_instances=1,
+                concurrency=1,
+            ),
+            maximum_execution_seconds=1500,
+            activate_primary=False,
+        )
         register_observed_job_deployment(
             validator=validator,
             project_id="test-project",
@@ -993,6 +1034,10 @@ class DoctorValidatorDeploymentTests(TestCase):
                 revision="0.14.0",
                 image_ref=f"example.invalid/shacl@{digest}",
                 image_digest=digest,
+                backend_slug="shacl",
+                backend_release_version="0.14.0",
+                source_release_tag="shacl-v0.14.0",
+                release_record_sha256=release_record_sha256,
                 runtime_service_account=(
                     "validator-runtime@example.iam.gserviceaccount.com"
                 ),

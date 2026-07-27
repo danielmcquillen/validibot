@@ -20,7 +20,12 @@ on:
       - 'docs/**'
       - '*.md'
       - 'mkdocs*.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/build_docs_assets.mjs'
+      - 'scripts/harden_docs_build.mjs'
       - 'scripts/check_doc_links.py'
+      - 'tests/test_docs_supply_chain.py'
       - '.github/workflows/docs.yml'
   push:
     branches: ['master', 'main']
@@ -28,7 +33,12 @@ on:
       - 'docs/**'
       - '*.md'
       - 'mkdocs*.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/build_docs_assets.mjs'
+      - 'scripts/harden_docs_build.mjs'
       - 'scripts/check_doc_links.py'
+      - 'tests/test_docs_supply_chain.py'
       - '.github/workflows/docs.yml'
 
 concurrency:
@@ -47,8 +57,24 @@ jobs:
         with:
           python-version-file: '.python-version'
 
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
       - name: Check relative links in markdown docs
         run: python scripts/check_doc_links.py
+
+      - name: Verify self-hosted documentation libraries
+        run: |
+          npm ci
+          npm run build:docs-assets
+          python -m unittest tests/test_docs_supply_chain.py
+          git diff --exit-code -- \
+            docs/dev_docs/fonts/ \
+            docs/dev_docs/images/favicon.png \
+            docs/dev_docs/javascripts/vendor/
 
       # Install zensical from a fully hash-pinned requirements file so the
       # docs build is reproducible and tamper-evident (OSSF Scorecard
@@ -60,3 +86,4 @@ jobs:
         run: |
           pip install --require-hashes -r requirements/docs.txt
           zensical build -f mkdocs.dev.yml --clean
+          npm run harden:docs-build

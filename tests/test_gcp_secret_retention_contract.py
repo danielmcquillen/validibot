@@ -127,19 +127,21 @@ def test_fixed_job_provider_preflight_requires_execution_drain(tmp_path) -> None
     assert "no pending or running" in terminal_result.stdout
 
 
-def test_legacy_fixed_job_deploy_runs_both_drain_preflights() -> None:
-    """Current in-place updates must check the DB and provider before deploy."""
+def test_release_job_deploy_never_mutates_a_legacy_fixed_job() -> None:
+    """Immutable release Jobs must not enter the old drain-and-update path."""
     recipes = (REPO_ROOT / "just/gcp/mod.just").read_text(encoding="utf-8")
-    recipe = recipes.split("validator-job-deploy name stage", maxsplit=1)[1].split(
-        "# Deploy all validator Cloud Run Jobs",
+    recipe = recipes.split(
+        'validator-job-deploy name stage release_tag=""',
+        maxsplit=1,
+    )[1].split(
+        "# Deploy all managed validator Jobs without deploying Services",
         maxsplit=1,
     )[0]
 
     database_preflight = "preflight_validator_job_update"
     provider_preflight = "preflight-validator-job-update.sh"
-    deploy = 'gcloud run jobs deploy "$JOB_NAME"'
-    assert database_preflight in recipe
-    assert provider_preflight in recipe
-    assert "_maintenance-assert-offline" in recipe
-    assert recipe.index(database_preflight) < recipe.index(deploy)
-    assert recipe.index(provider_preflight) < recipe.index(deploy)
+    assert 'gcloud run jobs create "$JOB_NAME"' in recipe
+    assert 'gcloud run jobs deploy "$JOB_NAME"' not in recipe
+    assert 'gcloud run jobs update "$JOB_NAME"' not in recipe
+    assert database_preflight not in recipe
+    assert provider_preflight not in recipe

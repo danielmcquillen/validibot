@@ -188,3 +188,21 @@ requirements beyond normal attribution.
 - **Version:** 2.0.6
 - **License:** 0BSD
 - **Type:** Frontend runtime dependency
+
+### mermaid
+
+- **Version:** 11.16.0
+- **License:** MIT
+- **Type:** Developer-documentation runtime, exact npm dev-dependency
+- **Notes:** The browser bundle and upstream license are copied into
+  `docs/dev_docs/javascripts/vendor/` and served from the Validibot origin.
+  Mermaid is not fetched from a public CDN at runtime.
+
+### documentation fonts
+
+- **Versions:** Inter 5.3.0, JetBrains Mono 5.3.0, Space Grotesk 5.3.0
+- **License:** SIL Open Font License 1.1
+- **Type:** Developer-documentation runtime, exact npm dev-dependencies
+- **Notes:** Browser files are copied from the lockfile-pinned Fontsource
+  packages. Their full licenses are kept beside the files in
+  `docs/dev_docs/fonts/`; the docs do not fetch Google Fonts at runtime.

@@ -77,8 +77,31 @@ Zensical is the docs tool, but it reads the existing MkDocs-compatible configura
 The root `mkdocs.yml` inherits from `mkdocs.dev.yml` as a convenience.
 
 ```bash
-# Build dev docs static site with Zensical (for manual inspection)
-uv run zensical build -f mkdocs.dev.yml --clean
+# Reproduce the production developer-docs build.
+npm ci
+npm run build:docs-assets
+uv run python -m unittest tests/test_docs_supply_chain.py
+uv run --group docs zensical build -f mkdocs.dev.yml --clean
+npm run harden:docs-build
 ```
 
 > **Tip**: The `docs_build/` directory is gitignored. Clean it out between builds if you switch audiences.
+
+## Browser-library supply chain
+
+Developer documentation must serve executable libraries from the Validibot
+origin. Mermaid is an exact npm dev-dependency whose lockfile integrity is the
+source of truth. `build:docs-assets` copies the reviewed browser runtime and
+MIT license into `docs/dev_docs/javascripts/vendor/`; the generated site loads
+that runtime before Zensical.
+
+Zensical currently embeds a dormant public-CDN Mermaid fallback in its theme
+bundle. `harden:docs-build` rewrites that fallback to the local asset and then
+fails if generated HTML, JavaScript, or CSS contains a known public
+library-CDN hostname. Do not solve a docs rendering failure by weakening CSP or
+adding a CDN allowlist.
+
+Zensical's remote font generation is disabled. Inter, JetBrains Mono, and Space
+Grotesk are exact Fontsource pins copied into `docs/dev_docs/fonts/`, with
+their OFL license texts, by the same asset build. Generated docs are rejected
+if Google Fonts or another blocked browser CDN appears.

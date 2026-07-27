@@ -1,10 +1,15 @@
-"""Static tests for the independent validator release operator interface.
+"""Static tests for the public independent-validator operator interface.
 
 The recipes ultimately invoke cloud CLIs, which these tests must never run.
-Instead, they pin the safety-critical command construction: the private hosted
-wrappers provide the exact project and region, routine operations expose five
-commands, and provider deployment creates release-specific resources from
-digest-selected images without updating a stable validator Job in place.
+Instead, they pin the safety-critical public command construction: routine
+operations expose five commands, retained release records feed status, and
+provider deployment creates release-specific resources from digest-selected
+images without updating a stable validator Job in place.
+
+The public test suite must remain runnable from a standalone source checkout.
+Hosted production coordinates and cross-repository wrappers belong to the
+private ``validibot-project`` repository and are deliberately not inspected
+here.
 """
 
 from __future__ import annotations
@@ -12,18 +17,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from django.conf import settings
-
-PUBLIC_GCP_RECIPES = Path(settings.BASE_DIR) / "just" / "gcp" / "mod.just"
-PRIVATE_JUSTFILE = Path(settings.BASE_DIR).parent / "validibot-project" / "Justfile"
-HOSTED_PROJECT = "project-a509c806-3e21-4fbc-b19"
-HOSTED_REGION = "australia-southeast1"
-ROUTINE_COMMANDS = (
-    "validator-setup",
-    "validator-status",
-    "validator-update",
-    "validator-rollback",
-    "validator-cleanup",
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PUBLIC_GCP_RECIPES = REPO_ROOT / "just" / "gcp" / "mod.just"
+ROUTINE_RECIPE_HEADERS = (
+    "validator-setup stage",
+    "validator-status stage",
+    'validator-update stage backend=""',
+    'validator-rollback stage backend operation="release"',
+    "validator-cleanup stage",
 )
 EXPECTED_OUTGOING_PROVIDER_REVERIFY_COUNT = 2
 
@@ -31,21 +32,24 @@ EXPECTED_OUTGOING_PROVIDER_REVERIFY_COUNT = 2
 def _recipe(text: str, name: str, next_marker: str) -> str:
     """Return one recipe body without parsing or executing Just syntax."""
 
-    start = text.index(name)
+    match = re.search(rf"(?m)^{re.escape(name)}:", text)
+    if match is None:
+        raise AssertionError(f"Recipe not found: {name}")
+    start = match.start()
     end = text.index(next_marker, start)
     return text[start:end]
 
 
-def test_private_hosted_wrappers_supply_exact_production_coordinates():
-    """Routine commands must not ask operators to retype project or region."""
+def test_public_recipes_expose_complete_routine_operator_surface():
+    """Standalone installations need every routine release operation."""
 
-    text = PRIVATE_JUSTFILE.read_text(encoding="utf-8")
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
 
-    assert f'gcp_project := "{HOSTED_PROJECT}"' in text
-    assert f'gcp_region := "{HOSTED_REGION}"' in text
-    for command in ROUTINE_COMMANDS:
-        assert re.search(rf"(?m)^{re.escape(command)}(?:[ :]|$)", text)
-        assert f"just gcp {command} prod" in text
+    for header in ROUTINE_RECIPE_HEADERS:
+        assert re.search(
+            rf"(?m)^{re.escape(header)}: _require-gcp-config$",
+            text,
+        )
 
 
 def test_release_job_recipe_creates_one_digest_selected_named_resource():
@@ -54,7 +58,7 @@ def test_release_job_recipe_creates_one_digest_selected_named_resource():
     text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
     recipe = _recipe(
         text,
-        "validator-job-deploy name stage",
+        'validator-job-deploy name stage release_tag=""',
         "# Deploy all managed validator Jobs",
     )
 
@@ -75,12 +79,12 @@ def test_release_service_and_job_share_release_identity_environment():
     text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
     job = _recipe(
         text,
-        "validator-job-deploy name stage",
+        'validator-job-deploy name stage release_tag=""',
         "# Deploy all managed validator Jobs",
     )
     service = _recipe(
         text,
-        "validator-service-deploy name stage",
+        'validator-service-deploy name stage release_tag=""',
         "# Provision all managed Services",
     )
     required = (
@@ -98,21 +102,21 @@ def test_release_service_and_job_share_release_identity_environment():
     assert "latest" not in service
 
 
-def test_cleanup_reads_retained_accepted_release_records_from_every_stage():
-    """Accepted image protection must outlive each stage's provider resources."""
+def test_status_reads_retained_accepted_release_records_for_selected_stage():
+    """A standalone stage must protect releases retained in its own bucket."""
 
-    text = PRIVATE_JUSTFILE.read_text(encoding="utf-8")
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
     recipe = _recipe(
         text,
-        "gcp-validator-images-cleanup",
-        "\ndocs:",
+        "_validator-status-json stage output",
+        "# Retain the exact accepted release record",
     )
 
-    assert "for STAGE in prod staging dev" in recipe
-    assert 'STORAGE_BUCKET="validibot-storage"' in recipe
-    assert 'STORAGE_BUCKET="validibot-storage-${STAGE}"' in recipe
+    assert 'if [ "{{stage}}" = "prod" ]' in recipe
+    assert 'STORAGE_BUCKET="${APP_NAME}-storage"' in recipe
+    assert 'STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"' in recipe
     assert "operations/validator-backend-releases/*/*.json" in recipe
-    assert '--release-records "$RELEASE_RECORDS"' in recipe
+    assert '--release-records-json "$WORK_DIR/records.json"' in recipe
 
 
 def test_setup_and_multi_update_activate_selected_backends_as_one_group():
@@ -183,7 +187,11 @@ def test_exact_recovery_requires_and_transports_a_recorded_repair_reason():
     )
     route = _recipe(
         text,
-        "validator-backend-route name stage version",
+        (
+            "validator-backend-route name stage version "
+            'mode="normal" cause="SUPERSEDED_BY_ACCEPTED_RELEASE" '
+            'allow_unaccepted="" reason_b64=""'
+        ),
         "# Change mutable service-level warming",
     )
 

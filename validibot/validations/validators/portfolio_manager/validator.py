@@ -11,68 +11,11 @@ from django.core.exceptions import ValidationError
 
 from validibot.validations.constants import PORTFOLIO_MANAGER_MAX_SUBMISSION_BYTES
 from validibot.validations.validators.base.advanced import AdvancedValidator
-
-_COLLECTION_OUTPUT_KEYS = (
-    "submission_structure",
-    "file_count",
-    "valid_file_count",
-    "invalid_file_count",
-    "property_count",
-    "reporting_cycle_count",
-    "reporting_cycles_match",
-    "complete_reporting_period_property_count",
-    "fresh_reporting_period_property_count",
-    "expected_building_count",
-    "matched_expected_building_count",
-    "missing_expected_building_count",
-    "unexpected_submitted_building_count",
-    "duplicate_submitted_property_count",
-    "parent_child_overlap_count",
-    "target_covered_property_count",
-    "target_uncovered_property_count",
-    "target_comparable_property_count",
-    "target_met_property_count",
-    "target_above_property_count",
-    "target_near_property_count",
-    "benchmark_ready_property_count",
-    "form_c_ready_property_count",
-    "aggregate_metrics_available",
-    "total_gross_floor_area_ft2",
-    "weighted_weather_normalized_site_eui_kbtu_ft2_yr",
-    "energy_star_score_property_count",
-    "weighted_energy_star_score",
-    "estimated_excess_energy_kbtu",
-    "target_coverage_percent",
-    "target_compliance_percent",
-    "floor_area_target_compliance_percent",
+from validibot.validations.validators.portfolio_manager.output_groups import (
+    GROUPED_PROPERTY_OUTPUT_KEYS,
 )
-_SINGLE_OUTPUT_KEYS = (
-    "property_id",
-    "parent_property_id",
-    "washington_standard_id",
-    "reporting_period_start",
-    "reporting_period_end",
-    "reporting_period_complete",
-    "reporting_period_fresh",
-    "gross_floor_area_ft2",
-    "site_eui_kbtu_ft2_yr",
-    "weather_normalized_site_eui_kbtu_ft2_yr",
-    "source_eui_kbtu_ft2_yr",
-    "national_median_site_eui_kbtu_ft2_yr",
-    "energy_star_score",
-    "heating_degree_days",
-    "cooling_degree_days",
-    "weather_station_id",
-    "weather_station_name",
-    "resolved_euit_kbtu_ft2_yr",
-    "resolved_euit_source",
-    "euit_margin_kbtu_ft2_yr",
-    "euit_ratio",
-    "euit_percent_difference",
-    "meets_euit",
-    "near_euit",
-    "benchmark_ready",
-    "form_c_ready",
+from validibot.validations.validators.portfolio_manager.output_groups import (
+    SINGLE_PROPERTY_OUTPUT_KEYS,
 )
 
 
@@ -115,12 +58,12 @@ class PortfolioManagerValidator(AdvancedValidator):
             return None
         values = {
             key: _json_number(getattr(outputs, key, None))
-            for key in _COLLECTION_OUTPUT_KEYS
+            for key in GROUPED_PROPERTY_OUTPUT_KEYS
         }
         record = (
             outputs.property_results[0] if len(outputs.property_results) == 1 else None
         )
-        for key in _SINGLE_OUTPUT_KEYS:
+        for key in SINGLE_PROPERTY_OUTPUT_KEYS:
             values[key] = _json_number(getattr(record, key, None)) if record else None
         return values
 

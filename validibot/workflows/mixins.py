@@ -359,6 +359,7 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         if hasattr(self, cache_key):
             return getattr(self, cache_key)
         from validibot.validations.constants import StepIODirection
+        from validibot.validations.constants import ValidationType
         from validibot.validations.models import StepIODefinition
         from validibot.workflows.models import WorkflowSignalMapping
 
@@ -367,6 +368,19 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         io_definitions: list = []
         include_outputs = stage != "input"  # input-stage excludes this step's o.*
         include_inputs = True  # i.* available at both stages
+        allowed_output_keys: frozenset[str] | None = None
+        output_label = _("Step output")
+        if validator and validator.validation_type == ValidationType.PORTFOLIO_MANAGER:
+            from validibot.validations.validators.portfolio_manager import (
+                output_groups as pm_output_groups,
+            )
+
+            structure = (self.step.config or {}).get(
+                "submission_structure",
+                "single_report",
+            )
+            allowed_output_keys = pm_output_groups.output_keys_for_structure(structure)
+            output_label = pm_output_groups.output_group_label(structure)
 
         # ── This validator's catalog-declared step inputs and outputs ──
         # Step inputs (direction=INPUT) populate i.* via the validator's
@@ -386,6 +400,13 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
             io_definitions = list(
                 validator.step_io_definitions.order_by("order", "contract_key")
             )
+            if allowed_output_keys is not None:
+                io_definitions = [
+                    io_definition
+                    for io_definition in io_definitions
+                    if io_definition.direction != StepIODirection.OUTPUT
+                    or io_definition.contract_key in allowed_output_keys
+                ]
             for io_definition in io_definitions:
                 if (
                     io_definition.direction == StepIODirection.OUTPUT
@@ -395,7 +416,7 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
                         (
                             f"o.{io_definition.contract_key}",
                             f"{io_definition.label or io_definition.contract_key}"
-                            f" · {_('Step output')}",
+                            f" · {output_label}",
                         ),
                     )
                 elif (
@@ -418,6 +439,12 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
             for io_definition in io_definitions
         }
         for io_definition in step_io_definitions:
+            if (
+                allowed_output_keys is not None
+                and io_definition.direction == StepIODirection.OUTPUT
+                and io_definition.contract_key not in allowed_output_keys
+            ):
+                continue
             definition_key = (io_definition.contract_key, io_definition.direction)
             if definition_key in seen:
                 continue
@@ -431,7 +458,7 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
                 choices.append(
                     (
                         f"o.{io_definition.contract_key}",
-                        f"{display_name} · {_('Step output')}",
+                        f"{display_name} · {output_label}",
                     ),
                 )
             elif io_definition.direction == StepIODirection.INPUT and include_inputs:
@@ -445,8 +472,6 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         # StepIODefinition rows. Use the same canonical inventory as the
         # validator and Step Inputs card so autocomplete cannot drift from the
         # data authors can actually reference through i.*.
-        from validibot.validations.constants import ValidationType
-
         if (
             validator
             and validator.validation_type == ValidationType.TABULAR

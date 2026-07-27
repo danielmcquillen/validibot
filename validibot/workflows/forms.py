@@ -3378,6 +3378,20 @@ class DisplayStepOutputsForm(forms.Form):
 
         choices: list[tuple[str, str]] = []
         seen_keys: set[str] = set()
+        allowed_output_keys: frozenset[str] | None = None
+        if validator and validator.validation_type == ValidationType.PORTFOLIO_MANAGER:
+            from validibot.validations.validators.portfolio_manager import (
+                output_groups as pm_output_groups,
+            )
+
+            structure = (getattr(step, "config", None) or {}).get(
+                "submission_structure",
+                "single_report",
+            )
+            allowed_output_keys = pm_output_groups.output_keys_for_structure(structure)
+            self.fields[
+                "display_step_outputs"
+            ].label = pm_output_groups.output_group_label(structure)
 
         # Step-owned output definitions (FMU outputs, etc.).
         if step:
@@ -3389,6 +3403,8 @@ class DisplayStepOutputsForm(forms.Form):
             ).order_by("order", "pk")
             for io_definition in step_outputs:
                 key = io_definition.contract_key
+                if allowed_output_keys is not None and key not in allowed_output_keys:
+                    continue
                 if key not in seen_keys:
                     seen_keys.add(key)
                     label = (
@@ -3408,6 +3424,8 @@ class DisplayStepOutputsForm(forms.Form):
             ).order_by("order", "pk")
             for io_definition in validator_outputs:
                 key = io_definition.contract_key
+                if allowed_output_keys is not None and key not in allowed_output_keys:
+                    continue
                 if key not in seen_keys:
                     seen_keys.add(key)
                     label = io_definition.label or io_definition.contract_key
@@ -5176,7 +5194,75 @@ class PortfolioManagerStepConfigForm(BaseStepConfigForm):
                 "expected_buildings_list",
                 _("Upload a replacement or remove the current EBL, not both."),
             )
+        self._validate_output_group_change(structure)
         return cleaned
+
+    def _validate_output_group_change(self, structure: str) -> None:
+        """Prevent a mode change that would invalidate an existing assertion."""
+        step = self.step
+        if not step or not step.pk or not step.ruleset_id:
+            return
+        current_structure = (step.config or {}).get(
+            "submission_structure",
+            "single_report",
+        )
+        if current_structure == structure:
+            return
+
+        from validibot.validations.constants import StepIODirection
+        from validibot.validations.validators.portfolio_manager import (
+            output_groups as pm_output_groups,
+        )
+
+        incompatible_keys = (
+            pm_output_groups.ALL_PROPERTY_OUTPUT_KEYS
+            - pm_output_groups.output_keys_for_structure(structure)
+        )
+        referenced_keys: set[str] = set()
+        assertions = step.ruleset.assertions.select_related("target_io_definition")
+        for assertion in assertions:
+            io_definition = assertion.target_io_definition
+            if (
+                io_definition
+                and io_definition.direction == StepIODirection.OUTPUT
+                and io_definition.contract_key in incompatible_keys
+            ):
+                referenced_keys.add(io_definition.contract_key)
+            expression = (assertion.rhs or {}).get("expr") or ""
+            referenced_keys.update(
+                pm_output_groups.referenced_output_keys(
+                    " ".join(
+                        (
+                            assertion.target_data_path or "",
+                            assertion.when_expression or "",
+                            expression,
+                        )
+                    )
+                )
+                & incompatible_keys
+            )
+
+        if not referenced_keys:
+            return
+
+        target_label = (
+            _("ZIP collection of property reports")
+            if structure == "zip_collection"
+            else _("Single property report")
+        )
+        self.add_error(
+            "submission_structure",
+            _(
+                "This step cannot switch to %(target)s while existing assertions "
+                "use %(group)s: %(outputs)s. Update or remove those assertions "
+                "first."
+            )
+            % {
+                "target": target_label,
+                "group": pm_output_groups.output_group_label(current_structure),
+                "outputs": ", ".join(f"o.{key}" for key in sorted(referenced_keys)),
+            },
+        )
 
 
 def get_config_form_class(validation_type: str) -> type[forms.Form]:

@@ -15,6 +15,7 @@ updates without a full page refresh.
 
 Context:
   step_io_context.output_values  - list of step output dicts
+  step_io_context.output_group_label - optional validator-specific group heading
   step                            - the WorkflowStep
   workflow                        - the parent Workflow
 {% endcomment %}
@@ -23,6 +24,9 @@ Context:
      hx-trigger="signals-changed from:body"
      hx-swap="outerHTML">
   {% if step_io_context.output_values %}
+    {% if step_io_context.output_group_label %}
+      <h6 class="text-muted small mb-2">{{ step_io_context.output_group_label }}</h6>
+    {% endif %}
     <div class="table-responsive">
       <table class="table table-sm align-middle" data-sortable-table>
         <thead>

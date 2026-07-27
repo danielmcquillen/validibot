@@ -1614,6 +1614,33 @@ class RulesetAssertionForm(forms.Form):
         # Strip string literals (including escaped quotes) so identifiers
         # inside quotes are not treated as bare identifiers.
         stripped = _strip_cel_string_literals(expression)
+        if (
+            getattr(self.validator, "validation_type", None)
+            == ValidationType.PORTFOLIO_MANAGER
+        ):
+            from validibot.validations.validators.portfolio_manager import (
+                output_groups as pm_output_groups,
+            )
+
+            referenced_outputs = pm_output_groups.referenced_output_keys(expression)
+            unavailable = (
+                referenced_outputs & pm_output_groups.ALL_PROPERTY_OUTPUT_KEYS
+            ) - set(self.outputs_by_slug)
+            if unavailable:
+                raise ValidationError(
+                    {
+                        "cel_expression": _(
+                            "These Portfolio Manager outputs do not apply to the "
+                            "selected submission structure: %(outputs)s. Choose "
+                            "an output shown in the current output group."
+                        )
+                        % {
+                            "outputs": ", ".join(
+                                f"o.{key}" for key in sorted(unavailable)
+                            )
+                        },
+                    },
+                )
         for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", stripped):
             name = match.group(0)
             if name in reserved_literals or name in cel_builtins:

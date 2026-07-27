@@ -28,6 +28,16 @@ Hidden operating-system metadata is ignored. Nested directories, nested
 archives, encrypted members, duplicate paths, path traversal, unsupported
 members, and unsafe compression ratios are rejected.
 
+The step editor shows one matching assertion-output group:
+
+- **Single property outputs** for single property reports; or
+- **Grouped property outputs** for ZIP collections.
+
+Changing the submission structure changes the available output list. If an
+existing assertion uses an output from the current group, Validibot blocks the
+change and lists the affected `o.*` values. Update or remove those assertions
+first; Validibot never silently deletes or rewrites them.
+
 ## Configure the workflow's validation policy
 
 The validator does not include regulatory profiles or infer requirements from
@@ -135,7 +145,7 @@ duplicate counts. Typical program policy remains an explicit CEL assertion:
 o.missing_expected_building_count == 0
 ```
 
-## Collection outputs
+## Grouped property outputs
 
 ZIP mode exposes bounded scalar outputs for CEL, including file/property
 counts, reporting-cycle consistency, roster reconciliation, properties with

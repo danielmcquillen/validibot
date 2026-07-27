@@ -23,12 +23,17 @@ from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.validations.constants import ADVANCED_VALIDATION_TYPES
 from validibot.validations.constants import PORTFOLIO_MANAGER_EBL_RESOURCE
 from validibot.validations.constants import PORTFOLIO_MANAGER_MAX_SUBMISSION_BYTES
+from validibot.validations.constants import AssertionOperator
+from validibot.validations.constants import AssertionType
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import RulesetType
+from validibot.validations.constants import Severity
 from validibot.validations.constants import StepIODirection
 from validibot.validations.constants import StepIOMedium
 from validibot.validations.constants import StepIOOriginKind
 from validibot.validations.constants import ValidationType
+from validibot.validations.forms import RulesetAssertionForm
 from validibot.validations.models import ResolvedInputTrace
 from validibot.validations.models import StepInputBinding
 from validibot.validations.models import Validator
@@ -38,17 +43,34 @@ from validibot.validations.services.cloud_run.envelope_builder import (
 from validibot.validations.services.file_identity import FileIdentity
 from validibot.validations.services.input_bindings import ensure_step_input_bindings
 from validibot.validations.tests.factories import ExecutionAttemptFactory
+from validibot.validations.tests.factories import RulesetAssertionFactory
+from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.validators.base.config import get_config
+from validibot.validations.validators.portfolio_manager.output_groups import (
+    ALL_PROPERTY_OUTPUT_KEYS,
+)
+from validibot.validations.validators.portfolio_manager.output_groups import (
+    GROUPED_PROPERTY_OUTPUT_KEYS,
+)
+from validibot.validations.validators.portfolio_manager.output_groups import (
+    SINGLE_PROPERTY_OUTPUT_KEYS,
+)
+from validibot.validations.validators.portfolio_manager.output_groups import (
+    referenced_output_keys,
+)
 from validibot.validations.validators.portfolio_manager.validator import (
     PortfolioManagerValidator,
 )
+from validibot.workflows.forms import DisplayStepOutputsForm
 from validibot.workflows.forms import PortfolioManagerStepConfigForm
 from validibot.workflows.forms import get_config_form_class
+from validibot.workflows.mixins import WorkflowStepAssertionsMixin
 from validibot.workflows.models import WorkflowStepResource
 from validibot.workflows.tests.factories import WorkflowStepFactory
+from validibot.workflows.views_helpers import build_step_io_context
 
 EBL_JSON = b"""{
   "schema_version": "1.0",
@@ -69,6 +91,9 @@ CONFIGURED_MEMBER_BYTES = 15_000_000
 MEASURED_WNEUI = 39.5
 RESOLVED_EUIT = 40.0
 BOUND_EUIT = 42.0
+SINGLE_OUTPUT_COUNT = 26
+GROUPED_OUTPUT_COUNT = 32
+TOTAL_SCALAR_OUTPUT_COUNT = 58
 
 
 def _base_form_data(**overrides):
@@ -116,6 +141,24 @@ def test_registry_exposes_a_dedicated_advanced_backend_contract() -> None:
     )
 
 
+def test_output_groups_are_complete_disjoint_authoring_inventories() -> None:
+    """The two authoring groups must cover all 58 scalar outputs exactly once."""
+    validator_config = get_config(ValidationType.PORTFOLIO_MANAGER)
+    catalog_output_keys = {
+        entry.slug
+        for entry in validator_config.catalog_entries
+        if entry.run_stage == StepIODirection.OUTPUT
+        and entry.io_medium == StepIOMedium.VALUE
+    }
+
+    assert len(SINGLE_PROPERTY_OUTPUT_KEYS) == SINGLE_OUTPUT_COUNT
+    assert len(GROUPED_PROPERTY_OUTPUT_KEYS) == GROUPED_OUTPUT_COUNT
+    assert not set(SINGLE_PROPERTY_OUTPUT_KEYS) & set(GROUPED_PROPERTY_OUTPUT_KEYS)
+    assert len(ALL_PROPERTY_OUTPUT_KEYS) == TOTAL_SCALAR_OUTPUT_COUNT
+    assert catalog_output_keys == ALL_PROPERTY_OUTPUT_KEYS
+    assert referenced_output_keys('"o.property_count"') == set()
+
+
 def test_form_preserves_each_explicit_author_policy_choice() -> None:
     """V1 exposes policy fields directly and must not hide a preset shortcut."""
     form = PortfolioManagerStepConfigForm(
@@ -142,6 +185,181 @@ def test_form_preserves_each_explicit_author_policy_choice() -> None:
     assert form.cleaned_data["require_washington_standard_id"] is True
     assert form.cleaned_data["meter_gap_policy"] == "warning"
     assert form.cleaned_data["estimated_energy_policy"] == "error"
+
+
+@pytest.mark.django_db
+def test_single_to_grouped_change_is_blocked_by_single_output_assertion() -> None:
+    """A mode change cannot leave a basic assertion targeting a single fact."""
+    _sync_system_validators()
+    validator = Validator.objects.get(slug="portfolio-manager-validator")
+    ruleset = RulesetFactory(
+        ruleset_type=RulesetType.PORTFOLIO_MANAGER,
+    )
+    step = WorkflowStepFactory(
+        validator=validator,
+        ruleset=ruleset,
+        config={"submission_structure": "single_report"},
+    )
+    output_definition = validator.step_io_definitions.get(
+        contract_key="energy_star_score",
+        direction=StepIODirection.OUTPUT,
+    )
+    RulesetAssertionFactory(
+        ruleset=ruleset,
+        target_io_definition=output_definition,
+        target_data_path="",
+    )
+
+    form = PortfolioManagerStepConfigForm(
+        data=_base_form_data(submission_structure="zip_collection"),
+        step=step,
+        validator=validator,
+    )
+
+    assert not form.is_valid()
+    error = str(form.errors["submission_structure"])
+    assert "Single property outputs" in error
+    assert "o.energy_star_score" in error
+
+
+@pytest.mark.django_db
+def test_grouped_to_single_change_is_blocked_by_grouped_output_assertion() -> None:
+    """A mode change cannot leave a CEL assertion using a grouped aggregate."""
+    _sync_system_validators()
+    validator = Validator.objects.get(slug="portfolio-manager-validator")
+    ruleset = RulesetFactory(
+        ruleset_type=RulesetType.PORTFOLIO_MANAGER,
+    )
+    step = WorkflowStepFactory(
+        validator=validator,
+        ruleset=ruleset,
+        config={"submission_structure": "zip_collection"},
+    )
+    expression = 'o["target_coverage_percent"] >= 95'
+    RulesetAssertionFactory(
+        ruleset=ruleset,
+        assertion_type=AssertionType.CEL_EXPRESSION,
+        operator=AssertionOperator.CEL_EXPR,
+        target_io_definition=None,
+        target_data_path=expression,
+        rhs={"expr": expression},
+    )
+
+    form = PortfolioManagerStepConfigForm(
+        data=_base_form_data(submission_structure="single_report"),
+        step=step,
+        validator=validator,
+    )
+
+    assert not form.is_valid()
+    error = str(form.errors["submission_structure"])
+    assert "Grouped property outputs" in error
+    assert "o.target_coverage_percent" in error
+
+
+@pytest.mark.django_db
+def test_structure_change_is_allowed_when_assertions_remain_compatible() -> None:
+    """Changing structure remains simple when no assertion uses the old group."""
+    _sync_system_validators()
+    validator = Validator.objects.get(slug="portfolio-manager-validator")
+    step = WorkflowStepFactory(
+        validator=validator,
+        config={"submission_structure": "single_report"},
+    )
+
+    form = PortfolioManagerStepConfigForm(
+        data=_base_form_data(submission_structure="zip_collection"),
+        step=step,
+        validator=validator,
+    )
+
+    assert form.is_valid(), form.errors
+
+
+@pytest.mark.django_db
+def test_authoring_surfaces_show_only_the_selected_output_group() -> None:
+    """The card, display form, and assertion picker must share one inventory."""
+    _sync_system_validators()
+    validator = Validator.objects.get(slug="portfolio-manager-validator")
+    step = WorkflowStepFactory(
+        validator=validator,
+        config={"submission_structure": "single_report"},
+    )
+
+    single_context = build_step_io_context(step)
+    single_display_form = DisplayStepOutputsForm(step=step, validator=validator)
+    single_mixin = WorkflowStepAssertionsMixin()
+    single_mixin.step = step
+    single_choices = single_mixin.get_catalog_choices()
+
+    assert single_context["output_group_label"] == "Single property outputs"
+    assert {row["slug"] for row in single_context["output_values"]} == set(
+        SINGLE_PROPERTY_OUTPUT_KEYS
+    )
+    assert {
+        value
+        for value, _label in single_display_form.fields["display_step_outputs"].choices
+    } == set(SINGLE_PROPERTY_OUTPUT_KEYS)
+    single_output_choices = [
+        (value, str(label)) for value, label in single_choices if value.startswith("o.")
+    ]
+    assert {value.removeprefix("o.") for value, _label in single_output_choices} == set(
+        SINGLE_PROPERTY_OUTPUT_KEYS
+    )
+    assert all("Single property outputs" in label for _, label in single_output_choices)
+
+    step.config = {"submission_structure": "zip_collection"}
+    step.save(update_fields=["config", "modified"])
+    grouped_context = build_step_io_context(step)
+    grouped_display_form = DisplayStepOutputsForm(step=step, validator=validator)
+    grouped_mixin = WorkflowStepAssertionsMixin()
+    grouped_mixin.step = step
+    grouped_choices = grouped_mixin.get_catalog_choices()
+
+    assert grouped_context["output_group_label"] == "Grouped property outputs"
+    assert {row["slug"] for row in grouped_context["output_values"]} == set(
+        GROUPED_PROPERTY_OUTPUT_KEYS
+    )
+    assert {
+        value
+        for value, _label in grouped_display_form.fields["display_step_outputs"].choices
+    } == set(GROUPED_PROPERTY_OUTPUT_KEYS)
+    grouped_output_choices = [
+        (value, str(label))
+        for value, label in grouped_choices
+        if value.startswith("o.")
+    ]
+    assert {
+        value.removeprefix("o.") for value, _label in grouped_output_choices
+    } == set(GROUPED_PROPERTY_OUTPUT_KEYS)
+    assert all(
+        "Grouped property outputs" in label for _, label in grouped_output_choices
+    )
+
+
+@pytest.mark.django_db
+def test_cel_form_rejects_an_output_from_the_other_structure() -> None:
+    """Typing a hidden grouped output manually must not bypass the filtered list."""
+    _sync_system_validators()
+    validator = Validator.objects.get(slug="portfolio-manager-validator")
+    allowed_definitions = list(
+        validator.step_io_definitions.filter(
+            contract_key__in=SINGLE_PROPERTY_OUTPUT_KEYS,
+        )
+    )
+    form = RulesetAssertionForm(
+        data={
+            "assertion_type": AssertionType.CEL_EXPRESSION,
+            "severity": Severity.ERROR,
+            "cel_expression": "o.property_count > 0",
+            "when_expression": "",
+        },
+        catalog_entries=allowed_definitions,
+        validator=validator,
+    )
+
+    assert not form.is_valid()
+    assert "selected submission structure" in str(form.errors["cel_expression"])
 
 
 def test_ebl_upload_rejects_duplicate_json_keys() -> None:

@@ -1213,10 +1213,23 @@ def build_step_io_context(
     )
     validator = step.validator
     validator_io_definitions = []
+    allowed_output_keys: frozenset[str] | None = None
+    output_group_heading = ""
     if validator:
         validator_io_definitions = list(
             validator.step_io_definitions.all().order_by("order", "pk")
         )
+        if validator.validation_type == ValidationType.PORTFOLIO_MANAGER:
+            from validibot.validations.validators.portfolio_manager import (
+                output_groups as pm_output_groups,
+            )
+
+            structure = (step.config or {}).get(
+                "submission_structure",
+                "single_report",
+            )
+            allowed_output_keys = pm_output_groups.output_keys_for_structure(structure)
+            output_group_heading = pm_output_groups.output_group_label(structure)
 
     # Build a binding lookup keyed by io_definition PK.
     binding_map: dict[int, StepInputBinding] = {}
@@ -1382,6 +1395,11 @@ def build_step_io_context(
             continue
         if io_definition.io_medium == StepIOMedium.ARTIFACT:
             continue
+        if (
+            allowed_output_keys is not None
+            and io_definition.contract_key not in allowed_output_keys
+        ):
+            continue
         show = _is_step_output_shown(
             io_definition.contract_key,
             display_step_outputs,
@@ -1404,6 +1422,11 @@ def build_step_io_context(
         if io_definition.direction != StepIODirection.OUTPUT:
             continue
         if io_definition.io_medium == StepIOMedium.ARTIFACT:
+            continue
+        if (
+            allowed_output_keys is not None
+            and io_definition.contract_key not in allowed_output_keys
+        ):
             continue
         show = _is_step_output_shown(
             io_definition.contract_key,
@@ -1438,6 +1461,7 @@ def build_step_io_context(
         "has_inputs": bool(input_values),
         "has_outputs": bool(output_values),
         "has_unmapped_required": has_unmapped_required,
+        "output_group_label": output_group_heading,
     }
 
 

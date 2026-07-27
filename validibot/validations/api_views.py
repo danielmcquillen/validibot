@@ -30,7 +30,6 @@ from validibot.actions.constants import CredentialActionType
 from validibot.core.api.org_scoped import OrgMembershipPermission
 from validibot.core.api.org_scoped import OrgScopedMixin
 from validibot.core.utils import truthy
-from validibot.users.constants import PermissionCode
 from validibot.validations.api.viewsets import ValidationRunFilter
 from validibot.validations.credential_utils import (
     build_signed_credential_download_filename,
@@ -90,52 +89,7 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         org = self.get_org()
 
-        has_full_access = user.has_perm(
-            PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value,
-            org,
-        )
-        has_own_access = user.has_perm(
-            PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value,
-            org,
-        )
-
-        if has_full_access:
-            qs = ValidationRun.objects.filter(org=org)
-        elif has_own_access:
-            qs = ValidationRun.objects.filter(org=org, user=user)
-        elif self._user_has_guest_access_to_org(user, org):
-            # Guests can poll/inspect runs they themselves launched
-            # against workflows they currently have access to.
-            #
-            # Without the workflow narrowing, a per-workflow grant in
-            # this org would expose the guest's runs for OTHER
-            # workflows in the same org — including workflows whose
-            # grants were revoked or workflows the guest never had a
-            # grant for. The intersection with ``Workflow.objects.for_user``
-            # delegates the per-workflow visibility decision to the
-            # same helper the rest of the read-side uses, so a grant
-            # revocation immediately closes the run-polling surface
-            # too.
-            #
-            # ``OrgGuestAccess`` users see runs for every workflow in
-            # the org because ``for_user`` returns the whole catalog
-            # for them — that's the intended ALL-scope behaviour.
-            from validibot.workflows.models import Workflow
-
-            accessible_workflow_pks = (
-                Workflow.objects.for_user(user)
-                .filter(
-                    org=org,
-                )
-                .values_list("pk", flat=True)
-            )
-            qs = ValidationRun.objects.filter(
-                org=org,
-                user=user,
-                workflow__in=accessible_workflow_pks,
-            )
-        else:
-            return ValidationRun.objects.none()
+        qs = ValidationRun.objects.for_user(user, org=org)
 
         # Default recent-only (last 30 days) unless:
         # - ?all=1 provided, or
@@ -203,39 +157,6 @@ class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
                 ),
             )
         )
-
-    @staticmethod
-    def _user_has_guest_access_to_org(user, org) -> bool:
-        """True iff ``user`` has any active guest-style access to ``org``.
-
-        Two qualifying paths:
-
-        * Active ``WorkflowAccessGrant`` on any workflow in the org
-          (per-workflow cross-org sharing).
-        * Active ``OrgGuestAccess`` for the org (the ALL-scope guest
-          invite acceptance path).
-
-        Used to decide whether a non-member user can view the runs
-        they themselves launched against this org. Without this
-        carve-out, a successful guest launch would hand back a
-        polling URL that 404s for the guest.
-        """
-
-        from validibot.workflows.models import OrgGuestAccess
-        from validibot.workflows.models import WorkflowAccessGrant
-
-        if WorkflowAccessGrant.objects.filter(
-            user=user,
-            workflow__org=org,
-            is_active=True,
-        ).exists():
-            return True
-
-        return OrgGuestAccess.objects.filter(
-            user=user,
-            org=org,
-            is_active=True,
-        ).exists()
 
     @action(
         detail=True,

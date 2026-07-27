@@ -13,6 +13,7 @@ from django.contrib import messages
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
+from django.http import Http404
 from django.http import HttpRequest
 from django.http import HttpResponseRedirect
 from django.test import RequestFactory
@@ -87,13 +88,64 @@ class TestUserRedirectView:
 
 class TestUserDetailView:
     def test_authenticated(self, user: User, rf: RequestFactory):
+        """Members of a shared active organization may view teammate profiles."""
+
+        shared_org = user.memberships.first().org
         request = rf.get("/fake-url/")
-        request.user = UserFactory()
+        request.user = UserFactory(orgs=[shared_org])
         response = user_detail_view(request, username=user.username)
 
         assert response.status_code == HTTPStatus.OK
 
+    def test_unrelated_authenticated_user_gets_not_found(
+        self,
+        user: User,
+        rf: RequestFactory,
+    ):
+        """Authenticated users cannot enumerate profiles across tenant boundaries."""
+
+        unrelated = UserFactory()
+        unrelated.memberships.all().delete()
+        request = rf.get("/fake-url/")
+        request.user = unrelated
+
+        with pytest.raises(Http404):
+            user_detail_view(request, username=user.username)
+
+    def test_user_can_view_own_profile_without_membership(
+        self,
+        user: User,
+        rf: RequestFactory,
+    ):
+        """Account owners retain profile access even when they have no org."""
+
+        user.memberships.all().delete()
+        request = rf.get("/fake-url/")
+        request.user = user
+
+        response = user_detail_view(request, username=user.username)
+
+        assert response.status_code == HTTPStatus.OK
+
+    def test_inactive_shared_membership_does_not_expose_profile(
+        self,
+        user: User,
+        rf: RequestFactory,
+    ):
+        """Former members cannot retain teammate profile visibility."""
+
+        shared_org = user.memberships.first().org
+        former_member = UserFactory(orgs=[shared_org])
+        former_member.memberships.filter(org=shared_org).update(is_active=False)
+        request = rf.get("/fake-url/")
+        request.user = former_member
+
+        with pytest.raises(Http404):
+            user_detail_view(request, username=user.username)
+
     def test_not_authenticated(self, user: User, rf: RequestFactory):
+        """Anonymous visitors are redirected rather than shown profile data."""
+
         request = rf.get("/fake-url/")
         request.user = AnonymousUser()
         response = user_detail_view(request, username=user.username)

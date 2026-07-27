@@ -67,14 +67,14 @@ class RulesetIsUsedByLockedWorkflowTests(TestCase):
     def test_returns_false_for_unused_unlocked_workflow(self):
         """Step references an unlocked workflow with no runs -> not in use."""
         ruleset = RulesetFactory()
-        workflow = WorkflowFactory(is_locked=False)
+        workflow = WorkflowFactory(org=ruleset.org, is_locked=False)
         WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
         assert ruleset.is_used_by_locked_workflow() is False
 
     def test_returns_true_for_step_on_locked_workflow(self):
         """Locked workflow with a step using this ruleset -> in use."""
         ruleset = RulesetFactory()
-        workflow = WorkflowFactory(is_locked=True)
+        workflow = WorkflowFactory(org=ruleset.org, is_locked=True)
         WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
         assert ruleset.is_used_by_locked_workflow() is True
 
@@ -89,7 +89,7 @@ class RulesetIsUsedByLockedWorkflowTests(TestCase):
         from validibot.validations.tests.factories import ValidationRunFactory
 
         ruleset = RulesetFactory()
-        workflow = WorkflowFactory(is_locked=False)
+        workflow = WorkflowFactory(org=ruleset.org, is_locked=False)
         WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
         submission = SubmissionFactory(workflow=workflow)
         ValidationRunFactory(workflow=workflow, submission=submission)
@@ -112,7 +112,7 @@ class RulesetCleanImmutabilityTests(TestCase):
             metadata={"schema_type": JSONSchemaVersion.DRAFT_2020_12.value},
             rules_text='{"type": "object"}',
         )
-        workflow = WorkflowFactory(is_locked=True)
+        workflow = WorkflowFactory(org=ruleset.org, is_locked=True)
         WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
         return ruleset
 
@@ -187,7 +187,7 @@ class RulesetCleanFreshAuthoringTests(TestCase):
     def test_clean_allows_changes_when_only_unlocked_workflow_uses_it(self):
         """Step on an unlocked workflow doesn't trigger the gate."""
         ruleset = RulesetFactory(rules_text='{"type": "object"}')
-        workflow = WorkflowFactory(is_locked=False)
+        workflow = WorkflowFactory(org=ruleset.org, is_locked=False)
         WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
 
         ruleset.rules_text = '{"type": "string"}'
@@ -216,7 +216,7 @@ class RulesetAssertionImmutabilityTests(TestCase):
             target_data_path="$.value",
             rhs={"value": 100},
         )
-        workflow = WorkflowFactory(is_locked=True)
+        workflow = WorkflowFactory(org=ruleset.org, is_locked=True)
         WorkflowStepFactory(workflow=workflow, ruleset=ruleset)
         return ruleset, assertion
 

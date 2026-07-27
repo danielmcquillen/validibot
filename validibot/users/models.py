@@ -964,24 +964,35 @@ class MemberInvite(TimeStampedModel):
 
     def _cleanup_guest_grants(self) -> int:
         """
-        Remove guest access grants for workflows in this org.
+        Deactivate every guest access grant shape in this organization.
 
-        When a user becomes a member, they no longer need individual
-        WorkflowAccessGrant records for workflows in the org - they have
-        access via their membership roles instead.
+        When a user becomes a member, both per-workflow grants and
+        organization-wide guest access are redundant. Deactivating both is
+        security-sensitive: leaving an ``OrgGuestAccess`` row active would
+        silently restore broad access if the membership were later removed.
 
-        Returns the count of grants deleted.
+        Returns:
+            The number of grant rows deactivated.
         """
+        from django.db import transaction
+
+        from validibot.workflows.models import OrgGuestAccess
         from validibot.workflows.models import WorkflowAccessGrant
 
-        # Delete active guest grants for workflows in this org
-        deleted_count, _ = WorkflowAccessGrant.objects.filter(
-            user=self.invitee_user,
-            workflow__org=self.org,
-            is_active=True,
-        ).delete()
+        now = timezone.now()
+        with transaction.atomic():
+            workflow_grant_count = WorkflowAccessGrant.objects.filter(
+                user=self.invitee_user,
+                workflow__org=self.org,
+                is_active=True,
+            ).update(is_active=False, modified=now)
+            org_grant_count = OrgGuestAccess.objects.filter(
+                user=self.invitee_user,
+                org=self.org,
+                is_active=True,
+            ).update(is_active=False, modified=now)
 
-        return deleted_count
+        return workflow_grant_count + org_grant_count
 
     def decline(self) -> None:
         """Mark invite as declined."""

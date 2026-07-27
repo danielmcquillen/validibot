@@ -686,22 +686,10 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
     def get_displayable_run_queryset(self, workflow: Workflow):
         """Return workflow runs the current user may inspect from launch UI."""
         user = self.request.user
-        base_qs = ValidationRun.objects.filter(workflow=workflow)
-        if not getattr(user, "is_authenticated", False):
-            return base_qs.none()
-        if user.has_perm(
-            PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value,
-            workflow.org,
-        ):
-            return base_qs
-        if user.has_perm(
-            PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value,
-            workflow.org,
-        ):
-            return base_qs.filter(user=user)
-        # Public workflow and guest-grant launchers may not be org members.
-        # They can still inspect the runs they personally launched.
-        return base_qs.filter(user=user)
+        return ValidationRun.objects.for_user(
+            user,
+            org=workflow.org,
+        ).filter(workflow=workflow)
 
     def user_can_cancel_run(self, run: ValidationRun) -> bool:
         """Limit cancellation to the launcher or an org administrator."""

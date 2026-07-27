@@ -8,6 +8,7 @@ from typing import Any
 from django.conf import settings
 from django.contrib import messages
 from django.db import models
+from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
@@ -777,7 +778,12 @@ class MemberDeleteView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, Vie
                 )
             return HttpResponseRedirect(self._success_url())
 
+        removed_user = membership.user
+        removed_org_id = membership.org_id
         membership.delete()
+        if removed_user.current_org_id == removed_org_id:
+            removed_user.current_org = None
+            removed_user.save(update_fields=["current_org"])
         success_message = self.get_success_message(membership)
         messages.success(request, success_message)
         if is_htmx:
@@ -899,6 +905,7 @@ class GuestListView(
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         from validibot.workflows.models import GuestInvite
+        from validibot.workflows.models import OrgGuestAccess
         from validibot.workflows.models import WorkflowAccessGrant
 
         context = super().get_context_data(**kwargs)
@@ -928,10 +935,35 @@ class GuestListView(
                 guests[user_id] = {
                     "user": grant.user,
                     "grants": [],
+                    "org_wide": False,
                     "workflow_count": 0,
                 }
             guests[user_id]["grants"].append(grant)
             guests[user_id]["workflow_count"] += 1
+
+        # Organization-wide access is a separate grant shape. Merge it into
+        # the same guest row so administrators can see and revoke every
+        # effective guest relationship from this page.
+        org_wide_accesses = (
+            OrgGuestAccess.objects.filter(
+                org=self.organization,
+                is_active=True,
+            )
+            .exclude(user_id__in=member_user_ids)
+            .select_related("user", "granted_by")
+            .order_by("user__email")
+        )
+        for access in org_wide_accesses:
+            guest = guests.setdefault(
+                access.user_id,
+                {
+                    "user": access.user,
+                    "grants": [],
+                    "org_wide": False,
+                    "workflow_count": 0,
+                },
+            )
+            guest["org_wide"] = True
 
         # Get pending guest invites — filter status and expiry in the
         # queryset so we don't need to re-check in Python.
@@ -1169,16 +1201,29 @@ class GuestInviteCancelView(FeatureRequiredMixin, OrganizationAdminRequiredMixin
 
 
 class GuestRevokeAllView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
-    """Revoke all workflow access for a guest user."""
+    """Revoke every active guest-access shape for a user in this org."""
 
     required_commercial_feature = CommercialFeature.GUEST_MANAGEMENT
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):
+        from validibot.workflows.models import OrgGuestAccess
         from validibot.workflows.models import WorkflowAccessGrant
 
         user_id = kwargs.get("user_id")
-        target_user = get_object_or_404(User, pk=user_id)
+        target_user = get_object_or_404(
+            User.objects.filter(
+                models.Q(
+                    workflow_grants__workflow__org=self.organization,
+                    workflow_grants__is_active=True,
+                )
+                | models.Q(
+                    org_guest_accesses__org=self.organization,
+                    org_guest_accesses__is_active=True,
+                ),
+            ).distinct(),
+            pk=user_id,
+        )
 
         # Ensure user is not a member
         is_member = Membership.objects.filter(
@@ -1195,13 +1240,21 @@ class GuestRevokeAllView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, V
                 reverse_with_org("members:guest_list", request=request)
             )
 
-        # Revoke all grants
-        grants = WorkflowAccessGrant.objects.filter(
-            workflow__org=self.organization,
-            user=target_user,
-            is_active=True,
-        )
-        revoked_count = grants.update(is_active=False)
+        # Revoke both per-workflow and organization-wide guest access in one
+        # transaction. Keeping the rows inactive preserves their audit history.
+        now = timezone.now()
+        with transaction.atomic():
+            workflow_grants_revoked = WorkflowAccessGrant.objects.filter(
+                workflow__org=self.organization,
+                user=target_user,
+                is_active=True,
+            ).update(is_active=False, modified=now)
+            org_grants_revoked = OrgGuestAccess.objects.filter(
+                org=self.organization,
+                user=target_user,
+                is_active=True,
+            ).update(is_active=False, modified=now)
+        revoked_count = workflow_grants_revoked + org_grants_revoked
 
         # Audit the revocation. The bulk ``update()`` bypasses
         # ``post_save``, so the GUEST_REVOKED entry is recorded explicitly,
@@ -1220,8 +1273,10 @@ class GuestRevokeAllView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, V
                 target_id=str(target_user.pk),
                 target_repr=f"Guest #{target_user.pk}",
                 metadata={
-                    "scope": "all_workflows",
+                    "scope": "all_guest_access",
                     "grants_revoked": revoked_count,
+                    "workflow_grants_revoked": workflow_grants_revoked,
+                    "org_grants_revoked": org_grants_revoked,
                 },
                 request_id=_audit_ctx.request_id,
             )
@@ -1245,7 +1300,7 @@ class GuestRevokeAllView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, V
 
         messages.success(
             request,
-            _("Revoked access to %(count)d workflow(s) for %(email)s.")
+            _("Revoked %(count)d guest access grant(s) for %(email)s.")
             % {"count": revoked_count, "email": target_user.email},
         )
 

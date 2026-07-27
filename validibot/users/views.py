@@ -46,10 +46,32 @@ from validibot.users.services.api_keys import rotate_user_api_key
 
 
 class UserDetailView(BreadcrumbMixin, LoginRequiredMixin, DetailView):
+    """Show a user profile to the user or members of a shared organization."""
+
     model = User
     slug_field = "username"
     slug_url_kwarg = "username"
     template_name = "users/user_detail.html"
+
+    def get_queryset(self):
+        """Prevent authenticated users from enumerating unrelated accounts."""
+
+        user = self.request.user
+        shared_org_ids = Membership.objects.filter(
+            user=user,
+            is_active=True,
+        ).values_list("org_id", flat=True)
+        return (
+            User.objects.filter(
+                Q(pk=user.pk)
+                | Q(
+                    memberships__org_id__in=shared_org_ids,
+                    memberships__is_active=True,
+                ),
+            )
+            .distinct()
+            .order_by("pk")
+        )
 
     def get_breadcrumbs(self):
         breadcrumbs = super().get_breadcrumbs()

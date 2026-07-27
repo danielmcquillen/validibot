@@ -21,6 +21,9 @@ from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import ValidationType
 from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.workflows.models import WorkflowAccessGrant
+from validibot.workflows.tests.factories import WorkflowFactory
+from validibot.workflows.tests.factories import WorkflowStepFactory
 
 
 @pytest.mark.django_db
@@ -329,6 +332,88 @@ class TestValidatorDetailStepIOModals:
         assert "View all" in content
         assert "bi-list-ul" in content
         assert f"/library/custom/{validator.slug}/step-io/" in content
+
+
+@pytest.mark.django_db
+class TestStepIODefinitionDetailView:
+    """The standalone detail route must inherit visibility from its owner."""
+
+    def _login_author(self, client, org):
+        """Authenticate an author in the supplied active organization."""
+
+        user = UserFactory()
+        membership = MembershipFactory(user=user, org=org)
+        membership.add_role(RoleCode.AUTHOR)
+        user.set_current_org(org)
+        client.force_login(user)
+        session = client.session
+        session["active_org_id"] = org.pk
+        session.save()
+        return user
+
+    def test_custom_validator_definition_visible_in_active_org(self, client):
+        """Authors may inspect definitions owned by their active organization."""
+
+        org = OrganizationFactory()
+        self._login_author(client, org)
+        validator = ValidatorFactory(org=org, is_system=False)
+        definition = StepIODefinitionFactory(validator=validator)
+
+        response = client.get(
+            reverse(
+                "validations:catalog_entry_detail",
+                kwargs={"entry_pk": definition.pk},
+            ),
+        )
+
+        assert response.status_code == HTTPStatus.OK
+        assert definition.contract_key in response.content.decode()
+
+    def test_custom_validator_definition_hidden_across_orgs(self, client):
+        """Sequential catalog IDs must not expose another tenant's metadata."""
+
+        active_org = OrganizationFactory()
+        other_org = OrganizationFactory()
+        self._login_author(client, active_org)
+        validator = ValidatorFactory(org=other_org, is_system=False)
+        definition = StepIODefinitionFactory(validator=validator)
+
+        response = client.get(
+            reverse(
+                "validations:catalog_entry_detail",
+                kwargs={"entry_pk": definition.pk},
+            ),
+        )
+
+        assert response.status_code == HTTPStatus.NOT_FOUND
+
+    def test_step_owned_definition_follows_workflow_guest_access(self, client):
+        """A workflow guest may inspect metadata owned by the shared workflow."""
+
+        org = OrganizationFactory()
+        workflow = WorkflowFactory(org=org)
+        step = WorkflowStepFactory(workflow=workflow)
+        definition = StepIODefinitionFactory(
+            validator=None,
+            workflow_step=step,
+        )
+        guest = UserFactory()
+        guest.memberships.all().delete()
+        WorkflowAccessGrant.objects.create(
+            workflow=workflow,
+            user=guest,
+            is_active=True,
+        )
+        client.force_login(guest)
+
+        response = client.get(
+            reverse(
+                "validations:catalog_entry_detail",
+                kwargs={"entry_pk": definition.pk},
+            ),
+        )
+
+        assert response.status_code == HTTPStatus.OK
 
 
 @pytest.mark.django_db

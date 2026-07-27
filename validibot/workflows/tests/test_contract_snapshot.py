@@ -45,7 +45,10 @@ class ContractProjectionTests(TestCase):
     def setUp(self):
         self.workflow = WorkflowFactory()
         self.validator = ValidatorFactory(validation_type=ValidationType.BASIC)
-        self.ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        self.ruleset = RulesetFactory(
+            org=self.workflow.org,
+            ruleset_type=RulesetType.BASIC,
+        )
         self.step = WorkflowStepFactory(
             workflow=self.workflow,
             validator=self.validator,
@@ -116,7 +119,10 @@ class HashDriftTests(TestCase):
     def setUp(self):
         self.workflow = WorkflowFactory()
         self.validator = ValidatorFactory(validation_type=ValidationType.BASIC)
-        self.ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        self.ruleset = RulesetFactory(
+            org=self.workflow.org,
+            ruleset_type=RulesetType.BASIC,
+        )
         WorkflowStepFactory(
             workflow=self.workflow,
             validator=self.validator,
@@ -258,7 +264,10 @@ class ContractSnapshotEvidenceTests(TestCase):
     def setUp(self):
         self.workflow = WorkflowFactory()
         self.validator = ValidatorFactory(validation_type=ValidationType.BASIC)
-        self.ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        self.ruleset = RulesetFactory(
+            org=self.workflow.org,
+            ruleset_type=RulesetType.BASIC,
+        )
         WorkflowStepFactory(
             workflow=self.workflow,
             validator=self.validator,

@@ -225,10 +225,10 @@ def _resolve_accessible_workflow(
 
 def _resolve_member_run(
     *,
-    member_org_ids: set[int],
+    user,
     run_ref: str,
 ) -> ValidationRun:
-    """Resolve a member ``run_ref`` to a ValidationRun visible to the user."""
+    """Resolve a member ``run_ref`` through canonical run visibility."""
 
     try:
         org_slug, run_id = parse_member_run_ref(run_ref)
@@ -236,7 +236,8 @@ def _resolve_member_run(
         _raise_invalid_reference("run_ref", exc)
 
     validation_run = (
-        ValidationRun.objects.select_related("org", "workflow", "submission")
+        ValidationRun.objects.for_user(user)
+        .select_related("org", "workflow", "submission")
         .prefetch_related(
             "step_runs__findings",
             "step_runs__workflow_step",
@@ -244,7 +245,6 @@ def _resolve_member_run(
         .filter(
             pk=run_id,
             org__slug=org_slug,
-            org_id__in=member_org_ids,
         )
         .first()
     )
@@ -533,9 +533,8 @@ class MCPRunDetailView(APIView):
     def get(self, request, run_ref: str):
         """Return validation run detail for the authenticated MCP user."""
 
-        member_org_ids = _member_org_ids_for_user(request.user)
         validation_run = _resolve_member_run(
-            member_org_ids=member_org_ids,
+            user=request.user,
             run_ref=run_ref,
         )
         serializer = self.RunSerializer(

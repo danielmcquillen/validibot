@@ -71,8 +71,26 @@ class WorkflowFactory(DjangoModelFactory):
 
 
 class WorkflowStepFactory(DjangoModelFactory):
+    """Create workflow steps with tenant-consistent owned dependencies."""
+
     class Meta:
         model = WorkflowStep
+
+    @classmethod
+    def _generate(cls, strategy, params):
+        """Place generated workflows in an explicitly supplied dependency org."""
+
+        params = dict(params)
+        if "workflow" not in params:
+            validator = params.get("validator")
+            ruleset = params.get("ruleset")
+            validator_org = getattr(validator, "org", None)
+            ruleset_org = getattr(ruleset, "org", None)
+            tenant_org = validator_org or ruleset_org
+            if tenant_org is not None:
+                params.setdefault("workflow__org", tenant_org)
+
+        return super()._generate(strategy, params)
 
     workflow = factory.SubFactory(WorkflowFactory)
     order = factory.Sequence(lambda n: n * 10)  # 10, 20, 30, etc.

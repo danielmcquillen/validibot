@@ -37,7 +37,7 @@
     <div class="alert alert-info mb-3" role="alert">
       {% url 'members:member_list' as members_url %}
       {% blocktrans %}
-        <strong>About guests:</strong> Guests are existing Validibot users who can access specific workflows you've shared with them.
+        <strong>About guests:</strong> Guests are existing Validibot users who can access selected workflows or every workflow in this organization.
         They are not members of your organization.
         (<a href="{{ members_url }}">Members</a>, on the other hand, have full access based on their assigned roles.)
       {% endblocktrans %}
@@ -65,20 +65,26 @@
                           <small class="text-muted">{{ guest.user.name }}</small>
                         {% endif %}
                         <div class="mt-2">
-                          <span class="badge text-bg-info">
-                            {{ guest.workflow_count }} {% trans "workflow" %}
-                            {% if guest.workflow_count != 1 %}
-                              s
-                            {% endif %}
-                          </span>
+                          {% if guest.org_wide %}
+                            <span class="badge text-bg-info">{% trans "All workflows" %}</span>
+                          {% else %}
+                            <span class="badge text-bg-info">
+                              {{ guest.workflow_count }} {% trans "workflow" %}
+                              {% if guest.workflow_count != 1 %}
+                                s
+                              {% endif %}
+                            </span>
+                          {% endif %}
                         </div>
-                        <div class="mt-2">
-                          <small class="text-muted">
-                            {% for grant in guest.grants %}
-                              <span class="badge text-bg-light border me-1">{{ grant.workflow.name }}</span>
-                            {% endfor %}
-                          </small>
-                        </div>
+                        {% if guest.grants %}
+                          <div class="mt-2">
+                            <small class="text-muted">
+                              {% for grant in guest.grants %}
+                                <span class="badge text-bg-light border me-1">{{ grant.workflow.name }}</span>
+                              {% endfor %}
+                            </small>
+                          </div>
+                        {% endif %}
                       </div>
                       <div class="d-flex gap-2">
                         <form method="post"

@@ -1,3 +1,10 @@
+"""Authorization and lifecycle tests for organization member and guest views.
+
+The suite covers administrator-only member management plus both guest-access
+storage shapes. It guards against cross-organization target IDs, incomplete
+revocation, and stale active-organization pointers after membership removal.
+"""
+
 from http import HTTPStatus
 
 import pytest
@@ -110,10 +117,13 @@ def test_member_roles_can_be_updated(admin_client):
 
 @pytest.mark.django_db
 def test_member_delete_removes_viewer(admin_client):
+    """Removing a member also clears a stale current-organization pointer."""
+
     client, org, admin = admin_client
     viewer = UserFactory()
     viewer_membership = Membership.objects.create(user=viewer, org=org, is_active=True)
     viewer_membership.set_roles({RoleCode.WORKFLOW_VIEWER})
+    viewer.set_current_org(org)
 
     response = client.post(
         reverse("members:member_delete", kwargs={"member_id": viewer_membership.pk}),
@@ -122,6 +132,8 @@ def test_member_delete_removes_viewer(admin_client):
 
     assert response.status_code == HTTPStatus.OK
     assert not Membership.objects.filter(pk=viewer_membership.pk).exists()
+    viewer.refresh_from_db()
+    assert viewer.current_org is None
 
 
 @pytest.mark.django_db
@@ -169,6 +181,96 @@ def test_guest_list_view(admin_client):
     client, org, admin = admin_client
     response = client.get(reverse("members:guest_list"))
     assert response.status_code == HTTPStatus.OK
+
+
+@pytest.mark.django_db
+def test_guest_list_includes_org_wide_access(admin_client):
+    """Admins must see ALL-scope guests so broad access is administrable."""
+
+    from validibot.workflows.models import OrgGuestAccess
+
+    client, org, admin = admin_client
+    guest = UserFactory()
+    OrgGuestAccess.objects.create(
+        user=guest,
+        org=org,
+        granted_by=admin,
+        is_active=True,
+    )
+
+    response = client.get(reverse("members:guest_list"))
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["guest_count"] == 1
+    assert response.context["guests"][0]["org_wide"] is True
+    assert guest.email in response.content.decode()
+    assert "All workflows" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_guest_revoke_all_deactivates_every_access_shape(admin_client):
+    """Revoke-all must close both workflow-specific and organization-wide grants."""
+
+    from validibot.workflows.models import OrgGuestAccess
+    from validibot.workflows.models import WorkflowAccessGrant
+    from validibot.workflows.tests.factories import WorkflowFactory
+
+    client, org, admin = admin_client
+    guest = UserFactory()
+    workflow = WorkflowFactory(org=org, user=admin)
+    other_org = OrganizationFactory()
+    other_workflow = WorkflowFactory(org=other_org)
+    target_workflow_grant = WorkflowAccessGrant.objects.create(
+        workflow=workflow,
+        user=guest,
+        granted_by=admin,
+        is_active=True,
+    )
+    other_workflow_grant = WorkflowAccessGrant.objects.create(
+        workflow=other_workflow,
+        user=guest,
+        is_active=True,
+    )
+    target_org_grant = OrgGuestAccess.objects.create(
+        user=guest,
+        org=org,
+        granted_by=admin,
+        is_active=True,
+    )
+    other_org_grant = OrgGuestAccess.objects.create(
+        user=guest,
+        org=other_org,
+        is_active=True,
+    )
+
+    response = client.post(
+        reverse("members:guest_revoke_all", kwargs={"user_id": guest.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    target_workflow_grant.refresh_from_db()
+    target_org_grant.refresh_from_db()
+    other_workflow_grant.refresh_from_db()
+    other_org_grant.refresh_from_db()
+    assert target_workflow_grant.is_active is False
+    assert target_org_grant.is_active is False
+    assert other_workflow_grant.is_active is True
+    assert other_org_grant.is_active is True
+
+
+@pytest.mark.django_db
+def test_guest_revoke_all_does_not_resolve_unrelated_users(admin_client):
+    """A guessed user ID must not reveal whether an unrelated account exists."""
+
+    client, org, admin = admin_client
+    unrelated = UserFactory()
+
+    response = client.post(
+        reverse("members:guest_revoke_all", kwargs={"user_id": unrelated.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert unrelated.email not in response.content.decode()
 
 
 @pytest.mark.django_db

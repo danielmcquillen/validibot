@@ -19,6 +19,7 @@ from http import HTTPStatus
 import pytest
 from django.urls import reverse
 
+from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
@@ -39,9 +40,17 @@ def _login_with_org(client, user, workflow):
 
 def _run_for(workflow, user):
     """A ValidationRun on *workflow* launched by *user*."""
-    return ValidationRunFactory(
+    submission = SubmissionFactory(
         workflow=workflow,
         org=workflow.org,
+        project=workflow.project,
+        user=user,
+    )
+    return ValidationRunFactory(
+        submission=submission,
+        workflow=workflow,
+        org=workflow.org,
+        project=workflow.project,
         user=user,
     )
 

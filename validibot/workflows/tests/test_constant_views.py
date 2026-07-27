@@ -263,7 +263,10 @@ class TestConstantDelete(TestCase):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         validator = ValidatorFactory(validation_type=ValidationType.BASIC)
-        ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        ruleset = RulesetFactory(
+            org=workflow.org,
+            ruleset_type=RulesetType.BASIC,
+        )
         # A workflow step whose ruleset holds the referencing assertion.
         workflow.steps.create(validator=validator, ruleset=ruleset, order=10)
         RulesetAssertion.objects.create(
@@ -301,7 +304,10 @@ class TestConstantDelete(TestCase):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
         validator = ValidatorFactory(validation_type=ValidationType.BASIC)
-        ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        ruleset = RulesetFactory(
+            org=workflow.org,
+            ruleset_type=RulesetType.BASIC,
+        )
         workflow.steps.create(validator=validator, ruleset=ruleset, order=10)
         # A Basic assertion whose TARGET (not a CEL expression) is the constant.
         RulesetAssertion.objects.create(

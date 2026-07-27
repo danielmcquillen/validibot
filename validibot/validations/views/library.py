@@ -18,6 +18,7 @@ from django.views.generic import View
 from validibot.core.mixins import BreadcrumbMixin
 from validibot.core.utils import reverse_with_org
 from validibot.users.permissions import PermissionCode
+from validibot.users.scoping import ensure_active_org_scope
 from validibot.validations.constants import VALIDATION_LIBRARY_LAYOUT_SESSION_KEY
 from validibot.validations.constants import VALIDATION_LIBRARY_TAB_SESSION_KEY
 from validibot.validations.constants import LibraryLayout
@@ -31,6 +32,7 @@ from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import StepIODefinition
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorResourceFile
+from validibot.workflows.models import Workflow
 
 logger = logging.getLogger(__name__)
 
@@ -1080,10 +1082,37 @@ class ValidatorResourceFilesTabView(ValidatorLibraryMixin, DetailView):
 
 
 class StepIODefinitionDetailView(LoginRequiredMixin, View):
-    """Return modal content for a step I/O definition detail view."""
+    """Return detail content only for definitions with a visible owner.
+
+    Validator-owned definitions inherit Validator Library access and active
+    organization scoping. Step-owned definitions inherit visibility from their
+    owning workflow, including legitimate guest and public-workflow access.
+    """
 
     def get(self, request, entry_pk):
-        io_definition = get_object_or_404(StepIODefinition, pk=entry_pk)
+        _, active_org, _ = ensure_active_org_scope(request)
+        visible_validators = Validator.objects.none()
+        if active_org and request.user.has_perm(
+            PermissionCode.VALIDATOR_VIEW.value,
+            active_org,
+        ):
+            visible_validators = Validator.objects.filter(
+                models.Q(is_system=True) | models.Q(org=active_org),
+                availability_state=ValidatorAvailabilityState.AVAILABLE,
+                is_enabled=True,
+            )
+
+        visible_workflows = Workflow.objects.for_user(request.user)
+        io_definition = get_object_or_404(
+            StepIODefinition.objects.filter(
+                models.Q(validator__in=visible_validators)
+                | models.Q(workflow_step__workflow__in=visible_workflows),
+            ).select_related(
+                "validator",
+                "workflow_step__workflow",
+            ),
+            pk=entry_pk,
+        )
         return render(
             request,
             "validations/library/partials/step_io_detail_modal_content.html",

@@ -1,3 +1,10 @@
+"""Filtering tests for the organization-scoped validation-run REST API.
+
+Filters must narrow an already authorized queryset without changing its tenant
+or role scope. These tests exercise valid and invalid combinations while using
+a relationship-consistent run graph.
+"""
+
 from datetime import timedelta
 
 from django.test import TestCase
@@ -28,11 +35,16 @@ class ValidationRunFilterTestCase(TestCase):
         self.user = UserFactory(orgs=[self.org])  # Fixed: was orgs=[self.org]
 
         self.project = ProjectFactory(org=self.org)
-        self.workflow = WorkflowFactory(org=self.org, user=self.user)
+        self.workflow = WorkflowFactory(
+            org=self.org,
+            project=self.project,
+            user=self.user,
+        )
         self.submission = SubmissionFactory(
             org=self.org,
             project=self.project,
             user=self.user,
+            workflow=self.workflow,
         )
 
         # Mock get_current_org

@@ -204,8 +204,48 @@ class CustomValidatorFactory(DjangoModelFactory):
 
 
 class ValidationRunFactory(DjangoModelFactory):
+    """Create validation runs with a tenant-consistent relationship graph."""
+
     class Meta:
         model = ValidationRun
+
+    @classmethod
+    def _generate(cls, strategy, params):
+        """Propagate explicit parents into the generated submission graph.
+
+        ``factory_boy`` otherwise creates the submission before evaluating the
+        lazy run fields. Supplying only ``org`` or ``workflow`` would therefore
+        create unrelated tenant rows, which is invalid in production and makes
+        security tests misleading.
+        """
+
+        params = dict(params)
+        submission = params.get("submission")
+        workflow = params.get("workflow")
+        org = params.get("org")
+        project = params.get("project")
+        user = params.get("user")
+
+        if submission is not None:
+            params.setdefault("workflow", submission.workflow)
+            params.setdefault("org", submission.org)
+            params.setdefault("project", submission.project)
+            params.setdefault("user", submission.user)
+        else:
+            if workflow is not None:
+                params.setdefault("org", workflow.org)
+                params.setdefault("project", workflow.project)
+                params.setdefault("submission__workflow", workflow)
+                params.setdefault("submission__org", workflow.org)
+                params.setdefault("submission__project", workflow.project)
+            if org is not None:
+                params.setdefault("submission__org", org)
+            if project is not None:
+                params.setdefault("submission__project", project)
+            if user is not None:
+                params.setdefault("submission__user", user)
+
+        return super()._generate(strategy, params)
 
     submission = factory.SubFactory(SubmissionFactory)
     workflow = factory.LazyAttribute(lambda o: o.submission.workflow)

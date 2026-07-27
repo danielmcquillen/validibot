@@ -185,9 +185,11 @@ class TestInputStageAssertionGating:
         # IDF with Version + Building + zero Zone objects. The parser
         # extracts idf_version="25.1", north_axis_deg=0.0, zone_count=0.
         idf_text = "Version, 25.1;\nBuilding, EmptyBuilding, 0;"
-        submission = SubmissionFactory(content=idf_text)
-
         step = WorkflowStepFactory(validator=validator)
+        submission = SubmissionFactory(
+            content=idf_text,
+            workflow=step.workflow,
+        )
         run = ValidationRunFactory(workflow=step.workflow, submission=submission)
         ValidationStepRunFactory(
             validation_run=run,

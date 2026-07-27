@@ -1601,9 +1601,13 @@ class WorkflowStep(TimeStampedModel):
         cross-step value references in CEL and APIs. It must not change
         after creation because assertions and API consumers may reference
         it. Auto-generated from the step name via slugify() if not set.
+
+        Tenant relationships are checked here as well as in ``clean()``
+        because Django does not call model validation for direct ORM writes.
         """
         from slugify import slugify
 
+        self._validate_tenant_relationships()
         is_new = self._state.adding
 
         if is_new and not self.step_key and self.name:
@@ -1640,6 +1644,7 @@ class WorkflowStep(TimeStampedModel):
 
     def clean(self):
         super().clean()
+        self._validate_tenant_relationships()
 
         if (
             WorkflowStep.objects.filter(workflow=self.workflow, order=self.order)
@@ -1770,6 +1775,33 @@ class WorkflowStep(TimeStampedModel):
                     ),
                 },
             )
+
+    def _validate_tenant_relationships(self) -> None:
+        """Reject custom validator or ruleset links from another organization."""
+
+        if not self.workflow_id:
+            return
+
+        workflow_org_id = self.workflow.org_id
+        errors: dict[str, str] = {}
+        if (
+            self.validator_id
+            and self.validator.org_id is not None
+            and self.validator.org_id != workflow_org_id
+        ):
+            errors["validator"] = _(
+                "Custom validator must belong to the workflow organization.",
+            )
+        if (
+            self.ruleset_id
+            and self.ruleset.org_id is not None
+            and self.ruleset.org_id != workflow_org_id
+        ):
+            errors["ruleset"] = _(
+                "Ruleset must belong to the workflow organization.",
+            )
+        if errors:
+            raise ValidationError(errors)
 
 
 class WorkflowStepResource(models.Model):

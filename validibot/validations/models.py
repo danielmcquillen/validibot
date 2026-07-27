@@ -3330,6 +3330,77 @@ class CustomValidator(TimeStampedModel):
         return f"{self.org} · {self.custom_type}"
 
 
+class ValidationRunQuerySet(models.QuerySet):
+    """Apply the canonical row-level visibility policy for validation runs.
+
+    Organization members receive the result visibility granted by their
+    active membership roles. Guest and ``ALL_USERS`` launchers are not
+    organization members, so they may inspect only runs they launched
+    themselves and only while the owning workflow remains visible to them.
+    """
+
+    def for_user(
+        self,
+        user: User,
+        *,
+        org: Organization | int | None = None,
+    ) -> ValidationRunQuerySet:
+        """Return validation runs visible to ``user``, optionally in one org."""
+
+        if not user or not getattr(user, "is_authenticated", False):
+            return self.none()
+
+        queryset = self
+        org_id = getattr(org, "pk", org)
+        if org_id is not None:
+            queryset = queryset.filter(org_id=org_id)
+
+        if getattr(user, "is_superuser", False):
+            return queryset
+
+        from validibot.users.constants import PermissionCode
+        from validibot.users.permissions import membership_grants_permission
+
+        memberships = user.memberships.filter(is_active=True).select_related("org")
+        if org_id is not None:
+            memberships = memberships.filter(org_id=org_id)
+
+        full_access_org_ids: set[int] = set()
+        own_access_org_ids: set[int] = set()
+        for membership in memberships:
+            if membership_grants_permission(
+                membership,
+                PermissionCode.VALIDATION_RESULTS_VIEW_ALL,
+            ):
+                full_access_org_ids.add(membership.org_id)
+            elif membership_grants_permission(
+                membership,
+                PermissionCode.VALIDATION_RESULTS_VIEW_OWN,
+            ):
+                own_access_org_ids.add(membership.org_id)
+
+        access_filter = Q(pk__in=[])
+        if full_access_org_ids:
+            access_filter |= Q(org_id__in=full_access_org_ids)
+        if own_access_org_ids:
+            access_filter |= Q(
+                org_id__in=own_access_org_ids,
+                user_id=user.pk,
+            )
+
+        # Workflow grants, organization-wide guest access, and ALL_USERS
+        # visibility can all authorize a non-member launch. Keep polling
+        # symmetrical with launch access, but never widen it beyond the
+        # launcher's own rows.
+        accessible_workflows = Workflow.objects.for_user(user)
+        access_filter |= Q(
+            user_id=user.pk,
+            workflow__in=accessible_workflows,
+        )
+
+        return queryset.filter(access_filter).distinct()
+
+
 class ValidationRun(TimeStampedModel):
     """
     One execution of a Submission through a specific Workflow version.
@@ -3475,11 +3546,67 @@ class ValidationRun(TimeStampedModel):
         ),
     )
 
+    objects = ValidationRunQuerySet.as_manager()
+
     def clean(self):
         super().clean()
-        # Optional but helpful: ensure org consistency with submission
-        if self.submission_id and self.org_id and self.submission.org_id != self.org_id:
-            raise ValidationError({"org": _("Run org must match submission org.")})
+        self._validate_tenant_relationships()
+
+    def save(self, *args, **kwargs):
+        """Persist a run only when its denormalized tenant links agree."""
+
+        update_fields = kwargs.get("update_fields")
+        tenant_fields = {
+            "org",
+            "org_id",
+            "workflow",
+            "workflow_id",
+            "project",
+            "project_id",
+            "submission",
+            "submission_id",
+        }
+        if (
+            self._state.adding
+            or update_fields is None
+            or tenant_fields.intersection(update_fields)
+        ):
+            self._validate_tenant_relationships()
+        super().save(*args, **kwargs)
+
+    def _validate_tenant_relationships(self) -> None:
+        """Reject cross-tenant or cross-workflow run relationship graphs."""
+
+        errors: dict[str, list[str]] = {}
+
+        def add_error(field: str, message: str) -> None:
+            errors.setdefault(field, []).append(message)
+
+        if self.workflow_id and self.org_id and self.workflow.org_id != self.org_id:
+            add_error("org", str(_("Run organization must match workflow.")))
+
+        if self.project_id:
+            if self.project.org_id != self.org_id:
+                add_error("project", str(_("Project must match run organization.")))
+
+        if self.submission_id:
+            if self.submission.org_id != self.org_id:
+                add_error(
+                    "submission",
+                    str(_("Submission must match run organization.")),
+                )
+            if self.workflow_id and self.submission.workflow_id != self.workflow_id:
+                add_error("submission", str(_("Submission must match run workflow.")))
+            if (
+                self.submission.project_id
+                and self.project_id != self.submission.project_id
+            ):
+                add_error(
+                    "project",
+                    str(_("Run project must match submission project.")),
+                )
+        if errors:
+            raise ValidationError(errors)
 
     @property
     def status_pill_class(self) -> str:

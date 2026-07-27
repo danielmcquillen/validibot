@@ -27,7 +27,7 @@
             {% trans "See the details teammates view across the product." %}
           {% else %}
             {% blocktrans with username=object.name|default:object.username %}
-              Public profile information for {{ username }}.
+              Profile information for your teammate {{ username }}.
             {% endblocktrans %}
           {% endif %}
         </p>

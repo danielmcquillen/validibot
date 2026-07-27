@@ -31,6 +31,10 @@ def _run_context_for(validator, submission):
     thread a real run whose submission carries the metadata under test.
     """
     step = WorkflowStepFactory(validator=validator)
+    submission.org = step.workflow.org
+    submission.project = step.workflow.project
+    submission.workflow = step.workflow
+    submission.save(update_fields=["org", "project", "workflow", "modified"])
     run = ValidationRunFactory(workflow=step.workflow, submission=submission)
     return RunContext(validation_run=run, step=step, upstream_steps={})
 

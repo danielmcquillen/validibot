@@ -569,11 +569,12 @@ class TestOutputValuesFeedCelAssertions:
             order=0,
             message_template="Schematron reported rule errors.",
         )
+        step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
         submission = SubmissionFactory(
             content="<Invoice/>",
             file_type=SubmissionFileType.XML,
+            workflow=step.workflow,
         )
-        step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
         run = ValidationRunFactory(workflow=step.workflow, submission=submission)
         return RunContext(validation_run=run, step=step, upstream_steps={})
 

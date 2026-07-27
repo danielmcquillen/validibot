@@ -160,11 +160,18 @@ class ValidationRunViewSetTestCase(TestCase):
         self.project = ProjectFactory(org=self.org)
 
         # Create test workflow
-        self.workflow = WorkflowFactory(org=self.org, user=self.user)
+        self.workflow = WorkflowFactory(
+            org=self.org,
+            project=self.project,
+            user=self.user,
+        )
 
         # Create test submission
         self.submission = SubmissionFactory(
-            org=self.org, project=self.project, user=self.user
+            org=self.org,
+            project=self.project,
+            workflow=self.workflow,
+            user=self.user,
         )
 
         # Scope users to their orgs for viewset filtering
@@ -318,7 +325,17 @@ class ValidationRunViewSetTestCase(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create another workflow
-        other_workflow = WorkflowFactory(org=self.org, user=self.user)
+        other_workflow = WorkflowFactory(
+            org=self.org,
+            project=self.project,
+            user=self.user,
+        )
+        other_submission = SubmissionFactory(
+            org=self.org,
+            project=self.project,
+            workflow=other_workflow,
+            user=self.user,
+        )
 
         # Create runs for different workflows
         ValidationRunFactory(
@@ -330,7 +347,7 @@ class ValidationRunViewSetTestCase(TestCase):
         )
 
         ValidationRunFactory(
-            submission=self.submission,
+            submission=other_submission,
             workflow=other_workflow,
             org=self.org,
             project=self.project,
@@ -684,9 +701,16 @@ class ValidationRunViewSetTestCase(TestCase):
 
         # Create project and workflow for other org
         other_project = ProjectFactory(org=self.other_org)
-        other_workflow = WorkflowFactory(org=self.other_org, user=self.other_user)
+        other_workflow = WorkflowFactory(
+            org=self.other_org,
+            project=other_project,
+            user=self.other_user,
+        )
         other_submission = SubmissionFactory(
-            org=self.other_org, project=other_project, user=self.other_user
+            org=self.other_org,
+            project=other_project,
+            workflow=other_workflow,
+            user=self.other_user,
         )
 
         # Create run for other org
@@ -733,7 +757,10 @@ class ValidationRunViewSetTestCase(TestCase):
         )
         other_user = UserFactory(orgs=[self.org])
         other_submission = SubmissionFactory(
-            org=self.org, project=self.project, user=other_user
+            org=self.org,
+            project=self.project,
+            workflow=self.workflow,
+            user=other_user,
         )
         run2 = ValidationRunFactory(
             submission=other_submission,
@@ -958,7 +985,7 @@ class ValidationRunViewSetTestCase(TestCase):
 
         # One-run baseline.
         _make_run_with_steps()
-        with self.assertNumQueries(17):
+        with self.assertNumQueries(10):
             response = self.client.get(runs_list_url(self.org))
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data["results"]), 1)
@@ -967,7 +994,7 @@ class ValidationRunViewSetTestCase(TestCase):
         # an N+1 has been reintroduced.
         for _ in range(4):
             _make_run_with_steps()
-        with self.assertNumQueries(17):
+        with self.assertNumQueries(10):
             response = self.client.get(runs_list_url(self.org))
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data["results"]), 5)
@@ -1109,7 +1136,7 @@ class ValidationRunViewSetTestCase(TestCase):
         self.client.force_authenticate(user=self.user)
         self.client.get(runs_list_url(self.org))  # warm
 
-        with self.assertNumQueries(17):
+        with self.assertNumQueries(10):
             response = self.client.get(runs_list_url(self.org))
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data["results"]), 1)
@@ -1148,7 +1175,7 @@ class ValidationRunViewSetTestCase(TestCase):
         # Runs with no step_runs — the findings prefetch short-circuits
         # on empty step_runs, so we see one fewer query than the
         # other tests that set up step runs.
-        with self.assertNumQueries(14):
+        with self.assertNumQueries(7):
             response = self.client.get(runs_list_url(self.org))
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(len(response.data["results"]), 3)

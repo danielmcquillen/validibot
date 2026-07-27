@@ -109,13 +109,7 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
         if not membership or not active_org_id:
             return ValidationRun.objects.none()
 
-        scoped = queryset
-        if has_full_access:
-            scoped = scoped.filter(org_id=active_org_id)
-        elif has_own_access:
-            scoped = scoped.filter(org_id=active_org_id, user_id=user.id)
-        else:
-            scoped = ValidationRun.objects.none()
+        scoped = queryset.for_user(user, org=active_org_id)
 
         msg = (
             "ValidationRunViewSet.filter_queryset user=%s org=%s "
@@ -189,12 +183,7 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
                 ),
             )
         )
-        if has_full_access:
-            qs = base_qs.filter(org_id=active_org_id)
-        elif has_own_access:
-            qs = base_qs.filter(org_id=active_org_id, user_id=user.id)
-        else:
-            qs = ValidationRun.objects.none()
+        qs = base_qs.for_user(user, org=active_org_id)
 
         # Default recent-only (last 30 days) unless:
         # - ?all=1 provided, or

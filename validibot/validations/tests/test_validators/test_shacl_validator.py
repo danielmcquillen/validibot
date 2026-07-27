@@ -310,11 +310,12 @@ class TestMixedAssertionPartition:
             validation_type=ValidationType.SHACL,
             is_system=False,
         )
+        step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
         submission = SubmissionFactory(
             content="@prefix ex: <http://example.org/> . ex:a a ex:Thing .",
             file_type=SubmissionFileType.TEXT,
+            workflow=step.workflow,
         )
-        step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
         run = ValidationRunFactory(workflow=step.workflow, submission=submission)
         return validator, RunContext(validation_run=run, step=step, upstream_steps={})
 
@@ -419,13 +420,14 @@ class TestMixedAssertionPartition:
             validation_type=ValidationType.SHACL,
             is_system=False,
         )
+        step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
         # A Turtle (.ttl) submission — NOT JSON — carrying submitter metadata.
         submission = SubmissionFactory(
             content="@prefix ex: <http://example.org/> . ex:a a ex:Thing .",
             file_type=SubmissionFileType.TEXT,
             metadata={"deliverable": "handover"},
+            workflow=step.workflow,
         )
-        step = WorkflowStepFactory(validator=validator, ruleset=ruleset)
         run = ValidationRunFactory(workflow=step.workflow, submission=submission)
         run_context = RunContext(
             validation_run=run,

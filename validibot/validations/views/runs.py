@@ -7,7 +7,6 @@ from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.db import models
 from django.db.models import Prefetch
 from django.http import FileResponse
 from django.http import Http404
@@ -70,34 +69,6 @@ class ValidationRunAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         active_org_id = (
             active_org.id if active_org else getattr(user, "current_org_id", None)
         )
-        full_access_org_ids: set[int] = set()
-        restricted_org_ids: set[int] = set()
-        memberships = (
-            user.memberships.filter(is_active=True)
-            .select_related("org")
-            .prefetch_related("roles")
-        )
-        for membership in memberships:
-            if active_org_id and membership.org_id != active_org_id:
-                continue
-            org = membership.org
-            if user.has_perm(
-                PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value,
-                org,
-            ):
-                full_access_org_ids.add(membership.org_id)
-            elif user.has_perm(
-                PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value,
-                org,
-            ):
-                restricted_org_ids.add(membership.org_id)
-        filters = models.Q()
-        if full_access_org_ids:
-            filters |= models.Q(org_id__in=full_access_org_ids)
-        if restricted_org_ids:
-            filters |= models.Q(org_id__in=restricted_org_ids, user_id=user.id)
-        if not filters:
-            return ValidationRun.objects.none()
         step_run_prefetch = Prefetch(
             "step_runs",
             queryset=ValidationStepRun.objects.select_related("workflow_step")
@@ -113,7 +84,7 @@ class ValidationRunAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
             ).order_by("severity", "-created"),
         )
         return (
-            ValidationRun.objects.filter(filters)
+            ValidationRun.objects.for_user(user, org=active_org_id)
             .select_related("workflow", "submission", "org")
             .prefetch_related(step_run_prefetch, findings_prefetch)
             .order_by("-created")

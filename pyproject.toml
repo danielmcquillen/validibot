@@ -360,9 +360,9 @@ dev = [
   "pytest-sugar==1.1.1",
   "selenium==4.46.0",
   # Linting and formatting
-  "djlint==1.42.2",
+  "djlint==1.42.3",
   "pre-commit==4.6.1",
-  "ruff==0.15.22",
+  "ruff==0.16.0",
   # Type checking
   "django-stubs[compatible-mypy]==6.0.7",
   "djangorestframework-stubs==3.17.0",

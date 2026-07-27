@@ -1352,8 +1352,9 @@ class Command(BaseCommand):
                     "access to the Docker API."
                 ),
                 fix_hint=(
-                    "Start Docker and verify that /var/run/docker.sock is "
-                    "mounted into the web and worker containers with usable "
+                    "Start the container engine and verify that the host socket "
+                    "selected by VALIDATOR_CONTAINER_SOCKET is mounted into "
+                    "the worker container at /var/run/docker.sock with usable "
                     "permissions."
                 ),
             )
@@ -1660,6 +1661,7 @@ class Command(BaseCommand):
 
         self._check_postgres_version(unsupported_status)
         self._check_docker_version(unsupported_status)
+        self._check_docker_rootless()
         self._check_docker_not_from_snap()
         self._check_os_version(unsupported_status)
 
@@ -1740,13 +1742,13 @@ class Command(BaseCommand):
             )
 
     def _check_docker_version(self, unsupported_status: CheckStatus) -> None:
-        """Verify Docker Engine >= ``MIN_DOCKER_VERSION``.
+        """Verify the Docker-compatible engine meets the minimum version.
 
         Skipped on GCP (Cloud Run doesn't expose a host Docker) and on
         ``test`` profile (Django test runner has no Docker dependency).
-        Older Docker versions have known issues with Compose v2 named
-        volumes and BuildKit secrets — the ``build-pro-image`` recipe
-        relies on the latter.
+        The version is read through the Python Docker SDK, which is the same
+        API path validator execution uses. The application image deliberately
+        does not include the Docker CLI.
         """
         if self.target in ("gcp", "test", "local_docker_compose"):
             self._add_result(
@@ -1758,39 +1760,43 @@ class Command(BaseCommand):
             )
             return
 
-        import shutil
-        import subprocess
-
-        if shutil.which("docker") is None:
-            # Runner availability is covered by VB302. This compatibility
-            # check only applies when the host CLI is visible.
-            return
-
         try:
-            result = subprocess.run(
-                ["docker", "version", "--format", "{{.Client.Version}}"],  # noqa: S607
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode != 0:
-                self._add_result(
-                    "VB320",
-                    "docker",
-                    "Docker version",
-                    CheckStatus.WARN,
-                    "Could not query Docker version (daemon unreachable?)",
-                )
-                return
-            version_str = result.stdout.strip()
-        except (subprocess.TimeoutExpired, OSError) as e:
+            import docker
+
+            version_data = docker.from_env().version()
+            version_str = str(version_data.get("Version") or "").strip()
+            platform_name = str(
+                (version_data.get("Platform") or {}).get("Name") or ""
+            ).strip()
+        except Exception as e:
             self._add_result(
                 "VB320",
                 "docker",
                 "Docker version",
                 CheckStatus.WARN,
-                f"Could not determine Docker version: {e}",
+                f"Could not query the container engine through the Docker API: {e}",
+                fix_hint=(
+                    "Run doctor in the worker container and verify the "
+                    "VALIDATOR_CONTAINER_SOCKET mount."
+                ),
+            )
+            return
+
+        if "podman" in platform_name.lower():
+            self._add_result(
+                "VB320",
+                "docker",
+                "Docker version",
+                CheckStatus.INFO,
+                f"{platform_name} {version_str or 'unknown version'} detected",
+                details=(
+                    "Docker's minimum version is not numerically comparable "
+                    "with Podman's release series."
+                ),
+                fix_hint=(
+                    "Podman support is experimental. Run the full advanced "
+                    "validator acceptance suite against this exact release."
+                ),
             )
             return
 
@@ -1817,7 +1823,10 @@ class Command(BaseCommand):
                 "docker",
                 "Docker version",
                 unsupported_status,
-                f"Docker {major}.{minor} is below minimum {min_major}.{min_minor}",
+                (
+                    f"Container engine {major}.{minor} is below the "
+                    f"Docker-compatible minimum {min_major}.{min_minor}"
+                ),
                 fix_hint=(
                     "Upgrade Docker to at least "
                     f"{min_major}.{min_minor}. Use the official Docker "
@@ -1831,8 +1840,96 @@ class Command(BaseCommand):
                 "docker",
                 "Docker version",
                 CheckStatus.OK,
-                f"Docker {major}.{minor} meets minimum {min_major}.{min_minor}",
+                (
+                    f"Container engine {major}.{minor} meets the "
+                    f"Docker-compatible minimum {min_major}.{min_minor}"
+                ),
             )
+
+    def _check_docker_rootless(self) -> None:
+        """Report whether the worker's container engine is rootless.
+
+        Rootless operation is recommended hardening for self-hosted installs,
+        but it is not a requirement. Validibot's intended operators run known
+        backends on networks they control, so a rootful engine is an
+        informational trade-off rather than an installation failure.
+        """
+        if self.target in ("gcp", "test", "local_docker_compose"):
+            self._add_result(
+                "VB322",
+                "docker",
+                "Rootless container engine",
+                CheckStatus.SKIPPED,
+                f"Rootless check not applicable to target={self.target}.",
+            )
+            return
+
+        try:
+            import docker
+
+            engine_info = docker.from_env().info()
+        except Exception as e:
+            self._add_result(
+                "VB322",
+                "docker",
+                "Rootless container engine",
+                CheckStatus.WARN,
+                f"Could not determine whether the container engine is rootless: {e}",
+                fix_hint=(
+                    "Run doctor in the worker container and verify the "
+                    "VALIDATOR_CONTAINER_SOCKET mount."
+                ),
+            )
+            return
+
+        security_options = [
+            str(option).lower() for option in (engine_info.get("SecurityOptions") or [])
+        ]
+        host_security = (
+            (engine_info.get("host") or {}).get("security") or {}
+            if isinstance(engine_info.get("host"), dict)
+            else {}
+        )
+        is_rootless = (
+            bool(engine_info.get("Rootless"))
+            or bool(engine_info.get("rootless"))
+            or bool(host_security.get("rootless"))
+            or any("rootless" in option for option in security_options)
+        )
+
+        if is_rootless:
+            self._add_result(
+                "VB322",
+                "docker",
+                "Rootless container engine",
+                CheckStatus.OK,
+                "Worker is connected to a rootless container engine",
+                details=(
+                    "SecurityOptions: " + ", ".join(security_options)
+                    if self.verbose and security_options
+                    else None
+                ),
+            )
+            return
+
+        self._add_result(
+            "VB322",
+            "docker",
+            "Rootless container engine",
+            CheckStatus.INFO,
+            "Worker is connected to a rootful container engine",
+            details=(
+                "This is supported for trusted, operator-selected validator "
+                "backends, but the engine socket gives the worker broad host "
+                "authority."
+            ),
+            fix_hint=(
+                "Optional hardening: configure rootless Docker, set "
+                "VALIDATOR_CONTAINER_SOCKET in .envs/.production/"
+                ".self-hosted/.build to its user socket, redeploy, and rerun "
+                "doctor."
+            ),
+        )
 
     def _check_docker_not_from_snap(self) -> None:
         """Detect Docker installed via Ubuntu snap.

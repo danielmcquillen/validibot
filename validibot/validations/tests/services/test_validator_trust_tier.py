@@ -38,6 +38,9 @@ What's deliberately not covered here
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 from django.test import override_settings
 
@@ -46,6 +49,21 @@ from validibot.validations.services.runners.docker import _apply_tier_2_hardenin
 from validibot.validations.services.validator_digest import SEMANTIC_FIELDS
 
 pytestmark = pytest.mark.django_db
+
+
+def _attempt_workspace_stub() -> SimpleNamespace:
+    """Provide the attempt-scoped mount contract for runner config tests.
+
+    These tests mock Docker and inspect unrelated trust-tier settings, so real
+    materialized files are unnecessary. Explicit paths still ensure every
+    launch follows the production rule that a workspace is mandatory.
+    """
+    return SimpleNamespace(
+        host_input_dir=Path("/test/attempt/input"),
+        host_output_dir=Path("/test/attempt/output"),
+        container_input_dir="/validibot/input",
+        container_output_dir="/validibot/output",
+    )
 
 
 # ── Model field defaults ────────────────────────────────────────────────
@@ -295,6 +313,7 @@ class TestDockerRunnerAppliesTier2:
                 container_image="example:tag",
                 input_uri="file:///tmp/in.json",
                 output_uri="file:///tmp/out.json",
+                workspace=_attempt_workspace_stub(),
                 trust_tier=ValidatorTrustTier.TIER_1,
             )
 
@@ -342,6 +361,7 @@ class TestDockerRunnerAppliesTier2:
                 container_image="example:tag",
                 input_uri="file:///tmp/in.json",
                 output_uri="file:///tmp/out.json",
+                workspace=_attempt_workspace_stub(),
                 trust_tier=ValidatorTrustTier.TIER_2,
             )
 

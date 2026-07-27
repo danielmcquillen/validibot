@@ -14,17 +14,15 @@ hands to the Docker SDK:
    per-attempt ``output/`` directory mounted read-write. Nothing else;
    in particular,
    no entry for the global ``DATA_STORAGE_ROOT``.
-2. **When a workspace is not provided**, the runner falls back to the
-   legacy global mount and logs a warning. This path remains for tests
-   and partially-migrated callers but is not a supported production
-   configuration after Phase 1; the warning is the regression signal.
+2. **When a workspace is not provided**, the runner fails closed before
+   launching a container. There is no legacy escape hatch that can expose
+   the global storage tree.
 
 We do not run a real container here — the unit-test layer asserts the
 configuration is correct, and Docker enforces what's in the
-configuration. A full filesystem-walk integration test inside a real
-container is the manual smoke step in Slice 5; it would require a
-running Docker daemon and a published test image, neither of which fit
-the unit-test surface.
+configuration. The Docker Compose integration suite exercises the same
+configuration against real validator images when a Docker-compatible
+daemon is available.
 
 What a regression in this file would look like
 ----------------------------------------------
@@ -34,8 +32,8 @@ If a future change re-introduces a global mount, the assertion
 pointing at the runner. If a future change accidentally mounts
 ``input/`` read-write, the mode assertion fails — the container could
 then mutate its own input. If the workspace branch is bypassed
-silently, the legacy fallback would run instead and the warning-log
-test catches it.
+silently, the missing-workspace test fails because the runner must stop
+before calling Docker.
 """
 
 from __future__ import annotations
@@ -279,21 +277,23 @@ class TestWorkspaceMounts:
         assert "/tmp" in call_kwargs["tmpfs"]  # noqa: S108
 
 
-# ── Legacy fallback (workspace=None) ────────────────────────────────────
+# ── Missing workspace fails closed ─────────────────────────────────────
 
 
-class TestLegacyFallback:
-    """When ``run()`` is called without a workspace, the runner falls
-    back to the legacy global mount. The fallback exists for partially
-    migrated callers and tests, but it is *not* a supported production
-    configuration after Phase 1 — the warning is the regression signal
-    that something didn't get updated."""
+class TestMissingWorkspaceFailsClosed:
+    """A validator container must never launch without attempt-scoped mounts.
 
-    def test_warning_logged_when_workspace_omitted(self, caplog, settings):
-        """A caller that doesn't pass a workspace should see a warning
-        in the logs explaining the regression. Without this signal, a
-        partially-migrated dispatch path could silently fall back to
-        the bug Phase 1 was meant to fix."""
+    The earlier migration fallback mounted the complete storage tree
+    read-write. Treating missing workspace metadata as an error removes that
+    escape hatch and keeps the isolation boundary true for every launch.
+    """
+
+    def test_workspace_omission_raises_before_container_launch(self, settings):
+        """Missing workspace metadata must stop before Docker is invoked.
+
+        This matters because even a short-lived launch with the old global
+        mount would let a backend read or change unrelated validation runs.
+        """
         settings.DATA_STORAGE_ROOT = "/tmp/legacy-mount-test"  # noqa: S108
         mock_docker, mock_client = _make_mock_docker_client()
 
@@ -305,26 +305,21 @@ class TestLegacyFallback:
             runner = DockerValidatorRunner()
             runner._client = mock_client
 
-            with caplog.at_level("WARNING"):
+            with pytest.raises(RuntimeError, match="per-attempt workspace"):
                 runner.run(
                     container_image="test:latest",
                     input_uri="file:///some/legacy/input.json",
                     output_uri="file:///some/legacy/output.json",
                 )
 
-        warning_messages = [
-            r.message for r in caplog.records if r.levelname == "WARNING"
-        ]
-        assert any("workspace" in m and "legacy" in m for m in warning_messages), (
-            "expected a 'workspace omitted, legacy fallback' warning; "
-            f"got {warning_messages}"
-        )
+        mock_client.containers.run.assert_not_called()
 
-    def test_legacy_fallback_uses_global_storage_root(self, settings):
-        """When no workspace is provided, the legacy mount path must
-        still produce a working dispatch. Otherwise existing tests
-        that haven't been migrated would break — the fallback exists
-        precisely to keep them working until they are."""
+    def test_global_storage_root_is_never_used_as_an_implicit_mount(self, settings):
+        """Configured global storage cannot weaken a missing-workspace failure.
+
+        This guards the most dangerous regression: restoring a convenience
+        fallback merely because ``DATA_STORAGE_ROOT`` happens to be configured.
+        """
         settings.DATA_STORAGE_ROOT = "/tmp/legacy-mount-test"  # noqa: S108
         mock_docker, mock_client = _make_mock_docker_client()
 
@@ -336,18 +331,14 @@ class TestLegacyFallback:
             runner = DockerValidatorRunner()
             runner._client = mock_client
 
-            runner.run(
-                container_image="test:latest",
-                input_uri="file:///some/input.json",
-                output_uri="file:///some/output.json",
-            )
+            with pytest.raises(RuntimeError, match="refusing to mount global storage"):
+                runner.run(
+                    container_image="test:latest",
+                    input_uri="file:///some/input.json",
+                    output_uri="file:///some/output.json",
+                )
 
-        volumes = mock_client.containers.run.call_args[1].get("volumes")
-        # The legacy fallback uses DATA_STORAGE_ROOT as both source and
-        # bind — that's the original (pre-Phase-1) behaviour we kept
-        # intentionally for unmigrated callers.
-        assert volumes is not None
-        assert "/tmp/legacy-mount-test" in volumes  # noqa: S108
+        mock_client.containers.run.assert_not_called()
 
 
 # ── DinD path translation ──────────────────────────────────────────────

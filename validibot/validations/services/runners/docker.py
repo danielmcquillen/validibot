@@ -206,8 +206,8 @@ class DockerValidatorRunner(ValidatorRunner):
     Set network="bridge" or a specific network name only if validators need
     external network access (e.g., downloading files from URLs).
 
-    For local development, ensure DATA_STORAGE_ROOT is mounted into containers
-    so they can read input files and write outputs.
+    Every launch requires a per-attempt ``RunWorkspace``. The runner mounts
+    only its input directory read-only and output directory read-write.
     """
 
     def __init__(
@@ -298,11 +298,9 @@ class DockerValidatorRunner(ValidatorRunner):
             validator_slug: Validator slug for labeling
             workspace: Per-attempt workspace produced by
                 :class:`RunWorkspaceBuilder`. When provided, the container
-                receives only attempt-scoped mounts (input ro, output rw)
-                instead of the legacy global ``DATA_STORAGE_ROOT`` mount.
-                Required for cross-run isolation; when omitted the runner
-                falls back to the legacy mount and logs a warning so the
-                regression is visible.
+                receives only attempt-scoped mounts (input ro, output rw).
+                Required for cross-run isolation. The runner refuses to
+                launch a container when this is omitted.
 
         Returns:
             ExecutionResult with exit_code, output_uri, and logs
@@ -344,11 +342,9 @@ class DockerValidatorRunner(ValidatorRunner):
         # (read-only) and output (read-write) directories instead of
         # the entire ``DATA_STORAGE_ROOT``. This is the runtime
         # boundary that prevents a buggy or compromised validator from
-        # reading other runs' inputs or mutating their outputs. When
-        # no workspace is provided we fall back to the legacy global
-        # mount and emit a warning — that path remains for tests and
-        # callers that haven't been migrated, but it is not a
-        # supported production configuration.
+        # reading other runs' inputs or mutating their outputs. Missing
+        # workspace metadata is a security-boundary failure, so this
+        # path fails closed rather than mounting global storage.
         volumes = self._build_mounts(workspace=workspace)
 
         # Container configuration - NOT detached, we wait for completion
@@ -555,10 +551,8 @@ class DockerValidatorRunner(ValidatorRunner):
     # input directory (read-only) and output directory (read-write) into
     # the container. This is the runtime boundary that prevents one
     # validator from accessing another run's files. When no workspace is
-    # provided we fall back to the legacy global mount and emit a
-    # warning so the regression is visible — that path is preserved for
-    # tests and partially-migrated callers but is not a supported
-    # production configuration.
+    # provided the runner refuses to launch a container. This prevents a
+    # partially migrated caller from silently losing cross-run isolation.
 
     def _build_mounts(
         self,
@@ -569,10 +563,19 @@ class DockerValidatorRunner(ValidatorRunner):
 
         Returns the dict format the Docker SDK accepts directly, mapping
         host source paths to ``{"bind": ..., "mode": ...}`` entries.
+
+        Raises:
+            RuntimeError: If no per-attempt workspace is supplied. A global
+                storage mount is intentionally not available as a fallback.
         """
 
         if workspace is None:
-            return self._build_legacy_mounts()
+            msg = (
+                "Docker validator execution requires a per-attempt workspace; "
+                "refusing to mount global storage. Update the caller to pass a "
+                "RunWorkspace built by RunWorkspaceBuilder."
+            )
+            raise RuntimeError(msg)
 
         if self.storage_volume:
             host_input = self._resolve_dind_host_path(workspace.host_input_dir)
@@ -591,35 +594,6 @@ class DockerValidatorRunner(ValidatorRunner):
                 "mode": "rw",
             },
         }
-
-    def _build_legacy_mounts(self) -> dict[str, dict[str, str]]:
-        """Legacy global storage mount.
-
-        Used only when ``run()`` is invoked without a workspace. Logs a
-        warning so the regression is visible during local dev or test
-        runs that haven't been migrated. In production this path
-        should be unused; if a deploy starts seeing this warning it
-        means a caller wasn't updated.
-        """
-
-        logger.warning(
-            "DockerValidatorRunner.run() called without a workspace; "
-            "falling back to legacy global storage mount. This loses "
-            "the per-run isolation guarantee. Update the caller to "
-            "pass a RunWorkspace built by RunWorkspaceBuilder."
-        )
-
-        volumes: dict[str, dict[str, str]] = {}
-        if self.storage_volume:
-            volumes[self.storage_volume] = {
-                "bind": self.storage_mount_path,
-                "mode": "rw",
-            }
-        else:
-            storage_root = getattr(settings, "DATA_STORAGE_ROOT", None)
-            if storage_root:
-                volumes[storage_root] = {"bind": storage_root, "mode": "rw"}
-        return volumes
 
     def _resolve_dind_host_path(self, worker_path: Path) -> Path:
         """Translate a worker-side path to a Docker-daemon-side path.

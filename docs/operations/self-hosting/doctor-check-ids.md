@@ -211,8 +211,9 @@ runner actually uses Docker.
 **Trigger:** The configured Docker runner cannot ping Docker Engine through
 the Python Docker SDK. This tests the same API path advanced validators use;
 the Docker CLI does not need to be installed inside the application container.
-**Fix:** Start Docker and verify `/var/run/docker.sock` is mounted into the web
-and worker containers with usable permissions.
+**Fix:** Start the container engine and verify the host socket selected by
+`VALIDATOR_CONTAINER_SOCKET` is mounted into the worker container at
+`/var/run/docker.sock` with usable permissions.
 
 ### `VB303` Docker command timeout
 **Severity:** reserved
@@ -241,13 +242,16 @@ list.
 use.
 
 ### `VB320` Docker version
-**Severity:** error in self-hosted production, info on GCP, warn on dev
-**Trigger:** Docker Engine version is below the minimum (currently
-24.0). Older Docker has known issues with Compose v2 named volumes
-and BuildKit secrets — both of which Validibot uses.
+**Severity:** error for an old self-hosted Docker Engine, info when Podman is
+detected, skipped when the local engine is not applicable
+**Trigger:** The Docker-compatible engine version reported through the same
+Python SDK connection used by the worker is below the minimum (currently
+24.0). Podman's independent release series is identified but not compared
+numerically. The application image does not need the Docker CLI.
 **Fix:** Upgrade Docker to 24+ via the official Docker repository
 (NOT the OS package manager — those tend to lag and miss the
-Compose plugin). The bootstrap-host script does this automatically.
+Compose plugin). For Podman, run the advanced-validator acceptance suite
+against the exact installed release.
 
 ### `VB321` Docker installation source
 **Severity:** warn
@@ -257,7 +261,16 @@ with Compose named volumes (the snap sandbox confines `/var/lib/docker`)
 and BuildKit secrets.
 **Fix:** Reinstall Docker from the official Docker repository:
 [https://docs.docker.com/engine/install/ubuntu/](https://docs.docker.com/engine/install/ubuntu/).
-The bootstrap-host script does this automatically.
+
+### `VB322` Rootless container engine
+**Severity:** ok when rootless, info when rootful, warn when status cannot be
+queried
+**Trigger:** Doctor inspects the daemon information returned through the
+worker's Docker-compatible API socket.
+**Fix:** Rootful is supported for operator-reviewed validator backends.
+For optional hardening, configure rootless Docker, set
+`VALIDATOR_CONTAINER_SOCKET` in `.envs/.production/.self-hosted/.build`,
+redeploy, and rerun doctor. The result must change to `ok`.
 
 ---
 

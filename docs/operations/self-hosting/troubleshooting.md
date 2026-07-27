@@ -11,6 +11,8 @@ The doctor command's check IDs are documented at [doctor-check-ids.md](doctor-ch
 - `VB201 storage root not writable` — inspect the path doctor prints inside the `web` container; on the default stack it should be `/app/storage/private` backed by the `validibot_storage` Docker volume.
 - `VB411 backups configured but no restore test recorded` — run a restore drill (see [restore.md](restore.md)).
 - `VB320 Docker version below minimum` — upgrade Docker Engine.
+- `VB322 rootful container engine` — supported, with rootless Docker available
+  as optional hardening.
 
 `doctor --json` gives machine-readable output that's easy to grep or pipe.
 
@@ -63,7 +65,11 @@ If the instance already contains data you need to keep, do not run `down -v`. Ta
 
 The worker is up but not processing tasks. Likely causes:
 
-1. **Docker socket unreachable from worker container.** The worker dispatches advanced validators by talking to Docker. Check `just self-hosted doctor` for `VB320` (Docker socket).
+1. **Container-engine socket unreachable from worker container.** The worker
+   dispatches advanced validators through the Docker API. Check
+   `just self-hosted doctor` for `VB302` (API availability). If you selected
+   rootless Docker, confirm `VALIDATOR_CONTAINER_SOCKET` names an existing
+   host socket owned by the deployment user.
 2. **Validator image not built or present.** Run `just self-hosted validators`. If an image is missing, build it with `just self-hosted validator-build <name>` or trigger the relevant validator-image deployment path.
 3. **Validator manifest missing.** Less common; usually shows up in worker logs as a `ValidatorNotFound` error.
 4. **Storage permissions wrong.** The worker can't materialise the per-attempt workspace. Check `VB201`.

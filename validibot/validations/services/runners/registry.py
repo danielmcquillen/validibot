@@ -12,6 +12,8 @@ Usage:
     execution_id = runner.run(
         container_image="validibot/validator-energyplus:latest",
         input_uri="file:///app/data/runs/run-123/input.json",
+        output_uri="file:///app/data/runs/run-123/output.json",
+        workspace=run_workspace,  # Built by RunWorkspaceBuilder
     )
 """
 

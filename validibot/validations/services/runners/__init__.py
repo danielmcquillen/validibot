@@ -18,6 +18,7 @@ Usage:
         output_uri="file:///app/data/runs/run-123/output.json",
         run_id="run-123",
         validator_slug="energyplus",
+        workspace=run_workspace,  # Built by RunWorkspaceBuilder
     )
     if result.succeeded:
         # Process output envelope at result.output_uri

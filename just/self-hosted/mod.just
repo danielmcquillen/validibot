@@ -916,14 +916,15 @@ build-pro-image package="":
 # Health diagnostic — settings, db, cache, storage, validators, signing.
 #
 # Runs ``python manage.py check_validibot --target self_hosted`` inside
-# the web container. Forwards any extra args through to the management
+# the worker container, which is the service that owns the validator-engine
+# socket. Forwards any extra args through to the management
 # command, so ``just self-hosted doctor --json --strict`` works as
 # expected. See docs/operations/self-hosting/doctor-check-ids.md for
 # the table of check IDs and their fixes.
 #
 # Self-hosted is single-stage per VM (ADR section 4); no stage arg.
 doctor *args:
-    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T web python manage.py check_validibot --target self_hosted {{args}}
+    docker compose {{compose_env_args}} -f {{compose_file}} -p {{compose_project}} exec -T worker python manage.py check_validibot --target self_hosted {{args}}
 
 # Show recent ERROR / EXCEPTION / TRACEBACK lines from all services.
 #

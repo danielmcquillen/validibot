@@ -10,6 +10,8 @@ from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from io import StringIO
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -23,6 +25,21 @@ def create_mock_docker():
     mock_client = MagicMock()
     mock_docker.from_env.return_value = mock_client
     return mock_docker, mock_client
+
+
+def create_attempt_workspace_stub() -> SimpleNamespace:
+    """Provide isolated mount metadata for tests that mock a container launch.
+
+    Label, sandbox, and environment tests do not need real files, but they must
+    preserve the production invariant that Docker launches always receive
+    attempt-scoped input and output paths.
+    """
+    return SimpleNamespace(
+        host_input_dir=Path("/test/attempt/input"),
+        host_output_dir=Path("/test/attempt/output"),
+        container_input_dir="/validibot/input",
+        container_output_dir="/validibot/output",
+    )
 
 
 def create_mock_container(
@@ -311,6 +328,7 @@ class ContainerLabelsTests(TestCase):
                 output_uri="file:///output.json",
                 run_id="my-run-123",
                 validator_slug="energyplus",
+                workspace=create_attempt_workspace_stub(),
             )
 
             # Check that containers.run was called with labels
@@ -345,6 +363,7 @@ class ContainerLabelsTests(TestCase):
                 container_image="test-image:latest",
                 input_uri="file:///input.json",
                 output_uri="file:///output.json",
+                workspace=create_attempt_workspace_stub(),
             )
 
             call_kwargs = mock_client.containers.run.call_args[1]
@@ -390,6 +409,7 @@ class ContainerLabelsTests(TestCase):
                 input_uri="file:///input.json",
                 output_uri="file:///output.json",
                 run_id="my-run-123",
+                workspace=create_attempt_workspace_stub(),
             )
 
             # Check that environment includes VALIDIBOT_RUN_ID

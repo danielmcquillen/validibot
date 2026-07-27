@@ -6,7 +6,11 @@ Keep these points in mind during deployment and maintenance.
 
 - **Project name must be `validibot`**: The compose files reference a hardcoded volume name (`validibot_validibot_storage`). If you use a different project name via `-p` or `COMPOSE_PROJECT_NAME`, advanced validator containers won't be able to access shared storage. Either use the default project name or update `VALIDATOR_STORAGE_VOLUME` to match. (Network is disabled by default; if you enable `VALIDATOR_NETWORK`, it must also match.)
 - **Advanced validator network isolation**: By default, advanced validator containers run with no network access (`network_mode='none'`). This is secure because they communicate via the shared storage volume. If validators need external network access (to download files or call APIs), uncomment `VALIDATOR_NETWORK` in the compose files.
-- **Docker socket access**: The worker container mounts `/var/run/docker.sock` to spawn advanced validator containers. This grants root-equivalent access to the host. The entrypoint adjusts group permissions and drops to an unprivileged user, but treat the worker service as privileged.
+- **Container-engine socket access**: The worker mounts the host path selected
+  by `VALIDATOR_CONTAINER_SOCKET` at `/var/run/docker.sock` to spawn advanced
+  validators. The default rootful Docker socket grants root-equivalent host
+  authority; rootless Docker reduces that authority. Treat the worker as a
+  sensitive service in either mode.
 - **Scheduler singleton**: Only run one scheduler instance. The Beat scheduler doesn't coordinate across replicas, so multiple instances would create duplicate scheduled tasks. Docker Compose naturally runs one, but if you scale via external orchestration, ensure exactly one replica.
 - **Health checks**: All services expose `/health/` for container health checks. The endpoint verifies Django is running and the database is reachable.
 

@@ -138,7 +138,7 @@ The supported self-hosted Docker path gives every validator backend runtime:
 
 Default container policy:
 
-- `network_disabled=True` unless the validator manifest explicitly requires network;
+- `network_mode="none"` unless the operator globally configures `VALIDATOR_NETWORK`;
 - `cap_drop=["ALL"]`;
 - `security_opt=["no-new-privileges:true"]`;
 - non-root user (UID 1000);
@@ -160,11 +160,18 @@ semantics are capability-tested. See
 
 ## Optional hardening
 
-Documented but not required for MVP:
+Documented but not required:
 
-- **rootless Docker** — run the Docker daemon as a non-root user. Significant security improvement; requires Docker 20.10+ and some kernel tweaks.
-- **rootless Podman** — Podman with the Docker-compatible API. Drop-in replacement for Docker socket on systemd hosts.
-- **Docker socket proxy** — restrict the worker container's access to Docker to a narrow API subset.
+- **rootless Docker** — the supported hardened path. Point
+  `VALIDATOR_CONTAINER_SOCKET` at the deployment user's rootless socket and
+  confirm `VB322` before running the EnergyPlus integration acceptance test.
+- **rootless Podman** — a Docker-API compatibility path, not yet a drop-in
+  supported replacement. Qualify each Podman release with the full advanced
+  validator acceptance suite before production use.
+- **Docker socket proxy** — a possible future control. It is not currently
+  shipped or acceptance-tested, and the API surface needed for image
+  inspection, launch, waits, logs, volume inspection, and cleanup must be
+  allowed together.
 - **gVisor runtime** — sandbox containers with a user-space kernel.
 - **Kubernetes Job runner** — alternative to Docker Compose; future hardening track.
 - **per-validator seccomp profiles** — fine-grained syscall filtering.
@@ -239,6 +246,6 @@ nothing breaks today by ignoring it.
 - [Install](install.md) — initial setup
 - [Upgrades](upgrades.md) — validator images update with `validibot-pro`
 - [Security Hardening](security-hardening.md) — full hardening recommendations
-- [Doctor Check IDs](doctor-check-ids.md) — VB320/VB321 Docker checks
+- [Doctor Check IDs](doctor-check-ids.md) — VB320/VB321/VB322 container checks
 - [Operator Recipes](operator-recipes.md)
 - The dev-docs companion at `docs/dev_docs/overview/validator_architecture.md`

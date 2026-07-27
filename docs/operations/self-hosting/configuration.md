@@ -127,6 +127,7 @@ Off by default for self-hosted.
 | `VALIDIBOT_IMAGE_REGISTRY` | Image registry. Default: `ghcr.io/validibot`. Mirror: `validibot` on Docker Hub. |
 | `VALIDIBOT_COMMERCIAL_PACKAGE` | For Pro: `validibot-pro==<version>`. Empty for community. |
 | `VALIDIBOT_PRIVATE_INDEX_URL` | For Pro: `https://<email>:<token>@pypi.validibot.com/simple/`. Empty for community. |
+| `VALIDATOR_CONTAINER_SOCKET` | Host path to the Docker-compatible API socket mounted into the worker. Defaults to `/var/run/docker.sock`; use `/run/user/<numeric-uid>/docker.sock` for rootless Docker. |
 
 For Pro, the private index URL embeds your license credentials. Treat `.build` as a secret file (mode 0700, not in version control).
 
@@ -144,20 +145,22 @@ For Pro, the private index URL embeds your license credentials. Treat `.build` a
 | `VALIDIBOT_MCP_ENABLED` | Runtime kill switch. `false` makes every tool call return 503. |
 | `VALIDIBOT_OAUTH_AUTHORIZATION_ENDPOINT`, `VALIDIBOT_OAUTH_TOKEN_ENDPOINT`, `VALIDIBOT_OAUTH_REVOCATION_ENDPOINT`, `VALIDIBOT_OAUTH_JWKS_URL` | Optional complete-URL overrides if a compatible provider is routed differently. Validibot's standard paths are derived locally, without a startup discovery request. |
 
-## Deployment profiles
+## Deployment targets
 
-A profile is the combination of (target, stage, edition) that controls doctor-check severity, feature gating, and defaults.
+The current doctor command supports these deployment targets. Hardening is
+configured through the explicit settings above; there is no automatic
+`self-hosted-hardened` profile yet.
 
-| Profile | Purpose | Defaults |
+| Target | Purpose | Defaults |
 |---|---|---|
-| `local-dev` | local contributor work | debug on, local email, no TLS |
-| `local-eval` | trial on a laptop/VM | quick start, generated secrets, demo data |
-| `self-hosted` | production single VM | debug off, backups, TLS, strict checks |
-| `self-hosted-hardened` | risk-averse customer | digest-pinned validators, no telemetry, no runtime license phone-home, local signing/JWKS checks, rootless/socket proxy docs |
+| `local_docker_compose` | local contributor or evaluation Compose stack | host-only checks skipped |
+| `self_hosted` | production single VM | production compatibility findings enforced |
 | `gcp` | hosted Validibot | GCP/Stripe/metering/x402 |
-| `gcp-staging` | pre-prod GCP | same as `gcp` with staging defaults |
+| `test` | automated Django test environment | external-service checks skipped |
 
-Set with `DEPLOYMENT_PROFILE=<profile>` in `.django`. The doctor command uses the profile to decide which checks fail vs warn.
+The active settings module defines the deployment target. Pass
+`--target self_hosted`, `gcp`, `local_docker_compose`, or `test` to override
+doctor's inference for a diagnostic run.
 
 ## Settings module switching
 

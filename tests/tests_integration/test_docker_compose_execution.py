@@ -17,7 +17,7 @@ using Docker containers for advanced validators (EnergyPlus, FMU).
 ## Prerequisites
 
 For Docker-based tests:
-- Docker daemon running
+- Docker-compatible daemon running (rootful or rootless Docker)
 - Validator images available locally:
   - `validibot-validator-backend-energyplus:latest`
   - `validibot-validator-backend-fmu:latest`
@@ -33,6 +33,11 @@ pytest tests/tests_integration/test_docker_compose_execution.py -v -k "not docke
 
 # Run with verbose logging
 pytest tests/tests_integration/test_docker_compose_execution.py -v --log-cli-level=INFO
+
+# Rootless acceptance: first confirm doctor reports VB322=ok, then run the
+# real EnergyPlus launch/mount/wait/result/cleanup path
+pytest tests/tests_integration/test_docker_compose_execution.py \
+  -v -k test_energyplus_execution_via_docker
 ```
 """
 
@@ -375,6 +380,10 @@ class TestDockerEnergyPlusExecution:
         1. Submits an EnergyPlus model via the API
         2. Waits for the Docker container to run
         3. Verifies the validation completes with results
+
+        Why this matters: after VB322 confirms the selected engine is
+        rootless, this same test is the acceptance path for the complete
+        rootless lifecycle rather than a synthetic daemon-info check.
         """
         client = energyplus_workflow["client"]
         workflow = energyplus_workflow["workflow"]

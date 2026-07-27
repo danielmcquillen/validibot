@@ -141,7 +141,7 @@ The server is a thin protocol-translation layer: it forwards REST calls to Valid
 
 ### Prerequisites
 
-- Docker and Docker Compose (or [Podman](https://podman.io/) for rootless containers)
+- Docker Engine and Docker Compose
 - [git](https://git-scm.com/downloads) and the [just](https://just.systems/) command runner
 - 4GB RAM minimum (8GB recommended)
 
@@ -209,7 +209,10 @@ See the [Reverse Proxy Guide](https://dev.validibot.com/deployment/reverse-proxy
 ### Security Considerations
 
 > [!IMPORTANT]
-> Docker socket access grants root-equivalent privileges on the host. For production deployments, we recommend using [Podman](https://podman.io/) which is rootless by default, or running Docker in rootless mode.
+> A rootful Docker socket grants root-equivalent privileges on the host. For
+> production deployments, rootless Docker is the supported hardened path.
+> Rootless Podman's Docker-compatible API is experimental and should be
+> qualified with Validibot's full validator integration suite before use.
 
 > [!WARNING]
 > **Only run validator backend images that you have built and control yourself.** Never run third-party or untrusted container images as validator backends—they execute with access to your validation data and could potentially compromise your system.

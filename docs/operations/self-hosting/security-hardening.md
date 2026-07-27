@@ -13,6 +13,9 @@ The default self-hosted profile assumes:
 - **customer controls backups** — Validibot ships the recipes but you own where they go;
 - **Validibot containers are trusted** application code;
 - **validator containers are semi-trusted** and isolated per run (see [Validator Images](validator-images.md));
+- **operators choose validator backends they know and understand** — the
+  self-hosted product is not a public arbitrary-container execution service;
+- **the deployment runs on a network the customer controls**;
 - **users may upload untrusted files** — the launch contract validates them at the boundary;
 - **admins may install additional validator images** — once self-service registration ships, those go through tier-2 hardening;
 - **outbound internet may be restricted** — Validibot does not phone home by default.
@@ -71,7 +74,7 @@ VALIDIBOT_IMAGE_TAG=0.8.0          # exact version
 VALIDATOR_BACKEND_IMAGE_POLICY=digest   # or signed-digest after configuring cosign verification
 ```
 
-The doctor command warns if `latest` is used in a `self-hosted` or `self-hosted-hardened` profile.
+The doctor command warns if `latest` is used in a self-hosted deployment.
 
 ### 5. Run-scoped validator mounts
 
@@ -81,17 +84,70 @@ This is a **default**, not a configurable hardening — the old global mount has
 
 ### 6. Disable validator network access by default
 
-Validator containers run with `network_disabled=True` by default. Only validators that explicitly declare `requires_network: true` in their manifest get network access, and the deployment-side policy can override that to refuse network for any validator.
+Validator containers run with Docker's `network_mode="none"` by default. The
+current implementation does not grant network from a validator manifest. An
+operator can attach all advanced validators to a named network by explicitly
+setting `VALIDATOR_NETWORK`; leave it unset unless a known backend genuinely
+needs network access.
 
-For `self-hosted-hardened` profile: refuse network for all validators globally. The runtime policy must not depend on trusting the image's self-description.
+Per-validator network capabilities and allowlists are future work. Until that
+policy exists, network access is a deployment-wide operator choice.
 
-### 7. Use rootless Docker or Podman where feasible
+### 7. Use rootless Docker where feasible
 
-The default Docker daemon runs as root. Rootless Docker (Docker 20.10+) or rootless Podman runs the daemon as a non-root user. Significant security improvement for handling untrusted validator containers.
+The default Docker daemon runs as root, which means its API socket carries
+root-equivalent host authority. Rootless Docker runs the daemon and validator
+containers inside an unprivileged user's namespace. That meaningfully reduces
+the consequence of a worker or container-runtime escape.
 
-The kit documents both as **optional** hardening, not required for MVP. Setup notes are in `deploy/self-hosted/scripts/bootstrap-host` (rootless variant).
+Rootless is recommended defence in depth, not a requirement. That choice
+matches the self-hosted threat model: operators run known backends on their own
+networks, while uploaded files can still be hostile.
 
-Doctor's compatibility-matrix check (VB320) reports the running Docker version and detects whether rootless is in use.
+To select a rootless Docker daemon:
+
+1. Install and start rootless Docker for the user that owns the Validibot
+   deployment, following Docker's
+   [rootless-mode guide](https://docs.docker.com/engine/security/rootless/).
+   Enable user-service lingering if the daemon must survive logout.
+2. Find that user's numeric UID with `id -u`. Confirm its socket exists, for
+   example `/run/user/1000/docker.sock`.
+3. Set the host socket in `.envs/.production/.self-hosted/.build`:
+
+   ```dotenv
+   VALIDATOR_CONTAINER_SOCKET=/run/user/1000/docker.sock
+   ```
+
+4. Run `just self-hosted deploy`, then `just self-hosted doctor --verbose`.
+   `VB320` reports the engine version and `VB322` must report a rootless
+   engine.
+
+The Compose mount keeps `/var/run/docker.sock` as the path *inside* the worker,
+so the application needs no special rootless code. Only the host-side socket
+path changes.
+
+Rootless networking can behave differently around privileged ports, firewall
+rules, and source-IP preservation. Before using the bundled Caddy profile,
+verify that ports 80/443 bind correctly and that application logs retain the
+client address you expect. An external rootful reverse proxy forwarding to the
+web service is a valid alternative.
+
+Rootless Podman exposes a Docker-compatible socket, commonly
+`/run/user/<uid>/podman/podman.sock`. It can be selected with the same setting,
+but remains an experimental compatibility path until the full advanced
+validator acceptance suite passes against the exact Podman release in use.
+See Podman's
+[system service documentation](https://docs.podman.io/en/stable/markdown/podman-system-service.1.html).
+
+After changing engines, run the real EnergyPlus acceptance path:
+
+```bash
+uv run pytest \
+  tests/tests_integration/test_docker_compose_execution.py \
+  -v -k test_energyplus_execution_via_docker
+```
+
+The test requires the EnergyPlus backend image and skips when it is absent.
 
 ### 8. Back up database and data storage off-host
 
@@ -127,17 +183,17 @@ The doctor command on self-hosted reports which outbound calls are enabled, so o
 | Pro license phone-home | off | Package-index credential is the entitlement gate, not a runtime call |
 | x402 public agent registry | off | Cloud-only feature |
 
-## Hardened profile
+## Hardened operating posture
 
-For risk-averse customers, the `self-hosted-hardened` profile applies stricter defaults:
+There is not currently a single `self-hosted-hardened` switch that applies
+these controls automatically. Risk-averse operators should explicitly:
 
-- `VALIDATOR_BACKEND_IMAGE_POLICY=signed-digest` when signed validator images are available;
-- all telemetry off;
-- no runtime license phone-home;
-- local signing/JWKS checks;
-- rootless/socket proxy docs treated as required, not optional.
-
-Set with `DEPLOYMENT_PROFILE=self-hosted-hardened` in `.django`.
+- use `VALIDATOR_BACKEND_IMAGE_POLICY=digest`, or `signed-digest` after
+  configuring cosign verification;
+- leave `VALIDATOR_NETWORK` unset;
+- use rootless Docker and confirm `VB322`;
+- keep telemetry integrations unset;
+- allow only operator-reviewed validator images.
 
 ## Filesystem permissions
 

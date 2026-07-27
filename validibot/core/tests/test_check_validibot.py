@@ -12,10 +12,10 @@ on. Specifically:
 
 2. The 5-state severity scale (plus ``skipped``) is wired up:
    ``ok | info | warn | error | fatal | skipped``. Existing checks
-   today emit ``ok``, ``warn``, ``error``, and ``skipped``; ``info``
-   and ``fatal`` are reserved for future checks but the JSON schema
-   already includes them in the summary count so integrations don't
-   break when those statuses start appearing.
+   today emit ``ok``, ``info``, ``warn``, ``error``, and ``skipped``;
+   ``fatal`` is reserved for future checks but the JSON schema already
+   includes it in the summary count so integrations don't break when
+   that status starts appearing.
 
 3. The JSON output matches the ``validibot.doctor.v1`` schema shape:
    ``schema_version``, ``validibot_version``, ``target``, ``stage``,
@@ -46,6 +46,7 @@ schema regressions at PR-review time.
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 from io import StringIO
 from unittest.mock import Mock
@@ -823,6 +824,107 @@ class DoctorDockerRunnerTests(TestCase):
         )
         self.assertEqual(docker_check.status, CheckStatus.SKIPPED)
         runner.is_available.assert_not_called()
+
+    def test_version_check_uses_sdk_when_docker_cli_is_absent(self):
+        """The compatibility check must query the API used by the worker.
+
+        The production application image omits the Docker CLI, so a CLI-based
+        implementation silently skipped the version check even when validator
+        execution worked. The SDK keeps the diagnostic aligned with reality.
+        """
+        fake_docker = Mock()
+        fake_docker.from_env.return_value.version.return_value = {
+            "Version": "28.3.3",
+        }
+        command = Command()
+        command.target = "self_hosted"
+
+        with (
+            patch.dict(sys.modules, {"docker": fake_docker}),
+            patch("shutil.which", return_value=None),
+        ):
+            command._check_docker_version(CheckStatus.ERROR)
+
+        version_check = next(
+            result for result in command.results if result.id == "VB320"
+        )
+        self.assertEqual(version_check.status, CheckStatus.OK)
+        self.assertIn("28.3", version_check.message)
+        fake_docker.from_env.return_value.version.assert_called_once_with()
+
+    def test_rootless_engine_is_reported_as_hardened(self):
+        """A rootless API socket should produce a clear successful finding.
+
+        Operators need evidence that their socket selection actually changed
+        the daemon boundary, rather than merely changing a Compose setting.
+        """
+        fake_docker = Mock()
+        fake_docker.from_env.return_value.info.return_value = {
+            "SecurityOptions": [
+                "name=seccomp,profile=builtin",
+                "name=rootless",
+            ],
+        }
+        command = Command()
+        command.target = "self_hosted"
+
+        with patch.dict(sys.modules, {"docker": fake_docker}):
+            command._check_docker_rootless()
+
+        rootless_check = next(
+            result for result in command.results if result.id == "VB322"
+        )
+        self.assertEqual(rootless_check.status, CheckStatus.OK)
+        self.assertIn("rootless", rootless_check.message)
+
+    def test_podman_version_is_not_compared_with_docker_release_numbers(self):
+        """Podman's release series must not fail Docker's numeric minimum.
+
+        A Podman 5.x API can be Docker-compatible without being older than
+        Docker 24.x. Compatibility is established by the validator acceptance
+        suite, so doctor should identify Podman and explain that requirement.
+        """
+        fake_docker = Mock()
+        fake_docker.from_env.return_value.version.return_value = {
+            "Platform": {"Name": "Podman Engine"},
+            "Version": "5.0.3",
+        }
+        command = Command()
+        command.target = "self_hosted"
+
+        with patch.dict(sys.modules, {"docker": fake_docker}):
+            command._check_docker_version(CheckStatus.ERROR)
+
+        version_check = next(
+            result for result in command.results if result.id == "VB320"
+        )
+        self.assertEqual(version_check.status, CheckStatus.INFO)
+        self.assertIn("Podman Engine 5.0.3", version_check.message)
+        self.assertIn("experimental", version_check.fix_hint)
+
+    def test_rootful_engine_is_supported_but_explains_the_tradeoff(self):
+        """A rootful daemon is informational, not a false emergency.
+
+        Validibot's self-hosted threat model assumes trusted operators choose
+        known validator backends on their own network. Rootless is therefore
+        worthwhile defence in depth, while rootful remains a supported mode.
+        """
+        fake_docker = Mock()
+        fake_docker.from_env.return_value.info.return_value = {
+            "SecurityOptions": ["name=seccomp,profile=builtin"],
+        }
+        command = Command()
+        command.target = "self_hosted"
+
+        with patch.dict(sys.modules, {"docker": fake_docker}):
+            command._check_docker_rootless()
+
+        rootless_check = next(
+            result for result in command.results if result.id == "VB322"
+        )
+        self.assertEqual(rootless_check.status, CheckStatus.INFO)
+        self.assertIn("rootful", rootless_check.message)
+        self.assertIn("Optional hardening", rootless_check.fix_hint)
 
 
 class DoctorLocalComposeApplicabilityTests(TestCase):

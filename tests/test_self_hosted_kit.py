@@ -474,6 +474,23 @@ class ComposeFileShapeTests(SimpleTestCase):
         # New path must appear
         assert ".envs/.production/.self-hosted/" in text
 
+    def test_worker_uses_configurable_container_engine_socket(self):
+        """Only the worker should receive the selected engine API socket.
+
+        This lets operators choose rootful or rootless Docker without changing
+        application code, while avoiding unnecessary daemon authority in the
+        public web service.
+        """
+        compose_path = REPO_ROOT / "docker-compose.production.yml"
+        compose_data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+        services = compose_data["services"]
+        expected_mount = (
+            "${VALIDATOR_CONTAINER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock"
+        )
+
+        assert expected_mount in services["worker"]["volumes"]
+        assert expected_mount not in services["web"]["volumes"]
+
 
 class JustRecipeParityTests(SimpleTestCase):
     """Verify just/self-hosted/ and just/gcp/ have parity for operator recipes.
@@ -532,6 +549,21 @@ class JustRecipeParityTests(SimpleTestCase):
         """
         text = self.SELF_HOSTED_MOD.read_text(encoding="utf-8")
         self.assertIn("set working-directory := '../..'", text)
+
+    def test_doctor_runs_inside_socket_owning_worker(self):
+        """Runtime diagnostics must inspect the worker's real engine access.
+
+        Running doctor in the web service cannot see the intentionally
+        worker-only socket and would report false Docker availability and
+        rootless results.
+        """
+        text = self.SELF_HOSTED_MOD.read_text(encoding="utf-8")
+        doctor_start = text.index("doctor *args:")
+        doctor_end = text.index("\n\n", doctor_start)
+        doctor_block = text[doctor_start:doctor_end]
+
+        assert "exec -T worker python manage.py check_validibot" in doctor_block
+        assert "exec -T web python manage.py check_validibot" not in doctor_block
 
     def test_old_docker_compose_module_gone(self):
         """The historical just/docker-compose/ directory must be gone.

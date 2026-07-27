@@ -12,6 +12,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.db.models import Value
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 from slugify import slugify
@@ -3516,7 +3517,7 @@ class ValidationRun(TimeStampedModel):
     output_retention_policy = models.CharField(
         max_length=32,
         choices=OutputRetention.choices,
-        default=OutputRetention.STORE_30_DAYS,
+        default=OutputRetention.DO_NOT_STORE,
         help_text=_("Snapshot of workflow's output retention policy at run time."),
     )
 
@@ -3661,6 +3662,32 @@ class ValidationRun(TimeStampedModel):
                 self.error or "",
             )
         return self.error or ""
+
+    @property
+    def is_output_retention_expired(self) -> bool:
+        """Return whether a finite output access window has elapsed."""
+
+        return bool(self.output_expires_at and self.output_expires_at <= timezone.now())
+
+    @property
+    def are_outputs_viewable(self) -> bool:
+        """Return whether detailed outputs may still be served.
+
+        ``DO_NOT_STORE`` outputs remain available only during the short,
+        access-controlled interval between terminal completion and the purge
+        worker. Finite policies are denied immediately at their deadline even
+        if physical deletion is awaiting a retry.
+        """
+
+        if self.output_purged_at:
+            return False
+        try:
+            policy = OutputRetention(self.output_retention_policy)
+        except ValueError:
+            return False
+        return not (
+            policy != OutputRetention.DO_NOT_STORE and self.is_output_retention_expired
+        )
 
 
 class ValidationRunSummary(TimeStampedModel):

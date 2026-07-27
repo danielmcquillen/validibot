@@ -14,12 +14,22 @@ Usage:
 """
 
 import logging
+from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Exists
+from django.db.models import OuterRef
+from django.db.models import Q
 from django.utils import timezone
 
+from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.models import PurgeRetry
+from validibot.submissions.models import Submission
+from validibot.submissions.models import SubmissionPurgeNotReadyError
+from validibot.submissions.models import queue_submission_purge
+from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
+from validibot.validations.models import ValidationRun
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +55,17 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
 
         now = timezone.now()
+        self._discover_missing_do_not_store_work(now=now, batch_size=batch_size)
+        # Discovery timestamps new rows with its own current time, which can be
+        # a few milliseconds later than the snapshot above. Refresh before the
+        # due-work query so repaired work is processed in this same sweep.
+        now = timezone.now()
 
-        # Find retries that are due and haven't exceeded max attempts
+        # Privacy-critical deletion is never abandoned. Attempts beyond the
+        # alert threshold continue at the capped backoff interval.
         pending_retries = (
             PurgeRetry.objects.filter(
                 next_retry_at__lte=now,
-                attempt_count__lt=PurgeRetry.MAX_ATTEMPTS,
             )
             .select_related("submission")
             .order_by("next_retry_at")[:batch_size]
@@ -102,6 +117,16 @@ class Command(BaseCommand):
                 )
                 success_count += 1
 
+            except SubmissionPurgeNotReadyError:
+                # A sibling run can become active between queueing and this
+                # worker acquiring the submission. Deferral is normal lifecycle
+                # state, not a failed deletion attempt.
+                retry.next_retry_at = timezone.now() + timedelta(minutes=5)
+                retry.save(update_fields=["next_retry_at"])
+                skip_count += 1
+                self.stdout.write(
+                    f"  Deferred (active run): {submission.id}",
+                )
             except Exception as e:
                 fail_count += 1
                 retry.record_failure(str(e))
@@ -134,14 +159,47 @@ class Command(BaseCommand):
                 )
             )
 
-        # Report on retries that have exceeded max attempts
+        # Report on retries that crossed the operator alert threshold while
+        # continuing to retry them automatically.
         stale_count = PurgeRetry.objects.filter(
             attempt_count__gte=PurgeRetry.MAX_ATTEMPTS,
         ).count()
         if stale_count > 0:
             self.stdout.write(
                 self.style.WARNING(
-                    f"Warning: {stale_count} retry(ies) have exceeded max attempts "
-                    "and require manual intervention."
+                    f"Warning: {stale_count} retry(ies) crossed the alert threshold; "
+                    "automatic retries will continue and operators should investigate."
                 )
             )
+
+    @staticmethod
+    def _discover_missing_do_not_store_work(*, now, batch_size: int) -> None:
+        """Repair missed terminal hooks by recreating absent purge work.
+
+        A no-run submission is eligible only after a one-hour admission grace,
+        preventing a scheduler race between submission creation and run
+        creation while still cleaning up abandoned launches.
+        """
+
+        related_runs = ValidationRun.objects.filter(submission_id=OuterRef("pk"))
+        active_runs = related_runs.exclude(
+            status__in=VALIDATION_RUN_TERMINAL_STATUSES,
+        )
+        candidates = (
+            Submission.objects.filter(
+                retention_policy=SubmissionRetention.DO_NOT_STORE,
+                content_purged_at__isnull=True,
+                purge_retries__isnull=True,
+            )
+            .annotate(
+                has_runs=Exists(related_runs),
+                has_active_runs=Exists(active_runs),
+            )
+            .filter(has_active_runs=False)
+            .filter(
+                Q(has_runs=True) | Q(created__lte=now - timedelta(hours=1)),
+            )
+            .order_by("created")[:batch_size]
+        )
+        for submission in candidates:
+            queue_submission_purge(submission)

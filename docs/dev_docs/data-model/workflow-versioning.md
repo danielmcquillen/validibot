@@ -313,9 +313,9 @@ the Django stack. The manifest contains:
   list of field names the retention policy stripped from
   this manifest.
 - Payload digests: `input_sha256` (always; preimage-resistant and
-  safe even under `DO_NOT_STORE`) and `output_envelope_sha256`
-  (gated by retention — present for `STORE_*` runs, omitted for
-  `DO_NOT_STORE` and recorded as a redaction).
+  safe even under input `DO_NOT_STORE`) and `output_envelope_sha256`
+  (gated by the independent output policy — present for output `STORE_*`
+  runs, omitted for output `DO_NOT_STORE`, and recorded as a redaction).
 
 The stamper lives at
 `validibot/validations/services/evidence.py`. Both run-completion
@@ -331,8 +331,8 @@ is unaffected. The auditor then surfaces the gap.
 The decision of *what* to include is centralised in
 `validibot/validations/services/evidence_retention.py`. The
 `RetentionPolicy` class exposes static methods like
-`includes_input_hash(retention_class)` and
-`includes_output_hash(retention_class)`; the builder consults them
+`includes_input_hash(input_retention)` and
+`includes_output_hash(output_retention)`; the builder consults them
 when populating `payload_digests`. Stripped fields are recorded in
 `retention.redactions_applied` so verifiers see "the policy
 deliberately omitted these" rather than guessing whether absence

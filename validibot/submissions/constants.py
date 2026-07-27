@@ -13,10 +13,10 @@ class SubmissionRetention(models.TextChoices):
     content (file/inline data) is removed.
 
     Options:
-        DO_NOT_STORE: Delete immediately after validation completes successfully.
+        DO_NOT_STORE: Queue deletion as soon as validation reaches any terminal state.
                       This is the most privacy-respecting option.
         STORE_1_DAY: Keep for 24 hours (for quick re-downloads).
-        STORE_7_DAYS: Keep for 1 week (default, good balance).
+        STORE_7_DAYS: Keep for 1 week.
         STORE_30_DAYS: Keep for 1 month (for longer review cycles).
         STORE_PERMANENTLY: Never auto-delete (manual deletion only).
     """
@@ -37,17 +37,18 @@ class OutputRetention(models.TextChoices):
     Retention policy for validator outputs, artifacts, and findings.
 
     Controls how long validation results are stored before being purged.
-    Unlike submission retention, outputs cannot be set to DO_NOT_STORE
-    because users need time to download/review results.
-
     Options:
-        STORE_7_DAYS: Keep for 1 week (minimum for users to review).
-        STORE_30_DAYS: Keep for 1 month (default, good for most use cases).
+        DO_NOT_STORE: Queue deletion as soon as the run reaches a terminal state.
+        STORE_1_DAY: Keep for 24 hours (for short review windows).
+        STORE_7_DAYS: Keep for 1 week.
+        STORE_30_DAYS: Keep for 1 month.
         STORE_90_DAYS: Keep for 3 months (for audit/compliance needs).
         STORE_1_YEAR: Keep for 1 year (for long-term records).
         STORE_PERMANENTLY: Never auto-delete (manual deletion only).
     """
 
+    DO_NOT_STORE = "DO_NOT_STORE", _("Do not retain (purge after validation)")
+    STORE_1_DAY = "STORE_1_DAY", _("Store for 1 day")
     STORE_7_DAYS = "STORE_7_DAYS", _("Store for 7 days")
     STORE_30_DAYS = "STORE_30_DAYS", _("Store for 30 days")
     STORE_90_DAYS = "STORE_90_DAYS", _("Store for 90 days")
@@ -66,6 +67,8 @@ SUBMISSION_RETENTION_DAYS: dict[str, int | None] = {
 
 
 OUTPUT_RETENTION_DAYS: dict[str, int | None] = {
+    OutputRetention.DO_NOT_STORE: 0,
+    OutputRetention.STORE_1_DAY: 1,
     OutputRetention.STORE_7_DAYS: 7,
     OutputRetention.STORE_30_DAYS: 30,
     OutputRetention.STORE_90_DAYS: 90,
@@ -85,7 +88,12 @@ def get_submission_retention_timedelta(policy: str) -> timedelta | None:
         timedelta for the policy, or None if the policy is STORE_PERMANENTLY.
         Returns timedelta(0) for DO_NOT_STORE (immediate deletion).
     """
-    days = SUBMISSION_RETENTION_DAYS.get(policy)
+    if policy not in SUBMISSION_RETENTION_DAYS:
+        # Retention must fail closed. A corrupt/legacy value must never turn
+        # into permanent storage merely because ``dict.get`` also returns
+        # ``None`` for the intentionally permanent policy.
+        return timedelta(0)
+    days = SUBMISSION_RETENTION_DAYS[policy]
     if days is None:
         return None
     return timedelta(days=days)
@@ -100,8 +108,11 @@ def get_output_retention_timedelta(policy: str) -> timedelta | None:
 
     Returns:
         timedelta for the policy, or None if the policy is STORE_PERMANENTLY.
+        Unknown values fail closed to timedelta(0).
     """
-    days = OUTPUT_RETENTION_DAYS.get(policy)
+    if policy not in OUTPUT_RETENTION_DAYS:
+        return timedelta(0)
+    days = OUTPUT_RETENTION_DAYS[policy]
     if days is None:
         return None
     return timedelta(days=days)

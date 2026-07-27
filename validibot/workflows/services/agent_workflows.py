@@ -82,7 +82,8 @@ def _public_x402_predicate() -> Q:
     4. Price is set (positive): ``agent_price_cents > 0``. A
        price of 0 or null means the row was created mid-config and
        doesn't yet describe a paying transaction.
-    5. Retention invariant for x402: ``input_retention=DO_NOT_STORE``.
+    5. Retention invariant for x402: both input and output retention are
+       ``DO_NOT_STORE``.
        x402 is anonymous per-call payment; storing the input would
        undermine the privacy model the operator agreed to. The
        form-level cascade enforces this for human-driven edits;
@@ -93,6 +94,7 @@ def _public_x402_predicate() -> Q:
     tombstoned" so we don't silently exclude pre-migration rows.
     """
     # Local import — see ``AgentWorkflowResolver.list_published``.
+    from validibot.submissions.constants import OutputRetention
     from validibot.submissions.constants import SubmissionRetention
     from validibot.workflows.constants import AgentBillingMode
 
@@ -103,6 +105,7 @@ def _public_x402_predicate() -> Q:
         & Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
         & Q(agent_price_cents__gt=0)
         & Q(input_retention=SubmissionRetention.DO_NOT_STORE)
+        & Q(output_retention=OutputRetention.DO_NOT_STORE)
         & (Q(is_tombstoned=False) | Q(is_tombstoned__isnull=True))
         & (Q(is_archived=False) | Q(is_archived__isnull=True))
     )
@@ -204,7 +207,7 @@ class AgentWorkflowResolver:
         subset of the publishing predicate (only
         ``agent_public_discovery``, ``agent_access_enabled``, and
         ``billing_mode``).  That meant archived rows, zero-price
-        rows, and rows whose ``input_retention`` was not
+        rows, and rows whose input or output retention was not
         ``DO_NOT_STORE`` could pass the relaxed gate (when those
         rows skipped ``clean()``) and create runs against a workflow
         that wouldn't actually appear in the public catalog.

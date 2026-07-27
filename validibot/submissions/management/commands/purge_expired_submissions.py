@@ -22,9 +22,14 @@ import logging
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Exists
+from django.db.models import OuterRef
 from django.utils import timezone
 
 from validibot.submissions.models import Submission
+from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
+from validibot.validations.models import ValidationRun
+from validibot.validations.services.retention import schedule_submission_retention
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +62,8 @@ class Command(BaseCommand):
         max_batches = options["max_batches"]
 
         now = timezone.now()
+        self._repair_completion_based_deadlines(now=now)
+        now = timezone.now()
         total_purged = 0
         total_failed = 0
         batch_count = 0
@@ -73,10 +80,18 @@ class Command(BaseCommand):
                 break
 
             # Find expired submissions that haven't been purged yet
-            expired_submissions = Submission.objects.filter(
-                expires_at__lte=now,
-                content_purged_at__isnull=True,
-            ).order_by("expires_at")[:batch_size]
+            active_runs = ValidationRun.objects.filter(
+                submission_id=OuterRef("pk"),
+            ).exclude(status__in=VALIDATION_RUN_TERMINAL_STATUSES)
+            expired_submissions = (
+                Submission.objects.filter(
+                    expires_at__lte=now,
+                    content_purged_at__isnull=True,
+                )
+                .annotate(has_active_runs=Exists(active_runs))
+                .filter(has_active_runs=False)
+                .order_by("expires_at")[:batch_size]
+            )
 
             # Convert to list to avoid queryset changes during iteration
             submissions_to_process = list(expired_submissions)
@@ -147,3 +162,22 @@ class Command(BaseCommand):
                     "Check logs and retry."
                 )
             )
+
+    @staticmethod
+    def _repair_completion_based_deadlines(*, now) -> None:
+        """Repair finite deadlines when a terminal signal was missed.
+
+        Only provisionally expired rows need repair. Recomputing them from the
+        latest terminal run either moves the deadline to the promised review
+        window or leaves the row eligible for this same command invocation.
+        """
+        candidates = (
+            Submission.objects.filter(
+                expires_at__lte=now,
+                content_purged_at__isnull=True,
+            )
+            .select_related()
+            .iterator(chunk_size=200)
+        )
+        for submission in candidates:
+            schedule_submission_retention(submission)

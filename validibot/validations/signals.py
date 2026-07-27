@@ -10,6 +10,7 @@ Receivers should be connected in the consuming app's AppConfig.ready() method.
 """
 
 from django.dispatch import Signal
+from django.dispatch import receiver
 
 # Fired after a validation run is successfully created.
 # Provides: validation_run (ValidationRun), workflow_type (str)
@@ -37,3 +38,13 @@ validation_step_completed = Signal()
 # hold.
 # Provides: validation_run (ValidationRun)
 validation_run_finalized = Signal()
+
+
+@receiver(validation_run_finalized, dispatch_uid="validibot_schedule_run_retention")
+def _schedule_run_retention(sender, *, validation_run, **kwargs) -> None:
+    """Apply the community retention contract to every terminal run signal."""
+
+    del sender, kwargs
+    from validibot.validations.services.retention import schedule_terminal_retention
+
+    schedule_terminal_retention(validation_run)

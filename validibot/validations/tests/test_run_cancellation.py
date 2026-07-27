@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
+from validibot.submissions.models import PurgeRetry
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.services.validation_run import ValidationRunService
@@ -57,7 +58,11 @@ class TestValidationRunCancellation:
         updated_run.refresh_from_db()
         attempt.refresh_from_db()
         assert updated_run.status == ValidationRunStatus.CANCELED
+        assert updated_run.output_expires_at == updated_run.ended_at
         assert attempt.state == "CANCELED"
+        assert PurgeRetry.objects.filter(
+            submission=updated_run.submission,
+        ).exists()
         runner.cancel.assert_called_once_with(execution_id)
 
     @patch(RUNNER_FACTORY_PATH)

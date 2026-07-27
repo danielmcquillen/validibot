@@ -1,9 +1,9 @@
 """Tests for the evidence-manifest retention policy + Session B builder wiring.
 
 ADR-2026-04-27 Phase 4 Session B (tasks 5-7 + remaining 11): the
-manifest builder respects the workflow's retention class. Input
-hashes always land in the manifest (preimage-resistant; safe under
-DO_NOT_STORE); output hashes are gated.
+manifest builder respects independent input and output policies. Input hashes
+always land in the manifest (preimage-resistant; safe under DO_NOT_STORE);
+output hashes follow the output policy.
 
 What this file pins down
 ========================
@@ -12,10 +12,10 @@ What this file pins down
    no DB / file IO.
 2. ``EvidenceManifestBuilder.build`` consults the policy and
    populates ``payload_digests`` accordingly.
-3. ``DO_NOT_STORE`` runs produce a manifest with input hash present
-   but output hash absent. The redaction is recorded in
+3. Output ``DO_NOT_STORE`` runs produce a manifest with input hash present but
+   output hash absent. The redaction is recorded in
    ``retention.redactions_applied``.
-4. Non-``DO_NOT_STORE`` runs include both hashes.
+4. Explicit output-storage tiers include both hashes, independently of input.
 5. The manifest's existing identity / contract / validator
    metadata is unchanged regardless of retention — the contract
    that proves "the run happened" survives every retention class.
@@ -28,6 +28,7 @@ from datetime import datetime
 
 import pytest
 
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.tests.factories import SubmissionFactory
@@ -50,6 +51,7 @@ pytestmark = pytest.mark.django_db
 def _completed_run_with_hashes(
     *,
     input_retention: str,
+    output_retention: str = OutputRetention.STORE_30_DAYS,
     input_hash: str = "a" * 64,
     output_hash: str = "b" * 64,
 ):
@@ -57,6 +59,7 @@ def _completed_run_with_hashes(
     workflow = WorkflowFactory(
         allowed_file_types=[SubmissionFileType.JSON],
         input_retention=input_retention,
+        output_retention=output_retention,
     )
     WorkflowStepFactory(workflow=workflow)
     submission = SubmissionFactory(
@@ -69,6 +72,7 @@ def _completed_run_with_hashes(
         status=ValidationRunStatus.SUCCEEDED,
         ended_at=datetime(2026, 5, 2, tzinfo=UTC),
         output_hash=output_hash,
+        output_retention_policy=output_retention,
     )
     return run
 
@@ -94,33 +98,39 @@ class TestRetentionPolicy:
     def test_output_hash_omitted_for_do_not_store(self):
         """DO_NOT_STORE strips the output hash."""
         assert (
-            RetentionPolicy.includes_output_hash(SubmissionRetention.DO_NOT_STORE)
-            is False
+            RetentionPolicy.includes_output_hash(OutputRetention.DO_NOT_STORE) is False
         )
 
     def test_output_hash_included_for_store_tiers(self):
         """STORE_* retention tiers include the output hash."""
         for tier in [
-            SubmissionRetention.STORE_1_DAY,
-            SubmissionRetention.STORE_7_DAYS,
-            SubmissionRetention.STORE_30_DAYS,
-            SubmissionRetention.STORE_PERMANENTLY,
+            OutputRetention.STORE_1_DAY,
+            OutputRetention.STORE_7_DAYS,
+            OutputRetention.STORE_30_DAYS,
+            OutputRetention.STORE_90_DAYS,
+            OutputRetention.STORE_1_YEAR,
+            OutputRetention.STORE_PERMANENTLY,
         ]:
             assert RetentionPolicy.includes_output_hash(tier) is True
 
     def test_redactions_for_do_not_store_lists_output(self):
         """DO_NOT_STORE redactions list mentions the omitted output digest field."""
         redactions = RetentionPolicy.redactions_for(
-            SubmissionRetention.DO_NOT_STORE,
+            OutputRetention.DO_NOT_STORE,
         )
         assert PAYLOAD_DIGEST_OUTPUT in redactions
 
     def test_redactions_empty_for_permissive_retention(self):
         """Permissive retention -> nothing was redacted, list is empty."""
         redactions = RetentionPolicy.redactions_for(
-            SubmissionRetention.STORE_30_DAYS,
+            OutputRetention.STORE_30_DAYS,
         )
         assert redactions == []
+
+    def test_unknown_output_policy_fails_closed(self):
+        """Corrupt output policy cannot accidentally retain a derived digest."""
+        assert RetentionPolicy.includes_output_hash("UNKNOWN") is False
+        assert PAYLOAD_DIGEST_OUTPUT in RetentionPolicy.redactions_for("UNKNOWN")
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -149,6 +159,7 @@ class TestBuilderUnderDoNotStore:
         """The output hash is dropped under DO_NOT_STORE."""
         run = _completed_run_with_hashes(
             input_retention=SubmissionRetention.DO_NOT_STORE,
+            output_retention=OutputRetention.DO_NOT_STORE,
             output_hash="d" * 64,
         )
         manifest = EvidenceManifestBuilder.build(run)
@@ -164,6 +175,7 @@ class TestBuilderUnderDoNotStore:
         """
         run = _completed_run_with_hashes(
             input_retention=SubmissionRetention.DO_NOT_STORE,
+            output_retention=OutputRetention.DO_NOT_STORE,
         )
         manifest = EvidenceManifestBuilder.build(run)
         assert PAYLOAD_DIGEST_OUTPUT in manifest.retention.redactions_applied
@@ -190,9 +202,10 @@ class TestBuilderUnderPermissiveRetention:
     """Non-DO_NOT_STORE runs include the full payload-digest pair."""
 
     def test_store_30_days_includes_both_hashes(self):
-        """Both input and output hashes land in the manifest."""
+        """Stored output includes its digest even when input is no-retention."""
         run = _completed_run_with_hashes(
-            input_retention=SubmissionRetention.STORE_30_DAYS,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
+            output_retention=OutputRetention.STORE_30_DAYS,
             input_hash="e" * 64,
             output_hash="f" * 64,
         )
@@ -204,6 +217,7 @@ class TestBuilderUnderPermissiveRetention:
         """Nothing was stripped -> redactions_applied stays empty."""
         run = _completed_run_with_hashes(
             input_retention=SubmissionRetention.STORE_PERMANENTLY,
+            output_retention=OutputRetention.STORE_PERMANENTLY,
         )
         manifest = EvidenceManifestBuilder.build(run)
         assert manifest.retention.redactions_applied == []
@@ -221,6 +235,7 @@ class TestManifestHashStabilityWithDigests:
         """Same input -> same canonical bytes -> same hash, with digests populated."""
         run = _completed_run_with_hashes(
             input_retention=SubmissionRetention.STORE_30_DAYS,
+            output_retention=OutputRetention.STORE_30_DAYS,
             input_hash="1" * 64,
             output_hash="2" * 64,
         )
@@ -239,10 +254,12 @@ class TestManifestHashStabilityWithDigests:
         redaction.
         """
         run_dns = _completed_run_with_hashes(
-            input_retention=SubmissionRetention.DO_NOT_STORE,
+            input_retention=SubmissionRetention.STORE_30_DAYS,
+            output_retention=OutputRetention.DO_NOT_STORE,
         )
         run_30 = _completed_run_with_hashes(
             input_retention=SubmissionRetention.STORE_30_DAYS,
+            output_retention=OutputRetention.STORE_30_DAYS,
         )
         m_dns = EvidenceManifestBuilder.build(run_dns)
         m_30 = EvidenceManifestBuilder.build(run_30)

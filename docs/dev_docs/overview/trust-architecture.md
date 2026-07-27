@@ -194,7 +194,8 @@ Model `clean()` is useful but not enough — direct `QuerySet.update()`, data mi
 
 - x402 billing requires positive `agent_price_cents`;
 - `x402_enabled` requires x402 billing mode;
-- x402 billing requires `data_retention=DO_NOT_STORE`;
+- x402 billing requires both `input_retention=DO_NOT_STORE` and
+  `output_retention=DO_NOT_STORE`;
 - tombstoned workflows cannot have `x402_enabled=True`;
 - archived workflows cannot have `x402_enabled=True`;
 - submission content is either inline or file, not both;

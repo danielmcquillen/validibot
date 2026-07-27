@@ -5,11 +5,11 @@ This command processes validation runs that have passed their output retention
 period (output_expires_at < now) and purges their outputs (findings, artifacts,
 and storage files). The run record is preserved for audit trail.
 
-This is separate from purge_expired_submissions which handles user-submitted
-files. Output retention is typically longer than submission retention since
-users need time to review and download validation results.
+This is separate from purge_expired_submissions, which handles user-submitted
+files. Authors configure the two windows independently and both default to no
+post-processing retention.
 
-This command should be scheduled to run periodically (e.g., hourly via
+This command should be scheduled to run frequently (every five minutes via
 Cloud Scheduler or cron).
 
 Usage:
@@ -23,13 +23,18 @@ Environment:
 """
 
 import logging
+from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from validibot.submissions.constants import OutputRetention
+from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.models import ValidationRun
+from validibot.validations.services.retention import purge_run_outputs
+from validibot.validations.services.retention import schedule_terminal_retention
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +67,7 @@ class Command(BaseCommand):
         max_batches = options["max_batches"]
 
         now = timezone.now()
+        self._repair_missing_expiries()
         total_purged = 0
         total_failed = 0
         batch_count = 0
@@ -77,12 +83,26 @@ class Command(BaseCommand):
                 )
                 break
 
-            # Find runs with expired outputs that haven't been purged yet
-            # Exclude runs with STORE_PERMANENTLY policy (output_expires_at is null)
+            # Terminal status is a hard safety boundary: launch-time clocks or
+            # corrupt rows must never let a sweeper delete a running bundle.
+            # DO_NOT_STORE rows are independently discoverable even if their
+            # terminal signal failed before writing output_expires_at.
             expired_runs = (
                 ValidationRun.objects.filter(
-                    output_expires_at__lte=now,
+                    status__in=VALIDATION_RUN_TERMINAL_STATUSES,
                     output_purged_at__isnull=True,
+                )
+                .filter(
+                    (
+                        Q(output_expires_at__lte=now)
+                        & ~Q(
+                            output_retention_policy=OutputRetention.DO_NOT_STORE,
+                        )
+                    )
+                    | (
+                        Q(output_retention_policy=OutputRetention.DO_NOT_STORE)
+                        & Q(ended_at__lte=now - timedelta(minutes=1))
+                    ),
                 )
                 .exclude(
                     output_retention_policy=OutputRetention.STORE_PERMANENTLY,
@@ -123,7 +143,7 @@ class Command(BaseCommand):
 
                 try:
                     with transaction.atomic():
-                        self._purge_run_outputs(run)
+                        purge_run_outputs(run)
                     total_purged += 1
                     self.stdout.write(self.style.SUCCESS(f"  Purged outputs: {run.id}"))
                 except Exception as e:
@@ -158,73 +178,19 @@ class Command(BaseCommand):
                 )
             )
 
-    def _purge_run_outputs(self, run: ValidationRun) -> None:
-        """
-        Purge all outputs for a validation run.
+    @staticmethod
+    def _repair_missing_expiries() -> None:
+        """Rebuild terminal deadlines missed by a failed signal receiver."""
 
-        This includes:
-        - Findings (ValidationFinding records)
-        - Artifacts (Artifact records and their files)
-        - Storage files (run directory in data storage)
-
-        The run record and summary are preserved for audit trail.
-        """
-        from validibot.submissions.models import _delete_run_files
-        from validibot.validations.models import ValidationFinding
-
-        run_id = str(run.id)
-
-        # Delete findings
-        findings_count = run.findings.count()
-        if findings_count > 0:
-            ValidationFinding.objects.filter(validation_run=run).delete()
-            logger.info(
-                "Deleted findings for run",
-                extra={"run_id": run_id, "findings_count": findings_count},
+        missing = (
+            ValidationRun.objects.filter(
+                status__in=VALIDATION_RUN_TERMINAL_STATUSES,
+                output_purged_at__isnull=True,
+                output_expires_at__isnull=True,
             )
-
-        # Delete artifacts and their files
-        artifacts = list(run.artifacts.all())
-        for artifact in artifacts:
-            try:
-                if artifact.file:
-                    artifact.file.delete(save=False)
-            except Exception:
-                logger.exception(
-                    "Failed to delete artifact file",
-                    extra={"run_id": run_id, "artifact_id": artifact.id},
-                )
-                # The artifact row is the durable identity required to retry
-                # this external delete. Propagate the failure so the enclosing
-                # transaction restores findings/artifact rows and never stamps
-                # output_purged_at while bytes may remain.
-                raise
-            artifact.delete()
-
-        if artifacts:
-            logger.info(
-                "Deleted artifacts for run",
-                extra={"run_id": run_id, "artifacts_count": len(artifacts)},
-            )
-
-        # Delete run files from the launcher's execution-bundle location.
-        # _delete_run_files targets the SAME raw path the launcher writes to
-        # (the validation bucket's runs/ prefix in GCS, or MEDIA_ROOT/files/runs/
-        # locally) — NOT the DataStorage abstraction's private/ prefix, which the
-        # run bundle is never written to. It logs and re-raises on failure, so
-        # the transaction.atomic() in handle() rolls back and the run is not
-        # marked purged while objects may remain in storage.
-        _delete_run_files(run)
-
-        # Mark run as purged
-        run.output_purged_at = timezone.now()
-        run.output_expires_at = None  # No longer pending
-        run.save(update_fields=["output_purged_at", "output_expires_at"])
-
-        logger.info(
-            "Purged run outputs",
-            extra={
-                "run_id": run_id,
-                "output_retention_policy": run.output_retention_policy,
-            },
+            .exclude(output_retention_policy=OutputRetention.STORE_PERMANENTLY)
+            .select_related("submission")
+            .iterator(chunk_size=200)
         )
+        for run in missing:
+            schedule_terminal_retention(run)

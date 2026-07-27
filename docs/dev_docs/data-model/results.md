@@ -143,7 +143,21 @@ Step names and order are denormalized into the summary so the data remains meani
 
 Each workflow defines two retention policies that control how long results are kept:
 
-- **`data_retention`** -- how long to keep user-submitted files. Default is `DO_NOT_STORE` (files are deleted immediately after validation completes; the submission record is preserved).
-- **`output_retention`** -- how long to keep validation outputs (findings, artifacts). Default is 30 days. Options range from 7 days to permanent.
+- **`input_retention`** -- how long to keep user-submitted files after all
+  consumers finish.
+- **`output_retention`** -- how long to keep detailed output, including
+  findings, artifacts, step input/output values, detailed errors, output
+  envelopes/hashes, callback result locations, and evidence files.
 
-When outputs expire, the `purge_expired_outputs` management command deletes findings and artifact files. The summary records are deliberately preserved, so dashboards and historical pass-rate charts continue to work even after the detailed results are gone.
+Both policies default to `DO_NOT_STORE`; longer storage is an explicit author
+choice. Output deadlines start at `ValidationRun.ended_at`, not launch time.
+Finite output access is denied at the deadline even if physical deletion is
+temporarily retrying.
+
+`purge_expired_outputs` runs every five minutes. It deletes the complete
+execution bundle and detailed output projections, but preserves the run's
+terminal status, timing, aggregate summary counts, and purge timestamp so
+dashboards and historical pass-rate charts continue to work. Unknown policies
+fail closed to no retention, active runs are never eligible, missed terminal
+signals are repaired by the sweep, and deletion failures remain eligible for
+the next run.

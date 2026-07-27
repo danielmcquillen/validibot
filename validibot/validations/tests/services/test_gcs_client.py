@@ -448,3 +448,60 @@ def test_delete_prefix_deletes_all_blobs(mock_storage_client):
     mock_bucket.list_blobs.assert_called_once_with(prefix="runs/org/run/")
     blob_a.delete.assert_called_once()
     blob_b.delete.assert_called_once()
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_delete_prefix_except_preserves_only_declared_outputs(mock_storage_client):
+    """Selective input cleanup must not shorten output retention.
+
+    Root-level copied inputs and input envelopes are deleted, while the exact
+    output envelope and every object under outputs/ remain available.
+    """
+    from validibot.validations.services.cloud_run.gcs_client import delete_prefix_except
+
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    input_blob = MagicMock(name="input_blob")
+    input_blob.name = "runs/org/run/attempts/a/input.json"
+    copied_input_blob = MagicMock(name="copied_input_blob")
+    copied_input_blob.name = "runs/org/run/attempts/a/customer-model.json"
+    output_envelope_blob = MagicMock(name="output_envelope_blob")
+    output_envelope_blob.name = "runs/org/run/attempts/a/output.json"
+    output_artifact_blob = MagicMock(name="output_artifact_blob")
+    output_artifact_blob.name = "runs/org/run/attempts/a/outputs/report.json"
+    mock_storage_client.return_value = mock_client
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.list_blobs.return_value = [
+        input_blob,
+        copied_input_blob,
+        output_envelope_blob,
+        output_artifact_blob,
+    ]
+
+    count = delete_prefix_except(
+        "gs://test-bucket/runs/org/run/",
+        keep_uris=("gs://test-bucket/runs/org/run/attempts/a/output.json",),
+        keep_prefixes=("gs://test-bucket/runs/org/run/attempts/a/outputs/",),
+    )
+
+    assert count == 2  # noqa: PLR2004
+    input_blob.delete.assert_called_once()
+    copied_input_blob.delete.assert_called_once()
+    output_envelope_blob.delete.assert_not_called()
+    output_artifact_blob.delete.assert_not_called()
+
+
+@patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
+def test_delete_prefix_except_rejects_preserved_uri_outside_target(
+    mock_storage_client,
+):
+    """A malformed keep URI must never widen a privacy-critical exception."""
+    from validibot.validations.services.cloud_run.gcs_client import delete_prefix_except
+
+    with pytest.raises(ValueError, match="must be within"):
+        delete_prefix_except(
+            "gs://test-bucket/runs/org/run/",
+            keep_uris=("gs://test-bucket/runs/other-run/output.json",),
+        )
+
+    mock_storage_client.assert_not_called()

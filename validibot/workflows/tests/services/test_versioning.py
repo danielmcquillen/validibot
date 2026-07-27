@@ -448,7 +448,7 @@ class WorkflowVersioningServiceCloneTests(TestCase):
             # for submissions (anonymous-per-call access incompatible
             # with persistent storage).
             input_retention=SubmissionRetention.DO_NOT_STORE,
-            output_retention=OutputRetention.STORE_30_DAYS,
+            output_retention=OutputRetention.DO_NOT_STORE,
             x402_enabled=True,
             mcp_enabled=True,
             agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,

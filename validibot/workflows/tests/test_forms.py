@@ -763,7 +763,7 @@ def _post_payload_for(workflow, **overrides):
             workflow.allowed_file_types or [SubmissionFileType.JSON]
         ),
         "input_retention": workflow.input_retention or DataRetention.DO_NOT_STORE,
-        "output_retention": workflow.output_retention or "STORE_30_DAYS",
+        "output_retention": workflow.output_retention or "DO_NOT_STORE",
         "version": workflow.version,
         "history_policy": workflow.history_policy,
         "is_active": "on" if workflow.is_active else "",
@@ -772,18 +772,11 @@ def _post_payload_for(workflow, **overrides):
     return payload
 
 
-def test_workflow_form_blocks_narrowing_retention_on_locked_workflow():
-    """Locked workflow + SHORTENED retention -> form invalid with helpful error.
+def test_workflow_form_allows_shortening_retention_on_locked_workflow():
+    """Locked workflow + SHORTENED retention -> privacy-safe in-place edit.
 
-    Why this matters: ``is_locked`` is the marker that a workflow's
-    contract is the source of truth for past runs. Shortening retention
-    from STORE_PERMANENTLY to DO_NOT_STORE would purge submissions sooner
-    than past runs were promised — a real integrity breach for any
-    downstream credential or audit trail that referenced them.
-
-    Extending retention is allowed in place (covered by the
-    ``allows_extending_retention`` test below) — only shortening trips
-    the gate.
+    Run rows snapshot their own policy, so reducing the future storage window
+    cannot invalidate old runs and should not create privacy friction.
     """
     from validibot.submissions.constants import DataRetention
 
@@ -803,23 +796,14 @@ def test_workflow_form_blocks_narrowing_retention_on_locked_workflow():
         user=workflow.user,
     )
 
-    assert not form.is_valid()
-    assert "input_retention" in form.errors
-    # The error message should be direction-aware — name shortening
-    # specifically and point at the new-version escape hatch.
-    error_text = " ".join(form.errors["input_retention"]).lower()
-    assert "shorten" in error_text
-    assert "new version" in error_text
+    assert form.is_valid(), form.errors
 
 
-def test_workflow_form_allows_extending_retention_on_locked_workflow():
-    """Locked workflow + EXTENDED retention -> form valid (safe widening).
+def test_workflow_form_blocks_extending_retention_on_locked_workflow():
+    """Locked workflow + EXTENDED retention -> require explicit new version.
 
-    Extending retention is a safe in-place edit: every past run was
-    promised at most the old retention horizon, and the new horizon is
-    longer-or-equal. No past run is invalidated by keeping data longer
-    than promised. Requiring a new-version clone for this would be
-    pure friction.
+    Keeping future payloads longer expands a published workflow's privacy
+    scope. Versioning makes that opt-in visible and auditable.
     """
     from validibot.submissions.constants import DataRetention
 
@@ -839,7 +823,11 @@ def test_workflow_form_allows_extending_retention_on_locked_workflow():
         user=workflow.user,
     )
 
-    assert form.is_valid(), form.errors
+    assert not form.is_valid()
+    assert "input_retention" in form.errors
+    error_text = " ".join(form.errors["input_retention"]).lower()
+    assert "extend" in error_text
+    assert "new workflow version" in error_text
 
 
 def test_workflow_form_allows_widening_file_types_on_locked_workflow():

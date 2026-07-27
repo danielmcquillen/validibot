@@ -145,7 +145,8 @@ SCHEDULED_ADMIN_TASKS: tuple[ScheduledAdminTaskDefinition, ...] = (
         name="Purge Expired Outputs",
         celery_task="validibot.purge_expired_outputs",
         api_endpoint="/api/v1/scheduled/purge-expired-outputs/",
-        schedule_cron="0 * * * *",  # Hourly at :00
+        schedule_cron="*/5 * * * *",  # Prompt DO_NOT_STORE enforcement
+        schedule_interval_minutes=5,
         description="Remove validation output content past retention period",
     ),
     ScheduledAdminTaskDefinition(

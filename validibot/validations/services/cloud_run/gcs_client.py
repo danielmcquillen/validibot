@@ -238,6 +238,62 @@ def delete_prefix(uri_prefix: str) -> int:
     return len(blobs)
 
 
+def delete_prefix_except(
+    uri_prefix: str,
+    *,
+    keep_uris: tuple[str, ...] = (),
+    keep_prefixes: tuple[str, ...] = (),
+) -> int:
+    """Delete objects below a GCS prefix except explicitly retained outputs.
+
+    Input and output retention are independent. Input cleanup therefore cannot
+    use :func:`delete_prefix` while a run's output window remains open. Every
+    retained URI/prefix must be inside the target prefix and in the same
+    bucket; rejecting anything else prevents a malformed database value from
+    silently widening the preservation set.
+
+    Args:
+        uri_prefix: The validation-run prefix to scan.
+        keep_uris: Exact object URIs to preserve.
+        keep_prefixes: Object-prefix URIs to preserve recursively.
+
+    Returns:
+        Number of objects deleted.
+
+    Raises:
+        ValueError: If a retained location is outside ``uri_prefix``.
+    """
+    bucket_name, blob_prefix = parse_gcs_uri(uri_prefix)
+    if not blob_prefix.endswith("/"):
+        blob_prefix += "/"
+
+    def _validated_path(uri: str, *, directory: bool) -> str:
+        keep_bucket, keep_path = parse_gcs_uri(uri)
+        if keep_bucket != bucket_name or not keep_path.startswith(blob_prefix):
+            msg = f"Retained URI must be within {uri_prefix}: {uri}"
+            raise ValueError(msg)
+        if directory and not keep_path.endswith("/"):
+            keep_path += "/"
+        return keep_path
+
+    exact_paths = {_validated_path(uri, directory=False) for uri in keep_uris}
+    directory_paths = tuple(
+        _validated_path(uri, directory=True) for uri in keep_prefixes
+    )
+
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    deleted = 0
+    for blob in bucket.list_blobs(prefix=blob_prefix):
+        if blob.name in exact_paths:
+            continue
+        if any(blob.name.startswith(path) for path in directory_paths):
+            continue
+        blob.delete()
+        deleted += 1
+    return deleted
+
+
 def upload_file_from_path(
     local_path: Path,
     uri: str,

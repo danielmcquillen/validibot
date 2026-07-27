@@ -29,6 +29,7 @@ from validibot.actions.constants import CredentialActionType
 from validibot.actions.models import Action
 from validibot.actions.models import ActionDefinition
 from validibot.projects.tests.factories import ProjectFactory
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.tests.factories import SubmissionFactory
@@ -421,6 +422,40 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0]["message"], finding.message)
         self.assertEqual(issues[0]["path"], finding.path)
+
+    def test_detail_redacts_detailed_output_after_retention_deadline(self):
+        """API reads must honor expiry before the physical purge catches up."""
+        self.client.force_authenticate(user=self.user)
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.FAILED,
+            error="Customer payload failed at secret.path",
+            output_hash="a" * 64,
+            output_retention_policy=OutputRetention.STORE_1_DAY,
+            output_expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        step_run = ValidationStepRunFactory(validation_run=run)
+        ValidationFindingFactory(
+            validation_step_run=step_run,
+            message="Secret detailed finding",
+        )
+
+        response = self.client.get(runs_detail_url(self.org, run))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["steps"], [])
+        self.assertEqual(response.data["error"], "")
+        self.assertEqual(response.data["user_friendly_error"], "")
+        self.assertEqual(response.data["output_hash"], "")
+        self.assertEqual(
+            response.data["output_retention_policy"],
+            OutputRetention.STORE_1_DAY,
+        )
+        self.assertNotIn("Secret detailed finding", response.content.decode())
+        self.assertNotIn("secret.path", response.content.decode())
 
     def test_detail_does_not_expose_do_not_store_submission_payload(self):
         """Run detail API must hide no-store file bytes until async purge catches up."""

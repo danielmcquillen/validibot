@@ -1074,17 +1074,6 @@ class ValidationCallbackService:
         run.error = result.step_error
         run.duration_ms = duration_ms
 
-        # Notify listeners that the run reached a terminal status (e.g. cloud
-        # metering releases the compute-credit reservation). send_robust so a
-        # failing receiver can't break finalization. Sibling emission lives in
-        # the sync path (step_orchestrator.execute_workflow_steps).
-        from validibot.validations.signals import validation_run_finalized
-
-        validation_run_finalized.send_robust(
-            sender=self.__class__,
-            validation_run=run,
-        )
-
         ValidationRunService().rebuild_run_summary_record(
             validation_run=run,
         )
@@ -1102,6 +1091,15 @@ class ValidationCallbackService:
         from validibot.validations.services.evidence import stamp_evidence_manifest
 
         stamp_evidence_manifest(run)
+
+        # Retention eligibility starts only after every detailed projection is
+        # finalized, preventing a scheduled purge from racing evidence writes.
+        from validibot.validations.signals import validation_run_finalized
+
+        validation_run_finalized.send_robust(
+            sender=self.__class__,
+            validation_run=run,
+        )
 
         logger.info(
             "Finalized run %s with status %s",

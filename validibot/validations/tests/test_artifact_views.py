@@ -10,6 +10,7 @@ and Django-storage paths plus the current remote-URI fallback.
 from __future__ import annotations
 
 import hashlib
+from datetime import timedelta
 from http import HTTPStatus
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -17,7 +18,9 @@ from tempfile import TemporaryDirectory
 from django.core.files.base import ContentFile
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
@@ -183,6 +186,33 @@ class ArtifactDetailViewTests(TestCase):
         other_user.set_current_org(other_org)
 
         self.client.force_login(other_user)
+        detail_response = self.client.get(
+            reverse(
+                "validations:artifact_detail",
+                kwargs={"pk": run.pk, "artifact_pk": artifact.pk},
+            ),
+        )
+        download_response = self.client.get(
+            reverse(
+                "validations:artifact_download",
+                kwargs={"pk": run.pk, "artifact_pk": artifact.pk},
+            ),
+        )
+
+        assert detail_response.status_code == HTTPStatus.NOT_FOUND
+        assert download_response.status_code == HTTPStatus.NOT_FOUND
+
+    def test_expired_output_returns_404_for_detail_and_download(self):
+        """An overdue purge worker must not extend artifact access."""
+        user, run = _setup_run_with_owner_access()
+        artifact = _create_artifact(run)
+        run.output_retention_policy = OutputRetention.STORE_1_DAY
+        run.output_expires_at = timezone.now() - timedelta(minutes=1)
+        run.save(
+            update_fields=["output_retention_policy", "output_expires_at"],
+        )
+
+        self.client.force_login(user)
         detail_response = self.client.get(
             reverse(
                 "validations:artifact_detail",

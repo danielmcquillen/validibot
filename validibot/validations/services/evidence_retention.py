@@ -1,10 +1,9 @@
 """Retention-aware policy for what enters an evidence manifest.
 
 ADR-2026-04-27 Phase 4 Session B: a workflow that signed up for
-``input_retention=DO_NOT_STORE`` agreed not to keep submission bytes
-after validation. The evidence manifest must respect that agreement
-— no payload-derived content lands in the manifest, even though
-identity / contract / hash content does.
+input/output retention choices are independent. The evidence manifest must
+respect the policy for the stream each field derives from rather than treating
+input retention as a proxy for all validation data.
 
 Why this lives in its own module
 ================================
@@ -40,6 +39,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from validibot.submissions.constants import OUTPUT_RETENTION_DAYS
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionRetention
 
 # Symbolic name of the do-not-store tier. Imported here as a module
@@ -74,31 +75,32 @@ class RetentionPolicy:
         return True
 
     @staticmethod
-    def includes_output_hash(retention_class: str) -> bool:
-        """False for DO_NOT_STORE; True otherwise.
+    def includes_output_hash(output_retention_class: str) -> bool:
+        """Include only when output retention is an explicit storing tier.
 
-        A cautious-by-default rule: ``DO_NOT_STORE`` operators
-        agreed to remove the run's outputs along with its inputs,
-        so we omit the output hash too. Operators who want output
-        evidence can use a non-DO_NOT_STORE retention class.
+        Output-derived evidence follows output retention, regardless of the
+        independently selected input policy. Unknown values fail closed.
 
         Note: this is more conservative than strictly necessary —
         an output hash, like the input hash, is preimage-resistant.
         We err on "output isn't part of the trust contract for
         DO_NOT_STORE" to keep the policy clean.
         """
-        return retention_class != DO_NOT_STORE
+        return (
+            output_retention_class in OUTPUT_RETENTION_DAYS
+            and output_retention_class != OutputRetention.DO_NOT_STORE
+        )
 
     @staticmethod
-    def redactions_for(retention_class: str) -> list[str]:
-        """Return the list of field names redacted under this tier.
+    def redactions_for(output_retention_class: str) -> list[str]:
+        """Return fields redacted under the output-retention tier.
 
         Returned in stable insertion order so ``redactions_applied``
         in two runs of the same workflow class produces identical
         bytes (canonical-JSON byte stability).
         """
         redactions: list[str] = []
-        if not RetentionPolicy.includes_output_hash(retention_class):
+        if not RetentionPolicy.includes_output_hash(output_retention_class):
             redactions.append(PAYLOAD_DIGEST_OUTPUT)
         return redactions
 

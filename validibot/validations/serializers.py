@@ -105,6 +105,9 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         return ValidationRunResult.UNKNOWN
 
     def get_steps(self, obj: ValidationRun) -> list[dict]:
+        if not obj.are_outputs_viewable:
+            return []
+
         from validibot.validations.services.step_output_display import (
             build_display_step_outputs,
         )
@@ -275,10 +278,15 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         }
 
     def to_representation(self, instance):
-        """Omit ``credential`` for workflows without a credential step."""
+        """Apply credential and retention-aware response projection rules."""
         data = super().to_representation(instance)
         if not self._has_credential_action(instance):
             data.pop("credential", None)
+        if not instance.are_outputs_viewable:
+            data["error"] = ""
+            data["user_friendly_error"] = ""
+            data["output_hash"] = ""
+            data["steps"] = []
         return data
 
     class Meta:
@@ -305,6 +313,9 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             "error",
             "user_friendly_error",
             "output_hash",
+            "output_retention_policy",
+            "output_expires_at",
+            "output_purged_at",
         ]
         read_only_fields = fields
 

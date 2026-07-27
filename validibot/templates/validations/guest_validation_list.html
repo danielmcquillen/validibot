@@ -155,7 +155,11 @@
               </td>
               <td>
                 {% if validation.submission %}
-                  {{ validation.submission.name|default:validation.submission.pk }}
+                  {% if validation.submission.is_content_viewable and validation.submission.name %}
+                    {{ validation.submission.name }}
+                  {% else %}
+                    {{ validation.submission.pk }}
+                  {% endif %}
                 {% else %}
                   <span class="text-muted">{% trans "N/A" %}</span>
                 {% endif %}

@@ -1,6 +1,14 @@
+"""Tests for tenant scoping and retention-safe validation run lists.
+
+The list is a high-density results surface. These tests protect its role
+boundaries and ensure payload-derived submission labels disappear as soon as
+input retention no longer permits access.
+"""
+
 from django.test import TestCase
 from django.urls import reverse
 
+from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
@@ -10,7 +18,11 @@ from validibot.validations.tests.factories import ValidationRunFactory
 
 
 class ValidationRunListViewTests(TestCase):
+    """Exercise run-list authorization and privacy-sensitive labels."""
+
     def test_owner_can_delete_validation_runs(self):
+        """Owners need the delete affordance for runs in their organization."""
+
         org = OrganizationFactory()
         owner = UserFactory(orgs=[org])
         grant_role(owner, org, RoleCode.OWNER)
@@ -40,6 +52,8 @@ class ValidationRunListViewTests(TestCase):
         self.assertTrue(validations[0].curr_user_can_delete)
 
     def test_results_viewer_can_see_all_runs(self):
+        """Results viewers may inspect org runs but may not delete them."""
+
         org = OrganizationFactory()
         owner = UserFactory(orgs=[org])
         grant_role(owner, org, RoleCode.OWNER)
@@ -49,6 +63,8 @@ class ValidationRunListViewTests(TestCase):
             org=org,
             user=owner,
             project__org=org,
+            name="retention-sensitive label",
+            retention_policy=SubmissionRetention.DO_NOT_STORE,
         )
         run = ValidationRunFactory(
             submission=submission,
@@ -74,8 +90,12 @@ class ValidationRunListViewTests(TestCase):
         self.assertEqual(validations[0].pk, run.pk)
         self.assertTrue(validations[0].curr_user_can_view)
         self.assertFalse(validations[0].curr_user_can_delete)
+        self.assertNotContains(response, "retention-sensitive label")
+        self.assertContains(response, str(submission.pk))
 
     def test_executor_cannot_delete_validation_runs(self):
+        """Executors see only their runs and never receive delete authority."""
+
         org = OrganizationFactory()
         executor = UserFactory(orgs=[org])
         grant_role(executor, org, RoleCode.EXECUTOR)

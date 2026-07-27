@@ -49,7 +49,7 @@ Current entries:
 | Task | Default Schedule | Description |
 |------|------------------|-------------|
 | `purge_expired_submissions` | Hourly | Remove expired user submission content |
-| `purge_expired_outputs` | Hourly | Remove expired validation outputs |
+| `purge_expired_outputs` | Every 5 minutes | Remove expired validation outputs |
 | `process_purge_retries` | Every 5 minutes | Retry failed purge operations |
 | `cleanup_stuck_runs` | Every 10 minutes | Reconcile or time out and cancel hung runs |
 | `cleanup_orphaned_containers` | Every 10 minutes | Remove orphaned Docker containers (Docker Compose only) |

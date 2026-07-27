@@ -11,7 +11,9 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.base import File
+from django.db import IntegrityError
 from django.db import models
+from django.db import transaction
 from django.db.models import Q
 from django.utils.text import slugify
 from django.utils.timezone import now
@@ -31,6 +33,10 @@ if TYPE_CHECKING:
     from django.core.files.uploadedfile import UploadedFile
 
 logger = logging.getLogger(__name__)
+
+
+class SubmissionPurgeNotReadyError(RuntimeError):
+    """The submission is still required by an active validation run."""
 
 
 def submission_input_file_upload_to(instance: Submission, filename: str) -> str:
@@ -459,7 +465,11 @@ class Submission(TimeStampedModel):
     @property
     def is_content_viewable(self) -> bool:
         """Return whether submitted content may be shown in the UI."""
-        if self.is_do_not_store_retention:
+        try:
+            policy = SubmissionRetention(self.retention_policy)
+        except ValueError:
+            return False
+        if policy == SubmissionRetention.DO_NOT_STORE:
             return False
         if self.is_content_retention_expired:
             return False
@@ -630,36 +640,49 @@ class Submission(TimeStampedModel):
     def _compute_checksum(self, data: bytes) -> str:
         return hashlib.sha256(data).hexdigest()
 
+    @transaction.atomic
     def purge_content(self) -> None:
         """
-        Remove submission content while preserving the record and metadata.
+        Remove submission content and payload-derived context.
 
         This method is idempotent - calling it on an already-purged submission
         is a no-op.
 
-        Keeps: id, checksum_sha256, original_filename, size_bytes, file_type,
-               metadata, created, retention_policy
-        Clears: content, input_file
+        Keeps: id, checksum_sha256, size_bytes, file_type, created,
+               retention_policy
+        Clears: content, input_file, submitter labels/filenames/metadata
         Sets: content_purged_at
-        Also cleans up: GCS execution bundle folders for all related runs
+        Also cleans up: copied inputs from every related execution bundle
 
         Raises:
+            SubmissionPurgeNotReadyError: If any related run is still active.
             Exception: If file deletion fails (caller should handle retry)
         """
+        # Serialize purge with FK checks from any concurrent run creation. The
+        # lock also ensures this method evaluates current policy/purge state
+        # rather than a stale caller instance.
+        type(self).objects.select_for_update().only("pk").get(pk=self.pk)
+        self.refresh_from_db()
+
         if self.content_purged_at:
             return  # Already purged (idempotent)
 
-        # Delete every run bundle before the original input. If a bundle delete
-        # fails, keeping the input and database fields intact gives the retry a
-        # coherent source record instead of leaving an unpurged submission that
-        # already lost part of its content. External deletes are idempotent, so
-        # a retry can safely revisit bundles removed before a later failure.
+        from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
+
+        if self.runs.exclude(status__in=VALIDATION_RUN_TERMINAL_STATUSES).exists():
+            msg = f"Submission {self.pk} is still required by an active run"
+            raise SubmissionPurgeNotReadyError(msg)
+
+        # Delete copied input data before the original input. Output files are
+        # deliberately preserved: workflow authors configure input and output
+        # retention independently, and no-input-retention must not silently
+        # shorten an explicit output-retention window.
         for run in self.runs.all():
             try:
-                _delete_run_files(run)
+                _delete_run_input_files(run)
             except Exception:
                 logger.exception(
-                    "Failed to delete run files",
+                    "Failed to delete copied run inputs",
                     extra={"submission_id": str(self.id), "run_id": str(run.id)},
                 )
                 raise
@@ -680,13 +703,33 @@ class Submission(TimeStampedModel):
         for port_file in self.input_files.all():
             port_file.purge_file()
 
-        # Clear content
+        # Clear submitter-provided context as well as raw bytes. Filenames,
+        # display names, and arbitrary metadata can contain personal or
+        # proprietary data and are not required for the minimal audit record.
+        for run in self.runs.all():
+            from validibot.validations.services.retention import (
+                redact_run_input_records,
+            )
+
+            redact_run_input_records(run)
+
+        self.name = ""
         self.content = ""
         self.input_file = None
+        self.original_filename = ""
+        self.metadata = {}
         self.content_purged_at = now()
         self.expires_at = None  # No longer pending
         self.save(
-            update_fields=["content", "input_file", "content_purged_at", "expires_at"],
+            update_fields=[
+                "name",
+                "content",
+                "input_file",
+                "original_filename",
+                "metadata",
+                "content_purged_at",
+                "expires_at",
+            ],
         )
 
         logger.info(
@@ -797,7 +840,7 @@ class SubmissionInputFile(TimeStampedModel):
         return data if isinstance(data, bytes) else str(data).encode("utf-8")
 
     def purge_file(self) -> None:
-        """Delete the stored file while preserving metadata for audit."""
+        """Delete stored bytes and submitter-provided file context."""
 
         if self.file_purged_at:
             return
@@ -814,8 +857,20 @@ class SubmissionInputFile(TimeStampedModel):
                 )
                 raise
         self.input_file = None
+        self.original_filename = ""
+        self.content_type = ""
+        self.metadata = {}
         self.file_purged_at = now()
-        self.save(update_fields=["input_file", "file_purged_at", "modified"])
+        self.save(
+            update_fields=[
+                "input_file",
+                "original_filename",
+                "content_type",
+                "metadata",
+                "file_purged_at",
+                "modified",
+            ],
+        )
 
     def clean(self, *args, **kwargs):
         errors = {}
@@ -877,8 +932,9 @@ def _delete_run_files(run) -> None:
     deletes from the SAME raw location the launcher writes to, mirroring its
     GCS-vs-local branch.
 
-    Called during submission content purge (DO_NOT_STORE) and output-retention
-    purge.
+    Called during output-retention purge. Submission input cleanup uses the
+    selective :func:`_delete_run_input_files` helper so retained outputs remain
+    available for their independently configured window.
 
     Args:
         run: ValidationRun instance
@@ -934,6 +990,110 @@ def _delete_run_files(run) -> None:
         )
 
 
+def _delete_run_input_files(run) -> None:
+    """Delete copied run inputs while preserving independently retained output.
+
+    Cloud execution bundles historically place input files at the attempt root,
+    while current local workspaces separate ``input/`` and ``output/``. This
+    helper supports both layouts. It preserves only the contracted output
+    envelope/directories plus explicit artifact objects; everything else below
+    the run prefix is treated as copied input or transient launch data.
+
+    External failures propagate so callers cannot stamp ``content_purged_at``
+    while copied input bytes may remain.
+    """
+    org_id = str(run.org_id)
+    run_id = str(run.id)
+    run_path = f"runs/{org_id}/{run_id}/"
+    bucket = getattr(settings, "GCS_VALIDATION_BUCKET", "")
+
+    attempts = list(run.step_runs.prefetch_related("execution_attempts").all())
+    attempt_rows = [
+        attempt
+        for step_run in attempts
+        for attempt in step_run.execution_attempts.all()
+    ]
+
+    def _attempt_relative_prefix(attempt) -> str:
+        return f"attempts/{attempt.id}/"
+
+    keep_relative_uris = {"output.json"}
+    keep_relative_prefixes = {"output/", "outputs/"}
+    for attempt in attempt_rows:
+        relative_prefix = _attempt_relative_prefix(attempt)
+        keep_relative_uris.add(f"{relative_prefix}output.json")
+        keep_relative_prefixes.add(f"{relative_prefix}output/")
+        keep_relative_prefixes.add(f"{relative_prefix}outputs/")
+
+        output_uri = (attempt.output_envelope_uri or "").strip()
+        expected_prefix = f"gs://{bucket}/{run_path}" if bucket else ""
+        if expected_prefix and output_uri.startswith(expected_prefix):
+            keep_relative_uris.add(output_uri[len(expected_prefix) :])
+
+    for artifact in run.artifacts.all():
+        for uri in (artifact.storage_uri, artifact.manifest_uri):
+            expected_prefix = f"gs://{bucket}/{run_path}" if bucket else ""
+            if expected_prefix and uri.startswith(expected_prefix):
+                keep_relative_uris.add(uri[len(expected_prefix) :])
+
+    try:
+        if bucket:
+            from validibot.validations.services.cloud_run.gcs_client import (
+                delete_prefix_except,
+            )
+
+            base_uri = f"gs://{bucket}/{run_path}"
+            count = delete_prefix_except(
+                base_uri,
+                keep_uris=tuple(
+                    f"{base_uri}{relative}" for relative in sorted(keep_relative_uris)
+                ),
+                keep_prefixes=tuple(
+                    f"{base_uri}{relative}"
+                    for relative in sorted(keep_relative_prefixes)
+                ),
+            )
+        else:
+            base_dir = Path(settings.MEDIA_ROOT) / "files" / "runs" / org_id / run_id
+            count = 0
+            if base_dir.exists():
+                for path in sorted(
+                    base_dir.rglob("*"),
+                    key=lambda item: len(item.parts),
+                    reverse=True,
+                ):
+                    relative = path.relative_to(base_dir).as_posix()
+                    if path.is_file() or path.is_symlink():
+                        if relative in keep_relative_uris or any(
+                            relative.startswith(prefix)
+                            for prefix in keep_relative_prefixes
+                        ):
+                            continue
+                        path.unlink()
+                        count += 1
+                    elif path.is_dir():
+                        with contextlib.suppress(OSError):
+                            path.rmdir()
+                with contextlib.suppress(OSError):
+                    base_dir.rmdir()
+    except Exception:
+        logger.exception(
+            "Failed to delete copied run inputs",
+            extra={"run_id": run_id, "run_path": run_path},
+        )
+        raise
+
+    if count > 0:
+        logger.info(
+            "Deleted copied run inputs",
+            extra={
+                "run_id": run_id,
+                "run_path": run_path,
+                "files_deleted": count,
+            },
+        )
+
+
 def detect_file_type(
     *,
     filename: str | None = None,
@@ -981,6 +1141,8 @@ class PurgeRetry(models.Model):
     even when transient failures occur.
     """
 
+    # Deletion is never abandoned automatically. This threshold is an
+    # operational alert boundary; retries continue with capped backoff.
     MAX_ATTEMPTS = 5
     RETRY_DELAYS = [60, 300, 3600, 21600, 86400]  # 1m, 5m, 1h, 6h, 24h
 
@@ -1023,6 +1185,12 @@ class PurgeRetry(models.Model):
         indexes = [
             models.Index(fields=["next_retry_at", "attempt_count"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["submission"],
+                name="uq_purge_retry_submission",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"PurgeRetry({self.submission_id}, attempts={self.attempt_count})"
@@ -1031,9 +1199,9 @@ class PurgeRetry(models.Model):
         """
         Record a failed purge attempt and schedule the next retry.
 
-        Uses exponential backoff with the delays defined in RETRY_DELAYS.
-        After MAX_ATTEMPTS, no more retries are scheduled (requires manual
-        intervention).
+        Uses exponential backoff with the delays defined in RETRY_DELAYS,
+        capped at the final delay. ``MAX_ATTEMPTS`` is an alert threshold,
+        not a point where privacy-critical deletion is abandoned.
         """
         from django.utils import timezone
 
@@ -1041,16 +1209,12 @@ class PurgeRetry(models.Model):
         self.last_attempt_at = timezone.now()
         self.last_error = str(error)[:2000]  # Truncate long errors
 
-        if self.attempt_count < self.MAX_ATTEMPTS:
-            delay_seconds = self.RETRY_DELAYS[
-                min(self.attempt_count - 1, len(self.RETRY_DELAYS) - 1)
-            ]
-            self.next_retry_at = timezone.now() + timezone.timedelta(
-                seconds=delay_seconds,
-            )
-        else:
-            # Max attempts reached - set far future date to stop retries
-            self.next_retry_at = timezone.now() + timezone.timedelta(days=365)
+        delay_seconds = self.RETRY_DELAYS[
+            min(self.attempt_count - 1, len(self.RETRY_DELAYS) - 1)
+        ]
+        self.next_retry_at = timezone.now() + timezone.timedelta(
+            seconds=delay_seconds,
+        )
 
         self.save()
 
@@ -1081,15 +1245,25 @@ def queue_submission_purge(submission: Submission | None) -> None:
     if submission.retention_policy != SubmissionRetention.DO_NOT_STORE:
         return
 
-    now = timezone.now()
-    retry, created = PurgeRetry.objects.get_or_create(
-        submission=submission,
-        defaults={"next_retry_at": now},
-    )
-    if created:
+    from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
+
+    if submission.runs.exclude(status__in=VALIDATION_RUN_TERMINAL_STATUSES).exists():
+        # One submission may be referenced by more than one run. Deleting after
+        # the first completion would break a still-active sibling run.
         return
 
-    if retry.attempt_count >= PurgeRetry.MAX_ATTEMPTS:
+    now = timezone.now()
+    try:
+        with transaction.atomic():
+            retry, created = PurgeRetry.objects.get_or_create(
+                submission=submission,
+                defaults={"next_retry_at": now},
+            )
+    except IntegrityError:
+        # A concurrent terminal hook won the unique target row race.
+        retry = PurgeRetry.objects.get(submission=submission)
+        created = False
+    if created:
         return
 
     if retry.next_retry_at > now:

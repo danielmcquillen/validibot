@@ -24,8 +24,8 @@ The remaining invariants are about the x402 *billing rail*, not about MCP:
 - Enabling ``x402_enabled`` forces ``agent_billing_mode=AGENT_PAYS_X402``
   (a cascade in ``clean()``).
 - x402 billing requires a positive price.
-- x402 billing requires ``input_retention=DO_NOT_STORE`` (privacy: x402 is
-  anonymous per-call access, so storing submissions is incompatible).
+- x402 billing requires both input and output ``DO_NOT_STORE`` retention
+  (privacy: x402 is anonymous per-call access).
 
 Those invariants are enforced in ``clean()`` for normal saves AND lifted to
 DB-level ``CheckConstraint`` rows so bulk paths (``QuerySet.update``,
@@ -208,7 +208,7 @@ class TestX402RequiresPrice:
 
 
 class TestX402RequiresDoNotStore:
-    """Verify that x402 billing mode requires DO_NOT_STORE retention.
+    """Verify that x402 billing requires no input or output retention.
 
     The check matters because authors could otherwise accidentally
     configure an anonymous-pay workflow that silently retains submissions,
@@ -216,8 +216,8 @@ class TestX402RequiresDoNotStore:
 
     def test_x402_with_store_7_days_raises(self):
         """x402 paired with any non-DO_NOT_STORE retention should be
-        rejected.  The default retention (STORE_7_DAYS) is the most
-        likely accidental combination."""
+        rejected. Explicit storage tiers are the likely accidental
+        combination."""
         from validibot.submissions.constants import SubmissionRetention
 
         wf = WorkflowFactory.build(
@@ -257,6 +257,24 @@ class TestX402RequiresDoNotStore:
         )
         wf.project = ProjectFactory()  # project is required on Workflow now
         wf.clean()  # should not raise
+
+    def test_x402_with_retained_outputs_raises(self):
+        """Anonymous payment must not silently retain detailed results."""
+        from validibot.submissions.constants import OutputRetention
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory.build(
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=10,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
+            output_retention=OutputRetention.STORE_7_DAYS,
+        )
+        wf.project = ProjectFactory()
+
+        with pytest.raises(ValidationError) as exc_info:
+            wf.clean()
+
+        assert "output_retention" in exc_info.value.message_dict
 
     def test_author_pays_with_any_retention_is_valid(self):
         """The retention rule only applies to x402.  AUTHOR_PAYS has no
@@ -396,7 +414,7 @@ class TestWorkflowFormAccessFields:
                 "project": str(default_project.pk),
                 "allowed_file_types": [SubmissionFileType.JSON],
                 "input_retention": SubmissionRetention.DO_NOT_STORE,
-                "output_retention": "STORE_30_DAYS",
+                "output_retention": "DO_NOT_STORE",
                 "version": "1",
                 "is_active": "on",
             },
@@ -454,7 +472,7 @@ class TestWorkflowFormAccessFields:
                 "project": str(default_project.pk),
                 "allowed_file_types": [SubmissionFileType.JSON],
                 "input_retention": SubmissionRetention.STORE_7_DAYS,
-                "output_retention": "STORE_30_DAYS",
+                "output_retention": "DO_NOT_STORE",
                 "version": "1",
                 "is_active": "on",
                 "x402_enabled": "on",
@@ -485,7 +503,7 @@ class TestWorkflowFormAccessFields:
                 "project": str(default_project.pk),
                 "allowed_file_types": [SubmissionFileType.JSON],
                 "input_retention": SubmissionRetention.DO_NOT_STORE,
-                "output_retention": "STORE_30_DAYS",
+                "output_retention": "DO_NOT_STORE",
                 "version": "1",
                 "is_active": "on",
                 "workflow_visibility": WorkflowVisibility.ORG,
@@ -525,7 +543,7 @@ class TestWorkflowFormAccessFields:
                 "project": str(default_project.pk),
                 "allowed_file_types": [SubmissionFileType.JSON],
                 "input_retention": SubmissionRetention.DO_NOT_STORE,
-                "output_retention": "STORE_30_DAYS",
+                "output_retention": "DO_NOT_STORE",
                 "version": "1",
                 "is_active": "on",
                 "workflow_visibility": WorkflowVisibility.ORG,
@@ -563,7 +581,7 @@ class TestWorkflowFormAccessFields:
                 "project": str(default_project.pk),
                 "allowed_file_types": [SubmissionFileType.JSON],
                 "input_retention": SubmissionRetention.DO_NOT_STORE,
-                "output_retention": "STORE_30_DAYS",
+                "output_retention": "DO_NOT_STORE",
                 "version": "1",
                 "is_active": "on",
                 "workflow_visibility": WorkflowVisibility.ORG,
@@ -863,6 +881,26 @@ class TestWorkflowCheckConstraints:
         with transaction.atomic(), pytest.raises(IntegrityError):
             Workflow.objects.filter(pk=wf.pk).update(
                 input_retention=SubmissionRetention.STORE_30_DAYS,
+            )
+
+    def test_x402_billing_rejects_retained_outputs_via_update(self):
+        """Bulk writes cannot bypass the anonymous-output privacy invariant."""
+        from django.db import IntegrityError
+        from django.db import transaction
+
+        from validibot.submissions.constants import OutputRetention
+        from validibot.submissions.constants import SubmissionRetention
+
+        wf = WorkflowFactory(
+            agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402,
+            agent_price_cents=100,
+            input_retention=SubmissionRetention.DO_NOT_STORE,
+            output_retention=OutputRetention.DO_NOT_STORE,
+        )
+
+        with transaction.atomic(), pytest.raises(IntegrityError):
+            Workflow.objects.filter(pk=wf.pk).update(
+                output_retention=OutputRetention.STORE_7_DAYS,
             )
 
     def test_non_x402_workflows_can_have_any_retention(self):

@@ -314,7 +314,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             models.CheckConstraint(
                 condition=(
                     ~Q(agent_billing_mode=AgentBillingMode.AGENT_PAYS_X402)
-                    | Q(input_retention=SubmissionRetention.DO_NOT_STORE)
+                    | (
+                        Q(input_retention=SubmissionRetention.DO_NOT_STORE)
+                        & Q(output_retention=OutputRetention.DO_NOT_STORE)
+                    )
                 ),
                 name="ck_workflow_x402_requires_do_not_store_retention",
             ),
@@ -617,7 +620,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         help_text=_(
             "How long to keep user-submitted input files after validation "
             "completes. DO_NOT_STORE deletes the submission immediately "
-            "after successful completion. The submission record is "
+            "after any terminal outcome. The submission record is "
             "preserved for audit."
         ),
     )
@@ -626,11 +629,12 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     output_retention = models.CharField(
         max_length=32,
         choices=OutputRetention.choices,
-        default=OutputRetention.STORE_30_DAYS,
+        default=OutputRetention.DO_NOT_STORE,
         help_text=_(
             "How long to keep validation outputs (results, artifacts, findings) "
-            "after validation completes. Users need time to download results, "
-            "so immediate deletion is not an option."
+            "after validation reaches a terminal state. DO_NOT_STORE queues "
+            "detailed output deletion immediately while preserving a minimal "
+            "run status and aggregate audit record."
         ),
     )
 
@@ -797,6 +801,19 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                         "pay via x402 micropayments — x402 is anonymous "
                         "per-call access and storing submissions is "
                         "incompatible with its privacy model.",
+                    ),
+                },
+            )
+        if (
+            self.agent_billing_mode == AgentBillingMode.AGENT_PAYS_X402
+            and self.output_retention != OutputRetention.DO_NOT_STORE
+        ):
+            raise ValidationError(
+                {
+                    "output_retention": _(
+                        "Output retention must be 'Do not retain' when agents "
+                        "pay via x402 micropayments — anonymous per-call access "
+                        "must not leave detailed results behind.",
                     ),
                 },
             )
@@ -1226,13 +1243,13 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         """Return contract-field names whose change would invalidate past runs.
 
         Layers safety semantics on top of :meth:`changed_contract_fields`.
-        A change is "unsafe" only when it narrows or shortens the contract
-        in a way that breaks reproducibility for already-launched runs:
+        A change is "unsafe" only when it narrows the execution contract or
+        expands the workflow's published privacy scope:
 
         - ``allowed_file_types``: removing a previously-allowed type is
           unsafe; adding a new type is safe in place.
         - ``input_retention`` / ``output_retention``: shortening retention
-          is unsafe; extending it is safe in place.
+          is privacy-safe in place; extending it requires a new version.
 
         Callers (form gates, API serializers) use this to allow safe
         edits without forcing a workflow clone. The blanket

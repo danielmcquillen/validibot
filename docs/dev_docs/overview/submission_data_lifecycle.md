@@ -37,7 +37,10 @@ The execution backend **copies** the submission content into the bundle rather t
 
 **1. The container can't read from the database.** Submissions are often stored inline in the `Submission.content` database field, not as files on disk. The container has no database access, so the content must be written to storage where the container can read it.
 
-**2. Isolation from concurrent changes.** If the original submission were purged mid-run (possible with `DO_NOT_STORE` retention and unlucky timing), the container would fail trying to read a deleted file. The copy ensures the container always has the data it needs for the duration of the run.
+**2. Isolation from concurrent changes.** The copy gives the container stable
+attempt-scoped bytes. Retention services also refuse to purge a submission
+while any related run is active. Launch and purge take the same submission row
+lock, so a new run cannot use content that a concurrent purge already removed.
 
 **3. Debuggability.** When investigating a failed run, all inputs and outputs live in one directory. You can inspect exactly what the container received without cross-referencing other storage locations.
 
@@ -56,7 +59,7 @@ The downside is storage duplication, especially on GCP where both the original a
    d. Spawns Docker container (blocking)
    e. Container reads input, writes output.json
    f. Worker reads output.json, processes results
-3. Step completes → queue_submission_purge() called
+3. Run reaches a terminal state → common retention scheduler runs
 ```
 
 ### GCP Cloud Run (Asynchronous)
@@ -73,26 +76,40 @@ The downside is storage duplication, especially on GCP where both the original a
 3. Container runs in Cloud Run, writes output to GCS
 4. Container POSTs callback to worker service
 5. ValidationCallbackService processes results
-6. Run finalized → _queue_purge_if_do_not_store() called
+6. Run finalized → common retention scheduler runs
 ```
 
 ## Cleanup and Retention
 
-After a run completes, the execution bundle needs to be cleaned up according to the submission's retention policy. There are two cleanup mechanisms:
+Input and output policies are independent and both default to
+`DO_NOT_STORE`. A workflow author must opt in to either post-processing
+retention stream.
 
-### Submission Purging (Primary)
+### Input Purging
 
 When `Submission.purge_content()` runs (triggered by retention expiration or `DO_NOT_STORE` policy), it:
 
-1. Deletes the original submission content (DB field and/or `input_file`)
-2. Calls `_delete_run_files(run)` for **every related validation run**
-3. `_delete_run_files()` calls `storage.delete_prefix(f"runs/{org_id}/{run_id}/")`, which removes every attempt bundle for the run
+1. refuses to run while any related validation is active;
+2. selectively deletes copied input envelopes/files from every attempt bundle;
+3. deletes original and auxiliary submission bytes;
+4. clears submitter names, filenames, arbitrary metadata, step input values,
+   and input-envelope identities; and
+5. writes `content_purged_at` only after external deletion succeeds.
 
-This is storage-agnostic — it works for both local filesystem and GCS.
+Output envelopes and output directories are explicitly preserved during this
+operation when their independent retention window remains open.
 
-### Output Expiration (Secondary)
+### Output Purging
 
-The `purge_expired_outputs` management command independently cleans up execution bundles when the output retention period expires. This acts as a safety net if submission purging fails.
+`purge_expired_outputs` runs every five minutes. Once a terminal run's output
+window expires, it deletes the complete run bundle, findings, artifacts,
+evidence bytes, step values, detailed errors, output/callback URIs, and output
+hashes. Minimal run status/timing and aggregate summary counts remain.
+
+Finite input and output deadlines begin at terminal completion. A submission
+shared by several runs starts its finite window after the last run finishes.
+Receipt-time input deadlines are provisional so abandoned submissions still
+expire. Repair scans reconstruct deadlines/work missed by a terminal hook.
 
 ### DO_NOT_STORE Flow
 
@@ -101,11 +118,17 @@ For submissions with `DO_NOT_STORE` retention:
 1. Run completes (either sync or via async callback)
 2. `queue_submission_purge()` creates a `PurgeRetry` record
 3. `process_purge_retries` scheduled job picks it up (runs every 5 minutes)
-4. Calls `submission.purge_content()` which deletes both the original content and all execution bundle copies
-5. On failure: exponential backoff retries (1m, 5m, 1h, 6h, 24h), max 5 attempts
+4. Calls `submission.purge_content()`, which deletes original and copied inputs
+   but not independently retained outputs
+5. On failure: capped exponential backoff retries (1m, 5m, 1h, 6h, then 24h)
+   continue indefinitely; five attempts is an alert threshold
 
 !!! note "Window of exposure"
-    Between run completion and purge execution (typically under 5 minutes), the submission data exists in both the original location and the execution bundle. This is acceptable because the storage is access-controlled, and the window is short.
+    `DO_NOT_STORE` means no post-processing retention, not memory-only
+    execution. Between completion and the frequent purge worker (normally
+    under five minutes), transient input/output bytes can still exist in
+    access-controlled application storage so synchronous and asynchronous
+    results can be delivered. They are not kept as an author-selected history.
 
 ## Alternative Considered: Reference Original URI
 
@@ -124,7 +147,9 @@ For submissions with `DO_NOT_STORE` retention:
 | GCP backend | `validations/services/execution/gcp.py` |
 | Cloud Run launcher | `validations/services/cloud_run/launcher.py` |
 | Submission purge | `submissions/models.py` → `purge_content()` |
-| Run file deletion | `submissions/models.py` → `_delete_run_files()` |
+| Selective input deletion | `submissions/models.py` → `_delete_run_input_files()` |
+| Complete output deletion | `validations/services/retention.py` → `purge_run_outputs()` |
+| Terminal scheduling | `validations/services/retention.py` |
 | Purge retry queue | `submissions/models.py` → `queue_submission_purge()` |
 | Output expiration | `validations/management/commands/purge_expired_outputs.py` |
 | Callback handler | `validations/services/validation_callback.py` |

@@ -76,6 +76,8 @@ class EvidenceManifestDownloadView(
 
     def get(self, request, *args, **kwargs):
         run = self.get_object()
+        if not run.are_outputs_viewable:
+            raise Http404(_("This run's evidence manifest is no longer retained."))
         try:
             artifact = run.evidence_artifact
         except Exception as exc:
@@ -160,6 +162,8 @@ class EvidenceBundleDownloadView(
 
     def get(self, request, *args, **kwargs):
         run = self.get_object()
+        if not run.are_outputs_viewable:
+            raise Http404(_("This run's evidence bundle is no longer retained."))
         try:
             bundle_bytes = EvidenceBundleBuilder.build(run)
         except BundleNotAvailableError as exc:

@@ -913,7 +913,7 @@ def test_run_detail_page_shows_retained_submission_file_view(client):
 
 
 def test_run_detail_page_hides_do_not_store_submission_content(client):
-    """Launch run results must not leak no-store content through the view context."""
+    """Launch results must hide no-store bytes and payload-derived filenames."""
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
     user = _force_login_for_workflow(client, workflow)
@@ -949,8 +949,8 @@ def test_run_detail_page_hides_do_not_store_submission_content(client):
 
     assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
-    assert "Data file" in body
-    assert "launch-private.json" in body
+    assert "Data file" not in body
+    assert "launch-private.json" not in body
     assert (
         "Submission content has been purged per retention policy and cannot be viewed."
         in body
@@ -962,7 +962,7 @@ def test_run_detail_page_hides_do_not_store_submission_content(client):
 
 
 def test_run_detail_page_hides_expired_submission_content(client):
-    """Launch run results should honor expiry before the purge job removes files."""
+    """Elapsed input retention must hide bytes and filenames before deletion."""
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
     user = _force_login_for_workflow(client, workflow)
@@ -1001,8 +1001,8 @@ def test_run_detail_page_hides_expired_submission_content(client):
 
     assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
-    assert "Data file" in body
-    assert "launch-expired.json" in body
+    assert "Data file" not in body
+    assert "launch-expired.json" not in body
     assert (
         "Submission content has been purged per retention policy and cannot be viewed."
         in body

@@ -61,21 +61,28 @@ and reduces storage costs for workflows that don't need to retain user data.
 ### Key Fields
 
 - `retention_policy`: Snapshot of the workflow's retention setting at submission time
-- `expires_at`: When content should be purged (null for DO_NOT_STORE or already purged)
+- `expires_at`: Provisional receipt-time deadline, reset after the last related
+  run to give the full author-selected post-processing window (null for
+  `DO_NOT_STORE`, permanent retention, or already purged)
 - `content_purged_at`: Timestamp when content was purged (audit trail)
 
 ### Content Purge vs Record Deletion
 
-When a submission's retention expires, we **purge the content** but **preserve the record**.
+When a submission's retention expires, we **purge the content** but **preserve
+a minimal record**.
 This means:
 
-- The `Submission` row remains in the database with its metadata intact
+- The `Submission` row remains in the database
 - `content` is cleared to empty string
 - `input_file` is deleted from storage
-- `checksum_sha256`, `original_filename`, `size_bytes` are preserved for audit
-- Associated GCS execution bundles (`gs://bucket/runs/{org}/{run}/`) are deleted
+- submitter-supplied names, original filenames, and arbitrary metadata are cleared
+- `checksum_sha256`, `size_bytes`, `file_type`, and timestamps remain for audit
+- auxiliary `SubmissionInputFile` bytes and submitter context are removed
+- copied run inputs and input envelopes are deleted, while independently
+  retained outputs remain until their own policy expires
 
-This approach preserves the audit trail while removing the actual user data.
+No purge runs while a related validation is active. Shared inputs are eligible
+only after every related run is terminal.
 
 ### Defensive FK: ValidationRun.submission
 
@@ -90,15 +97,17 @@ This approach preserves the audit trail while removing the actual user data.
 Two commands handle retention:
 
 ```bash
-# Purge submissions past their expires_at date (run hourly)
+# Purge finite-retention submissions past expires_at (run hourly)
 python manage.py purge_expired_submissions --batch-size 100
 
-# Process failed purge attempts (run every 5 minutes)
+# Process no-retention and failed purge work (run every 5 minutes)
 python manage.py process_purge_retries --batch-size 50
 ```
 
 ### PurgeRetry Model
 
-When a purge fails (e.g., GCS unavailable), a `PurgeRetry` record is created
-for automatic retry with exponential backoff. After 5 failed attempts, manual
-intervention is required.
+One `PurgeRetry` row exists per submission. Failed deletion uses capped
+exponential backoff (1 minute, 5 minutes, 1 hour, 6 hours, then 24 hours).
+Crossing five attempts raises an operator warning but never abandons
+privacy-critical deletion. A repair scan recreates missing no-retention work
+after missed hooks.

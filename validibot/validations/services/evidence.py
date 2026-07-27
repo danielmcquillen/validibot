@@ -10,7 +10,8 @@ Session B addition (tasks 5-7):
 :mod:`validibot.validations.services.evidence_retention` provides a
 ``RetentionPolicy`` consulted here. Input hashes always land in the
 manifest (preimage-resistant; safe even under ``DO_NOT_STORE``);
-output hashes are stripped under ``DO_NOT_STORE``. Stripped fields
+output hashes follow the independent output policy and are stripped when it is
+``DO_NOT_STORE``. Stripped fields
 are recorded in ``retention.redactions_applied`` so verifiers see
 what the policy did.
 
@@ -679,9 +680,12 @@ class EvidenceManifestBuilder:
         # of "the policy stripped these fields" so verifiers know what
         # to expect in the manifest's shape.
         retention_class = workflow.input_retention or ""
+        output_retention_class = run.output_retention_policy or ""
         retention = ManifestRetentionInfo(
             retention_class=retention_class,
-            redactions_applied=RetentionPolicy.redactions_for(retention_class),
+            redactions_applied=RetentionPolicy.redactions_for(
+                output_retention_class,
+            ),
         )
 
         # Input hash is always populated (preimage-resistant; doesn't
@@ -693,7 +697,7 @@ class EvidenceManifestBuilder:
             input_hash = run.submission.checksum_sha256
 
         output_hash = ""
-        if RetentionPolicy.includes_output_hash(retention_class):
+        if RetentionPolicy.includes_output_hash(output_retention_class):
             output_hash = run.output_hash or ""
 
         payload_digests = ManifestPayloadDigests(
@@ -707,7 +711,7 @@ class EvidenceManifestBuilder:
         execution_attempts = _build_execution_attempt_records(
             run,
             include_output_hash=RetentionPolicy.includes_output_hash(
-                retention_class,
+                output_retention_class,
             ),
         )
 

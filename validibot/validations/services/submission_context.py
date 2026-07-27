@@ -67,10 +67,11 @@ def build_submission_assertion_context(
     - ``uploaded_at``        — ``Submission.created`` (timezone-aware UTC;
       server-stamped at receive — the one trustworthy temporal fact)
 
-    The envelope is **stable across content purge**: ``purge_content`` clears
-    only the file bytes and preserves every field exposed here, so a rule on
-    ``submission.metadata.deliverable`` keeps working against a purged
-    submission. Only ``p`` / ``payload`` (the file content) disappears.
+    The envelope is available only during validation. Retention purge clears
+    submitter-set names, metadata, filenames, and run descriptions as well as
+    raw bytes. Server-derived type, size, checksum, and timestamp facts remain
+    in the minimal audit record, but assertions are never re-evaluated from a
+    purged submission.
 
     Args:
         validation_run: The run being evaluated, or ``None``.

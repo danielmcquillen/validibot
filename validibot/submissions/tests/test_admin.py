@@ -1,9 +1,9 @@
 """
 Tests for retention-aware Submission admin behavior.
 
-The Django admin is an operator UI surface, so these tests make sure raw
-submitted data fields are hidden there whenever retention policy says users
-must not be able to view the content, even if the underlying file still exists.
+The Django admin is an operator UI surface, so these tests make sure submitted
+bytes and payload-derived context are hidden there whenever retention policy
+says the input is unavailable, even if physical deletion is still pending.
 """
 
 from datetime import timedelta
@@ -56,8 +56,16 @@ class SubmissionAdminRetentionTests(TestCase):
 
         excluded = self.admin.get_exclude(self.request, submission)
 
-        self.assertIn("content", excluded)
-        self.assertIn("input_file", excluded)
+        self.assertTrue(
+            {
+                "name",
+                "content",
+                "input_file",
+                "original_filename",
+                "metadata",
+            }.issubset(excluded),
+        )
+        self.assertEqual(self.admin.retention_safe_name(submission), "")
 
     def test_admin_hides_expired_content_fields_while_file_exists(self):
         """Expired submissions should not expose raw admin form fields."""
@@ -67,8 +75,16 @@ class SubmissionAdminRetentionTests(TestCase):
 
         excluded = self.admin.get_exclude(self.request, submission)
 
-        self.assertIn("content", excluded)
-        self.assertIn("input_file", excluded)
+        self.assertTrue(
+            {
+                "name",
+                "content",
+                "input_file",
+                "original_filename",
+                "metadata",
+            }.issubset(excluded),
+        )
+        self.assertEqual(self.admin.retention_safe_name(submission), "")
 
     def test_admin_keeps_retained_content_fields_before_expiry(self):
         """Retained, unexpired submissions remain available to privileged admins."""
@@ -78,3 +94,7 @@ class SubmissionAdminRetentionTests(TestCase):
 
         self.assertNotIn("content", excluded)
         self.assertNotIn("input_file", excluded)
+        self.assertEqual(
+            self.admin.retention_safe_name(submission),
+            submission.name,
+        )

@@ -116,7 +116,7 @@ def _run_management_command(
 #
 # Default schedules:
 #   purge_expired_submissions     - Hourly at :00
-#   purge_expired_outputs         - Hourly at :00
+#   purge_expired_outputs         - Every 5 minutes
 #   process_purge_retries         - Every 5 minutes
 #   cleanup_stuck_runs            - Every 10 minutes
 #   cleanup_idempotency_keys      - Daily at 3:00 AM
@@ -175,7 +175,7 @@ def purge_expired_outputs(self) -> dict:
     Removes findings, artifacts, and storage files from runs where
     output_expires_at < now while preserving the run record for audit.
 
-    Default schedule: Hourly at :00
+    Default schedule: Every 5 minutes
     """
     logger.info(
         "Starting scheduled purge of expired outputs (task_id=%s)",

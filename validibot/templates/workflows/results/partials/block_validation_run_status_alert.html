@@ -10,7 +10,7 @@ the run has a user-friendly error message. Extracted from the former
 Context variables:
   run — the ValidationRun object
 {% endcomment %}
-{% if run.user_friendly_error %}
+{% if run.are_outputs_viewable and run.user_friendly_error %}
   <div class="alert validation-run-status-alert alert-danger mb-3 d-flex flex-row align-items-center"
        role="alert">
     <div>

@@ -188,6 +188,8 @@ class CallbackCompletionTestCase(TestCase):
 
         self.run.refresh_from_db()
         self.assertEqual(self.run.status, ValidationRunStatus.SUCCEEDED)
+        self.assertIsNotNone(self.run.ended_at)
+        self.assertEqual(self.run.output_expires_at, self.run.ended_at)
 
         summary_record = ValidationRunSummary.objects.get(run=self.run)
         self.assertEqual(summary_record.total_findings, 2)

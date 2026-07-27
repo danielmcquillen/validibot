@@ -25,112 +25,117 @@ Context variables (passed via ``{% include ... with %}``):
                            standalone card for the classic layout and the
                            launch-page status card.
 {% endcomment %}
-{% if not bare %}
-  <div class="card validation-info-card">
-    <div class="card-header">
-      {% trans "Outputs" %}
-    </div>
-    <div class="card-body">
-    {% endif %}
-    {% comment %}
+{% if not run.are_outputs_viewable %}
+  <div class="alert alert-secondary mb-0" role="status">
+    {% trans "Detailed outputs are no longer retained for this run." %}
+  </div>
+{% else %}
+  {% if not bare %}
+    <div class="card validation-info-card">
+      <div class="card-header">
+        {% trans "Outputs" %}
+      </div>
+      <div class="card-body">
+      {% endif %}
+      {% comment %}
     ── Workflow Outputs ───────────────────────────────────────────────
     Aggregated displayed step outputs in a single table. Gives
     the submitter the headline numbers (site EUI, energy totals, etc.)
     up front before per-step details.
-    {% endcomment %}
-    {% if has_step_outputs %}
-      <section class="mb-3">
-        <h6 class="fw-semibold mb-2">
-          {% trans "Workflow Outputs" %}
-        </h6>
-        <div class="border border-secondary-subtle rounded p-3"
-             style="border-style: dotted !important">
-          <table class="table table-sm table-bordered mb-0">
-            <thead>
-              <tr>
-                <th>
-                  {% trans "Metric" %}
-                </th>
-                <th class="text-end">
-                  {% trans "Value" %}
-                </th>
-                <th>
-                  {% trans "Units" %}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for output in all_step_outputs %}
+      {% endcomment %}
+      {% if has_step_outputs %}
+        <section class="mb-3">
+          <h6 class="fw-semibold mb-2">
+            {% trans "Workflow Outputs" %}
+          </h6>
+          <div class="border border-secondary-subtle rounded p-3"
+               style="border-style: dotted !important">
+            <table class="table table-sm table-bordered mb-0">
+              <thead>
                 <tr>
-                  <td>
-                    {{ output.label }}
-                  </td>
-                  <td class="text-end font-monospace">
-                    {{ output.formatted_value }}
-                  </td>
-                  <td class="text-muted small">
-                    {{ output.units }}
-                  </td>
+                  <th>
+                    {% trans "Metric" %}
+                  </th>
+                  <th class="text-end">
+                    {% trans "Value" %}
+                  </th>
+                  <th>
+                    {% trans "Units" %}
+                  </th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    {% endif %}
-    {% comment %}
+              </thead>
+              <tbody>
+                {% for output in all_step_outputs %}
+                  <tr>
+                    <td>
+                      {{ output.label }}
+                    </td>
+                    <td class="text-end font-monospace">
+                      {{ output.formatted_value }}
+                    </td>
+                    <td class="text-muted small">
+                      {{ output.units }}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+      {% comment %}
     ── Outputs by Step ───────────────────────────────────────────────
     Per-step findings grouped by severity, plus template parameters
     and template warnings if present. Each step gets its own bordered
     container.
-    {% endcomment %}
-    <section>
-      <h6 class="fw-semibold mb-2">
-        {% trans "Outputs by Step" %}
-      </h6>
-      {% for step_run in step_runs %}
-        <div class="border border-secondary-subtle rounded p-3
+      {% endcomment %}
+      <section>
+        <h6 class="fw-semibold mb-2">
+          {% trans "Outputs by Step" %}
+        </h6>
+        {% for step_run in step_runs %}
+          <div class="border border-secondary-subtle rounded p-3
+                      {% if not forloop.last %}
+                        mb-3
+                      {% endif %}"
+               style="border-style: dotted !important">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="badge text-bg-secondary">
+                {% trans "Step" %} {{ step_run.workflow_step.step_number|default:step_run.step_order }}
+              </span>
+              <span class="fw-semibold">{{ step_run.workflow_step.name|default:_("Step") }}</span>
+            </div>
+            {% with params=step_params|get_item:step_run.pk warnings=step_template_warnings|get_item:step_run.pk %}
+              {% if params %}
+                <dl class="row small mb-2">
+                  {% for param in params %}
+                    <dt class="col-sm-5">
+                      {{ param.label }}
+                    </dt>
+                    <dd class="col-sm-7">
+                      <span class="font-monospace">{{ param.value }}</span>
+                      {% if param.units %}
+                        <span class="text-muted ms-1">{{ param.units }}</span>
+                      {% endif %}
+                    </dd>
+                  {% endfor %}
+                </dl>
+              {% endif %}
+              {% if warnings %}
+                <div class="alert alert-warning small mb-2">
+                  <i class="bi-exclamation-triangle me-1"></i>
+                  {% for w in warnings %}
+                    {{ w }}
                     {% if not forloop.last %}
-                      mb-3
-                    {% endif %}"
-             style="border-style: dotted !important">
-          <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="badge text-bg-secondary">
-              {% trans "Step" %} {{ step_run.workflow_step.step_number|default:step_run.step_order }}
-            </span>
-            <span class="fw-semibold">{{ step_run.workflow_step.name|default:_("Step") }}</span>
-          </div>
-          {% with params=step_params|get_item:step_run.pk warnings=step_template_warnings|get_item:step_run.pk %}
-            {% if params %}
-              <dl class="row small mb-2">
-                {% for param in params %}
-                  <dt class="col-sm-5">
-                    {{ param.label }}
-                  </dt>
-                  <dd class="col-sm-7">
-                    <span class="font-monospace">{{ param.value }}</span>
-                    {% if param.units %}
-                      <span class="text-muted ms-1">{{ param.units }}</span>
+                      <br />
                     {% endif %}
-                  </dd>
-                {% endfor %}
-              </dl>
-            {% endif %}
-            {% if warnings %}
-              <div class="alert alert-warning small mb-2">
-                <i class="bi-exclamation-triangle me-1"></i>
-                {% for w in warnings %}
-                  {{ w }}
-                  {% if not forloop.last %}
-                    <br />
-                  {% endif %}
-                {% endfor %}
-              </div>
-            {% endif %}
-          {% endwith %}
-          {% with findings=step_run.findings.all %}
-            {% if findings %}
-              {% comment %}
+                  {% endfor %}
+                </div>
+              {% endif %}
+            {% endwith %}
+            {% with findings=step_run.findings.all %}
+              {% if findings %}
+                {% comment %}
               Findings are grouped by severity, then collapsed by rule
               (code + message + path) so a rule that fires across many
               instances shows as one counted row instead of dozens of
@@ -138,9 +143,9 @@ Context variables (passed via ``{% include ... with %}``):
               only appears when a step actually carries subjects, so
               validators that don't (JSON/XML/tabular) render unchanged.
               See validations.services.findings_display.group_step_findings.
-              {% endcomment %}
-              {% grouped_step_findings findings as grouped %}
-              {% comment %}
+                {% endcomment %}
+                {% grouped_step_findings findings as grouped %}
+                {% comment %}
               table-responsive lets the table scroll horizontally inside the
               (narrow) classic-layout column instead of overflowing the card.
               Column order is Severity, Subject, Message, Path — Message leads
@@ -148,114 +153,115 @@ Context variables (passed via ``{% include ... with %}``):
               trails and is abbreviated to its local name via |abbreviate_iri,
               with the full IRI on hover, since the namespace repeats on every
               row and is pure noise.
-              {% endcomment %}
-              <div class="table-responsive">
-                <table class="table table-sm table-bordered align-middle mb-0 findings-table
-                              {% if not grouped.show_subject %}
-                                findings-table-no-subject
-                              {% endif %}">
-                  <thead>
-                    <tr>
-                      <th class="findings-col-severity">
-                        {% trans "Severity" %}
-                      </th>
-                      {% if grouped.show_subject %}
-                        <th class="findings-col-subject">
-                          {% trans "Subject" %}
-                        </th>
-                      {% endif %}
-                      <th class="findings-col-message">
-                        {% trans "Message" %}
-                      </th>
-                      <th class="findings-col-path">
-                        {% trans "Path" %}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for section in grouped.severities %}
+                {% endcomment %}
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered align-middle mb-0 findings-table
+                                {% if not grouped.show_subject %}
+                                  findings-table-no-subject
+                                {% endif %}">
+                    <thead>
                       <tr>
-                        <td colspan="{% if grouped.show_subject %}
-                                       4
-                                     {% else %}
-                                       3
-                                     {% endif %}"
-                            class="fw-semibold">
-                          {{ section.label }}
-                        </td>
+                        <th class="findings-col-severity">
+                          {% trans "Severity" %}
+                        </th>
+                        {% if grouped.show_subject %}
+                          <th class="findings-col-subject">
+                            {% trans "Subject" %}
+                          </th>
+                        {% endif %}
+                        <th class="findings-col-message">
+                          {% trans "Message" %}
+                        </th>
+                        <th class="findings-col-path">
+                          {% trans "Path" %}
+                        </th>
                       </tr>
-                      {% for group in section.groups %}
+                    </thead>
+                    <tbody>
+                      {% for section in grouped.severities %}
                         <tr>
-                          <td>
-                            {% finding_badge_class group.representative as badge_class %}
-                            <span class="badge text-uppercase {{ badge_class }}">{{ group.representative.get_severity_display }}</span>
+                          <td colspan="{% if grouped.show_subject %}
+                                         4
+                                       {% else %}
+                                         3
+                                       {% endif %}"
+                              class="fw-semibold">
+                            {{ section.label }}
                           </td>
-                          {% if grouped.show_subject %}
-                            <td class="font-monospace small findings-cell-subject">
-                              {% if group.count > 1 %}
-                                <details>
-                                  <summary class="text-muted">
-                                    {{ group.count }} {% trans "subjects" %}
-                                  </summary>
-                                  <ul class="list-unstyled mb-0 mt-1">
-                                    {% for s in group.subjects %}
-                                      <li class="text-truncate" title="{{ s.subject }}">
-                                        {{ s.subject_short }}
-                                        {% if s.value %}
-                                          <span class="text-muted">= {{ s.value }}</span>
-                                        {% endif %}
-                                      </li>
-                                    {% endfor %}
-                                  </ul>
-                                </details>
-                              {% elif group.subjects %}
-                                {% with s=group.subjects.0 %}
-                                  <span class="d-block text-truncate" title="{{ s.subject }}">
-                                    {{ s.subject_short }}
-                                    {% if s.value %}
-                                      <span class="text-muted">= {{ s.value }}</span>
-                                    {% endif %}
-                                  </span>
-                                {% endwith %}
+                        </tr>
+                        {% for group in section.groups %}
+                          <tr>
+                            <td>
+                              {% finding_badge_class group.representative as badge_class %}
+                              <span class="badge text-uppercase {{ badge_class }}">{{ group.representative.get_severity_display }}</span>
+                            </td>
+                            {% if grouped.show_subject %}
+                              <td class="font-monospace small findings-cell-subject">
+                                {% if group.count > 1 %}
+                                  <details>
+                                    <summary class="text-muted">
+                                      {{ group.count }} {% trans "subjects" %}
+                                    </summary>
+                                    <ul class="list-unstyled mb-0 mt-1">
+                                      {% for s in group.subjects %}
+                                        <li class="text-truncate" title="{{ s.subject }}">
+                                          {{ s.subject_short }}
+                                          {% if s.value %}
+                                            <span class="text-muted">= {{ s.value }}</span>
+                                          {% endif %}
+                                        </li>
+                                      {% endfor %}
+                                    </ul>
+                                  </details>
+                                {% elif group.subjects %}
+                                  {% with s=group.subjects.0 %}
+                                    <span class="d-block text-truncate" title="{{ s.subject }}">
+                                      {{ s.subject_short }}
+                                      {% if s.value %}
+                                        <span class="text-muted">= {{ s.value }}</span>
+                                      {% endif %}
+                                    </span>
+                                  {% endwith %}
+                                {% else %}
+                                  –
+                                {% endif %}
+                              </td>
+                            {% endif %}
+                            <td class="text-break">
+                              {{ group.representative.message }}
+                              {% if group.count > 1 and not grouped.show_subject %}
+                                <span class="badge text-bg-light border ms-1">× {{ group.count }}</span>
+                              {% endif %}
+                              {% if group.failed_rows %}
+                                <div class="text-muted small font-monospace mt-1">
+                                  {{ group.failed_rows }}
+                                </div>
+                              {% endif %}
+                            </td>
+                            <td class="font-monospace small findings-cell-path">
+                              {% if group.representative.path %}
+                                <span title="{{ group.representative.path }}">{{ group.representative.path|abbreviate_iri }}</span>
                               {% else %}
                                 –
                               {% endif %}
                             </td>
-                          {% endif %}
-                          <td class="text-break">
-                            {{ group.representative.message }}
-                            {% if group.count > 1 and not grouped.show_subject %}
-                              <span class="badge text-bg-light border ms-1">× {{ group.count }}</span>
-                            {% endif %}
-                            {% if group.failed_rows %}
-                              <div class="text-muted small font-monospace mt-1">
-                                {{ group.failed_rows }}
-                              </div>
-                            {% endif %}
-                          </td>
-                          <td class="font-monospace small findings-cell-path">
-                            {% if group.representative.path %}
-                              <span title="{{ group.representative.path }}">{{ group.representative.path|abbreviate_iri }}</span>
-                            {% else %}
-                              –
-                            {% endif %}
-                          </td>
-                        </tr>
+                          </tr>
+                        {% endfor %}
                       {% endfor %}
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% else %}
-              <p class="text-muted small mb-0">
-                {% trans "No errors, warnings, or info for this step." %}
-              </p>
-            {% endif %}
-          {% endwith %}
-        </div>
-      {% endfor %}
-    </section>
-    {% if not bare %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <p class="text-muted small mb-0">
+                  {% trans "No errors, warnings, or info for this step." %}
+                </p>
+              {% endif %}
+            {% endwith %}
+          </div>
+        {% endfor %}
+      </section>
+      {% if not bare %}
+      </div>
     </div>
-  </div>
+  {% endif %}
 {% endif %}

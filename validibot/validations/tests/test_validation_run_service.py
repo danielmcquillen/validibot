@@ -72,6 +72,41 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_launch_rejects_submission_after_retention_purge():
+    """A purge tombstone must prevent a later run from launching without input."""
+
+    org = OrganizationFactory()
+    user = UserFactory()
+    grant_role(user, org, RoleCode.EXECUTOR)
+    workflow = WorkflowFactory(org=org, user=user, is_active=True)
+    WorkflowStepFactory(workflow=workflow)
+    submission = SubmissionFactory(
+        org=org,
+        project=workflow.project,
+        user=user,
+        workflow=workflow,
+    )
+    submission.purge_content()
+
+    request = APIRequestFactory().post("/api/v1/workflows/start/")
+    request.user = user
+
+    with pytest.raises(
+        ValueError,
+        match="Submission content is no longer available",
+    ):
+        ValidationRunService().launch(
+            request=request,
+            org=org,
+            workflow=workflow,
+            submission=submission,
+            user_id=user.id,
+        )
+
+    assert not ValidationRun.objects.filter(submission=submission).exists()
+
+
+@pytest.mark.django_db
 def test_execute_fails_gracefully_when_validator_missing():
     """When a validator can't be loaded, the step fails gracefully.
 

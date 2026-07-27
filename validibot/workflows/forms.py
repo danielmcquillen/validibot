@@ -31,6 +31,7 @@ from validibot.core.deployment import (
     supports_author_selectable_validator_execution_profiles,
 )
 from validibot.projects.models import Project
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.cel_columns import referenced_column_aggregates
 from validibot.validations.cel_columns import referenced_column_metrics
@@ -491,8 +492,9 @@ class WorkflowForm(forms.ModelForm):
             ),
             "output_retention": _(
                 "Controls how long validation outputs (results, artifacts, "
-                "findings) are kept after the run completes. Users need time "
-                "to review results, so immediate deletion is not an option."
+                "findings, step values, and evidence files) are kept after "
+                "the run completes. The privacy-safe default queues deletion "
+                "immediately."
             ),
         }
 
@@ -1133,8 +1135,8 @@ class WorkflowForm(forms.ModelForm):
 
         Generic "cannot change in place" doesn't tell the author what
         specifically broke the safety check. This helper produces a
-        message that names the field, identifies whether they tried to
-        narrow or shorten, and points at the safe-change escape hatch
+        message that names the field, identifies the unsafe direction,
+        and points at the safe-change escape hatch
         (add types in place; create a new version only to remove them).
         """
         if field_name == "allowed_file_types":
@@ -1151,9 +1153,9 @@ class WorkflowForm(forms.ModelForm):
                 ) % {"removed": removed_labels}
         if field_name in {"input_retention", "output_retention"}:
             return _(
-                "Shortening %(field)s would purge data sooner than past "
-                "runs were promised. You can extend retention in place — "
-                "to shorten it, create a new version of the workflow.",
+                "Extending %(field)s would keep future run data longer than "
+                "this published workflow promised. You can shorten retention "
+                "in place — to extend it, create a new workflow version.",
             ) % {"field": field_name.replace("_", " ")}
         return _(
             "Changing %(field)s on a workflow that already has runs would "
@@ -1190,9 +1192,9 @@ class WorkflowForm(forms.ModelForm):
         # Versioned workflows that have runs, or are locked, have a
         # frozen validation contract: every past run executed under
         # specific file-type / retention rules. The gate blocks edits
-        # that would invalidate that history (narrowing the file-type
-        # set, shortening retention) while allowing edits that only
-        # widen the contract (adding file types, extending retention).
+        # that would invalidate that history or expand its privacy scope
+        # (narrowing the file-type set, extending retention) while allowing
+        # privacy-safe edits (adding file types, shortening retention).
         #
         # Mutable workflows intentionally trade away that reproducibility
         # guarantee. They can be edited in place after runs. History
@@ -1385,6 +1387,20 @@ class WorkflowForm(forms.ModelForm):
                         "incompatible with its privacy model."
                     ),
                     code="x402_requires_do_not_store",
+                ),
+            )
+        if (
+            cleaned.get("agent_billing_mode") == AgentBillingMode.AGENT_PAYS_X402
+            and cleaned.get("output_retention") != OutputRetention.DO_NOT_STORE
+        ):
+            self.add_error(
+                "output_retention",
+                ValidationError(
+                    _(
+                        "Output retention must be 'Do not retain' when agents "
+                        "pay via x402 micropayments."
+                    ),
+                    code="x402_requires_no_output_retention",
                 ),
             )
 

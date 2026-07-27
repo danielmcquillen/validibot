@@ -34,6 +34,7 @@ import pytest
 from validibot_shared.evidence import SCHEMA_VERSION
 from validibot_shared.evidence import EvidenceManifest
 
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.models import SubmissionInputFile
@@ -201,9 +202,15 @@ class TestBuildManifest:
 
     def test_build_projects_attempt_bound_execution_identity(self):
         """Manifest evidence binds verified files and envelopes to one attempt."""
-        workflow = WorkflowFactory(input_retention=SubmissionRetention.STORE_30_DAYS)
+        workflow = WorkflowFactory(
+            input_retention=SubmissionRetention.STORE_30_DAYS,
+            output_retention=OutputRetention.STORE_30_DAYS,
+        )
         step = WorkflowStepFactory(workflow=workflow)
-        run = _completed_run(workflow=workflow)
+        run = _completed_run(
+            workflow=workflow,
+            output_retention_policy=OutputRetention.STORE_30_DAYS,
+        )
         step_run = ValidationStepRunFactory(
             validation_run=run,
             workflow_step=step,

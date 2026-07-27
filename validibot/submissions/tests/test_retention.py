@@ -49,22 +49,25 @@ class TestSubmissionPurgeContent:
         assert submission.content_purged_at is not None
         assert submission.expires_at is None
 
-    def test_purge_content_preserves_metadata(self):
-        """Purging should preserve audit metadata like checksum and size."""
+    def test_purge_content_minimizes_payload_derived_metadata(self):
+        """No-retention must clear arbitrary labels while keeping audit facts."""
         submission = SubmissionFactory(
             content='{"test": "data"}',
+            name="Customer secret",
             checksum_sha256="abc123",
             original_filename="test.json",
             size_bytes=100,
+            metadata={"customer": "sensitive"},
         )
 
         submission.purge_content()
         submission.refresh_from_db()
 
-        # Metadata preserved for audit trail
+        assert submission.name == ""
         assert submission.checksum_sha256 == "abc123"
-        assert submission.original_filename == "test.json"
+        assert submission.original_filename == ""
         assert submission.size_bytes == 100  # noqa: PLR2004
+        assert submission.metadata == {}
 
     def test_purge_content_is_idempotent(self):
         """Calling purge_content() multiple times should be safe."""
@@ -127,21 +130,23 @@ class TestSubmissionPurgeContent:
 
         assert not port_file.input_file
         assert port_file.file_purged_at is not None
-        assert port_file.original_filename == "weather.epw"
+        assert port_file.original_filename == ""
+        assert port_file.content_type == ""
+        assert port_file.metadata == {}
         assert port_file.checksum_sha256 == checksum
 
-    @patch("validibot.submissions.models._delete_run_files")
-    def test_purge_content_deletes_run_files(self, mock_delete):
-        """Purging should attempt to delete run files from storage."""
+    @patch("validibot.submissions.models._delete_run_input_files")
+    def test_purge_content_deletes_copied_run_inputs(self, mock_delete):
+        """Input purge must remove copied inputs from each terminal run."""
         submission = SubmissionFactory(content='{"test": "data"}')
-        run = ValidationRunFactory(submission=submission)
+        run = ValidationRunFactory(submission=submission, status="FAILED")
 
         submission.purge_content()
 
         # Should have been called for the related run
         mock_delete.assert_called_once_with(run)
 
-    @patch("validibot.submissions.models._delete_run_files")
+    @patch("validibot.submissions.models._delete_run_input_files")
     def test_purge_content_preserves_input_when_run_deletion_fails(
         self,
         mock_delete,
@@ -165,7 +170,7 @@ class TestSubmissionPurgeContent:
             )
             submission.content = ""
             submission.save(update_fields=["content", "input_file"])
-            ValidationRunFactory(submission=submission)
+            ValidationRunFactory(submission=submission, status="FAILED")
             original_file_name = submission.input_file.name
 
             with pytest.raises(OSError, match="object storage unavailable"):
@@ -177,53 +182,66 @@ class TestSubmissionPurgeContent:
             assert submission.input_file.storage.exists(original_file_name)
 
     @override_settings(GCS_VALIDATION_BUCKET="test-validation-bucket")
-    @patch("validibot.validations.services.cloud_run.gcs_client.delete_prefix")
-    def test_delete_run_files_targets_validation_bucket_runs_prefix(
+    @patch("validibot.validations.services.cloud_run.gcs_client.delete_prefix_except")
+    def test_delete_run_inputs_targets_validation_bucket_and_preserves_outputs(
         self,
-        mock_delete_prefix,
+        mock_delete_prefix_except,
     ):
-        """GCS run-file deletion must hit the validation bucket's ``runs/``
-        prefix — NOT the DataStorage ``private/`` prefix.
+        """GCS input deletion must preserve independently retained outputs.
 
-        This is the regression test for the silent-purge bug. The Cloud Run
-        launcher writes a run's bundle to
-        ``gs://<GCS_VALIDATION_BUCKET>/runs/<org>/<run>/``, but the old purge
-        deleted through the DataStorage abstraction, which prepends
-        ``private/`` — so it scanned ``private/runs/…`` (a prefix nothing is
-        written to) and the real objects survived in GCS even though the run
-        was marked purged. We assert the delete now targets the exact ``gs://``
-        prefix the launcher actually writes to.
+        The scan still targets the launcher's raw validation bucket rather than
+        DataStorage's ``private/`` namespace, but output.json and outputs/ are
+        explicit exclusions until the run's output policy expires.
         """
-        mock_delete_prefix.return_value = 0
+        mock_delete_prefix_except.return_value = 0
         submission = SubmissionFactory(content='{"test": "data"}')
-        run = ValidationRunFactory(submission=submission)
+        run = ValidationRunFactory(submission=submission, status="FAILED")
 
         submission.purge_content()
 
         expected_uri = f"gs://test-validation-bucket/runs/{run.org_id}/{run.id}/"
-        mock_delete_prefix.assert_called_once_with(expected_uri)
+        mock_delete_prefix_except.assert_called_once()
+        call = mock_delete_prefix_except.call_args
+        assert call.args == (expected_uri,)
+        assert f"{expected_uri}output.json" in call.kwargs["keep_uris"]
+        assert f"{expected_uri}outputs/" in call.kwargs["keep_prefixes"]
 
-    def test_delete_run_files_local_removes_run_directory(self, tmp_path):
-        """Local/self-hosted run-file deletion must remove the run directory
-        under ``MEDIA_ROOT/files/runs/<org>/<run>/``.
+    def test_delete_run_inputs_local_preserves_output_directory(self, tmp_path):
+        """Local input purge must remove inputs without shortening outputs.
 
-        Without a validation bucket the launcher stores bundles on the local
-        filesystem, so purge has to delete from there. We seed a fake bundle
-        and assert the whole run directory is gone after purge — the local
-        mirror of the GCS regression above.
+        This covers both legacy root-level envelopes and validator-produced
+        files below outputs/.
         """
         submission = SubmissionFactory(content='{"test": "data"}')
-        run = ValidationRunFactory(submission=submission)
+        run = ValidationRunFactory(submission=submission, status="FAILED")
 
         run_dir = tmp_path / "files" / "runs" / str(run.org_id) / str(run.id)
-        run_dir.mkdir(parents=True)
+        outputs_dir = run_dir / "outputs"
+        outputs_dir.mkdir(parents=True)
         (run_dir / "input.json").write_text("{}")
+        (run_dir / "customer-model.json").write_text("{}")
         (run_dir / "output.json").write_text("{}")
+        (outputs_dir / "report.json").write_text("{}")
 
         with override_settings(GCS_VALIDATION_BUCKET="", MEDIA_ROOT=str(tmp_path)):
             submission.purge_content()
 
-        assert not run_dir.exists()
+        assert not (run_dir / "input.json").exists()
+        assert not (run_dir / "customer-model.json").exists()
+        assert (run_dir / "output.json").exists()
+        assert (outputs_dir / "report.json").exists()
+
+    def test_purge_content_refuses_an_active_run(self):
+        """No scheduler race may delete bytes still needed by a validator."""
+        submission = SubmissionFactory(content='{"test": "data"}')
+        ValidationRunFactory(submission=submission, status="RUNNING")
+
+        with pytest.raises(RuntimeError, match="still required by an active run"):
+            submission.purge_content()
+
+        submission.refresh_from_db()
+        assert submission.content_purged_at is None
+        assert submission.content
 
 
 @pytest.mark.django_db
@@ -274,8 +292,8 @@ class TestPurgeRetryModel:
         assert actual_delay_2 >= expected_delay_2 - timedelta(seconds=5)
         assert actual_delay_2 <= expected_delay_2 + timedelta(seconds=5)
 
-    def test_max_attempts_stops_retries(self):
-        """After MAX_ATTEMPTS, next_retry should be set to far future."""
+    def test_alert_threshold_does_not_stop_retries(self):
+        """Deletion must continue after the operator alert threshold."""
         submission = SubmissionFactory()
         retry = PurgeRetry.objects.create(
             submission=submission,
@@ -287,8 +305,7 @@ class TestPurgeRetryModel:
         retry.refresh_from_db()
 
         assert retry.attempt_count == PurgeRetry.MAX_ATTEMPTS
-        # Next retry should be ~1 year in future (effectively stopped)
-        assert retry.next_retry_at > timezone.now() + timedelta(days=300)
+        assert retry.next_retry_at <= timezone.now() + timedelta(days=1, minutes=1)
 
     def test_record_failure_truncates_long_errors(self):
         """Long error messages should be truncated to prevent DB issues."""
@@ -318,6 +335,7 @@ class TestPurgeExpiredSubmissionsCommand:
         # Set expires_at in the past
         Submission.objects.filter(id=expired_submission.id).update(
             expires_at=timezone.now() - timedelta(hours=1),
+            created=timezone.now() - timedelta(days=8),
         )
 
         # Create non-expired submission
@@ -339,6 +357,22 @@ class TestPurgeExpiredSubmissionsCommand:
         future_submission.refresh_from_db()
         assert future_submission.content_purged_at is None
 
+    def test_expired_submission_is_deferred_while_run_is_active(self):
+        """A wall-clock deadline must never break an in-flight validation."""
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.STORE_7_DAYS,
+        )
+        ValidationRunFactory(submission=submission, status="RUNNING")
+        Submission.objects.filter(id=submission.id).update(
+            expires_at=timezone.now() - timedelta(hours=1),
+            created=timezone.now() - timedelta(days=8),
+        )
+
+        call_command("purge_expired_submissions")
+
+        submission.refresh_from_db()
+        assert submission.content_purged_at is None
+
     def test_dry_run_does_not_purge(self):
         """Dry run should report but not actually purge."""
         submission = SubmissionFactory(
@@ -346,6 +380,7 @@ class TestPurgeExpiredSubmissionsCommand:
         )
         Submission.objects.filter(id=submission.id).update(
             expires_at=timezone.now() - timedelta(hours=1),
+            created=timezone.now() - timedelta(days=8),
         )
 
         out = StringIO()
@@ -363,6 +398,7 @@ class TestPurgeExpiredSubmissionsCommand:
             sub = SubmissionFactory(retention_policy=SubmissionRetention.STORE_7_DAYS)
             Submission.objects.filter(id=sub.id).update(
                 expires_at=timezone.now() - timedelta(hours=1),
+                created=timezone.now() - timedelta(days=8),
             )
 
         out = StringIO()
@@ -387,6 +423,28 @@ class TestPurgeExpiredSubmissionsCommand:
         call_command("purge_expired_submissions", stdout=out)
 
         assert "No expired submissions to purge" in out.getvalue()
+
+    def test_missed_terminal_hook_repairs_input_window_before_purge(self):
+        """Repair must not shorten a finite window after a long validation."""
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.STORE_7_DAYS,
+        )
+        ended_at = timezone.now()
+        ValidationRunFactory(
+            submission=submission,
+            status="SUCCEEDED",
+            ended_at=ended_at,
+        )
+        Submission.objects.filter(id=submission.id).update(
+            created=timezone.now() - timedelta(days=8),
+            expires_at=timezone.now() - timedelta(hours=1),
+        )
+
+        call_command("purge_expired_submissions")
+
+        submission.refresh_from_db()
+        assert submission.content_purged_at is None
+        assert submission.expires_at == ended_at + timedelta(days=7)
 
     def test_skips_already_purged(self):
         """Command should skip submissions that are already purged."""
@@ -495,12 +553,8 @@ class TestProcessPurgeRetriesCommand:
         assert PurgeRetry.objects.filter(id=retry.id).exists()
         assert str(submission.id) not in out.getvalue()
 
-    def test_does_not_process_max_attempts_exceeded(self):
-        """Retries at max attempts must be left for manual intervention.
-
-        The command may legitimately process other due retries, so this test
-        verifies that the exhausted retry itself is not touched.
-        """
+    def test_processes_retries_beyond_alert_threshold(self):
+        """Privacy-critical deletion must not depend on manual intervention."""
         submission = SubmissionFactory(content='{"test": "data"}')
         retry = PurgeRetry.objects.create(
             submission=submission,
@@ -511,18 +565,16 @@ class TestProcessPurgeRetriesCommand:
         out = StringIO()
         call_command("process_purge_retries", stdout=out)
 
-        # Stale retry should NOT be processed
+        # The retry still runs and succeeds.
         submission.refresh_from_db()
-        assert submission.content_purged_at is None  # Not purged
+        assert submission.content_purged_at is not None
+        assert not PurgeRetry.objects.filter(id=retry.id).exists()
+        assert str(submission.id) in out.getvalue()
 
-        # Retry record should still exist (not deleted)
-        retry.refresh_from_db()
-        assert retry.attempt_count == PurgeRetry.MAX_ATTEMPTS
-        assert PurgeRetry.objects.filter(id=retry.id).exists()
-        assert str(submission.id) not in out.getvalue()
-
-    def test_reports_stale_retries_after_processing(self):
-        """Command should report stale retries after processing pending ones."""
+    @patch.object(Submission, "purge_content")
+    def test_reports_alert_threshold_retries_while_continuing(self, mock_purge):
+        """Operators need an alert without deletion work being abandoned."""
+        mock_purge.side_effect = OSError("storage still unavailable")
         # Create a processable retry
         good_submission = SubmissionFactory(content='{"processable": "data"}')
         PurgeRetry.objects.create(
@@ -541,8 +593,10 @@ class TestProcessPurgeRetriesCommand:
         out = StringIO()
         call_command("process_purge_retries", stdout=out)
 
-        # Should report the stale retry after processing
-        assert "require manual intervention" in out.getvalue()
+        # The failed attempt remains scheduled and is reported for investigation.
+        assert "crossed the alert threshold" in out.getvalue()
+        stale_retry = PurgeRetry.objects.get(submission=stale_submission)
+        assert stale_retry.attempt_count > PurgeRetry.MAX_ATTEMPTS
 
     @patch.object(Submission, "purge_content")
     def test_records_failure_on_exception(self, mock_purge):
@@ -621,6 +675,59 @@ class TestQueueSubmissionPurge:
 
         retry.refresh_from_db()
         assert retry.next_retry_at <= timezone.now()
+
+    def test_active_sibling_run_blocks_submission_purge(self):
+        """Shared submission bytes must survive until every run is terminal."""
+
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.DO_NOT_STORE,
+        )
+        ValidationRunFactory(
+            submission=submission,
+            status="RUNNING",
+        )
+
+        queue_submission_purge(submission)
+
+        assert not PurgeRetry.objects.filter(submission=submission).exists()
+
+    def test_terminal_run_allows_submission_purge(self):
+        """The last terminal run should make no-retention input work eligible."""
+
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.DO_NOT_STORE,
+        )
+        ValidationRunFactory(
+            submission=submission,
+            status="FAILED",
+            ended_at=timezone.now(),
+        )
+
+        queue_submission_purge(submission)
+
+        assert PurgeRetry.objects.filter(submission=submission).exists()
+
+
+@pytest.mark.django_db
+class TestPurgeRepairDiscovery:
+    """Scheduled repair must recover work missed by terminal callbacks."""
+
+    def test_terminal_no_retention_submission_is_rediscovered(self):
+        """A lost signal must not turn no-retention input into permanence."""
+
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.DO_NOT_STORE,
+        )
+        ValidationRunFactory(
+            submission=submission,
+            status="FAILED",
+            ended_at=timezone.now() - timedelta(minutes=5),
+        )
+
+        call_command("process_purge_retries")
+
+        submission.refresh_from_db()
+        assert submission.content_purged_at is not None
 
 
 @pytest.mark.django_db

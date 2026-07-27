@@ -23,12 +23,15 @@ from __future__ import annotations
 
 from datetime import UTC
 from datetime import datetime
+from datetime import timedelta
 from http import HTTPStatus
 
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from validibot_shared.evidence import SCHEMA_VERSION
 
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
@@ -162,6 +165,23 @@ class EvidenceManifestDownloadViewTests(TestCase):
         response = self.client.get(
             reverse("validations:evidence_manifest_download", args=[run.id]),
         )
+        assert response.status_code == HTTPStatus.NOT_FOUND
+
+    def test_expired_output_manifest_returns_404_before_physical_purge(self):
+        """A delayed worker must not extend access to retained evidence bytes."""
+        user, run = _setup_run_with_owner_access()
+        stamp_evidence_manifest(run)
+        run.output_retention_policy = OutputRetention.STORE_1_DAY
+        run.output_expires_at = timezone.now() - timedelta(minutes=1)
+        run.save(
+            update_fields=["output_retention_policy", "output_expires_at"],
+        )
+
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("validations:evidence_manifest_download", args=[run.id]),
+        )
+
         assert response.status_code == HTTPStatus.NOT_FOUND
 
     def test_run_without_artifact_returns_404(self):

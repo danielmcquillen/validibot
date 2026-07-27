@@ -28,12 +28,15 @@ import io
 import tarfile
 from datetime import UTC
 from datetime import datetime
+from datetime import timedelta
 from http import HTTPStatus
 
 import pytest
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
@@ -231,6 +234,23 @@ class EvidenceBundleDownloadViewTests(TestCase):
         members = _list_tar_members(response.content)
         assert "manifest.json" in members
         assert "README.txt" in members
+
+    def test_expired_output_bundle_returns_404_before_physical_purge(self):
+        """Finite policy expiry must gate bundles independently of cleanup."""
+        user, run = _setup_run_with_owner_access()
+        stamp_evidence_manifest(run)
+        run.output_retention_policy = OutputRetention.STORE_1_DAY
+        run.output_expires_at = timezone.now() - timedelta(minutes=1)
+        run.save(
+            update_fields=["output_retention_policy", "output_expires_at"],
+        )
+
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("validations:evidence_bundle_download", args=[run.id]),
+        )
+
+        assert response.status_code == HTTPStatus.NOT_FOUND
 
     def test_response_carries_hash_and_schema_version_headers(self):
         """Mirrors the manifest endpoint's CLI-friendly headers."""

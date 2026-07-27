@@ -44,7 +44,35 @@ That means historical workflow pages and run pages can continue to explain what 
 
 Each workflow has configurable retention settings:
 
-- **`data_retention`** -- how long to keep user-submitted files after validation completes. Default is `DO_NOT_STORE` (files are deleted immediately after completion; the submission record is preserved for audit).
-- **`output_retention`** -- how long to keep validation outputs (results, artifacts, findings). Default is 30 days.
+- **`input_retention`** -- how long to keep user-submitted content after every
+  run using it reaches a terminal state.
+- **`output_retention`** -- how long to keep detailed validation outputs after
+  each run reaches a terminal state.
 
-These are set per-workflow, not per-organisation.
+Both default to `DO_NOT_STORE`. Authors must explicitly opt in to any
+post-processing retention. Input options are no retention, 1 day, 7 days, 30
+days, or permanent; output options additionally include 90 days and 1 year.
+The selected policies are snapshotted onto each submission/run, so a later
+workflow edit cannot extend existing data's lifetime.
+
+`DO_NOT_STORE` means deletion is queued at terminal completion. Processing
+necessarily uses transient storage, and the scheduled workers normally remove
+it within five minutes. Failures retry indefinitely with capped exponential
+backoff and operator alerts. A purge timestamp is written only after required
+external deletion succeeds.
+
+Read access closes before physical deletion when necessary. No-retention input
+labels, filenames, metadata, and bytes are hidden from result lists, detail
+pages, and Django admin; finite input and output become unavailable at their
+deadlines even if a storage failure is still retrying.
+
+Input and output cleanup are independent. Input purge deletes original and
+copied inputs but preserves outputs whose author-selected window is still open;
+output purge later deletes the full run bundle and all detailed database
+projections. Minimal identifiers, hashes, aggregate counts, status/timing, and
+purge timestamps remain as the audit record. Submitter-supplied names,
+filenames, arbitrary metadata, detailed errors, step values, findings,
+artifacts, and evidence bytes are removed with their relevant stream.
+
+These settings are per workflow, not per organisation. For a versioned workflow,
+shortening a policy is allowed in place; extending one requires a new version.

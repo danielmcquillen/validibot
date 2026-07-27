@@ -78,11 +78,10 @@ logger = logging.getLogger(__name__)
 # Fields that constitute the "validation contract" — the rules that
 # define what a previously-launched run actually validated. Editing any
 # of these on a workflow that has runs (or is locked) MAY require a new
-# version depending on the *direction* of the edit; widening the
-# contract (accepting more files, keeping data longer) is safe in place
-# because no past run is invalidated by it. Narrowing the contract
-# (removing a file type, shortening retention) IS unsafe because past
-# runs depended on the broader rules. The direction logic lives in
+# version depending on the *direction* of the edit. Accepting more file
+# types and shortening retention are safe in place. Removing a file type
+# changes the execution contract, while extending retention expands the
+# privacy scope authors previously published. The direction logic lives in
 # ``CONTRACT_FIELD_SAFETY`` below.
 #
 # What is NOT a contract field:
@@ -113,8 +112,9 @@ CONTRACT_FIELDS = frozenset(
 # Per-field safety classifiers for in-place edits on workflows that
 # already have runs (or are locked). Each classifier answers a single
 # question: "is this proposed change safe to apply in place, or does
-# it invalidate past runs?". Safe changes (widening, extending) pass
-# through the form gate; unsafe changes (narrowing, shortening) are
+# it invalidate past runs or expand the privacy scope?". Safe changes
+# (file-type widening, retention shortening) pass through the form gate;
+# unsafe changes (file-type narrowing, retention extension) are
 # blocked unless the user is a superuser.
 #
 # The classifier functions take ``(current, proposed)`` and return
@@ -136,8 +136,8 @@ def _set_widening_safe(current: Any, proposed: Any) -> bool:
     return current_set.issubset(proposed_set)
 
 
-def _retention_extending_safe(current: Any, proposed: Any) -> bool:
-    """Retention change is safe iff the new value keeps data at least as long.
+def _retention_shortening_safe(current: Any, proposed: Any) -> bool:
+    """Retention change is safe iff it keeps data no longer than before.
 
     Delegates to the existing day-count maps in ``submissions.constants``
     so this safety check stays in sync with the enums automatically. The
@@ -145,11 +145,12 @@ def _retention_extending_safe(current: Any, proposed: Any) -> bool:
     (the strongest extension). The comparison uses a sortable rank so
     permanently > any-finite-days > 0-days (DO_NOT_STORE).
 
-    Extending retention is safe — files that past runs were promised
-    to retain are still retained, just longer. Shortening is unsafe —
-    files past runs expected to keep may be purged sooner than promised.
+    Run rows snapshot their retention policy, so shortening the workflow
+    setting only reduces storage for future runs and is privacy-safe.
+    Extending retention increases the privacy scope authors previously
+    published and therefore requires an explicit new workflow version.
     """
-    return _retention_rank(proposed) >= _retention_rank(current)
+    return _retention_rank(proposed) <= _retention_rank(current)
 
 
 def _retention_rank(value: Any) -> int:
@@ -178,8 +179,8 @@ def _retention_rank(value: Any) -> int:
 
 CONTRACT_FIELD_SAFETY: dict[str, Callable[[Any, Any], bool]] = {
     "allowed_file_types": _set_widening_safe,
-    "input_retention": _retention_extending_safe,
-    "output_retention": _retention_extending_safe,
+    "input_retention": _retention_shortening_safe,
+    "output_retention": _retention_shortening_safe,
 }
 
 

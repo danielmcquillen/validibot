@@ -297,10 +297,18 @@ Evidence retention rules are centralized in `validibot/validations/services/evid
 Current rules:
 
 - `payload_digests.input_sha256` is included for every retention tier, including `DO_NOT_STORE`.
-- `payload_digests.output_envelope_sha256` is omitted for `DO_NOT_STORE`.
+- `payload_digests.output_envelope_sha256` follows the independent output
+  policy and is omitted when output retention is `DO_NOT_STORE`.
 - omitted fields are listed in `retention.redactions_applied`.
 
-For `DO_NOT_STORE`, the manifest still preserves the digest of the exact bytes Django accepted and the URI-free strict input identities. The bundle does not include those bytes and the UI/API must not expose them even if the async reaper has not deleted them yet. Attempt output-envelope digests are redacted under the same output-hash rule, while `inputs_verified` still records whether trusted completion crossed the strict input-verification boundary.
+For `DO_NOT_STORE`, the manifest still preserves the digest of the exact bytes
+Django accepted and the URI-free strict input identities. The evidence bundle
+does not embed those bytes. Access-controlled result delivery may remain
+available during the short interval before the frequent purge worker runs;
+after purge, evidence bytes and detailed outputs are unavailable. Attempt
+output-envelope digests are redacted under the same output-hash rule, while
+`inputs_verified` still records whether trusted completion crossed the strict
+input-verification boundary.
 
 ## Run Source Attribution
 
@@ -336,7 +344,8 @@ Important fields:
 - `schema_version` — manifest schema string, usually `validibot.evidence.v1`
 - `manifest_path` — `FileField` pointing to the stored `manifest.json`
 - `manifest_hash` — SHA-256 of the canonical JSON bytes
-- `retention_class` — workflow input retention class used by the manifest builder
+- `retention_class` — legacy-compatible workflow input retention label; output
+  digest redaction is evaluated separately from the run's output-policy snapshot
 - `availability` — `GENERATED`, `PURGED`, or `FAILED`
 - `generation_error` — populated when availability is `FAILED`
 - `cached_bundle_path` — reserved for future cached bundle exports; current downloads are built on demand and do not populate it

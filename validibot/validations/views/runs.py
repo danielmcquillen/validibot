@@ -189,13 +189,15 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         run: ValidationRun = context["run"]
-        step_runs = list(
-            run.step_runs.select_related(
-                "workflow_step",
-                "workflow_step__validator",
-            ).prefetch_related("findings"),
+        outputs_viewable = run.are_outputs_viewable
+        step_runs_query = run.step_runs.select_related(
+            "workflow_step",
+            "workflow_step__validator",
         )
-        findings = list(run.findings.all())
+        if outputs_viewable:
+            step_runs_query = step_runs_query.prefetch_related("findings")
+        step_runs = list(step_runs_query)
+        findings = list(run.findings.all()) if outputs_viewable else []
 
         # Build display step outputs and template params for each step run.
         from validibot.validations.services.step_output_display import (
@@ -208,7 +210,7 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
         step_outputs: dict[int, list] = {}
         step_params: dict[int, list] = {}
         step_template_warnings: dict[int, list] = {}
-        for sr in step_runs:
+        for sr in step_runs if outputs_viewable else []:
             display_outputs = build_display_step_outputs(sr)
             if display_outputs:
                 step_outputs[sr.pk] = display_outputs
@@ -244,7 +246,7 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
             artifact = run.evidence_artifact
         except Exception:
             artifact = None
-        if artifact is not None:
+        if artifact is not None and outputs_viewable:
             from validibot.validations.models import RunEvidenceArtifactAvailability
 
             if artifact.availability == RunEvidenceArtifactAvailability.GENERATED:
@@ -263,10 +265,15 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
                 "submission_content": submission_content,
                 "submission_content_can_be_viewed": submission_content_can_be_viewed,
                 "evidence_artifact": evidence_artifact,
-                "artifact_items": build_artifact_display_items(
-                    run=run,
-                    request=self.request,
+                "artifact_items": (
+                    build_artifact_display_items(
+                        run=run,
+                        request=self.request,
+                    )
+                    if outputs_viewable
+                    else []
                 ),
+                "outputs_viewable": outputs_viewable,
             },
         )
         context.update(
@@ -425,6 +432,8 @@ class ValidationRunArtifactMixin(ValidationRunAccessMixin):
     def get_artifact(self, run: ValidationRun) -> Artifact:
         """Return the requested artifact only when it belongs to ``run``."""
 
+        if not run.are_outputs_viewable:
+            raise Http404(_("Artifact bytes are no longer retained."))
         return get_object_or_404(
             Artifact.objects.select_related("workflow_step", "step_run"),
             pk=self.kwargs[self.artifact_url_kwarg],

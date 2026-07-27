@@ -10,6 +10,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.tests.factories import SubmissionFactory
@@ -17,7 +18,10 @@ from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
+from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.tests.factories import ValidationFindingFactory
 from validibot.validations.tests.factories import ValidationRunFactory
+from validibot.validations.tests.factories import ValidationStepRunFactory
 
 
 class ValidationRunDetailViewTests(TestCase):
@@ -70,8 +74,51 @@ class ValidationRunDetailViewTests(TestCase):
         self.assertEqual(response.context["submission_content"], '{"visible": true}')
         self.assertTrue(response.context["submission_content_can_be_viewed"])
 
-    def test_do_not_store_file_submission_keeps_filename_without_view_button(self):
-        """No-store uploaded files should show retained metadata but no content UI."""
+    def test_expired_output_hides_findings_errors_and_hash_before_purge(self):
+        """The HTML surface must enforce the deadline independently of deletion."""
+        org = OrganizationFactory()
+        user = UserFactory(orgs=[org], username="daniel")
+        grant_role(user, org, RoleCode.VALIDATION_RESULTS_VIEWER)
+        user.memberships.get(org=org).set_roles(
+            {RoleCode.VALIDATION_RESULTS_VIEWER},
+        )
+        user.set_current_org(org)
+        submission = SubmissionFactory(org=org, user=user, project__org=org)
+        run = ValidationRunFactory(
+            submission=submission,
+            org=org,
+            workflow=submission.workflow,
+            project=submission.project,
+            user=user,
+            status=ValidationRunStatus.FAILED,
+            error="Secret runtime detail",
+            output_hash="a" * 64,
+            output_retention_policy=OutputRetention.STORE_1_DAY,
+            output_expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        step_run = ValidationStepRunFactory(validation_run=run)
+        ValidationFindingFactory(
+            validation_run=run,
+            validation_step_run=step_run,
+            message="Secret finding detail",
+        )
+
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("validations:validation_detail", kwargs={"pk": run.pk}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Detailed outputs are no longer retained for this run.",
+        )
+        self.assertNotContains(response, "Secret runtime detail")
+        self.assertNotContains(response, "Secret finding detail")
+        self.assertNotContains(response, "a" * 64)
+
+    def test_do_not_store_file_submission_hides_payload_context(self):
+        """No-store input must hide filenames and metadata before physical purge."""
         org = OrganizationFactory()
         user = UserFactory(orgs=[org], username="daniel")
         grant_role(user, org, RoleCode.VALIDATION_RESULTS_VIEWER)
@@ -89,6 +136,8 @@ class ValidationRunDetailViewTests(TestCase):
             user=user,
             project__org=org,
             retention_policy=SubmissionRetention.DO_NOT_STORE,
+            name="secret submission label",
+            metadata={"secret_label": "customer-secret"},
         )
         submission.set_content(
             uploaded_file=upload,
@@ -102,6 +151,7 @@ class ValidationRunDetailViewTests(TestCase):
             workflow=submission.workflow,
             project=submission.project,
             user=user,
+            short_description="secret run description",
         )
 
         self.client.force_login(user)
@@ -110,8 +160,11 @@ class ValidationRunDetailViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Data file")
-        self.assertContains(response, "private.json")
+        self.assertNotContains(response, "Data file")
+        self.assertNotContains(response, "private.json")
+        self.assertNotContains(response, "customer-secret")
+        self.assertNotContains(response, "secret submission label")
+        self.assertNotContains(response, "secret run description")
         self.assertContains(
             response,
             "Submission content has been purged per retention policy "
@@ -122,8 +175,8 @@ class ValidationRunDetailViewTests(TestCase):
         self.assertEqual(response.context["submission_content"], "")
         self.assertFalse(response.context["submission_content_can_be_viewed"])
 
-    def test_expired_file_submission_keeps_filename_without_view_button(self):
-        """Expired stored files should be hidden before the purge job deletes them."""
+    def test_expired_file_submission_hides_payload_context(self):
+        """An elapsed input deadline must hide bytes, filenames, and metadata."""
         org = OrganizationFactory()
         user = UserFactory(orgs=[org], username="daniel")
         grant_role(user, org, RoleCode.VALIDATION_RESULTS_VIEWER)
@@ -141,6 +194,7 @@ class ValidationRunDetailViewTests(TestCase):
             user=user,
             project__org=org,
             retention_policy=SubmissionRetention.STORE_1_DAY,
+            metadata={"secret_label": "expired-customer-secret"},
         )
         submission.set_content(
             uploaded_file=upload,
@@ -167,8 +221,9 @@ class ValidationRunDetailViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Data file")
-        self.assertContains(response, "expired.json")
+        self.assertNotContains(response, "Data file")
+        self.assertNotContains(response, "expired.json")
+        self.assertNotContains(response, "expired-customer-secret")
         self.assertContains(
             response,
             "Submission content has been purged per retention policy "

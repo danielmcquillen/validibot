@@ -391,9 +391,12 @@ class StepOrchestrator:
                 step_metrics=step_metrics,
             )
             safe_stamp_output_hash(validation_run)
-            from validibot.submissions.models import queue_submission_purge
+            from validibot.validations.signals import validation_run_finalized
 
-            queue_submission_purge(validation_run.submission)
+            validation_run_finalized.send_robust(
+                sender=self.__class__,
+                validation_run=validation_run,
+            )
             return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=validation_run.status,
@@ -426,9 +429,12 @@ class StepOrchestrator:
                 actor=actor,
                 extra_data=extra_payload,
             )
-            from validibot.submissions.models import queue_submission_purge
+            from validibot.validations.signals import validation_run_finalized
 
-            queue_submission_purge(validation_run.submission)
+            validation_run_finalized.send_robust(
+                sender=self.__class__,
+                validation_run=validation_run,
+            )
             return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=ValidationRunStatus.CANCELED,
@@ -464,17 +470,6 @@ class StepOrchestrator:
             ],
         )
 
-        # Notify listeners that the run reached a terminal status (e.g. cloud
-        # metering releases the compute-credit reservation). send_robust so a
-        # failing receiver can't break finalization. Sibling emission lives in
-        # the async path (validation_callback._finalize_run).
-        from validibot.validations.signals import validation_run_finalized
-
-        validation_run_finalized.send_robust(
-            sender=self.__class__,
-            validation_run=validation_run,
-        )
-
         summary_record = build_run_summary_record(
             validation_run=validation_run,
             step_metrics=step_metrics,
@@ -498,6 +493,16 @@ class StepOrchestrator:
 
         stamp_evidence_manifest(validation_run)
 
+        # Emit only after all detailed outputs/evidence are finalized. The
+        # retention receiver makes the run immediately eligible for deletion,
+        # so emitting earlier would race the purge worker.
+        from validibot.validations.signals import validation_run_finalized
+
+        validation_run_finalized.send_robust(
+            sender=self.__class__,
+            validation_run=validation_run,
+        )
+
         result = ValidationRunTaskResult(
             run_id=validation_run.id,
             status=validation_run.status,
@@ -519,9 +524,6 @@ class StepOrchestrator:
             extra_data=extra_payload,
         )
 
-        from validibot.submissions.models import queue_submission_purge
-
-        queue_submission_purge(validation_run.submission)
         return result
 
     # ---------- Step lifecycle ----------

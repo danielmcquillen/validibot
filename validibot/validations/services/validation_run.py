@@ -47,10 +47,10 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import status
 
-from validibot.submissions.constants import get_output_retention_timedelta
 from validibot.tracking.services import TrackingEventService
 from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import StepStatus
+from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.exceptions import OrgPolicyDeniedError
@@ -316,6 +316,7 @@ class ValidationRunService:
             PermissionError: If user lacks execute permission on workflow.
         """
         from validibot.core.tasks import enqueue_validation_run
+        from validibot.submissions.models import Submission as SubmissionModel
 
         start_time = time.perf_counter()
         if not request:
@@ -366,19 +367,25 @@ class ValidationRunService:
         elif getattr(request.user, "is_authenticated", False):
             run_user = request.user
 
-        # Compute output expiry based on workflow's output retention policy
+        # Snapshot the policy at launch. The actual deadline is computed from
+        # terminal completion, never from launch time, by the shared retention
+        # finalizer. A long-running validator therefore cannot expire its own
+        # active execution bundle.
         output_retention_policy = workflow.output_retention
-        output_expires_at = None
-        retention_delta = get_output_retention_timedelta(output_retention_policy)
-        if retention_delta is not None:
-            # Note: expiry is computed from now, not from run completion.
-            # This is simpler and adequate since runs typically complete quickly.
-            # For very long runs, the expiry will be slightly earlier than
-            # "completion + retention period", which is acceptable.
-            output_expires_at = timezone.now() + retention_delta
 
         run_extra = dict(extra or {})
         with transaction.atomic():
+            # Launch and retention purge share this row lock. If launch wins,
+            # the purge worker observes the new active run and defers. If purge
+            # wins, launch observes the durable tombstone and refuses to create
+            # a run whose input bytes no longer exist.
+            submission = SubmissionModel.objects.select_for_update().get(
+                pk=submission.pk,
+            )
+            if submission.content_purged_at:
+                msg = "Submission content is no longer available for validation"
+                raise ValueError(msg)
+
             validation_run = ValidationRun.objects.create(
                 org=org,
                 workflow=workflow,
@@ -389,7 +396,6 @@ class ValidationRunService:
                 status=ValidationRunStatus.PENDING,
                 source=source,
                 output_retention_policy=output_retention_policy,
-                output_expires_at=output_expires_at,
                 **run_extra,
             )
 
@@ -483,7 +489,11 @@ class ValidationRunService:
             )
             validation_run.status = ValidationRunStatus.FAILED
             validation_run.error = GENERIC_EXECUTION_ERROR
-            validation_run.save(update_fields=["status", "error"])
+            validation_run.error_category = ValidationRunErrorCategory.RUNTIME_ERROR
+            validation_run.ended_at = timezone.now()
+            validation_run.save(
+                update_fields=["status", "error", "error_category", "ended_at"],
+            )
 
             # This is a terminal transition that bypasses the normal finalize
             # paths, so emit the finalized signal here too — otherwise a launch

@@ -74,6 +74,9 @@ def test_workflow_form_renders_allowed_file_type_examples_without_changing_value
     assert (
         'class="workflow-file-type-option__examples">.txt, .csv, .ttl, .nt, .nq</span>'
     ) in html
+    assert (
+        'class="workflow-file-type-option__examples">.xls, .xlsx, .fmu, .zip</span>'
+    ) in html
 
 
 def test_workflow_form_saves_selected_project():

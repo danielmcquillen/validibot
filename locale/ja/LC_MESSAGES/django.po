@@ -7310,7 +7310,7 @@ msgstr ""
 msgid ".yml, .yaml"
 msgstr ""
 
-msgid ".fmu, .zip"
+msgid ".xls, .xlsx, .fmu, .zip"
 msgstr ""
 
 msgid "any extension"

@@ -608,7 +608,7 @@ class WorkflowForm(forms.ModelForm):
             ),
             (
                 SubmissionFileType.BINARY.value,
-                FileTypeChoiceLabel(_("Binary"), _(".fmu, .zip")),
+                FileTypeChoiceLabel(_("Binary"), _(".xls, .xlsx, .fmu, .zip")),
             ),
             (
                 SubmissionFileType.UNKNOWN.value,

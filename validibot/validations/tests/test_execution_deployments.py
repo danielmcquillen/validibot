@@ -6,26 +6,42 @@ and provider provenance, validate its JSON contracts, and prevent two routes
 from occupying the same validator routing slot.
 """
 
+import json
 from copy import deepcopy
+from datetime import timedelta
+from io import StringIO
 from types import SimpleNamespace
 
 import pytest
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.db import IntegrityError
 from django.test import override_settings
 from django.utils import timezone
 
+from ops.gcp import validator_release_control as release_control
 from validibot.audit.constants import AuditAction
 from validibot.audit.models import AuditLogEntry
 from validibot.core.constants import DeploymentTarget
+from validibot.validations.constants import ExecutionDeploymentDeactivationCause
 from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ExecutionProviderType
+from validibot.validations.constants import ExecutionRoutingMode
 from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.models import ValidatorExecutionDeployment
+from validibot.validations.services.execution.deployment_identity import (
+    set_deployment_config_digests,
+)
 from validibot.validations.services.execution.deployments import (
     ExecutionDeploymentResolutionError,
+)
+from validibot.validations.services.execution.deployments import (
+    activate_backend_release,
+)
+from validibot.validations.services.execution.deployments import (
+    activate_backend_release_group,
 )
 from validibot.validations.services.execution.deployments import (
     effective_execution_budget_seconds,
@@ -34,13 +50,28 @@ from validibot.validations.services.execution.deployments import (
     effective_execution_profile,
 )
 from validibot.validations.services.execution.deployments import (
+    ensure_backend_release_can_retire,
+)
+from validibot.validations.services.execution.deployments import (
     ensure_execution_deployment_can_retire,
+)
+from validibot.validations.services.execution.deployments import (
+    mark_execution_deployment_pair_accepted,
+)
+from validibot.validations.services.execution.deployments import (
+    record_execution_deployment_provider_deleted,
 )
 from validibot.validations.services.execution.deployments import (
     resolve_execution_deployment,
 )
 from validibot.validations.services.execution.deployments import (
+    retire_backend_release_deployments,
+)
+from validibot.validations.services.execution.deployments import (
     retire_execution_deployment,
+)
+from validibot.validations.services.execution.deployments import (
+    route_execution_deployment_pair,
 )
 from validibot.validations.services.execution.deployments import (
     set_execution_deployment_block,
@@ -48,8 +79,17 @@ from validibot.validations.services.execution.deployments import (
 from validibot.validations.services.execution.deployments import (
     update_execution_deployment_capacity,
 )
+from validibot.validations.services.execution.deployments import (
+    verify_execution_deployment_pair,
+)
 from validibot.validations.services.execution.gcp_service_dispatch import (
     _prepare_pinned_service_dispatch,
+)
+from validibot.validations.services.execution.image_retention import (
+    build_backend_image_protection_plan,
+)
+from validibot.validations.services.execution.image_retention import (
+    validator_job_update_blockers,
 )
 from validibot.validations.services.execution_attempts import (
     get_or_create_execution_attempt,
@@ -68,6 +108,7 @@ DEADLINE_TOLERANCE_SECONDS = 1
 JOB_FINALIZATION_MARGIN_SECONDS = 120
 FAST_PROFILE_BUDGET_SECONDS = 900
 LONG_PROFILE_BUDGET_SECONDS = 3600
+RELEASE_RECORD_SHA256 = "b" * 64
 
 
 def _job_configuration(job_name="validibot-energyplus"):
@@ -231,6 +272,49 @@ def _save_ready(deployment, *, role):
     }
     deployment.save()
     return deployment
+
+
+def _release_pair(*, validator, backend: str, version: str, suffix: str = "1"):
+    """Persist one fully verified inactive release-specific provider pair."""
+    common = {
+        "backend_slug": backend,
+        "backend_release_identity": version,
+        "source_release_tag": f"{backend}-v{version}",
+        "release_record_sha256": RELEASE_RECORD_SHA256,
+    }
+    service = _service_deployment(
+        validator=validator,
+        revision=f"{backend}-service-{version}-{suffix}",
+        **common,
+    )
+    job = _job_deployment(
+        validator=validator,
+        revision=f"{backend}-job-{version}-{suffix}",
+        **common,
+    )
+    for deployment in (service, job):
+        deployment.readiness_state = ExecutionDeploymentReadiness.READY
+        deployment.routing_role = ExecutionDeploymentRoutingRole.INACTIVE
+        deployment.verified_capabilities = deepcopy(
+            deployment.declared_capabilities,
+        )
+        deployment.last_verification_succeeded = True
+        deployment.last_verified_at = timezone.now()
+        deployment.last_verification_details = {
+            "observed_provider_revision": deployment.deployment_revision,
+            "observed_resource_name": deployment.provider_resource_name,
+            "observed_image_digest": deployment.backend_image_digest,
+            "checks": [
+                {
+                    "code": "provider.resource",
+                    "succeeded": True,
+                    "summary": "Provider identity matched.",
+                }
+            ],
+        }
+        set_deployment_config_digests(deployment)
+        deployment.save()
+    return service, job
 
 
 @pytest.mark.django_db
@@ -742,3 +826,482 @@ def test_managed_attempt_pins_route_snapshot_and_absolute_deadline():
     assert attempt.retry_policy_snapshot["requested_execution_profile"] == (
         ValidatorExecutionProfile.FAST_RESPONSE
     )
+
+
+@pytest.mark.django_db
+def test_backend_image_plan_unions_services_attempts_and_retirement_grace():
+    """Cleanup protects deployments, active attempts, and Service grace images."""
+    now = timezone.now()
+    validator = ValidatorFactory()
+    service_digest = "sha256:" + "b" * 64
+    grace_digest = "sha256:" + "c" * 64
+    job_digest = "sha256:" + "d" * 64
+    active_service = _save_ready(
+        _service_deployment(
+            validator=validator,
+            backend_image_digest=service_digest,
+            backend_image_ref=f"registry/service@{service_digest}",
+        ),
+        role=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    retired_service = _save_ready(
+        _service_deployment(
+            validator=validator,
+            revision="service-r2",
+            backend_image_digest=grace_digest,
+            backend_image_ref=f"registry/service@{grace_digest}",
+        ),
+        role=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    ValidatorExecutionDeployment.objects.filter(pk=retired_service.pk).update(
+        readiness_state=ExecutionDeploymentReadiness.RETIRED,
+        modified=now - timedelta(days=6),
+    )
+    job = _save_ready(
+        _job_deployment(
+            validator=validator,
+            revision="v0.15.0",
+            backend_image_digest=job_digest,
+            backend_image_ref=f"registry/job@{job_digest}",
+        ),
+        role=ExecutionDeploymentRoutingRole.PRIMARY,
+    )
+    idle_job_digest = "sha256:" + "e" * 64
+    idle_job = _save_ready(
+        _job_deployment(
+            validator=ValidatorFactory(),
+            revision="v0.15.1",
+            backend_image_digest=idle_job_digest,
+            backend_image_ref=f"registry/job@{idle_job_digest}",
+        ),
+        role=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    ExecutionAttemptFactory(
+        deployment=job,
+        state="RUNNING",
+        backend_image_digest=job_digest,
+        provider_resource_name=job.provider_resource_name,
+    )
+
+    plan = build_backend_image_protection_plan(grace_days=7, now=now)
+    protected = {item.digest for item in plan.protected}
+
+    assert active_service.backend_image_digest in protected
+    assert grace_digest in protected
+    assert job_digest in protected
+    assert idle_job.backend_image_digest in protected
+    assert plan.blockers == ()
+
+    ValidatorExecutionDeployment.objects.filter(pk=retired_service.pk).update(
+        modified=now - timedelta(days=8),
+    )
+    expired_plan = build_backend_image_protection_plan(grace_days=7, now=now)
+    assert grace_digest not in {item.digest for item in expired_plan.protected}
+
+
+@pytest.mark.django_db
+def test_backend_image_plan_json_marker_returns_blockers_for_private_cleanup():
+    """Cloud Run automation must recover a fail-closed inventory from logs."""
+    deployment = _save_ready(
+        _job_deployment(
+            validator=ValidatorFactory(),
+        ),
+        role=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    ValidatorExecutionDeployment.objects.filter(pk=deployment.pk).update(
+        backend_image_digest="",
+        backend_image_ref="registry/job:mutable",
+    )
+    output = StringIO()
+
+    call_command(
+        "list_protected_validator_backend_digests",
+        "--json-marker",
+        stdout=output,
+    )
+
+    marker = "VALIDIBOT_BACKEND_IMAGE_PROTECTION_JSON="
+    payload_line = output.getvalue().strip()
+    assert payload_line.startswith(marker)
+    assert f"non-retired Job deployment {deployment.pk}" in payload_line
+
+
+@pytest.mark.django_db
+def test_fixed_job_update_preflight_requires_application_attempt_drain():
+    """A fixed Job cannot change image while a pinned attempt is nonterminal."""
+    job_name = "validibot-validator-backend-energyplus"
+    deployment = _save_ready(
+        _job_deployment(
+            validator=ValidatorFactory(),
+            job_name=job_name,
+        ),
+        role=ExecutionDeploymentRoutingRole.PRIMARY,
+    )
+    attempt = ExecutionAttemptFactory(
+        deployment=deployment,
+        state="PENDING",
+        backend_image_digest=deployment.backend_image_digest,
+        provider_resource_name=deployment.provider_resource_name,
+    )
+
+    blockers = validator_job_update_blockers(job_name=job_name)
+    assert len(blockers) == 1
+    assert str(attempt.pk) in blockers[0]
+
+    attempt.state = "COMPLETED"
+    attempt.save(update_fields=["state", "modified"])
+    assert validator_job_update_blockers(job_name=job_name) == ()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Release-specific pair routing and provider lifecycle
+# ──────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_pair_verification_rejects_a_different_release_record_digest():
+    """A same-version image is not a pair when its signed release files differ."""
+    validator = ValidatorFactory(
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    service, job = _release_pair(
+        validator=validator,
+        backend="energyplus",
+        version="0.15.1",
+    )
+    ValidatorExecutionDeployment.objects.filter(pk=job.pk).update(
+        release_record_sha256="c" * 64,
+    )
+    job.refresh_from_db()
+
+    with pytest.raises(
+        ExecutionDeploymentResolutionError,
+        match="release-record",
+    ):
+        verify_execution_deployment_pair(service=service, job=job)
+
+
+@pytest.mark.django_db
+def test_pair_routing_tracks_continuous_inactivity_in_job_only_mode():
+    """Only the unrouted Service starts inactivity during a shape rollback."""
+    validator = ValidatorFactory(
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    service, job = _release_pair(
+        validator=validator,
+        backend="energyplus",
+        version="0.15.1",
+    )
+    mark_execution_deployment_pair_accepted(service=service, job=job)
+
+    normal = route_execution_deployment_pair(
+        service=service,
+        job=job,
+        mode=ExecutionRoutingMode.NORMAL,
+        deactivation_cause=(
+            ExecutionDeploymentDeactivationCause.SUPERSEDED_BY_ACCEPTED_RELEASE
+        ),
+    )
+    job_only = route_execution_deployment_pair(
+        service=normal.service,
+        job=normal.job,
+        mode=ExecutionRoutingMode.JOB_ONLY,
+        deactivation_cause=ExecutionDeploymentDeactivationCause.SHAPE_ROLLBACK,
+    )
+
+    assert job_only.service.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+    assert job_only.service.deactivated_at is not None
+    assert job_only.service.deactivation_cause == (
+        ExecutionDeploymentDeactivationCause.SHAPE_ROLLBACK
+    )
+    assert job_only.job.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
+    assert job_only.job.deactivated_at is None
+    assert not ValidatorExecutionDeployment.objects.filter(
+        validator=validator,
+        routing_role=ExecutionDeploymentRoutingRole.LONG_RUNNING,
+    ).exists()
+
+    restored = route_execution_deployment_pair(
+        service=job_only.service,
+        job=job_only.job,
+        mode=ExecutionRoutingMode.NORMAL,
+        deactivation_cause=ExecutionDeploymentDeactivationCause.SHAPE_ROLLBACK,
+    )
+
+    assert restored.service.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
+    assert restored.service.deactivated_at is None
+    assert restored.job.routing_role == (ExecutionDeploymentRoutingRole.LONG_RUNNING)
+
+
+@pytest.mark.django_db
+def test_backend_activation_does_not_change_another_backend_route():
+    """Updating EnergyPlus must leave SHACL's selected provider pair unchanged."""
+    energyplus = ValidatorFactory(
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    energyplus_pair = _release_pair(
+        validator=energyplus,
+        backend="energyplus",
+        version="0.15.1",
+    )
+    mark_execution_deployment_pair_accepted(
+        service=energyplus_pair[0],
+        job=energyplus_pair[1],
+    )
+    shacl = ValidatorFactory(
+        execution_backend_slug="shacl",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    shacl_pair = _release_pair(
+        validator=shacl,
+        backend="shacl",
+        version="0.15.1",
+    )
+    mark_execution_deployment_pair_accepted(
+        service=shacl_pair[0],
+        job=shacl_pair[1],
+    )
+    route_execution_deployment_pair(
+        service=shacl_pair[0],
+        job=shacl_pair[1],
+        mode=ExecutionRoutingMode.JOB_ONLY,
+        deactivation_cause=ExecutionDeploymentDeactivationCause.SHAPE_ROLLBACK,
+    )
+
+    activated = activate_backend_release(
+        backend_slug="energyplus",
+        backend_release_identity="0.15.1",
+        mode=ExecutionRoutingMode.NORMAL,
+    )
+
+    assert len(activated) == 1
+    shacl_pair[0].refresh_from_db()
+    shacl_pair[1].refresh_from_db()
+    assert shacl_pair[0].routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+    assert shacl_pair[1].routing_role == ExecutionDeploymentRoutingRole.PRIMARY
+
+
+@pytest.mark.django_db
+def test_release_rollback_exports_its_own_version_and_reason_to_status():
+    """Audit production and status reconstruction must agree on the old release."""
+    validator = ValidatorFactory(
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    outgoing = _release_pair(
+        validator=validator,
+        backend="energyplus",
+        version="0.18.0",
+        suffix="out",
+    )
+    rollback = _release_pair(
+        validator=validator,
+        backend="energyplus",
+        version="0.17.0",
+        suffix="rb",
+    )
+    for service, job in (outgoing, rollback):
+        mark_execution_deployment_pair_accepted(service=service, job=job)
+    activate_backend_release(
+        backend_slug="energyplus",
+        backend_release_identity="0.18.0",
+    )
+
+    activate_backend_release(
+        backend_slug="energyplus",
+        backend_release_identity="0.17.0",
+        deactivation_cause=(ExecutionDeploymentDeactivationCause.RELEASE_ROLLBACK_FROM),
+        operator_reason="Repaired callback routing before exact recovery.",
+    )
+
+    event = AuditLogEntry.objects.filter(
+        action=AuditAction.VALIDATOR_DEPLOYMENT_DEACTIVATED,
+        target_id=str(outgoing[0].pk),
+    ).latest("occurred_at")
+    assert event.metadata["backend_release"] == "0.18.0"
+    assert event.metadata["operator_reason"] == (
+        "Repaired callback routing before exact recovery."
+    )
+
+    output = StringIO()
+    call_command("export_validator_release_state", stdout=output)
+    database = json.loads(output.getvalue())
+    intent = release_control.BackendIntent(
+        "energyplus",
+        "energyplus",
+        "0.18.0",
+        "validibot-validator-backend-energyplus",
+    )
+
+    status = release_control.calculate_status((intent,), database)
+    rolled_back = status["backends"][0]["rolled_back_from"]
+
+    assert [fact["version"] for fact in rolled_back] == ["0.18.0"]
+    assert rolled_back[0]["reason"] == (
+        "Repaired callback routing before exact recovery."
+    )
+
+
+@pytest.mark.django_db
+def test_backend_activation_validates_every_pair_before_writing_routes():
+    """One bad semantic Validator pair must leave the whole backend inactive."""
+    first_validator = ValidatorFactory(
+        slug="ep-semantic-a",
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    first_pair = _release_pair(
+        validator=first_validator,
+        backend="energyplus",
+        version="0.15.1",
+        suffix="first",
+    )
+    mark_execution_deployment_pair_accepted(
+        service=first_pair[0],
+        job=first_pair[1],
+    )
+    second_validator = ValidatorFactory(
+        slug="ep-semantic-b",
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    second_pair = _release_pair(
+        validator=second_validator,
+        backend="energyplus",
+        version="0.15.1",
+        suffix="second",
+    )
+    mark_execution_deployment_pair_accepted(
+        service=second_pair[0],
+        job=second_pair[1],
+    )
+    ValidatorExecutionDeployment.objects.filter(pk=second_pair[1].pk).update(
+        release_record_sha256="c" * 64,
+    )
+
+    with pytest.raises(
+        ExecutionDeploymentResolutionError,
+        match="release-record",
+    ):
+        activate_backend_release(
+            backend_slug="energyplus",
+            backend_release_identity="0.15.1",
+        )
+
+    first_pair[0].refresh_from_db()
+    first_pair[1].refresh_from_db()
+    assert first_pair[0].routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+    assert first_pair[1].routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+
+
+@pytest.mark.django_db
+def test_group_activation_rolls_back_every_backend_when_one_backend_is_invalid():
+    """Initial setup must never leave a partially active managed backend set."""
+    energyplus_validator = ValidatorFactory(
+        slug="ep-group",
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    energyplus_pair = _release_pair(
+        validator=energyplus_validator,
+        backend="energyplus",
+        version="0.15.1",
+        suffix="g",
+    )
+    mark_execution_deployment_pair_accepted(
+        service=energyplus_pair[0],
+        job=energyplus_pair[1],
+    )
+    shacl_validator = ValidatorFactory(
+        slug="shacl-group",
+        execution_backend_slug="shacl",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    shacl_pair = _release_pair(
+        validator=shacl_validator,
+        backend="shacl",
+        version="0.15.1",
+        suffix="g",
+    )
+    mark_execution_deployment_pair_accepted(
+        service=shacl_pair[0],
+        job=shacl_pair[1],
+    )
+    ValidatorExecutionDeployment.objects.filter(pk=shacl_pair[1].pk).update(
+        release_record_sha256="c" * 64,
+    )
+
+    with pytest.raises(
+        ExecutionDeploymentResolutionError,
+        match="release-record",
+    ):
+        activate_backend_release_group(
+            releases={
+                "energyplus": "0.15.1",
+                "shacl": "0.15.1",
+            }
+        )
+
+    energyplus_pair[0].refresh_from_db()
+    energyplus_pair[1].refresh_from_db()
+    assert energyplus_pair[0].routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+    assert energyplus_pair[1].routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+
+
+@pytest.mark.django_db
+def test_retirement_waits_for_drain_and_keeps_rows_and_attempts():
+    """Provider deletion checkpoints retire no history and block unfinished work."""
+    validator = ValidatorFactory(
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    service, job = _release_pair(
+        validator=validator,
+        backend="energyplus",
+        version="0.14.0",
+    )
+    accepted = mark_execution_deployment_pair_accepted(service=service, job=job)
+    drained_at = timezone.now() - timedelta(days=8)
+    ValidatorExecutionDeployment.objects.filter(
+        pk__in=[accepted.service.pk, accepted.job.pk],
+    ).update(
+        deactivated_at=drained_at,
+        deactivation_cause=(
+            ExecutionDeploymentDeactivationCause.SUPERSEDED_BY_ACCEPTED_RELEASE
+        ),
+    )
+    service.refresh_from_db()
+    job.refresh_from_db()
+    attempt = ExecutionAttemptFactory(deployment=job, state="RUNNING")
+
+    with pytest.raises(
+        ExecutionDeploymentResolutionError,
+        match="nonterminal",
+    ):
+        ensure_backend_release_can_retire([service, job])
+
+    attempt.state = "COMPLETED"
+    attempt.save(update_fields=["state", "modified"])
+    record_execution_deployment_provider_deleted(service)
+    record_execution_deployment_provider_deleted(job)
+    retired = retire_backend_release_deployments(
+        backend_slug="energyplus",
+        backend_release_identity="0.14.0",
+        reason="Provider pair deleted after the verified drain.",
+    )
+
+    assert len(retired) == EXPECTED_SHARED_DEPLOYMENT_COUNT
+    assert all(
+        item.readiness_state == ExecutionDeploymentReadiness.RETIRED for item in retired
+    )
+    assert all(item.provider_deleted_at is not None for item in retired)
+    assert (
+        ValidatorExecutionDeployment.objects.filter(
+            pk__in=[service.pk, job.pk],
+        ).count()
+        == EXPECTED_SHARED_DEPLOYMENT_COUNT
+    )
+    assert type(attempt).objects.filter(pk=attempt.pk).exists()

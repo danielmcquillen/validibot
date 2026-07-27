@@ -160,7 +160,7 @@ Every supported GCP validator image consumes the mandatory attempt token. Prove
 the downscoped token's provider behavior with:
 
 ```bash
-cd /Users/danielmcquillen/projects/validibot/validibot
+cd /path/to/validibot
 just gcp validator-storage-capability-probe prod
 ```
 
@@ -169,7 +169,7 @@ bindings and evaluates the service account's effective object permissions with
 [Policy Troubleshooter](https://cloud.google.com/policy-intelligence/docs/troubleshoot-access):
 
 ```bash
-cd /Users/danielmcquillen/projects/validibot/validibot
+cd /path/to/validibot
 just gcp validator-acceptance prod v0.15.1
 ```
 

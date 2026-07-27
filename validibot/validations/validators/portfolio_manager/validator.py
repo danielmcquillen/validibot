@@ -13,7 +13,6 @@ from validibot.validations.constants import PORTFOLIO_MANAGER_MAX_SUBMISSION_BYT
 from validibot.validations.validators.base.advanced import AdvancedValidator
 
 _COLLECTION_OUTPUT_KEYS = (
-    "profile",
     "submission_structure",
     "file_count",
     "valid_file_count",

@@ -12,7 +12,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 ARG APP_HOME=/app
 ARG VALIDIBOT_COMMERCIAL_PACKAGE=""
-ARG VALIDIBOT_PRIVATE_INDEX_URL=""
 
 WORKDIR ${APP_HOME}
 
@@ -49,7 +48,8 @@ COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/ins
 # False and every advanced validator reports "Validation backend is not
 # available." This mirrors the CI install (.github/workflows/ci.yml).
 RUN uv sync --group dev --extra docker-runner --frozen --no-install-project
-RUN install-commercial-package ${APP_HOME}/.venv/bin/python
+RUN --mount=type=secret,id=validibot_commercial_netrc,target=/root/.netrc,required=false,mode=0600 \
+    install-commercial-package ${APP_HOME}/.venv/bin/python
 
 # Copy the rest of the project
 COPY . ${APP_HOME}/

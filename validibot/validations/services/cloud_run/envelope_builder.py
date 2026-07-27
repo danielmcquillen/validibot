@@ -1946,7 +1946,6 @@ def build_input_envelope(
                 "submission_structure",
                 "single_report",
             ),
-            profile=config.get("profile", "generic"),
             default_euit_kbtu_ft2_yr=default_euit,
             compare_to_euit=bool(config.get("compare_to_euit", False)),
             near_target_percent=config.get("near_target_percent", 10),

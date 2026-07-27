@@ -97,12 +97,11 @@ flip `DJANGO_SETTINGS_MODULE` to `config.settings.production_pro` in
 workflows, and runs are preserved across the upgrade. Pro migrations
 are additive — they add tables but never reshape community tables.
 
-There is no remote license phone-home inside Django. A running Pro instance
-keeps running if outbound internet is fully cut off. License expiry blocks
-future package downloads (your next upgrade fails); it does not affect the
-installed application. The optional MCP container does make a local startup
-request to that same deployment's `/api/v1/license/features/` endpoint when
-enabled, solely to confirm that the installed package registered `mcp_server`.
+Keep the private package URL and wheel reference out of source control, shell
+history, and logs. Valid package access is required for installation and
+upgrades; renewal and credential-rotation details are provided with the
+commercial license. Optional services confirm their feature availability
+against the local Validibot deployment during startup.
 
 ## First install (one-page summary)
 

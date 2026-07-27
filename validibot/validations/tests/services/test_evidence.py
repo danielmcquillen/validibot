@@ -180,7 +180,7 @@ class TestBuildManifest:
     """The builder harvests a run into a schema-valid Pydantic model."""
 
     def test_build_returns_evidence_manifest_instance(self):
-        """Happy path: the result validates against the v1 schema."""
+        """Happy path: the result validates against the current v2 schema."""
         run = _completed_run()
         manifest = EvidenceManifestBuilder.build(run)
         assert isinstance(manifest, EvidenceManifest)
@@ -216,12 +216,28 @@ class TestBuildManifest:
             runner_type="cloud_run_job",
             provider_execution_id="execution-1",
             deployment_snapshot={
+                "schema_version": 2,
                 "deployment_id": "deployment-1",
-                "deployment_kind": "cloud_run_service",
+                "validator_id": step.validator_id,
+                "validator_slug": step.validator.slug,
+                "validator_version": str(step.validator.version),
+                "validator_semantic_digest": "1" * 64,
+                "deployment_kind": "CLOUD_RUN_SERVICE",
                 "deployment_revision": "validator-shacl-00042-abc",
                 "provider_resource_name": (
                     "projects/example/locations/australia-southeast1/"
                     "services/validibot-validator-service-shacl"
+                ),
+                "backend_slug": "shacl",
+                "backend_release_identity": "0.15.1",
+                "source_release_tag": "shacl-v0.15.1",
+                "release_record_sha256": "2" * 64,
+                "backend_image_ref": "ghcr.io/example/validator-shacl:v0.15.1",
+                "backend_image_digest": "sha256:" + "3" * 64,
+                "provider_spec_sha256": "4" * 64,
+                "execution_config_sha256": "5" * 64,
+                "expected_runtime_identity": (
+                    "validator-runtime@example-project.iam.gserviceaccount.com"
                 ),
             },
             input_envelope_sha256="c" * 64,
@@ -269,10 +285,21 @@ class TestBuildManifest:
         assert record.input_files[0].storage_version == "sha256:" + "b" * 64
         assert record.input_relationships[0].source_sha256 == "a" * 64
         assert record.input_relationships[0].target_sha256 == "b" * 64
-        if "execution_deployment_id" in type(record).model_fields:
-            assert record.execution_deployment_id == "deployment-1"
-            assert record.deployment_kind == "cloud_run_service"
-            assert record.deployment_revision == "validator-shacl-00042-abc"
+        assert record.execution_deployment_id == "deployment-1"
+        assert record.deployment_kind == "CLOUD_RUN_SERVICE"
+        assert record.deployment_revision == "validator-shacl-00042-abc"
+        assert record.semantic_validator_id == step.validator_id
+        assert record.semantic_validator_slug == step.validator.slug
+        assert record.semantic_validator_version == str(step.validator.version)
+        assert record.semantic_validator_digest == "1" * 64
+        assert record.backend_slug == "shacl"
+        assert record.backend_release_version == "0.15.1"
+        assert record.source_release_tag == "shacl-v0.15.1"
+        assert record.release_record_sha256 == "2" * 64
+        assert record.backend_image_ref.endswith(":v0.15.1")
+        assert record.backend_image_digest == "sha256:" + "3" * 64
+        assert record.provider_spec_sha256 == "4" * 64
+        assert record.expected_runtime_identity.startswith("validator-runtime@")
 
     def test_build_redacts_attempt_output_digest_without_losing_verification(self):
         """DO_NOT_STORE hides output identity but retains confirmed input evidence."""

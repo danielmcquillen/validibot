@@ -40,7 +40,6 @@ def _output(
 
 
 _OUTPUT_SPECS = [
-    ("profile", "Portfolio Manager validation profile", CatalogValueType.STRING),
     (
         "submission_structure",
         "Portfolio Manager submission structure",
@@ -247,20 +246,22 @@ _OUTPUT_SPECS = [
 
 config = ValidatorConfig(
     slug="portfolio-manager-validator",
-    name="Portfolio Manager Validator",
+    name="Building Benchmark Report Validator",
     short_description=(
-        "Validate ENERGY STAR Portfolio Manager exports, EUIt comparisons, "
+        "Validate exports from ENERGY STAR® Portfolio Manager®, EUIt comparisons, "
         "and multi-building ZIP collections."
     ),
     description=(
-        "Recognizes supported Portfolio Manager XLS, XLSX, and XML property "
-        "reports. Single-report mode exposes measured EUI facts. ZIP collection "
+        "Recognizes supported XLS, XLSX, and XML property report exports. "
+        "Single-report mode exposes measured EUI facts. ZIP collection "
         "mode adds reporting-cycle, duplicate, roster, target-coverage, and "
-        "portfolio aggregate facts. The Washington CBPS Tier 1 profile checks "
-        "benchmark/Form C readiness without calculating EUIt or issuing a legal "
-        "compliance determination."
+        "portfolio aggregate facts. Authors explicitly configure reporting, "
+        "benchmark/Form C readiness, EUIt, and data-quality requirements for "
+        "their program."
     ),
     validation_type=ValidationType.PORTFOLIO_MANAGER,
+    execution_backend_slug="portfolio_manager",
+    execution_runtime_contract="validibot-execution-v1",
     validator_class=(
         "validibot.validations.validators.portfolio_manager.validator."
         "PortfolioManagerValidator"
@@ -269,10 +270,10 @@ config = ValidatorConfig(
         "validibot_shared.portfolio_manager.envelopes.PortfolioManagerOutputEnvelope"
     ),
     image_name="validibot-validator-backend-portfolio-manager",
-    version=1,
+    version=2,
     order=6,
     has_processor=True,
-    processor_name="Portfolio Manager Validation",
+    processor_name="Building Benchmark Report Validation",
     is_system=True,
     supports_assertions=True,
     compute_tier=ComputeTier.LOW,
@@ -284,11 +285,11 @@ config = ValidatorConfig(
     catalog_entries=[
         CatalogEntrySpec(
             slug="portfolio_manager_report",
-            label="Portfolio Manager report",
+            label="ENERGY STAR® Portfolio Manager® report",
             entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
             data_type=CatalogValueType.ARTIFACT_REF,
-            description="Submitted XLS, XLSX, XML, or ZIP Portfolio Manager report.",
+            description=("Submitted XLS, XLSX, XML, or ZIP building benchmark report."),
             metadata={"accepted_extensions": ["xls", "xlsx", "xml", "zip"]},
             is_required=True,
             on_missing="error",
@@ -369,7 +370,7 @@ config = ValidatorConfig(
         ),
         CatalogEntrySpec(
             slug="property_results",
-            label="Portfolio Manager property results",
+            label="Building benchmark property results",
             entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.ARTIFACT_REF,
@@ -403,7 +404,7 @@ config = ValidatorConfig(
                 slug,
                 label,
                 data_type,
-                "Canonical Portfolio Manager validation output.",
+                "Canonical building benchmark report validation output.",
                 10 + index,
             )
             for index, (slug, label, data_type) in enumerate(_OUTPUT_SPECS)

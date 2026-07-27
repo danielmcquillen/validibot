@@ -1,0 +1,40 @@
+[
+  {
+    "name": "delete-untagged-validibot-web-after-7-days",
+    "action": {
+      "type": "Delete"
+    },
+    "condition": {
+      "tagState": "untagged",
+      "packageNamePrefixes": [
+        "validibot-web"
+      ],
+      "olderThan": "7d"
+    }
+  },
+  {
+    "name": "delete-validibot-web-after-30-days",
+    "action": {
+      "type": "Delete"
+    },
+    "condition": {
+      "tagState": "any",
+      "packageNamePrefixes": [
+        "validibot-web"
+      ],
+      "olderThan": "30d"
+    }
+  },
+  {
+    "name": "keep-ten-recent-validibot-web-images",
+    "action": {
+      "type": "Keep"
+    },
+    "mostRecentVersions": {
+      "packageNamePrefixes": [
+        "validibot-web"
+      ],
+      "keepCount": 10
+    }
+  }
+]

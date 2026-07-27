@@ -62,7 +62,7 @@ EBL_JSON = b"""{
     {"id_value": "WA-002"}
   ]
 }"""
-WASHINGTON_MAXIMUM_REPORT_AGE_MONTHS = 24
+CONFIGURED_MAXIMUM_REPORT_AGE_MONTHS = 30
 SHA256_HEX_LENGTH = 64
 CONFIGURED_ARCHIVE_MEMBER_LIMIT = 75
 CONFIGURED_MEMBER_BYTES = 15_000_000
@@ -76,7 +76,6 @@ def _base_form_data(**overrides):
     data = {
         "name": "Check Portfolio Manager report",
         "submission_structure": "single_report",
-        "profile": "generic",
         "near_target_percent": "5",
         "minimum_reporting_period_months": "12",
     }
@@ -117,22 +116,32 @@ def test_registry_exposes_a_dedicated_advanced_backend_contract() -> None:
     )
 
 
-def test_washington_profile_expands_visible_domain_checks() -> None:
-    """The Washington choice applies period, identity, metric, and alert policy."""
+def test_form_preserves_each_explicit_author_policy_choice() -> None:
+    """V1 exposes policy fields directly and must not hide a preset shortcut."""
     form = PortfolioManagerStepConfigForm(
-        data=_base_form_data(profile="washington_cbps_tier1_euit"),
+        data=_base_form_data(
+            maximum_reporting_period_age_months=(
+                str(CONFIGURED_MAXIMUM_REPORT_AGE_MONTHS)
+            ),
+            require_benchmark_ready="on",
+            require_washington_standard_id="on",
+            meter_gap_policy="warning",
+            estimated_energy_policy="error",
+        ),
     )
 
+    assert "profile" not in form.fields
     assert form.is_valid(), form.errors
-    assert form.cleaned_data["require_complete_reporting_period"] is True
+    assert form.cleaned_data["require_complete_reporting_period"] is False
     assert (
         form.cleaned_data["maximum_reporting_period_age_months"]
-        == WASHINGTON_MAXIMUM_REPORT_AGE_MONTHS
+        == CONFIGURED_MAXIMUM_REPORT_AGE_MONTHS
     )
-    assert form.cleaned_data["require_form_c_ready"] is True
+    assert form.cleaned_data["require_benchmark_ready"] is True
+    assert form.cleaned_data["require_form_c_ready"] is False
     assert form.cleaned_data["require_washington_standard_id"] is True
-    assert form.cleaned_data["meter_gap_policy"] == "error"
-    assert form.cleaned_data["estimated_energy_policy"] == "warning"
+    assert form.cleaned_data["meter_gap_policy"] == "warning"
+    assert form.cleaned_data["estimated_energy_policy"] == "error"
 
 
 def test_ebl_upload_rejects_duplicate_json_keys() -> None:
@@ -254,10 +263,13 @@ def test_zip_envelope_materializes_report_ebl_and_resolved_inputs() -> None:
         validator=validator,
         config={
             "submission_structure": "zip_collection",
-            "profile": "washington_cbps_tier1_euit",
             "default_euit_kbtu_ft2_yr": 41,
             "compare_to_euit": True,
             "near_target_percent": 5,
+            "require_complete_reporting_period": True,
+            "require_form_c_ready": True,
+            "require_washington_standard_id": True,
+            "meter_gap_policy": "error",
         },
     )
     ebl_resource = WorkflowStepResource.objects.create(
@@ -323,7 +335,10 @@ def test_zip_envelope_materializes_report_ebl_and_resolved_inputs() -> None:
     assert envelope.resource_files[0].sha256 == ebl_identity.sha256
     assert float(envelope.inputs.default_euit_kbtu_ft2_yr) == BOUND_EUIT
     assert envelope.inputs.max_input_bytes == (PORTFOLIO_MANAGER_MAX_SUBMISSION_BYTES)
+    assert envelope.inputs.require_complete_reporting_period is True
     assert envelope.inputs.require_form_c_ready is True
+    assert envelope.inputs.require_washington_standard_id is True
+    assert envelope.inputs.meter_gap_policy == "error"
 
     traces = {
         trace.input_contract_key: trace
@@ -350,7 +365,6 @@ def test_single_property_outputs_are_available_to_cel() -> None:
     """Measured WNEUI and resolved EUIt are projected onto the scalar catalog."""
     outputs = PortfolioManagerOutputs(
         submission_structure="single_report",
-        profile="generic",
         file_count=1,
         valid_file_count=1,
         invalid_file_count=0,

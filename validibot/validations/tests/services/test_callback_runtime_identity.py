@@ -12,9 +12,20 @@ from unittest.mock import patch
 import pytest
 from rest_framework import status
 
+from validibot.validations.constants import ExecutionDeploymentDeactivationCause
+from validibot.validations.constants import ExecutionRoutingMode
+from validibot.validations.services.execution.deployments import (
+    route_execution_deployment_pair,
+)
 from validibot.validations.services.execution.gcp_job_import import GCPJobObservation
 from validibot.validations.services.execution.gcp_job_import import (
     register_observed_job_deployment,
+)
+from validibot.validations.services.execution.gcp_service_import import (
+    GCPServiceObservation,
+)
+from validibot.validations.services.execution.gcp_service_import import (
+    register_observed_service_deployment,
 )
 from validibot.validations.services.execution_attempts import build_attempt_callback_id
 from validibot.validations.services.execution_attempts import (
@@ -31,6 +42,7 @@ CALLBACK_NONCE = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 EXPECTED_IDENTITY = "validator-runtime@example.iam.gserviceaccount.com"
 DIGEST = "sha256:" + "f" * 64
 PROJECT_ID = "test-project"
+RELEASE_RECORD_SHA256 = "a" * 64
 
 
 def _payload(attempt):
@@ -46,7 +58,10 @@ def _payload(attempt):
 
 def _managed_attempt():
     """Allocate an attempt through a real ready deployment route."""
-    validator = ValidatorFactory()
+    validator = ValidatorFactory(
+        execution_backend_slug="shacl",
+        execution_runtime_contract="validibot-execution-v1",
+    )
     step_run = ValidationStepRunFactory(workflow_step__validator=validator)
     observation = GCPJobObservation(
         resource_name=(
@@ -56,17 +71,60 @@ def _managed_attempt():
         revision="0.14.0",
         image_ref=f"example.invalid/validator@{DIGEST}",
         image_digest=DIGEST,
+        backend_slug="shacl",
+        backend_release_version="0.15.1",
+        source_release_tag="shacl-v0.15.1",
+        release_record_sha256=RELEASE_RECORD_SHA256,
         runtime_service_account=EXPECTED_IDENTITY,
         maximum_execution_seconds=1500,
         maximum_cpu_millis=1000,
         maximum_memory_mib=1024,
     )
-    register_observed_job_deployment(
+    job, _ = register_observed_job_deployment(
         validator=validator,
         project_id=PROJECT_ID,
         region="australia-southeast1",
         observation=observation,
-        activate_primary=True,
+        activate_primary=False,
+    )
+    service, _ = register_observed_service_deployment(
+        validator=validator,
+        project_id=PROJECT_ID,
+        region="australia-southeast1",
+        observation=GCPServiceObservation(
+            resource_name=(
+                f"projects/{PROJECT_ID}/locations/australia-southeast1/"
+                "services/validator"
+            ),
+            service_name="validator",
+            service_url="https://validator.example.run.app",
+            revision="validator-00001",
+            backend_slug="shacl",
+            backend_release_identity="0.15.1",
+            source_release_tag="shacl-v0.15.1",
+            release_record_sha256=RELEASE_RECORD_SHA256,
+            image_ref=f"example.invalid/validator@{DIGEST}",
+            image_digest=DIGEST,
+            runtime_service_account=EXPECTED_IDENTITY,
+            invoker_service_account=(
+                "validator-invoker@example.iam.gserviceaccount.com"
+            ),
+            request_timeout_seconds=1649,
+            maximum_cpu_millis=1000,
+            maximum_memory_mib=1024,
+            minimum_instances=0,
+            maximum_instances=1,
+            concurrency=1,
+        ),
+        maximum_execution_seconds=1500,
+        activate_primary=False,
+    )
+    route_execution_deployment_pair(
+        service=service,
+        job=job,
+        mode=ExecutionRoutingMode.JOB_ONLY,
+        deactivation_cause=ExecutionDeploymentDeactivationCause.SHAPE_ROLLBACK,
+        require_accepted=False,
     )
     attempt, _ = get_or_create_execution_attempt(
         step_run,

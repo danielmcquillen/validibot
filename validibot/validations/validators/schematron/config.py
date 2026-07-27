@@ -58,6 +58,8 @@ config = ValidatorConfig(
         "certification of compliance."
     ),
     validation_type=ValidationType.SCHEMATRON,
+    execution_backend_slug="schematron",
+    execution_runtime_contract="validibot-execution-v1",
     validator_class=(
         "validibot.validations.validators.schematron.validator.SchematronValidator"
     ),

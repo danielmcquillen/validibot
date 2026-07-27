@@ -138,7 +138,7 @@ is installed. So the practical picture is:
 - **Pro stack**: the license check passes, MCP serves requests
   normally.
 
-The container is defined in the `local-pro` 
+The container is defined in the `local-pro`
 compose overlay behind an opt-in `mcp` Compose profile, so an
 empty `.build` file leaves it out by default.
 

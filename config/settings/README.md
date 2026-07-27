@@ -51,7 +51,7 @@ All services (Django, Postgres, Redis, Celery) run in Docker containers.
 
 If you purchased Pro or Enterprise, copy `.envs.example/.local/.build` to
 `.envs/.local/.build`, set an exact `VALIDIBOT_COMMERCIAL_PACKAGE` and
-`VALIDIBOT_PRIVATE_INDEX_URL`, then run `just local build` before
+`VALIDIBOT_COMMERCIAL_NETRC` path, then run `just local build` before
 `just local up`. To activate Pro, point `DJANGO_SETTINGS_MODULE` at
 `config.settings.local_pro` (the variant that adds `validibot_pro` to
 `INSTALLED_APPS`) rather than hand-editing a settings module — this is the same

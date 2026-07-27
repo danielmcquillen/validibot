@@ -3,7 +3,7 @@
 Service activation is a routing change, not merely a deployment operation.
 These tests prove that only a ready, digest-pinned, privately invokable Service
 can be registered, that repeated observation converges, and that activation
-preserves the verified Cloud Run Job as the explicit long-running route.
+uses the verified same-release Cloud Run Job as an atomic pair.
 """
 
 from types import SimpleNamespace
@@ -15,11 +15,14 @@ from django.core.management.base import CommandError
 
 from validibot.audit.constants import AuditAction
 from validibot.audit.models import AuditLogEntry
+from validibot.validations.constants import ExecutionDeploymentDeactivationCause
+from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
+from validibot.validations.constants import ExecutionRoutingMode
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidatorExecutionDeployment
 from validibot.validations.services.execution.deployments import (
-    activate_execution_deployment,
+    route_execution_deployment_pair,
 )
 from validibot.validations.services.execution.gcp_job_import import GCPJobObservation
 from validibot.validations.services.execution.gcp_job_import import (
@@ -48,7 +51,8 @@ REVISION = "validibot-validator-service-shacl-00001-abc"
 SERVICE_TIMEOUT_SECONDS = 1649
 SERVICE_CPU_MILLIS = 2000
 SERVICE_MEMORY_MIB = 4096
-MANAGED_BACKEND_COUNT = 5
+RELEASE_VERSION = "0.15.1"
+RELEASE_RECORD_SHA256 = "b" * 64
 
 
 def _resource(service_name: str) -> str:
@@ -59,6 +63,7 @@ def _resource(service_name: str) -> str:
 def _service(
     resource_name: str,
     *,
+    backend: str = "shacl",
     image_ref: str | None = None,
     minimum_instances: int = 0,
     maximum_instances: int = 8,
@@ -71,7 +76,19 @@ def _service(
         env=[
             SimpleNamespace(name="VALIDIBOT_EXECUTION_SHAPE", value="service"),
             SimpleNamespace(name="VALIDIBOT_BACKEND_IMAGE_DIGEST", value=DIGEST),
-            SimpleNamespace(name="VALIDIBOT_BACKEND_RELEASE", value="0.15.0"),
+            SimpleNamespace(name="VALIDIBOT_BACKEND_SLUG", value=backend),
+            SimpleNamespace(
+                name="VALIDIBOT_BACKEND_RELEASE",
+                value=RELEASE_VERSION,
+            ),
+            SimpleNamespace(
+                name="VALIDIBOT_SOURCE_RELEASE_TAG",
+                value=f"{backend}-v{RELEASE_VERSION}",
+            ),
+            SimpleNamespace(
+                name="VALIDIBOT_RELEASE_RECORD_SHA256",
+                value=RELEASE_RECORD_SHA256,
+            ),
         ],
         resources=SimpleNamespace(
             limits={"cpu": "2", "memory": "4Gi"},
@@ -131,6 +148,10 @@ def _register_primary_job(validator):
         revision="0.14.0",
         image_ref=f"{REGION}-docker.pkg.dev/x/job@{DIGEST}",
         image_digest=DIGEST,
+        backend_slug="shacl",
+        backend_release_version=RELEASE_VERSION,
+        source_release_tag=f"shacl-v{RELEASE_VERSION}",
+        release_record_sha256=RELEASE_RECORD_SHA256,
         runtime_service_account=RUNTIME_IDENTITY,
         maximum_execution_seconds=3600,
         maximum_cpu_millis=SERVICE_CPU_MILLIS,
@@ -141,7 +162,7 @@ def _register_primary_job(validator):
         project_id=PROJECT_ID,
         region=REGION,
         observation=observation,
-        activate_primary=True,
+        activate_primary=False,
     )
     return deployment
 
@@ -194,7 +215,11 @@ def test_drift_verifier_fails_when_live_capacity_changes(
 ):
     """An unaudited provider capacity edit must trigger scheduled drift alerting."""
     settings.GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT = INVOKER_IDENTITY
-    validator = ValidatorFactory(validation_type=ValidationType.SHACL)
+    validator = ValidatorFactory(
+        validation_type=ValidationType.SHACL,
+        execution_backend_slug="shacl",
+        execution_runtime_contract="validibot-execution-v1",
+    )
     _register_primary_job(validator)
     observation = _observe("validibot-validator-service-shacl-v0-15-0")
     deployment, _ = register_observed_service_deployment(
@@ -203,9 +228,22 @@ def test_drift_verifier_fails_when_live_capacity_changes(
         region=REGION,
         observation=observation,
         maximum_execution_seconds=1500,
-        activate_primary=True,
+        activate_primary=False,
     )
     assert not registered_service_observation_mismatches(deployment, observation)
+    job = ValidatorExecutionDeployment.objects.get(
+        validator=validator,
+        deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB,
+    )
+    route_execution_deployment_pair(
+        service=deployment,
+        job=job,
+        mode=ExecutionRoutingMode.NORMAL,
+        deactivation_cause=(
+            ExecutionDeploymentDeactivationCause.SUPERSEDED_BY_ACCEPTED_RELEASE
+        ),
+        require_accepted=False,
+    )
 
     client = services_client_class.return_value
     client.get_service.return_value = _service(
@@ -219,9 +257,13 @@ def test_drift_verifier_fails_when_live_capacity_changes(
 
 
 @pytest.mark.django_db
-def test_registration_activates_service_and_preserves_explicit_job_rollback():
-    """Primary Service activation must retain and cleanly restore the verified Job."""
-    validator = ValidatorFactory(validation_type=ValidationType.SHACL)
+def test_pair_routing_switches_between_normal_and_job_only_atomically():
+    """Normal and Job-only modes must move both pair members together."""
+    validator = ValidatorFactory(
+        validation_type=ValidationType.SHACL,
+        execution_backend_slug="shacl",
+        execution_runtime_contract="validibot-execution-v1",
+    )
     job = _register_primary_job(validator)
     observation = _observe("validibot-validator-service-shacl")
 
@@ -231,7 +273,7 @@ def test_registration_activates_service_and_preserves_explicit_job_rollback():
         region=REGION,
         observation=observation,
         maximum_execution_seconds=1500,
-        activate_primary=True,
+        activate_primary=False,
     )
     repeated, repeated_created = register_observed_service_deployment(
         validator=validator,
@@ -239,34 +281,40 @@ def test_registration_activates_service_and_preserves_explicit_job_rollback():
         region=REGION,
         observation=observation,
         maximum_execution_seconds=1500,
-        activate_primary=True,
+        activate_primary=False,
     )
 
-    job.refresh_from_db()
     assert created is True
     assert repeated_created is False
     assert repeated.pk == service.pk
+    pair = route_execution_deployment_pair(
+        service=service,
+        job=job,
+        mode=ExecutionRoutingMode.NORMAL,
+        deactivation_cause=(
+            ExecutionDeploymentDeactivationCause.SUPERSEDED_BY_ACCEPTED_RELEASE
+        ),
+        require_accepted=False,
+    )
+    service = pair.service
+    job = pair.job
     assert service.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
     assert job.routing_role == ExecutionDeploymentRoutingRole.LONG_RUNNING
-    assert AuditLogEntry.objects.filter(
-        action=AuditAction.VALIDATOR_DEPLOYMENT_ACTIVATED,
-        target_id=str(service.pk),
-    ).exists()
 
-    activate_execution_deployment(
-        job,
-        routing_role=ExecutionDeploymentRoutingRole.PRIMARY,
+    route_execution_deployment_pair(
+        service=service,
+        job=job,
+        mode=ExecutionRoutingMode.JOB_ONLY,
+        deactivation_cause=ExecutionDeploymentDeactivationCause.SHAPE_ROLLBACK,
+        require_accepted=False,
     )
 
     service.refresh_from_db()
     job.refresh_from_db()
     assert service.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
     assert job.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
-    deactivation = AuditLogEntry.objects.get(
-        action=AuditAction.VALIDATOR_DEPLOYMENT_DEACTIVATED,
-        target_id=str(service.pk),
-    )
-    assert deactivation.metadata["replacement_deployment_id"] == str(job.pk)
+    assert service.deactivated_at is not None
+    assert job.deactivated_at is None
 
 
 @pytest.mark.django_db
@@ -361,40 +409,37 @@ def test_registered_service_sync_audits_provider_capacity_convergence(
     "validibot.validations.management.commands.sync_gcp_validator_services."
     "run_v2.ServicesClient"
 )
-def test_command_verifies_all_five_service_types_without_activating(
+def test_command_verifies_one_backend_without_activating(
     services_client_class,
     settings,
 ):
-    """The operator command must inventory every current managed backend type."""
+    """The operator command imports only the explicitly selected backend."""
     settings.GCP_PROJECT_ID = PROJECT_ID
     settings.GCP_REGION = REGION
     settings.GCP_APP_NAME = "validibot"
     settings.VALIDIBOT_STAGE = "prod"
     settings.GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT = INVOKER_IDENTITY
-    for validation_type in (
-        ValidationType.ENERGYPLUS,
-        ValidationType.FMU,
-        ValidationType.SHACL,
-        ValidationType.SCHEMATRON,
-        ValidationType.PORTFOLIO_MANAGER,
-    ):
-        ValidatorFactory(validation_type=validation_type)
+    ValidatorFactory(
+        validation_type=ValidationType.SHACL,
+        execution_backend_slug="shacl",
+        execution_runtime_contract="validibot-execution-v1",
+    )
     client = services_client_class.return_value
     client.get_service.side_effect = lambda *, name: _service(name)
     client.get_iam_policy.return_value = _policy()
 
     call_command(
         "sync_gcp_validator_services",
-        "--backend-release-tag=v0.15.0",
+        "--backend=shacl",
+        "--service-name=vb-vs-shacl-v0-15-1",
     )
 
     routes = ValidatorExecutionDeployment.objects.all()
-    assert routes.count() == MANAGED_BACKEND_COUNT
+    assert routes.count() == 1
     assert set(routes.values_list("routing_role", flat=True)) == {
         ExecutionDeploymentRoutingRole.INACTIVE
     }
-    assert client.get_service.call_count == MANAGED_BACKEND_COUNT
-    assert all(
-        call.kwargs["name"].endswith("-v0-15-0")
-        for call in client.get_service.call_args_list
+    assert client.get_service.call_count == 1
+    assert client.get_service.call_args.kwargs["name"].endswith(
+        "/services/vb-vs-shacl-v0-15-1"
     )

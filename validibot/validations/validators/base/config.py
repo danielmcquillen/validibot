@@ -234,6 +234,12 @@ class ValidatorConfig(BaseModel):
     # convention ``validibot-validator-backend-{slug}``. Built-in
     # validators leave this empty.
     image_name: str = ""
+    # Managed execution compatibility. Container-backed system Validators
+    # declare both values; in-process validators leave both empty. These are
+    # copied to Validator rows by ``sync_validators`` so remote application
+    # code never needs the sibling backend repository.
+    execution_backend_slug: str = ""
+    execution_runtime_contract: str = ""
 
     @property
     def cloud_run_job_name(self) -> str:

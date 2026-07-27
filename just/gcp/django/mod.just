@@ -64,7 +64,9 @@ _require-gcp-config:
 #   staging → django-env-staging
 #
 # Use this when you're rotating a Django-only value and want Secret
-# Manager's version history to reflect a Django-only change.
+# Manager's version history to reflect a Django-only change. After upload,
+# retention keeps the new version, one rollback version, and any version still
+# referenced by a current Cloud Run service or job.
 
 [arg('stage', pattern='dev|staging|prod')]
 secrets stage: _require-gcp-config
@@ -102,11 +104,35 @@ secrets stage: _require-gcp-config
             --project={{gcp_project}}
     fi
 
+    command -v jq >/dev/null 2>&1 || {
+        echo "Error: jq is required to validate the uploaded secret version."
+        exit 1
+    }
+
     echo "Uploading secrets from $ENV_FILE to $SECRET_NAME..."
-    gcloud secrets versions add "$SECRET_NAME" \
-        --data-file="$ENV_FILE" \
-        --project {{gcp_project}}
+    NEW_VERSION_JSON="$(
+        gcloud secrets versions add "$SECRET_NAME" \
+            --data-file="$ENV_FILE" \
+            --project {{gcp_project}} \
+            --format=json
+    )"
+    NEW_VERSION="$(
+        jq -r '.name // "" | split("/") | last' <<< "$NEW_VERSION_JSON"
+    )"
+    if [[ ! "$NEW_VERSION" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: upload succeeded, but its version could not be verified."
+        echo "No old secret versions were changed."
+        exit 1
+    fi
+
+    echo "Secret $SECRET_NAME version $NEW_VERSION established."
+    bash ops/gcp/prune-secret-versions.sh \
+        --project={{gcp_project}} \
+        --secret="$SECRET_NAME" \
+        --new-version="$NEW_VERSION" \
+        --keep="${GCP_SECRET_VERSIONS_TO_KEEP:-2}" \
+        --mode=apply
 
     echo ""
-    echo "Secret $SECRET_NAME updated."
+    echo "Secret $SECRET_NAME updated; bounded version history applied."
     echo "Run 'just gcp deploy-all {{stage}}' to apply changes."

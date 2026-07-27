@@ -113,7 +113,7 @@ Quarterly:
 6. Run `just self-hosted smoke-test` — end-to-end validation should work.
 7. Tear down the restore environment.
 
-This is the difference between "we have backups" and "we have provably working backups." For a customer paying 6k–24k/year, the restore drill is the artefact that justifies the pricing.
+This is the difference between "we have backups" and "we have provably working backups." For a serious self-hosted deployment, the restore drill is the evidence that backups work and that the recovery commitment can be met.
 
 ## Restore vs DigitalOcean Droplet backups (and similar)
 

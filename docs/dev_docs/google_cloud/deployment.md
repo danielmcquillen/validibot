@@ -216,21 +216,17 @@ concern using the currently deployed image.
 ### Step 6: Deploy Validators
 
 ```bash
-# Production: mirror and deploy one exact signed release to every Job and Service.
-just gcp validator-deploy-all prod v0.15.0
+# Production: inspect and update one independent backend release.
+just gcp validator-status prod
+just gcp validator-update prod energyplus
 ```
 
-The command verifies the signed tag and GitHub attestation, copies the exact
-GHCR digest into GAR without rebuilding it, refreshes retained Jobs, and
-creates distinct private Services such as
-`validibot-validator-service-energyplus-v0-15-0`. Registration observes the
-ready provider state during the following acceptance operation; deployment
-itself leaves application routing unchanged. Complete the live acceptance in
-the rollout record with the single maintenance-safe command:
-
-```bash
-just gcp validator-acceptance prod v0.15.0
-```
+The command reads the offered EnergyPlus version from
+`validibot-validator-backends/backends.toml`, verifies its backend-specific tag
+and release JSON, copies the exact GHCR digest into GAR without rebuilding,
+creates release-specific Service and Job resources, imports the database
+pairs, and runs normal plus Job-only acceptance before changing EnergyPlus
+routing.
 
 The stage must already be in maintenance mode. Attempt-scoped token delivery
 and ambient-IAM denial are fixed GCP contracts; there are no storage rollout
@@ -562,15 +558,16 @@ just gcp scheduler-delete-all dev
 ### Validator backends
 
 ```bash
-# Routine: deploy one signed release to every Job and Service.
-just gcp validator-deploy-all prod v0.15.1
+# Routine read-only view and one-backend update.
+just gcp validator-status prod
+just gcp validator-update prod energyplus
 
-# Routine: deploy one backend to its matching Job and Service.
-just gcp validator-deploy energyplus prod v0.15.1
+# Diagnostic/recovery: stage one backend pair without activating it.
+just gcp validator-deploy energyplus prod energyplus-v0.15.1
 
 # Diagnostic/recovery: deploy just one execution shape.
-just gcp validator-job-deploy energyplus prod v0.15.1
-just gcp validator-service-deploy energyplus prod v0.15.1
+just gcp validator-job-deploy energyplus prod energyplus-v0.15.1
+just gcp validator-service-deploy energyplus prod energyplus-v0.15.1
 
 # List validator jobs
 gcloud run jobs list --filter="name~$GCP_APP_NAME-validator" --region=$GCP_REGION --project=$GCP_PROJECT_ID

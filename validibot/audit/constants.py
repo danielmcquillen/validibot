@@ -187,6 +187,12 @@ AUDITABLE_FIELDS: dict[str, tuple[str, ...]] = {
         "emergency_block_reason",
         "minimum_instances",
         "maximum_instances",
+        "accepted_at",
+        "deactivated_at",
+        "deactivation_cause",
+        "provider_deleted_at",
+        "retired_at",
+        "retirement_reason",
     ),
     # Membership — ``roles`` is an M2M through ``MembershipRole``, so
     # direct role changes fire on that through-table rather than on

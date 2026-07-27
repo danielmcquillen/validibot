@@ -49,6 +49,8 @@ config = ValidatorConfig(
         "shapes."
     ),
     validation_type=ValidationType.SHACL,
+    execution_backend_slug="shacl",
+    execution_runtime_contract="validibot-execution-v1",
     validator_class=("validibot.validations.validators.shacl.validator.SHACLValidator"),
     # Typed container output contract — Django deserializes output.json with this.
     output_envelope_class="validibot_shared.shacl.envelopes.SHACLOutputEnvelope",

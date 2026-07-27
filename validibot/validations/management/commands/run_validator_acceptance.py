@@ -21,16 +21,21 @@ MAX_TIMEOUT_SECONDS = 3600
 
 
 class Command(BaseCommand):
-    """Exercise all managed backends and emit one automation-friendly result."""
+    """Exercise one managed backend and emit one automation-friendly result."""
 
     help = "Run live validator acceptance and persist its private JSON evidence."
 
     def add_arguments(self, parser):
-        """Expose only release identity, burst size, and a bounded wait."""
+        """Expose backend identity, release identity, burst size, and wait."""
+        parser.add_argument(
+            "--backend",
+            required=True,
+            help="One application-supported managed backend slug.",
+        )
         parser.add_argument(
             "--release-tag",
             required=True,
-            help="Candidate backend release in vX.Y.Z form.",
+            help="Candidate backend release in <backend>-vX.Y.Z form.",
         )
         parser.add_argument(
             "--attempts",
@@ -59,6 +64,20 @@ class Command(BaseCommand):
             action="store_true",
             help="Confirm the operator recipe just proved ambient IAM is absent.",
         )
+        parser.add_argument(
+            "--routing-mode",
+            choices=["normal", "job-only"],
+            default="normal",
+            help="Exact pair routing expected while these canaries run.",
+        )
+        parser.add_argument(
+            "--record-acceptance",
+            action="store_true",
+            help=(
+                "Record accepted_at only after this invocation passes. Routine "
+                "operators use this on the Job-only pass after the Service pass."
+            ),
+        )
 
     def handle(self, *args, **options):
         """Run the suite, persist evidence, print JSON, and fail closed."""
@@ -70,11 +89,14 @@ class Command(BaseCommand):
             )
         try:
             report = ValidatorAcceptanceRunner(
+                backend=options["backend"],
                 release_tag=options["release_tag"],
                 attempts_per_backend=options["attempts"],
                 timeout_seconds=timeout_seconds,
                 run_storage_probe=not options["skip_storage_probe"],
                 ambient_isolation_verified=options["ambient_isolation_verified"],
+                routing_mode=options["routing_mode"],
+                record_acceptance=options["record_acceptance"],
             ).run()
         except ValueError as exc:
             raise CommandError(str(exc)) from exc

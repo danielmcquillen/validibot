@@ -1,10 +1,9 @@
 """Tests for importing existing Cloud Run Jobs as managed deployment routes.
 
-The importer is the Phase 1 bridge: production Jobs already exist, so Validibot
-must read and verify their exact immutable facts without redeploying them or
-manufacturing provenance for older attempts.  These tests cover digest and
-resource validation, shared provider resources, idempotency, activation, and
-the five-backend management-command inventory.
+The importer reads one release-specific Job and creates one deployment row per
+compatible semantic Validator without redeploying it, changing routes, or
+manufacturing provenance for older attempts. These tests cover exact release
+metadata, digest validation, idempotency, and backend-scoped command behavior.
 """
 
 from types import SimpleNamespace
@@ -31,16 +30,37 @@ REGION = "australia-southeast1"
 RUNTIME_IDENTITY = "validator-runtime@validibot-prod.iam.gserviceaccount.com"
 DIGEST = "sha256:" + "d" * 64
 REVISION = "3b4ef06"
-MANAGED_BACKEND_COUNT = 5
 JOB_TIMEOUT_SECONDS = 3600
 JOB_CPU_MILLIS = 2000
 JOB_MEMORY_MIB = 4096
+RELEASE_VERSION = "0.15.1"
+RELEASE_RECORD_SHA256 = "a" * 64
 
 
-def _job(resource_name: str, *, image_ref: str | None = None):
+def _job(
+    resource_name: str,
+    *,
+    backend: str = "energyplus",
+    image_ref: str | None = None,
+):
     """Return the minimal provider-shaped Job object consumed by the importer."""
     container = SimpleNamespace(
         image=image_ref or f"{REGION}-docker.pkg.dev/x/backend@{DIGEST}",
+        env=[
+            SimpleNamespace(name="VALIDIBOT_BACKEND_SLUG", value=backend),
+            SimpleNamespace(
+                name="VALIDIBOT_BACKEND_RELEASE",
+                value=RELEASE_VERSION,
+            ),
+            SimpleNamespace(
+                name="VALIDIBOT_SOURCE_RELEASE_TAG",
+                value=f"{backend}-v{RELEASE_VERSION}",
+            ),
+            SimpleNamespace(
+                name="VALIDIBOT_RELEASE_RECORD_SHA256",
+                value=RELEASE_RECORD_SHA256,
+            ),
+        ],
         resources=SimpleNamespace(limits={"cpu": "2", "memory": "4Gi"}),
     )
     task_template = SimpleNamespace(
@@ -66,7 +86,7 @@ def test_observation_extracts_exact_digest_identity_and_resource_limits():
     resource_name = _resource("validibot-validator-backend-energyplus")
 
     observation = observe_cloud_run_job(
-        _job(resource_name),
+        _job(resource_name, backend="energyplus"),
         expected_resource_name=resource_name,
     )
 
@@ -83,7 +103,11 @@ def test_observation_rejects_floating_image_tag():
 
     with pytest.raises(GCPJobImportError, match="not pinned"):
         observe_cloud_run_job(
-            _job(resource_name, image_ref="example.invalid/fmu:latest"),
+            _job(
+                resource_name,
+                backend="fmu",
+                image_ref="example.invalid/fmu:latest",
+            ),
             expected_resource_name=resource_name,
         )
 
@@ -91,11 +115,15 @@ def test_observation_rejects_floating_image_tag():
 @pytest.mark.django_db
 def test_registration_is_idempotent_and_does_not_rewrite_historical_attempts():
     """Re-running import converges while legacy attempts remain explicitly unknown."""
-    validator = ValidatorFactory(validation_type=ValidationType.FMU)
+    validator = ValidatorFactory(
+        validation_type=ValidationType.FMU,
+        execution_backend_slug="fmu",
+        execution_runtime_contract="validibot-execution-v1",
+    )
     attempt = ExecutionAttemptFactory()
     resource_name = _resource("validibot-validator-backend-fmu")
     observation = observe_cloud_run_job(
-        _job(resource_name),
+        _job(resource_name, backend="fmu"),
         expected_resource_name=resource_name,
     )
 
@@ -104,20 +132,20 @@ def test_registration_is_idempotent_and_does_not_rewrite_historical_attempts():
         project_id=PROJECT_ID,
         region=REGION,
         observation=observation,
-        activate_primary=True,
+        activate_primary=False,
     )
     second, second_created = register_observed_job_deployment(
         validator=validator,
         project_id=PROJECT_ID,
         region=REGION,
         observation=observation,
-        activate_primary=True,
+        activate_primary=False,
     )
 
     assert first_created is True
     assert second_created is False
     assert second.pk == first.pk
-    assert second.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
+    assert second.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
     attempt.refresh_from_db()
     assert attempt.deployment_id is None
     assert attempt.deployment_snapshot == {}
@@ -126,44 +154,34 @@ def test_registration_is_idempotent_and_does_not_rewrite_historical_attempts():
 @pytest.mark.django_db
 @patch(
     "validibot.validations.management.commands.sync_gcp_validator_deployments."
-    "_resolve_cloud_run_job_name",
-    side_effect=lambda validation_type: (
-        f"validibot-validator-backend-{validation_type.lower().replace('_', '-')}"
-    ),
-)
-@patch(
-    "validibot.validations.management.commands.sync_gcp_validator_deployments."
     "run_v2.JobsClient",
 )
-def test_command_imports_and_activates_all_five_current_backend_types(
+def test_command_imports_one_backend_without_changing_routes(
     jobs_client_class,
-    resolve_job_name,
     settings,
 ):
-    """The operator command must cover every current release-enabled backend."""
+    """One backend import must leave every compatible deployment inactive."""
     settings.GCP_PROJECT_ID = PROJECT_ID
     settings.GCP_REGION = REGION
-    for validation_type in (
-        ValidationType.ENERGYPLUS,
-        ValidationType.FMU,
-        ValidationType.SHACL,
-        ValidationType.SCHEMATRON,
-        ValidationType.PORTFOLIO_MANAGER,
-    ):
-        ValidatorFactory(validation_type=validation_type)
-    jobs_client_class.return_value.get_job.side_effect = lambda *, name: _job(name)
-
-    call_command("sync_gcp_validator_deployments", "--activate-primary")
-
-    routes = ValidatorExecutionDeployment.objects.filter(
-        routing_role=ExecutionDeploymentRoutingRole.PRIMARY
+    ValidatorFactory(
+        validation_type=ValidationType.FMU,
+        execution_backend_slug="fmu",
+        execution_runtime_contract="validibot-execution-v1",
     )
-    assert routes.count() == MANAGED_BACKEND_COUNT
-    assert {route.validator.validation_type for route in routes} == {
-        ValidationType.ENERGYPLUS,
-        ValidationType.FMU,
-        ValidationType.SHACL,
-        ValidationType.SCHEMATRON,
-        ValidationType.PORTFOLIO_MANAGER,
-    }
-    assert resolve_job_name.call_count == MANAGED_BACKEND_COUNT
+    job_name = "vb-vj-fmu-v0-15-1"
+    jobs_client_class.return_value.get_job.side_effect = lambda *, name: _job(
+        name,
+        backend="fmu",
+    )
+
+    call_command(
+        "sync_gcp_validator_deployments",
+        "--backend=fmu",
+        f"--job-name={job_name}",
+    )
+
+    route = ValidatorExecutionDeployment.objects.get()
+    assert route.validator.validation_type == ValidationType.FMU
+    assert route.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+    requested = jobs_client_class.return_value.get_job.call_args.kwargs["name"]
+    assert requested.endswith(f"/jobs/{job_name}")

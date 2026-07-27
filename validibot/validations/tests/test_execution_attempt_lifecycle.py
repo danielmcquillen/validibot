@@ -321,6 +321,8 @@ class TestCloudRunSharedDispatch:
     ):
         """All validator launchers share one durable evidence-to-running sequence."""
         step_run = MagicMock(pk="step-run-1")
+        attempts = step_run.execution_attempts.filter.return_value
+        attempts.order_by.return_value.first.return_value = None
         envelope = MagicMock()
         envelope.context.expected_output_uri = "gs://bucket/attempt/output.json"
         submission = MagicMock()
@@ -403,11 +405,14 @@ class TestCloudRunSharedDispatch:
         """Enabled rollout must bind one freshly issued token to this dispatch."""
         capability = MagicMock(name="attempt_gcs_capability")
         issue_capability.return_value = capability
+        step_run = MagicMock(pk="step-run-1")
+        attempts = step_run.execution_attempts.filter.return_value
+        attempts.order_by.return_value.first.return_value = None
         envelope = MagicMock()
         envelope.context.expected_output_uri = "gs://bucket/attempt/output.json"
 
         _dispatch_cloud_run_validation(
-            step_run=MagicMock(pk="step-run-1"),
+            step_run=step_run,
             job_name="validator-job",
             input_envelope_uri="gs://bucket/attempt/input.json",
             execution_bundle_uri="gs://bucket/attempt",

@@ -21,18 +21,113 @@ The post-mortem on the legacy env-var path: ``GCS_*_JOB_NAME`` had
 been unset in prod Secret Manager for months, defaulting to ``""``,
 and the launcher was calling ``gcloud run jobs run ""`` which errored
 out. The dataclass-driven path eliminates the cross-config-source
-drift class of bug.
+  drift class of bug.
+- managed dispatch ignores the legacy stable-name fallback and reads the exact
+  release-specific Job resource and image digest from the attempt snapshot.
 """
 
 from __future__ import annotations
 
+from datetime import UTC
+from datetime import datetime
+from types import SimpleNamespace
+from uuid import uuid4
+
 import pytest
 
+from validibot.validations.services.cloud_run.launcher import (
+    _managed_cloud_run_job_target,
+)
 from validibot.validations.services.cloud_run.launcher import (
     _resolve_cloud_run_job_name,
 )
 from validibot.validations.validators.base.config import _CONFIG_REGISTRY
 from validibot.validations.validators.base.config import ValidatorConfig
+
+SNAPSHOT_DIGEST = "sha256:" + "a" * 64
+
+
+def _managed_job_snapshot() -> dict:
+    """Return one complete typed attempt snapshot for a release-specific Job."""
+
+    capabilities = {
+        "runtime_contract_version": "validibot-execution-v1",
+        "maximum_execution_seconds": 3600,
+        "execution_shape": "JOB",
+        "status_lookup": "SUPPORTED",
+        "cancellation": "SUPPORTED",
+        "storage_capability": "gcs_downscoped_token",
+        "storage_isolation": "attempt_scoped",
+        "architectures": ["linux-amd64"],
+        "maximum_cpu_millis": 2000,
+        "maximum_memory_mib": 4096,
+        "callback_authentication": "ATTEMPT_NONCE_AND_OIDC",
+    }
+    return {
+        "schema_version": 2,
+        "deployment_id": str(uuid4()),
+        "validator_id": 17,
+        "selected_at": datetime.now(tz=UTC).isoformat(),
+        "provider_type": "GCP",
+        "deployment_kind": "CLOUD_RUN_JOB",
+        "deployment_revision": "v0-15-1-20260724",
+        "provider_resource_name": (
+            "projects/exact-project/locations/australia-southeast1/"
+            "jobs/vb-vj-shacl-v0-15-1"
+        ),
+        "backend_slug": "shacl",
+        "backend_release_identity": "0.15.1",
+        "source_release_tag": "shacl-v0.15.1",
+        "release_record_sha256": "b" * 64,
+        "backend_image_ref": "registry.example/shacl@" + SNAPSHOT_DIGEST,
+        "backend_image_digest": SNAPSHOT_DIGEST,
+        "provider_spec_sha256": "c" * 64,
+        "execution_config_sha256": "d" * 64,
+        "expected_runtime_identity": (
+            "validator-runtime@exact-project.iam.gserviceaccount.com"
+        ),
+        "routing_role": "PRIMARY",
+        "declared_capabilities": capabilities,
+        "verified_capabilities": capabilities,
+        "maximum_execution_seconds": 3600,
+        "dispatch_timeout_seconds": 30,
+        "minimum_instances": 0,
+        "concurrency": 1,
+    }
+
+
+class TestManagedCloudRunJobTarget:
+    """Managed dispatch must use immutable attempt facts, never current routing."""
+
+    def test_uses_snapshot_resource_even_when_live_deployment_object_differs(self):
+        """A later route or model reference cannot redirect an allocated attempt."""
+
+        snapshot = _managed_job_snapshot()
+        attempt = SimpleNamespace(
+            deployment_id=snapshot["deployment_id"],
+            deployment_snapshot=snapshot,
+            deployment=SimpleNamespace(
+                provider_configuration={"job_name": "stable-or-newer-job"},
+                backend_image_digest="sha256:" + "f" * 64,
+            ),
+        )
+
+        target = _managed_cloud_run_job_target(attempt)
+
+        assert target == (
+            "exact-project",
+            "australia-southeast1",
+            snapshot["provider_resource_name"],
+            SNAPSHOT_DIGEST,
+        )
+
+    def test_rejects_a_managed_attempt_without_its_snapshot(self):
+        """Missing durable identity must fail before any provider API contact."""
+
+        attempt = SimpleNamespace(deployment_id=str(uuid4()), deployment_snapshot={})
+
+        with pytest.raises(RuntimeError, match="no immutable deployment snapshot"):
+            _managed_cloud_run_job_target(attempt)
 
 
 class TestResolveCloudRunJobName:

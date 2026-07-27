@@ -71,7 +71,6 @@ Understand how the system is built:
 - **[Submission Modes](overview/request_modes.md)** — How API payload shapes are detected
 - **[Settings Reference](overview/settings.md)** — Environment variables and feature flags
 - **[Dashboard](dashboard.md)** — Architecture and extension points for the dashboard module
-- **[Related Libraries](related_libraries.md)** — How `validibot_shared` connects to this project
 - **[Commercial Extensions](overview/commercial_extensions.md)** — How Pro and Enterprise packages plug in
 
 ---
@@ -123,7 +122,6 @@ Deploy Validibot to production:
 - **[Docker Compose Responsibility](deployment/docker-compose-responsibility.md)** — Operator responsibilities for self-hosting
 - **[Scheduled Jobs (GCP)](google_cloud/scheduled-jobs.md)** — Cloud Scheduler setup
 - **[Scheduled Tasks (Docker Compose)](how-to/configure-scheduled-tasks.md)** — Celery + Celery Beat
-- **[Go-Live Checklist](deployment/go-live-checklist.md)** — Pre-launch tasks
 - **[Important Notes](deployment/important_notes.md)** — Common deployment gotchas
 
 ### Self-hosting (operator-facing)
@@ -151,8 +149,6 @@ Validibot install on their own VM, not for someone hacking on the codebase:
 ## Integrations
 
 - **[MCP Server](mcp/index.md)** — Standalone FastMCP service that exposes validation workflows to AI agents (Claude, Cursor, Windsurf, etc.). Source, Dockerfile, and deploy recipes all live in this repo; license-gated at runtime.
-- **[EnergyPlus Modal](integrations/energyplus_modal.md)** — Modal-backed EnergyPlus simulation runner
-
 ---
 
 ## Testing

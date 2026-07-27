@@ -94,7 +94,9 @@ These validators run as isolated Docker container backends for heavier or domain
 
 - **EnergyPlus™**: Validate (and simulate) EnergyPlus IDF and epJSON building energy models
 - **FMU**: Validate and simulate Functional Mock-up Units (FMI)
+- **Portfolio Manager**: Validate ENERGY STAR® Portfolio Manager property reports (XLS, XLSX, XML) and multi-building ZIP collections — reporting periods, roster reconciliation, and EUI target (EUIt) comparisons
 - **SHACL**: Validate RDF graphs (Turtle, JSON-LD, RDF/XML, N-Triples) against SHACL shapes — for example ASHRAE 223P, ASHRAE Guideline 36, Brick Schema, and Project Haystack 4
+- **Schematron**: Validate XML against uploaded Schematron rules — for example EN 16931 or Peppol BIS Billing 3.0 — with findings reported by their native rule IDs (e.g. BR-CO-15)
 - **AI Assisted**: Validate JSON or text against natural-language criteria using language models
 - **Custom**: Bring your own validator backend container image
 

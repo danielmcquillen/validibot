@@ -45,12 +45,14 @@ from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
+from validibot.validations.constants import ExecutionRoutingMode
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorAvailabilityState
+from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.models import ExecutionAttempt
 from validibot.validations.models import Ruleset
 from validibot.validations.models import StepInputBinding
@@ -83,7 +85,11 @@ ACCEPTANCE_FIXTURE_VERSION = 1
 ACCEPTANCE_ORG_SLUG = "validibot-validator-acceptance"
 ACCEPTANCE_USERNAME = "validibot-validator-acceptance"
 ACCEPTANCE_WEATHER_FILENAME = "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw"
-RELEASE_TAG_PATTERN = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
+RELEASE_TAG_PATTERN = re.compile(
+    r"^(?P<backend>[a-z][a-z0-9_]*)-v"
+    r"(?P<version>[0-9]+\.[0-9]+\.[0-9]+"
+    r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$"
+)
 MAX_ATTEMPTS_PER_BACKEND = 20
 REPRESENTATIVE_SAMPLE_SIZE = 20
 
@@ -120,6 +126,26 @@ BACKENDS = (
         20.0,
     ),
 )
+BACKENDS_BY_KEY = {spec.key: spec for spec in BACKENDS}
+
+
+def _compatible_validators(spec: BackendSpec) -> list[Validator]:
+    """Return every semantic Validator that this backend release must support."""
+    validators = list(
+        Validator.objects.filter(
+            execution_backend_slug=spec.key,
+            validation_type=spec.validation_type,
+            is_system=True,
+            is_enabled=True,
+            release_state=ValidatorReleaseState.PUBLISHED,
+            availability_state=ValidatorAvailabilityState.AVAILABLE,
+        ).order_by("slug", "version", "pk")
+    )
+    if not validators:
+        raise ValueError(
+            f"No published compatible Validator declares backend {spec.key}"
+        )
+    return validators
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +158,9 @@ class AcceptanceScenario:
     filename: str
     file_type: str
     fixture_sha256: str
+    validator_id: str = ""
+    validator_slug: str = ""
+    validator_version: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,12 +185,20 @@ class AcceptanceCheck:
 class AcceptanceReport:
     """Accumulate verdicts and produce the single operator-facing report."""
 
-    def __init__(self, *, release_tag: str, attempts_per_backend: int) -> None:
+    def __init__(
+        self,
+        *,
+        backend: str,
+        release_tag: str,
+        attempts_per_backend: int,
+    ) -> None:
         timestamp = timezone.now()
         suffix = uuid.uuid4().hex[:8]
         self.acceptance_id = (
-            f"va-{timestamp:%Y%m%dT%H%M%SZ}-{release_tag.removeprefix('v')}-{suffix}"
+            f"va-{timestamp:%Y%m%dT%H%M%SZ}-{backend}-"
+            f"{release_tag.rsplit('-v', 1)[1]}-{suffix}"
         )
+        self.backend = backend
         self.release_tag = release_tag
         self.attempts_per_backend = attempts_per_backend
         self.started_at = timestamp
@@ -205,7 +242,9 @@ class AcceptanceReport:
             "schema_version": ACCEPTANCE_SCHEMA_VERSION,
             "acceptance_id": self.acceptance_id,
             "stage": str(getattr(settings, "VALIDIBOT_STAGE", "") or "unknown"),
-            "backend_release": self.release_tag,
+            "backend": self.backend,
+            "source_release_tag": self.release_tag,
+            "backend_release": self.release_tag.rsplit("-v", 1)[1],
             "attempts_per_backend": self.attempts_per_backend,
             "started_at": self.started_at.isoformat(),
             "finished_at": finished_at.isoformat(),
@@ -224,6 +263,20 @@ class AcceptanceFixtureBuilder:
         """Return deterministic scenarios for every managed backend."""
         with transaction.atomic():
             return {spec.key: self._build_scenario(spec) for spec in BACKENDS}
+
+    def build(self, spec: BackendSpec) -> AcceptanceScenario:
+        """Return the deterministic scenario for one selected backend."""
+        with transaction.atomic():
+            return self._build_scenario(spec)
+
+    def build_compatible(self, spec: BackendSpec) -> tuple[AcceptanceScenario, ...]:
+        """Build one scenario for every executable published semantic Validator."""
+        with transaction.atomic():
+            validators = _compatible_validators(spec)
+            return tuple(
+                self._build_scenario(spec, validator=validator)
+                for validator in validators
+            )
 
     def _ensure_actor(self) -> tuple[User, Organization, Project]:
         """Create a non-login operator identity that bypasses tenant quotas."""
@@ -271,12 +324,17 @@ class AcceptanceFixtureBuilder:
             user.set_current_org(org)
         return user, org, ensure_default_project(org)
 
-    def _build_scenario(self, spec: BackendSpec) -> AcceptanceScenario:
+    def _build_scenario(
+        self,
+        spec: BackendSpec,
+        *,
+        validator: Validator | None = None,
+    ) -> AcceptanceScenario:
         """Create one backend-specific workflow and submission definition."""
-        validator = self._current_validator(spec)
+        validator = validator or self._current_validator(spec)
         existing = self._existing_workflow(spec, validator)
         if existing is not None:
-            return self._scenario_for_existing(spec, existing)
+            return self._scenario_for_existing(spec, existing, validator)
         if spec.validation_type == ValidationType.ENERGYPLUS:
             return self._create_energyplus(spec, validator)
         if spec.validation_type == ValidationType.FMU:
@@ -310,9 +368,12 @@ class AcceptanceFixtureBuilder:
 
     def _workflow_slug(self, spec: BackendSpec, validator: Validator) -> str:
         """Version fixture identity without mutating workflows already in use."""
+        semantic_key = hashlib.sha256(
+            f"{validator.slug}:{validator.version}".encode()
+        ).hexdigest()[:8]
         return (
-            f"validator-acceptance-{spec.key}-f{ACCEPTANCE_FIXTURE_VERSION}"
-            f"-v{validator.version}"
+            f"validator-acceptance-{spec.key}-f{ACCEPTANCE_FIXTURE_VERSION}-"
+            f"{semantic_key}"
         )
 
     def _existing_workflow(
@@ -337,6 +398,7 @@ class AcceptanceFixtureBuilder:
         self,
         spec: BackendSpec,
         workflow: Workflow,
+        validator: Validator,
     ) -> AcceptanceScenario:
         """Rebuild source-controlled submission metadata for a reused workflow."""
         text, filename, file_type = self._submission_fixture(spec)
@@ -347,6 +409,9 @@ class AcceptanceFixtureBuilder:
             filename=filename,
             file_type=file_type,
             fixture_sha256=_sha256_text(text),
+            validator_id=str(validator.pk),
+            validator_slug=validator.slug,
+            validator_version=str(validator.version),
         )
 
     def _create_workflow(
@@ -434,7 +499,7 @@ class AcceptanceFixtureBuilder:
             validator_resource_file=weather,
         )
         ensure_step_input_bindings(step)
-        return self._scenario_for_existing(spec, workflow)
+        return self._scenario_for_existing(spec, workflow, validator)
 
     def _create_fmu(
         self,
@@ -487,7 +552,7 @@ class AcceptanceFixtureBuilder:
             workflow_step=step,
             source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
         ).update(is_required=True)
-        return self._scenario_for_existing(spec, workflow)
+        return self._scenario_for_existing(spec, workflow, validator)
 
     def _create_shacl(
         self,
@@ -504,7 +569,7 @@ class AcceptanceFixtureBuilder:
             rules_metadata={"submission_format": "turtle"},
         )
         ensure_step_input_bindings(step)
-        return self._scenario_for_existing(spec, workflow)
+        return self._scenario_for_existing(spec, workflow, validator)
 
     def _create_schematron(
         self,
@@ -520,7 +585,7 @@ class AcceptanceFixtureBuilder:
             rules_text=rules,
         )
         ensure_step_input_bindings(step)
-        return self._scenario_for_existing(spec, workflow)
+        return self._scenario_for_existing(spec, workflow, validator)
 
     def _create_portfolio_manager(
         self,
@@ -534,9 +599,8 @@ class AcceptanceFixtureBuilder:
             allowed_file_types=[SubmissionFileType.XML],
             step_config={
                 "submission_structure": "single_report",
-                "profile": "generic",
                 "default_euit_kbtu_ft2_yr": "40",
-                "compare_weather_normalized_site_eui_to_target": True,
+                "compare_to_euit": True,
                 "near_target_percent": "10",
             },
         )
@@ -545,7 +609,7 @@ class AcceptanceFixtureBuilder:
             workflow_step=step,
             io_definition__contract_key="default_euit_kbtu_ft2_yr",
         ).update(default_value="40")
-        return self._scenario_for_existing(spec, workflow)
+        return self._scenario_for_existing(spec, workflow, validator)
 
     def _submission_fixture(self, spec: BackendSpec) -> tuple[str, str, str]:
         """Return exact source-controlled input bytes for one backend."""
@@ -616,29 +680,54 @@ class ValidatorAcceptanceRunner:
     def __init__(
         self,
         *,
+        backend: str,
         release_tag: str,
         attempts_per_backend: int = 1,
         timeout_seconds: int = 1200,
         poll_interval_seconds: float = 2.0,
         run_storage_probe: bool = True,
         ambient_isolation_verified: bool = False,
+        routing_mode: ExecutionRoutingMode | str = ExecutionRoutingMode.NORMAL,
+        record_acceptance: bool = False,
     ) -> None:
-        if not RELEASE_TAG_PATTERN.fullmatch(release_tag):
-            raise ValueError("release_tag must be vX.Y.Z")
+        if backend not in BACKENDS_BY_KEY:
+            allowed = ", ".join(sorted(BACKENDS_BY_KEY))
+            raise ValueError(f"backend must be one of: {allowed}")
+        match = RELEASE_TAG_PATTERN.fullmatch(release_tag)
+        if match is None:
+            raise ValueError("release_tag must be <backend>-vX.Y.Z")
+        if match.group("backend") != backend:
+            raise ValueError("release_tag backend must match the selected backend")
         if not 1 <= attempts_per_backend <= MAX_ATTEMPTS_PER_BACKEND:
             raise ValueError(
                 f"attempts_per_backend must be between 1 and {MAX_ATTEMPTS_PER_BACKEND}"
             )
+        self.backend = backend
+        self.spec = BACKENDS_BY_KEY[backend]
         self.release_tag = release_tag
+        self.release_version = match.group("version")
         self.attempts_per_backend = attempts_per_backend
         self.timeout_seconds = timeout_seconds
         self.poll_interval_seconds = poll_interval_seconds
         self.run_storage_probe = run_storage_probe
         self.ambient_isolation_verified = ambient_isolation_verified
+        try:
+            self.routing_mode = ExecutionRoutingMode(routing_mode)
+        except ValueError as exc:
+            raise ValueError("routing_mode must be normal or job-only") from exc
+        if self.routing_mode not in {
+            ExecutionRoutingMode.NORMAL,
+            ExecutionRoutingMode.JOB_ONLY,
+        }:
+            raise ValueError("routing_mode must be normal or job-only")
+        if record_acceptance and self.routing_mode != ExecutionRoutingMode.JOB_ONLY:
+            raise ValueError("record_acceptance requires the successful job-only pass")
+        self.record_acceptance = record_acceptance
 
     def run(self) -> AcceptanceReport:
         """Execute the complete non-destructive application acceptance suite."""
         report = AcceptanceReport(
+            backend=self.backend,
             release_tag=self.release_tag,
             attempts_per_backend=self.attempts_per_backend,
         )
@@ -654,7 +743,7 @@ class ValidatorAcceptanceRunner:
             return report
 
         try:
-            scenarios = AcceptanceFixtureBuilder().build_all()
+            scenarios = AcceptanceFixtureBuilder().build_compatible(self.spec)
         except Exception as exc:
             report.add(
                 "VA-FIXTURES",
@@ -668,90 +757,170 @@ class ValidatorAcceptanceRunner:
         report.add(
             "VA-FIXTURES",
             "passed",
-            "All four immutable acceptance workflows are ready.",
+            f"The {self.backend} semantic acceptance workflows are ready.",
             fixture_version=ACCEPTANCE_FIXTURE_VERSION,
-            fixture_hashes={
-                key: scenario.fixture_sha256 for key, scenario in scenarios.items()
-            },
+            validators=[
+                {
+                    "validator_id": scenario.validator_id,
+                    "slug": scenario.validator_slug,
+                    "version": scenario.validator_version,
+                    "fixture_sha256": scenario.fixture_sha256,
+                }
+                for scenario in scenarios
+            ],
         )
-        launched_by_backend = {}
-        for spec in BACKENDS:
-            scenario = scenarios[spec.key]
-            launched_by_backend[spec.key] = self._launch_backend(report, scenario)
-        self._wait_for_runs(launched_by_backend)
-        for spec in BACKENDS:
-            scenario = scenarios[spec.key]
-            launched = launched_by_backend[spec.key]
+        launched_by_scenario = {
+            _scenario_key(scenario): self._launch_backend(report, scenario)
+            for scenario in scenarios
+        }
+        self._wait_for_runs(launched_by_scenario)
+        for scenario in scenarios:
+            launched = launched_by_scenario[_scenario_key(scenario)]
             for sequence, run in launched:
                 run.refresh_from_db()
                 self._record_run(report, scenario, sequence, run)
             self._record_latency(report, scenario, launched)
+        if report.passed and self.record_acceptance:
+            self._record_pair_acceptance(report, scenarios)
         report.finish()
         return report
 
     def _check_deployments(self, report: AcceptanceReport) -> bool:
         """Require current primary Services and retained long-running Jobs."""
-        expected_release = self.release_tag.removeprefix("v")
-        all_passed = True
-        for spec in BACKENDS:
-            try:
-                validator, primary, compatibility = self._accepted_routes(
-                    spec,
-                    expected_release,
+        try:
+            validators = _compatible_validators(self.spec)
+            routes = [
+                self._accepted_routes(
+                    self.spec,
+                    self.release_version,
+                    validator=validator,
                 )
-                report.add(
-                    f"VA-{spec.key.upper()}-ROUTE",
-                    "passed",
-                    "Candidate Service is primary and the Job rollback route is ready.",
-                    validator_id=str(validator.pk),
-                    service_deployment_id=str(primary.pk),
-                    service_revision=primary.deployment_revision,
-                    service_image_digest=primary.backend_image_digest,
-                    service_minimum_instances=primary.minimum_instances,
-                    service_maximum_instances=primary.maximum_instances,
-                    job_deployment_id=str(compatibility.pk),
-                    job_revision=compatibility.deployment_revision,
+                for validator in validators
+            ]
+            report.add(
+                f"VA-{self.spec.key.upper()}-ROUTE",
+                "passed",
+                (
+                    "Candidate Service and Job have the requested private "
+                    f"{self.routing_mode.value} routing."
+                ),
+                backend=self.backend,
+                source_release_tag=self.release_tag,
+                routing_mode=self.routing_mode.value,
+                validators=[
+                    {
+                        "validator_id": str(validator.pk),
+                        "slug": validator.slug,
+                        "version": validator.version,
+                        "service_deployment_id": str(primary.pk),
+                        "service_revision": primary.deployment_revision,
+                        "service_image_digest": primary.backend_image_digest,
+                        "service_minimum_instances": primary.minimum_instances,
+                        "service_maximum_instances": primary.maximum_instances,
+                        "job_deployment_id": str(compatibility.pk),
+                        "job_revision": compatibility.deployment_revision,
+                    }
+                    for validator, primary, compatibility in routes
+                ],
+            )
+        except Exception as exc:
+            report.add(
+                f"VA-{self.spec.key.upper()}-ROUTE",
+                "failed",
+                "Managed deployment route failed acceptance preflight.",
+                error=_safe_error(exc),
+            )
+            return False
+        return True
+
+    def _record_pair_acceptance(
+        self,
+        report: AcceptanceReport,
+        scenarios: tuple[AcceptanceScenario, ...],
+    ) -> None:
+        """Persist acceptance atomically for every semantic Validator exercised."""
+        from validibot.validations.services.execution.deployments import (
+            mark_execution_deployment_pair_accepted,
+        )
+        from validibot.validations.services.execution.deployments import (
+            verify_execution_deployment_pair,
+        )
+
+        accepted_ids: list[dict[str, str]] = []
+        try:
+            pairs = []
+            for scenario in scenarios:
+                validator = scenario.workflow.steps.get().validator
+                deployments = ValidatorExecutionDeployment.objects.filter(
+                    validator=validator,
+                    backend_slug=self.backend,
+                    backend_release_identity=self.release_version,
+                    readiness_state=ExecutionDeploymentReadiness.READY,
                 )
-            except Exception as exc:
-                all_passed = False
-                report.add(
-                    f"VA-{spec.key.upper()}-ROUTE",
-                    "failed",
-                    "Managed deployment route failed acceptance preflight.",
-                    error=_safe_error(exc),
+                service = deployments.get(
+                    deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_SERVICE
                 )
-        return all_passed
+                job = deployments.get(
+                    deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB
+                )
+                pairs.append(verify_execution_deployment_pair(service=service, job=job))
+            with transaction.atomic():
+                for pair in pairs:
+                    accepted = mark_execution_deployment_pair_accepted(
+                        service=pair.service,
+                        job=pair.job,
+                    )
+                    accepted_ids.append(
+                        {
+                            "validator_id": str(accepted.service.validator_id),
+                            "service_deployment_id": str(accepted.service.pk),
+                            "job_deployment_id": str(accepted.job.pk),
+                        }
+                    )
+        except Exception as exc:
+            report.add(
+                f"VA-{self.backend.upper()}-ACCEPTED",
+                "failed",
+                "The successful canaries could not be attached to the exact pair.",
+                error=_safe_error(exc),
+            )
+            return
+        report.add(
+            f"VA-{self.backend.upper()}-ACCEPTED",
+            "passed",
+            "The exact backend release pair has a durable acceptance time.",
+            deployments=accepted_ids,
+        )
 
     def _accepted_routes(
         self,
         spec: BackendSpec,
         expected_release: str,
+        *,
+        validator: Validator | None = None,
     ) -> tuple[Validator, ValidatorExecutionDeployment, ValidatorExecutionDeployment]:
         """Resolve and validate the two routes required for a safe canary."""
-        config = get_config(spec.validation_type)
-        if config is None:
-            raise ValueError("validator config is not registered")
-        validator = Validator.objects.get(
-            slug=config.slug,
-            version=config.version,
-            is_system=True,
-        )
-        routes = {
-            route.routing_role: route
-            for route in ValidatorExecutionDeployment.objects.filter(
-                validator=validator,
-                routing_role__in=(
-                    ExecutionDeploymentRoutingRole.PRIMARY,
-                    ExecutionDeploymentRoutingRole.LONG_RUNNING,
-                ),
+        if validator is None:
+            config = get_config(spec.validation_type)
+            if config is None:
+                raise ValueError("validator config is not registered")
+            validator = Validator.objects.get(
+                slug=config.slug,
+                version=config.version,
+                is_system=True,
             )
-        }
-        primary = routes.get(ExecutionDeploymentRoutingRole.PRIMARY)
-        compatibility = routes.get(ExecutionDeploymentRoutingRole.LONG_RUNNING)
-        if primary is None:
-            raise ValueError("primary Service route is missing")
-        if primary.deployment_kind != ExecutionDeploymentKind.CLOUD_RUN_SERVICE:
-            raise ValueError("primary route is not a Cloud Run Service")
+        candidates = ValidatorExecutionDeployment.objects.filter(
+            validator=validator,
+            backend_slug=spec.key,
+            backend_release_identity=expected_release,
+            readiness_state=ExecutionDeploymentReadiness.READY,
+        )
+        primary = candidates.get(
+            deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_SERVICE
+        )
+        compatibility = candidates.get(
+            deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB
+        )
         if primary.readiness_state != ExecutionDeploymentReadiness.READY:
             raise ValueError("primary Service route is not ready")
         if primary.emergency_blocked:
@@ -765,12 +934,20 @@ class ValidatorAcceptanceRunner:
             )
         if not primary.backend_image_digest.startswith("sha256:"):
             raise ValueError("primary Service image is not digest-pinned")
-        if compatibility is None:
-            raise ValueError("long-running Job route is missing")
-        if compatibility.deployment_kind != ExecutionDeploymentKind.CLOUD_RUN_JOB:
-            raise ValueError("long-running route is not a Cloud Run Job")
         if compatibility.readiness_state != ExecutionDeploymentReadiness.READY:
             raise ValueError("long-running Job route is not ready")
+        if self.routing_mode == ExecutionRoutingMode.NORMAL and (
+            primary.routing_role != ExecutionDeploymentRoutingRole.PRIMARY
+            or compatibility.routing_role != ExecutionDeploymentRoutingRole.LONG_RUNNING
+        ):
+            raise ValueError(
+                "normal mode requires Service PRIMARY and Job LONG_RUNNING"
+            )
+        if self.routing_mode == ExecutionRoutingMode.JOB_ONLY and (
+            primary.routing_role != ExecutionDeploymentRoutingRole.INACTIVE
+            or compatibility.routing_role != ExecutionDeploymentRoutingRole.PRIMARY
+        ):
+            raise ValueError("job-only mode requires Service INACTIVE and Job PRIMARY")
         return validator, primary, compatibility
 
     def _check_storage(self, report: AcceptanceReport) -> None:
@@ -819,7 +996,7 @@ class ValidatorAcceptanceRunner:
         report: AcceptanceReport,
         scenario: AcceptanceScenario,
     ):
-        """Launch one backend burst without serialising other backends behind it."""
+        """Launch one semantic-validator burst without serialising its attempts."""
         launched = []
         for sequence in range(1, self.attempts_per_backend + 1):
             try:
@@ -827,7 +1004,7 @@ class ValidatorAcceptanceRunner:
                 launched.append((sequence, run))
             except Exception as exc:
                 report.add(
-                    f"VA-{scenario.backend.key.upper()}-SMOKE-{sequence:02d}",
+                    _scenario_check_id(scenario, f"SMOKE-{sequence:02d}"),
                     "failed",
                     "The acceptance run could not be launched.",
                     error=_safe_error(exc),
@@ -835,7 +1012,7 @@ class ValidatorAcceptanceRunner:
         return launched
 
     def _wait_for_runs(self, launched_by_backend) -> None:
-        """Wait once for all four concurrently launched backend bursts."""
+        """Wait once for every concurrently launched semantic-validator burst."""
         deadline = time.monotonic() + self.timeout_seconds
         pending = {
             str(run.pk): run
@@ -928,7 +1105,7 @@ class ValidatorAcceptanceRunner:
             if start_p95 > scenario.backend.provider_start_target_seconds:
                 failure = "provider-start p95 exceeded its recorded target"
 
-        check_id = f"VA-{scenario.backend.key.upper()}-LATENCY"
+        check_id = _scenario_check_id(scenario, "LATENCY")
         if failure:
             report.add(
                 check_id,
@@ -985,8 +1162,8 @@ class ValidatorAcceptanceRunner:
         sequence: int,
         run,
     ) -> None:
-        """Verify the terminal run used the exact accepted Service release."""
-        check_id = f"VA-{scenario.backend.key.upper()}-SMOKE-{sequence:02d}"
+        """Verify the terminal run used the exact release and selected route."""
+        check_id = _scenario_check_id(scenario, f"SMOKE-{sequence:02d}")
         attempt = (
             ExecutionAttempt.objects.filter(step_run__validation_run=run)
             .select_related("deployment")
@@ -1045,13 +1222,12 @@ class ValidatorAcceptanceRunner:
                 failure = "attempt has no pinned managed deployment"
             elif attempt.state != ExecutionAttemptState.COMPLETED:
                 failure = f"attempt finished in unexpected state {attempt.state}"
-            elif (
-                deployment.deployment_kind != ExecutionDeploymentKind.CLOUD_RUN_SERVICE
-            ):
-                failure = "attempt did not use the candidate Cloud Run Service"
-            elif deployment.backend_release_identity != self.release_tag.removeprefix(
-                "v"
-            ):
+            elif deployment.deployment_kind != self._expected_deployment_kind:
+                failure = (
+                    "attempt did not use the expected "
+                    f"{self._expected_deployment_kind} route"
+                )
+            elif deployment.backend_release_identity != self.release_version:
                 failure = "attempt used a different backend release"
             elif deployment_snapshot.get("deployment_id") != str(deployment.pk):
                 failure = "attempt snapshot names a different deployment"
@@ -1096,9 +1272,16 @@ class ValidatorAcceptanceRunner:
             report.add(
                 check_id,
                 "passed",
-                "End-to-end validator canary completed on the candidate Service.",
+                "End-to-end validator canary completed on the candidate route.",
                 **details,
             )
+
+    @property
+    def _expected_deployment_kind(self) -> str:
+        """Map acceptance routing mode to the provider kind a run must snapshot."""
+        if self.routing_mode == ExecutionRoutingMode.JOB_ONLY:
+            return ExecutionDeploymentKind.CLOUD_RUN_JOB
+        return ExecutionDeploymentKind.CLOUD_RUN_SERVICE
 
 
 def persist_acceptance_report(report: dict[str, Any]) -> dict[str, str] | None:
@@ -1132,6 +1315,26 @@ def persist_acceptance_report(report: dict[str, Any]) -> dict[str, str] | None:
 def _sha256_text(value: str) -> str:
     """Return the fixture identity used in reports and submission metadata."""
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _scenario_key(scenario: AcceptanceScenario) -> str:
+    """Return a stable key for concurrent semantic-validator bursts."""
+    if scenario.validator_id:
+        return scenario.validator_id
+    return (
+        f"{scenario.backend.key}:{scenario.validator_slug}:{scenario.validator_version}"
+    )
+
+
+def _scenario_check_id(scenario: AcceptanceScenario, suffix: str) -> str:
+    """Keep report check identifiers unique across semantic Validator versions."""
+    semantic = ""
+    if scenario.validator_slug and scenario.validator_version:
+        safe_slug = re.sub(r"[^A-Z0-9]+", "-", scenario.validator_slug.upper()).strip(
+            "-"
+        )
+        semantic = f"-{safe_slug}-V{scenario.validator_version}"
+    return f"VA-{scenario.backend.key.upper()}{semantic}-{suffix}"
 
 
 def _percentile(values: list[float], percentile: int) -> float:

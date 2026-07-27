@@ -4,7 +4,7 @@ The support bundle is a redacted archive that lets Validibot support help with a
 
 ## Why this exists
 
-For a 6k–24k/year self-hosted product, the buyer is risk-averse. They cannot send raw project data to a vendor as a debugging step. Without a redacted, structured way to share state, support becomes guesswork: "What does your config look like? Can you paste a log?" — followed by three rounds of follow-up.
+Self-hosted customers are often risk-averse. They cannot send raw project data to a vendor as a debugging step. Without a redacted, structured way to share state, support becomes guesswork: "What does your config look like? Can you paste a log?" — followed by three rounds of follow-up.
 
 The support bundle solves that. One command produces an archive that contains everything Validibot support actually needs — and excludes everything Validibot support should not see.
 

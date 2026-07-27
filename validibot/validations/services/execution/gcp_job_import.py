@@ -22,6 +22,9 @@ from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ExecutionProviderType
 from validibot.validations.models import ValidatorExecutionDeployment
+from validibot.validations.services.execution.deployment_identity import (
+    set_deployment_config_digests,
+)
 from validibot.validations.services.execution.deployments import (
     activate_execution_deployment,
 )
@@ -57,6 +60,10 @@ class GCPJobObservation:
     revision: str
     image_ref: str
     image_digest: str
+    backend_slug: str
+    backend_release_version: str
+    source_release_tag: str
+    release_record_sha256: str
     runtime_service_account: str
     maximum_execution_seconds: int
     maximum_cpu_millis: int
@@ -134,6 +141,11 @@ def observe_cloud_run_job(job, *, expected_resource_name: str) -> GCPJobObservat
     timeout = getattr(task_template, "timeout", None)
     timeout_seconds = int(getattr(timeout, "seconds", 0))
     labels = dict(getattr(job, "labels", {}))
+    environment = {
+        str(item.name): str(item.value)
+        for item in getattr(containers[0], "env", [])
+        if getattr(item, "value", None) is not None
+    }
     revision = str(labels.get("revision", "")).strip()
     if not revision:
         raise GCPJobImportError(
@@ -147,12 +159,32 @@ def observe_cloud_run_job(job, *, expected_resource_name: str) -> GCPJobObservat
         raise GCPJobImportError(
             f"Cloud Run Job {resource_name} has no positive task timeout."
         )
+    backend_slug = environment.get("VALIDIBOT_BACKEND_SLUG", "")
+    backend_release_version = environment.get("VALIDIBOT_BACKEND_RELEASE", "")
+    source_release_tag = environment.get("VALIDIBOT_SOURCE_RELEASE_TAG", "")
+    release_record_sha256 = environment.get(
+        "VALIDIBOT_RELEASE_RECORD_SHA256",
+        "",
+    )
+    expected_tag = f"{backend_slug}-v{backend_release_version}"
+    if not backend_slug or source_release_tag != expected_tag:
+        raise GCPJobImportError(
+            f"Cloud Run Job {resource_name} release environment is inconsistent."
+        )
+    if re.fullmatch(r"[0-9a-f]{64}", release_record_sha256) is None:
+        raise GCPJobImportError(
+            f"Cloud Run Job {resource_name} has no valid release-record digest."
+        )
     return GCPJobObservation(
         resource_name=resource_name,
         job_name=resource_name.rsplit("/", 1)[-1],
         revision=revision,
         image_ref=image_ref,
         image_digest=digest_match.group(0),
+        backend_slug=backend_slug,
+        backend_release_version=backend_release_version,
+        source_release_tag=source_release_tag,
+        release_record_sha256=release_record_sha256,
         runtime_service_account=runtime_service_account,
         maximum_execution_seconds=timeout_seconds,
         maximum_cpu_millis=cloud_run_cpu_millis(cpu),
@@ -216,7 +248,10 @@ def register_observed_job_deployment(
         "provider_resource_name": observation.resource_name,
         "route": "",
         "authentication_audience": "",
-        "backend_release_identity": observation.revision,
+        "backend_slug": observation.backend_slug,
+        "backend_release_identity": observation.backend_release_version,
+        "source_release_tag": observation.source_release_tag,
+        "release_record_sha256": observation.release_record_sha256,
         "backend_image_ref": observation.image_ref,
         "backend_image_digest": observation.image_digest,
         "expected_runtime_identity": observation.runtime_service_account,
@@ -234,6 +269,16 @@ def register_observed_job_deployment(
         "maximum_instances": None,
         "concurrency": 1,
     }
+    candidate = ValidatorExecutionDeployment(
+        validator=validator,
+        provider_type=ExecutionProviderType.GCP,
+        deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB,
+        deployment_revision=observation.revision,
+        **defaults,
+    )
+    set_deployment_config_digests(candidate)
+    defaults["provider_spec_sha256"] = candidate.provider_spec_sha256
+    defaults["execution_config_sha256"] = candidate.execution_config_sha256
     deployment, created = ValidatorExecutionDeployment.objects.get_or_create(
         validator=validator,
         provider_type=ExecutionProviderType.GCP,
@@ -279,8 +324,5 @@ def register_observed_job_deployment(
         )
     record_execution_deployment_verification(deployment, created=created)
     if activate_primary:
-        deployment = activate_execution_deployment(
-            deployment,
-            routing_role=ExecutionDeploymentRoutingRole.PRIMARY,
-        )
+        deployment = activate_execution_deployment(deployment)
     return deployment, created

@@ -4831,22 +4831,6 @@ class PortfolioManagerStepConfigForm(BaseStepConfigForm):
             "reporting cycle."
         ),
     )
-    profile = forms.ChoiceField(
-        label=_("Validation profile"),
-        choices=[
-            ("generic", _("Portfolio Manager report contract")),
-            ("benchmark_readiness", _("Benchmark readiness")),
-            (
-                "washington_cbps_tier1_euit",
-                _("Washington CBPS Tier 1 EUIt"),
-            ),
-        ],
-        initial="generic",
-        help_text=_(
-            "Profiles apply visible Portfolio Manager checks. They do not "
-            "calculate EUIt or issue a legal compliance determination."
-        ),
-    )
     default_euit_kbtu_ft2_yr = forms.DecimalField(
         label=_("EUIt (kBtu/ft²/year)"),
         required=False,
@@ -4903,7 +4887,8 @@ class PortfolioManagerStepConfigForm(BaseStepConfigForm):
         max_value=120,
         help_text=_(
             "Optional freshness check measured from the validation run date. "
-            "Washington CBPS defaults to 24 months."
+            "Set this to the limit required by the program represented by the "
+            "workflow."
         ),
     )
     require_benchmark_ready = forms.BooleanField(
@@ -5026,7 +5011,6 @@ class PortfolioManagerStepConfigForm(BaseStepConfigForm):
         config = getattr(step, "config", None) or {}
         for field_name in (
             "submission_structure",
-            "profile",
             "default_euit_kbtu_ft2_yr",
             "compare_to_euit",
             "near_target_percent",
@@ -5100,7 +5084,7 @@ class PortfolioManagerStepConfigForm(BaseStepConfigForm):
 
     def _build_layout(self) -> Layout:
         """Group the domain controls into a readable progressive editor."""
-        general_fields = ["name", "description", "submission_structure", "profile"]
+        general_fields = ["name", "description", "submission_structure"]
         if "execution_profile" in self.fields:
             general_fields.append("execution_profile")
         bulk_fields = [
@@ -5151,7 +5135,7 @@ class PortfolioManagerStepConfigForm(BaseStepConfigForm):
         )
 
     def clean(self):
-        """Validate the EBL schema immediately and apply explicit profile defaults."""
+        """Validate the EBL schema without changing the author's policy choices."""
         cleaned = super().clean() or {}
         structure = cleaned.get("submission_structure") or "single_report"
         upload = cleaned.get("expected_buildings_list")
@@ -5192,26 +5176,6 @@ class PortfolioManagerStepConfigForm(BaseStepConfigForm):
                 "expected_buildings_list",
                 _("Upload a replacement or remove the current EBL, not both."),
             )
-        profile = cleaned.get("profile")
-        if profile == "benchmark_readiness":
-            cleaned["require_complete_reporting_period"] = True
-            cleaned["require_benchmark_ready"] = True
-        elif profile == "washington_cbps_tier1_euit":
-            cleaned["require_complete_reporting_period"] = True
-            cleaned["minimum_reporting_period_months"] = 12
-            if cleaned.get("maximum_reporting_period_age_months") is None:
-                cleaned["maximum_reporting_period_age_months"] = 24
-            cleaned["require_benchmark_ready"] = True
-            cleaned["require_form_c_ready"] = True
-            cleaned["require_weather_normalized_site_eui"] = True
-            cleaned["require_washington_standard_id"] = True
-            cleaned["meter_less_than_12_months_policy"] = "error"
-            cleaned["meter_gap_policy"] = "error"
-            cleaned["meter_overlap_policy"] = "error"
-            cleaned["no_meters_selected_policy"] = "error"
-            cleaned["long_meter_entry_policy"] = "error"
-            cleaned["estimated_energy_policy"] = "warning"
-            cleaned["other_alert_policy"] = "warning"
         return cleaned
 
 

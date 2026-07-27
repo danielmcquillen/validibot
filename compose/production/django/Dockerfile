@@ -53,7 +53,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 ARG APP_HOME=/app
 ARG VALIDIBOT_COMMERCIAL_PACKAGE=""
-ARG VALIDIBOT_PRIVATE_INDEX_URL=""
 
 # Extra uv extras passed through to ``uv sync`` (space-separated, or
 # empty). Used by cloud/enterprise builds to pull in provider-specific
@@ -96,7 +95,8 @@ COPY --chmod=755 compose/common/install-commercial-package.sh /usr/local/bin/ins
 # EXTRA_UV_EXTRAS is a space-separated list of pyproject.toml extras
 # to include. Empty → no --extra flags; "foo" → --extra foo;
 # "foo bar" → --extra foo --extra bar.
-RUN EXTRA_FLAGS=""; \
+RUN --mount=type=secret,id=validibot_commercial_netrc,target=/root/.netrc,required=false,mode=0600 \
+    EXTRA_FLAGS=""; \
     for extra in ${EXTRA_UV_EXTRAS}; do EXTRA_FLAGS="${EXTRA_FLAGS} --extra ${extra}"; done; \
     uv sync --no-dev --no-install-project --frozen ${EXTRA_FLAGS} \
     && install-commercial-package ${APP_HOME}/.venv/bin/python \

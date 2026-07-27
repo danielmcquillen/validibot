@@ -257,9 +257,15 @@ class DeploymentRouteSnapshot(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
-    schema_version: Annotated[int, Field(ge=1, le=1)] = 1
+    schema_version: Annotated[int, Field(ge=1, le=2)] = 2
     deployment_id: UUID4
     validator_id: int
+    validator_slug: Annotated[str, Field(max_length=128)] = ""
+    validator_version: Annotated[str, Field(max_length=64)] = ""
+    validator_semantic_digest: Annotated[
+        str,
+        Field(pattern=r"^(?:|[0-9a-f]{64})$"),
+    ] = ""
     selected_at: AwareDatetime
     provider_type: ExecutionProviderType
     deployment_kind: ExecutionDeploymentKind
@@ -267,12 +273,26 @@ class DeploymentRouteSnapshot(BaseModel):
     provider_resource_name: Annotated[str, Field(min_length=1, max_length=512)]
     route: Annotated[str, Field(max_length=2048)] = ""
     authentication_audience: Annotated[str, Field(max_length=2048)] = ""
+    backend_slug: Annotated[str, Field(max_length=64)] = ""
     backend_release_identity: Annotated[str, Field(min_length=1, max_length=128)]
+    source_release_tag: Annotated[str, Field(max_length=128)] = ""
+    release_record_sha256: Annotated[
+        str,
+        Field(pattern=r"^(?:|[0-9a-f]{64})$"),
+    ] = ""
     backend_image_ref: Annotated[str, Field(min_length=1, max_length=512)]
     backend_image_digest: Annotated[
         str,
         Field(pattern=r"^sha256:[0-9a-f]{64}$"),
     ]
+    provider_spec_sha256: Annotated[
+        str,
+        Field(pattern=r"^(?:|[0-9a-f]{64})$"),
+    ] = ""
+    execution_config_sha256: Annotated[
+        str,
+        Field(pattern=r"^(?:|[0-9a-f]{64})$"),
+    ] = ""
     expected_runtime_identity: ServiceAccountEmail
     routing_role: ExecutionDeploymentRoutingRole
     declared_capabilities: DeploymentCapabilities

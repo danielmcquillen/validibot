@@ -1,6 +1,6 @@
 # Submissions
 
-A **Submission** is the entry point into the system.  
+A **Submission** is the entry point into the system.
 It represents:
 
 - The file being validated (JSON, XML, EnergyPlus IDF, etc.).

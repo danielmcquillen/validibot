@@ -153,7 +153,6 @@ validibot_version := `awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ {print "v" 
 # validator-build recipes below. Runtime trust does not consume this; validator
 # runs are still identified by image digest.
 validator_backend_git_sha := `git -C ../validibot-validator-backends rev-parse --short HEAD 2>/dev/null || echo "dev"`
-validator_backend_version := `awk -F'"' '/^[[:space:]]*version[[:space:]]*=/ {print $2; exit}' ../validibot-validator-backends/pyproject.toml`
 
 # =============================================================================
 # Submodules
@@ -1065,6 +1064,17 @@ _deploy-web stage:
     if [ -n "${VALIDIBOT_MCP_BASE_URL:-}" ]; then SET_ENV_VARS="${SET_ENV_VARS},VALIDIBOT_MCP_BASE_URL=${VALIDIBOT_MCP_BASE_URL}"; fi
 
     echo "Deploying $SERVICE to Cloud Run ({{stage}}, ingress: $INGRESS)..."
+    # Scaling flags: --min/--max are Cloud Run SERVICE-level scaling limits,
+    # a different property from the older REVISION-level --min-instances /
+    # --max-instances — the four flags are not duplicates and gcloud accepts
+    # them together. Service-level limits apply across all revisions and can
+    # be changed without deploying a new revision, which is what maintenance
+    # mode depends on (it flips --min=0 and back via `services update`).
+    # Passing --min-instances/--max-instances 'default' REMOVES any
+    # revision-level pin left by pre-2026-07 deploys; a leftover revision
+    # min would keep instances running during maintenance, and a leftover
+    # revision max would fight the service-level cap. Do not "simplify"
+    # this back to revision-level flags.
     gcloud run deploy "$SERVICE" \
         --image {{gcp_image}}:${IMAGE_TAG} \
         --region {{gcp_region}} \
@@ -1086,7 +1096,7 @@ _deploy-web stage:
         $VPC_FLAGS
 
     echo ""
-    echo "Web service deployed to {{stage}} (min-instances=$MIN_INSTANCES, ingress=$INGRESS)"
+    echo "Web service deployed to {{stage}} (service-level min=$MIN_INSTANCES max=$MAX_INSTANCES, ingress=$INGRESS)"
 
 # Internal: deploy worker service (assumes image already built and pushed)
 _deploy-worker stage:
@@ -1186,9 +1196,9 @@ _deploy-worker stage:
 #   - ``just gcp django secrets <stage>``  — only .django
 #   - ``just gcp mcp secrets <stage>``     — only .mcp
 #
-# Avoiding the umbrella when you only changed one file keeps Secret
-# Manager's version history tidy — each new version should ideally
-# reflect a real change to that service's secret.
+# Avoiding the umbrella when you only changed one file keeps the audit history
+# meaningful. Each surgical uploader also bounds only its own version history:
+# newest two non-destroyed versions plus every live Cloud Run pin.
 #
 # Usage:
 #   just gcp secrets dev
@@ -3234,11 +3244,14 @@ init-stage stage: _require-gcp-config
 # to change the policy. The repo is shared across stages, so this is not
 # stage-scoped.
 #
-# Policy (conservative):
-#   - keep the 10 most-recent versions of every image (Keep wins over Delete, so
-#     the live image — always one of the recent ones — is never removed),
-#   - delete UNTAGGED blobs older than 7 days (orphaned layers),
-#   - delete anything older than 30 days that isn't in the kept set.
+# Policy (conservative and package-scoped):
+#   - applies only to ``validibot-web``;
+#   - keeps its 10 most-recent versions;
+#   - deletes its untagged blobs after 7 days;
+#   - deletes its other images after 30 days beyond the kept set.
+#
+# ``validibot-validator-backend-*`` can never match this policy. Backend
+# digests use the explicit reference-aware cleanup command instead.
 #
 # Default mode is "dry-run": the policy is set but Artifact Registry only LOGS
 # what it would delete (deletes nothing). Review it in Cloud Logging, then run
@@ -3250,20 +3263,24 @@ registry-cleanup mode="dry-run": _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     REPO="{{app_name}}"
-    POLICY="$(mktemp)"
-    trap 'rm -f "$POLICY"' EXIT
-    printf '%s' '[{"name":"keep-recent","action":{"type":"Keep"},"mostRecentVersions":{"keepCount":10}},{"name":"delete-untagged","action":{"type":"Delete"},"condition":{"tagState":"UNTAGGED","olderThan":"604800s"}},{"name":"delete-old","action":{"type":"Delete"},"condition":{"tagState":"ANY","olderThan":"2592000s"}}]' > "$POLICY"
+    POLICY="ops/gcp/artifact-cleanup-policy.json"
+    if [ ! -f "$POLICY" ]; then
+        echo "Error: Artifact Registry cleanup policy not found: $POLICY" >&2
+        exit 1
+    fi
 
     if [ "{{mode}}" = "apply" ]; then
-        echo "Enabling LIVE cleanup policy on repo '$REPO' — Artifact Registry will prune automatically from now on."
+        echo "Enabling LIVE validibot-web cleanup policy on repo '$REPO'."
+        echo "Validator backend packages are excluded and require explicit cleanup."
         gcloud artifacts repositories set-cleanup-policies "$REPO" \
             --location={{gcp_region}} \
             --project={{gcp_project}} \
             --policy="$POLICY" \
             --no-dry-run
-        echo "✓ Live. Keeps 10 newest per image; prunes untagged >7d and anything >30d beyond that."
+        echo "✓ Live for validibot-web only: keep 10; untagged 7d; other 30d."
     else
-        echo "Setting cleanup policy in DRY-RUN on repo '$REPO' — nothing is deleted; AR only logs what it WOULD delete."
+        echo "Setting validibot-web cleanup policy in DRY-RUN on repo '$REPO'."
+        echo "Validator backend packages are excluded."
         gcloud artifacts repositories set-cleanup-policies "$REPO" \
             --location={{gcp_region}} \
             --project={{gcp_project}} \
@@ -3667,12 +3684,8 @@ scheduler-resume job_name:
 
 # Build a specific validator container (energyplus, fmu, etc.)
 #
-# The backend image version is baked into each backend's Dockerfile as the
-# ``ARG VALIDATOR_BACKEND_VERSION`` default — that's the single source of
-# truth and what gets stamped onto the image as the
-# ``org.opencontainers.image.version`` OCI label. Release engineering can
-# override via ``VALIDATOR_BACKEND_VERSION=0.1.1-rc1 just gcp
-# validator-build energyplus``; otherwise the Dockerfile default wins.
+# The sibling ``backends.toml`` release_version is the only version supplied
+# to the Docker build. Dockerfiles intentionally have no version default.
 #
 # Usage: just gcp validator-build energyplus
 validator-build name:
@@ -3680,9 +3693,11 @@ validator-build name:
     set -euo pipefail
     IMAGE_SLUG="{{name}}"
     IMAGE_SLUG="${IMAGE_SLUG//_/-}"
+    BACKEND_VERSION=$(python3 ops/gcp/validator_release_control.py \
+        inventory --backend "{{name}}" --field release_version)
     docker build --platform linux/amd64 \
         -f ../validibot-validator-backends/validator_backends/{{name}}/Dockerfile \
-        ${VALIDATOR_BACKEND_VERSION:+--build-arg VALIDATOR_BACKEND_VERSION="${VALIDATOR_BACKEND_VERSION}"} \
+        --build-arg VALIDATOR_BACKEND_VERSION="$BACKEND_VERSION" \
         --build-arg VALIDATOR_BACKEND_REVISION="{{validator_backend_git_sha}}" \
         --build-arg VALIDATOR_BACKEND_SLUG="{{name}}" \
         -t {{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}:{{validator_backend_git_sha}} \
@@ -3709,41 +3724,134 @@ _validator-release-verify-image name release_tag:
     set -euo pipefail
     IMAGE_SLUG="{{name}}"
     IMAGE_SLUG="${IMAGE_SLUG//_/-}"
-    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Error: backend release tag must be vX.Y.Z." >&2
+    SOURCE_TAG="{{release_tag}}"
+    if [[ ! "$SOURCE_TAG" =~ ^{{name}}-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?)$ ]]; then
+        echo "Error: backend release tag must be {{name}}-vX.Y.Z." >&2
         exit 1
     fi
-    git -C ../validibot-validator-backends verify-tag "{{release_tag}}" >/dev/null
+    VERSION="${BASH_REMATCH[1]}"
+    IMAGE_TAG="v${VERSION}"
+    INVENTORY_VERSION=$(python3 ops/gcp/validator_release_control.py \
+        inventory --backend "{{name}}" --field release_version)
+    if [ "$VERSION" != "$INVENTORY_VERSION" ] \
+        && [ "${VALIDATOR_ALLOW_HISTORICAL:-0}" != "1" ]; then
+        echo "Error: $SOURCE_TAG differs from backends.toml release_version $INVENTORY_VERSION." >&2
+        exit 1
+    fi
+    if ! git -C ../validibot-validator-backends rev-parse \
+        --verify "refs/tags/$SOURCE_TAG" >/dev/null 2>&1; then
+        echo "No published signed release exists for {{name}} $VERSION." >&2
+        echo "Missing: signed Git tag $SOURCE_TAG" >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
+    if ! git -C ../validibot-validator-backends verify-tag \
+        "$SOURCE_TAG" >/dev/null 2>&1; then
+        echo "Invalid: signed Git tag $SOURCE_TAG failed verification." >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
     GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-${IMAGE_SLUG}"
-    GHCR_DIGEST=$(docker buildx imagetools inspect "${GHCR_IMAGE}:{{release_tag}}" \
-        | awk '/^Digest:/ {print $2; exit}')
-    if [[ ! "$GHCR_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-        echo "Error: could not resolve ${GHCR_IMAGE}:{{release_tag}} to one digest." >&2
+    if ! GHCR_DETAILS=$(docker buildx imagetools inspect \
+        "${GHCR_IMAGE}:${IMAGE_TAG}" 2>/dev/null); then
+        echo "Missing: GHCR image ${GHCR_IMAGE}:${IMAGE_TAG}" >&2
+        echo "No GCP resources were changed." >&2
         exit 1
     fi
-    gh attestation verify "oci://${GHCR_IMAGE}@${GHCR_DIGEST}" \
-        --owner danielmcquillen >/dev/null
+    GHCR_DIGEST=$(awk '/^Digest:/ {print $2; exit}' <<<"$GHCR_DETAILS")
+    if [[ ! "$GHCR_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "Invalid: GHCR image ${GHCR_IMAGE}:${IMAGE_TAG} has no exact digest." >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
+    if ! gh attestation verify "oci://${GHCR_IMAGE}@${GHCR_DIGEST}" \
+        --owner danielmcquillen >/dev/null 2>&1; then
+        echo "Missing or invalid: image build attestation for ${GHCR_IMAGE}@${GHCR_DIGEST}" >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
+
+    RELEASE_DIR=$(mktemp -d)
+    trap 'rm -rf "$RELEASE_DIR"' EXIT
+    RECORD_NAME="validibot-validator-backend-${IMAGE_SLUG}-v${VERSION}.json"
+    SBOM_NAME="validibot-validator-backend-${IMAGE_SLUG}.spdx.json"
+    if ! gh release view "$SOURCE_TAG" \
+        --repo danielmcquillen/validibot-validator-backends >/dev/null 2>&1; then
+        echo "Missing: GitHub Release $SOURCE_TAG" >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
+    download_release_artifact() {
+        local artifact="$1"
+        local description="$2"
+        if ! gh release download "$SOURCE_TAG" \
+            --repo danielmcquillen/validibot-validator-backends \
+            --dir "$RELEASE_DIR" --pattern "$artifact" >/dev/null 2>&1 \
+            || [ ! -s "$RELEASE_DIR/$artifact" ]; then
+            echo "Missing: $description $artifact" >&2
+            echo "No GCP resources were changed." >&2
+            exit 1
+        fi
+    }
+    download_release_artifact "$RECORD_NAME" "backend release JSON"
+    download_release_artifact "${RECORD_NAME}.sha256" "release JSON checksum"
+    download_release_artifact "$SBOM_NAME" "SPDX SBOM"
+    if ! (
+        cd "$RELEASE_DIR"
+        shasum -a 256 -c "${RECORD_NAME}.sha256" >/dev/null
+    ); then
+        echo "Invalid: release JSON checksum ${RECORD_NAME}.sha256" >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
+    if ! gh attestation verify "$RELEASE_DIR/$RECORD_NAME" \
+        --owner danielmcquillen >/dev/null 2>&1; then
+        echo "Missing or invalid: attestation for backend release JSON $RECORD_NAME" >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
+    if ! RECORD_SHA=$(python3 ops/gcp/validator_release_control.py \
+        release-record --backend "{{name}}" --version "$VERSION" \
+        --path "$RELEASE_DIR/$RECORD_NAME"); then
+        echo "Invalid: backend release JSON $RECORD_NAME" >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
+    RECORD_IMAGE_DIGEST=$(jq -r '.image_digest' "$RELEASE_DIR/$RECORD_NAME")
+    if [ "$RECORD_IMAGE_DIGEST" != "$GHCR_DIGEST" ]; then
+        echo "Error: release JSON digest $RECORD_IMAGE_DIGEST differs from GHCR $GHCR_DIGEST." >&2
+        exit 1
+    fi
+    if [ "${VALIDATOR_VERIFY_GAR:-1}" = "0" ]; then
+        echo "Verified public release artifacts for {{name}} $VERSION at ${GHCR_DIGEST}."
+        exit 0
+    fi
     GAR_IMAGE="{{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}"
-    GAR_DIGEST=$(gcloud artifacts docker images list "$GAR_IMAGE" \
+    if ! GAR_DIGEST=$(gcloud artifacts docker images list "$GAR_IMAGE" \
         --include-tags \
-        --filter="tags:{{release_tag}}" \
+        --filter="tags:${IMAGE_TAG}" \
         --limit=1 \
         --project={{gcp_project}} \
-        --format='value(version)')
+        --format='value(version)'); then
+        echo "Missing: Artifact Registry mirror ${GAR_IMAGE}:${IMAGE_TAG}" >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
+    if [ -z "$GAR_DIGEST" ]; then
+        echo "Missing: Artifact Registry mirror ${GAR_IMAGE}:${IMAGE_TAG}" >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
     if [ "$GAR_DIGEST" != "$GHCR_DIGEST" ]; then
         echo "Error: GAR mirror digest $GAR_DIGEST differs from signed GHCR digest $GHCR_DIGEST." >&2
         exit 1
     fi
-    echo "Verified {{name}} {{release_tag}} at ${GHCR_DIGEST}."
+    echo "Verified {{name}} $VERSION at ${GHCR_DIGEST}; release JSON SHA-256 ${RECORD_SHA}."
 
 # Verify the signed release and GAR mirror for every managed backend image.
-# Usage: just gcp validator-release-verify v0.15.0
-validator-release-verify release_tag: _require-gcp-config
-    just gcp _validator-release-verify-image energyplus {{release_tag}}
-    just gcp _validator-release-verify-image fmu {{release_tag}}
-    just gcp _validator-release-verify-image shacl {{release_tag}}
-    just gcp _validator-release-verify-image schematron {{release_tag}}
-    just gcp _validator-release-verify-image portfolio_manager {{release_tag}}
+# Usage: just gcp validator-release-verify energyplus energyplus-v0.15.1
+validator-release-verify name release_tag: _require-gcp-config
+    just gcp _validator-release-verify-image {{name}} {{release_tag}}
 
 # Copy one verified GHCR release image into GAR without rebuilding it. The
 # source digest is attested first; verification after the copy proves that the
@@ -3754,40 +3862,44 @@ _validator-release-mirror-image name release_tag:
     set -euo pipefail
     IMAGE_SLUG="{{name}}"
     IMAGE_SLUG="${IMAGE_SLUG//_/-}"
-    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Error: backend release tag must be vX.Y.Z." >&2
+    SOURCE_TAG="{{release_tag}}"
+    if [[ ! "$SOURCE_TAG" =~ ^{{name}}-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?)$ ]]; then
+        echo "Error: backend release tag must be {{name}}-vX.Y.Z." >&2
         exit 1
     fi
-    git -C ../validibot-validator-backends verify-tag "{{release_tag}}" >/dev/null
+    VERSION="${BASH_REMATCH[1]}"
+    IMAGE_TAG="v${VERSION}"
+    VALIDATOR_VERIFY_GAR=0 \
+        just gcp _validator-release-verify-image "{{name}}" "$SOURCE_TAG"
     GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-${IMAGE_SLUG}"
-    GHCR_DIGEST=$(docker buildx imagetools inspect "${GHCR_IMAGE}:{{release_tag}}" \
-        | awk '/^Digest:/ {print $2; exit}')
-    if [[ ! "$GHCR_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-        echo "Error: could not resolve ${GHCR_IMAGE}:{{release_tag}} to one digest." >&2
+    if ! GHCR_DETAILS=$(docker buildx imagetools inspect \
+        "${GHCR_IMAGE}:${IMAGE_TAG}" 2>/dev/null); then
+        echo "Missing: GHCR image ${GHCR_IMAGE}:${IMAGE_TAG}" >&2
+        echo "No GCP resources were changed." >&2
         exit 1
     fi
-    gh attestation verify "oci://${GHCR_IMAGE}@${GHCR_DIGEST}" \
-        --owner danielmcquillen >/dev/null
+    GHCR_DIGEST=$(awk '/^Digest:/ {print $2; exit}' <<<"$GHCR_DETAILS")
+    if [[ ! "$GHCR_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "Invalid: GHCR image ${GHCR_IMAGE}:${IMAGE_TAG} has no exact digest." >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
     GAR_IMAGE="{{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}"
-    echo "Mirroring verified {{name}} {{release_tag}} (${GHCR_DIGEST}) to GAR..."
+    echo "Mirroring verified {{name}} $VERSION (${GHCR_DIGEST}) to GAR..."
     docker buildx imagetools create \
-        --tag "${GAR_IMAGE}:{{release_tag}}" \
+        --tag "${GAR_IMAGE}:${IMAGE_TAG}" \
         "${GHCR_IMAGE}@${GHCR_DIGEST}"
-    just gcp _validator-release-verify-image {{name}} {{release_tag}}
+    just gcp _validator-release-verify-image {{name}} "$SOURCE_TAG"
 
 # Mirror all signed release images from GHCR into the production GAR registry.
-# Usage: just gcp validator-release-mirror v0.15.0
-validator-release-mirror release_tag: _require-gcp-config
-    just gcp _validator-release-mirror-image energyplus {{release_tag}}
-    just gcp _validator-release-mirror-image fmu {{release_tag}}
-    just gcp _validator-release-mirror-image shacl {{release_tag}}
-    just gcp _validator-release-mirror-image schematron {{release_tag}}
-    just gcp _validator-release-mirror-image portfolio_manager {{release_tag}}
+# Usage: just gcp validator-release-mirror energyplus energyplus-v0.15.1
+validator-release-mirror name release_tag: _require-gcp-config
+    just gcp _validator-release-mirror-image {{name}} {{release_tag}}
 
-# Deploy one validator's Cloud Run Job. This is the Job-only diagnostic
-# surface; routine release staging uses validator-deploy / validator-deploy-all
-# so the Job and Service cannot accidentally drift to different releases.
-# Usage: just gcp validator-job-deploy energyplus prod v0.15.1
+# Create one release-specific Cloud Run Job. Existing resources are reused only
+# when the later import verifies every immutable field; this recipe never
+# updates a release name in place.
+# Usage: just gcp validator-job-deploy energyplus prod energyplus-v0.15.1
 [arg('stage', pattern='dev|staging|prod')]
 validator-job-deploy name stage release_tag="": _require-gcp-config
     #!/usr/bin/env bash
@@ -3804,29 +3916,11 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
         fmu|shacl|schematron|portfolio_manager) JOB_CPU=2; JOB_MEMORY=4Gi ;;
         *) echo "Error: unknown validator Job '{{name}}'" >&2; exit 1 ;;
     esac
-    # Compute stage-specific names.
-    #
-    # JOB_NAME convention (May 2026 standardisation): all stages use
-    # ``${APP_NAME}-validator-backend-{name}`` for prod and
-    # ``${APP_NAME}-validator-backend-{name}-{stage}`` otherwise. This
-    # matches the convention the backend repo's ``just deploy-all``
-    # uses, AND it matches the runtime resolver after it applies
-    # ``GCP_APP_NAME`` and ``VALIDIBOT_STAGE`` around
-    # ``ValidatorConfig.cloud_run_job_name``. Standardising on a single
-    # name pattern across both deploy paths means whichever recipe an
-    # operator runs produces the same Cloud Run Job — eliminating the
-    # "two paths created two different jobs and the runtime points at
-    # neither" trap caught in the May 2026 review.
-    #
-    # Legacy jobs created under the older ``${APP_NAME}-validator-{name}``
-    # pattern can be deleted once nothing points at them.
     if [ "{{stage}}" = "prod" ]; then
-        JOB_NAME="${APP_NAME}-validator-backend-${IMAGE_SLUG}"
         MAIN_SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker"
     else
-        JOB_NAME="${APP_NAME}-validator-backend-${IMAGE_SLUG}-{{stage}}"
         MAIN_SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
@@ -3837,19 +3931,32 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
         RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
     fi
     if [ "{{stage}}" = "prod" ]; then
-        if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Error: production validator Job deploys require an immutable signed release tag." >&2
-            echo "Usage: just gcp validator-job-deploy {{name}} prod vX.Y.Z" >&2
+        if [[ ! "$RELEASE_TAG" =~ ^{{name}}-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?)$ ]]; then
+            echo "Error: production validator Job deploys require {{name}}-vX.Y.Z." >&2
             exit 1
         fi
-        IMAGE_TAG="$RELEASE_TAG"
+        BACKEND_RELEASE="${BASH_REMATCH[1]}"
+        IMAGE_TAG="v${BACKEND_RELEASE}"
+        SOURCE_TAG="$RELEASE_TAG"
         just gcp _validator-release-verify-image {{name}} "$RELEASE_TAG"
     elif [ -n "$RELEASE_TAG" ]; then
-        IMAGE_TAG="$RELEASE_TAG"
+        if [[ ! "$RELEASE_TAG" =~ ^{{name}}-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?)$ ]]; then
+            echo "Error: release tag must be {{name}}-vX.Y.Z." >&2
+            exit 1
+        fi
+        BACKEND_RELEASE="${BASH_REMATCH[1]}"
+        IMAGE_TAG="v${BACKEND_RELEASE}"
+        SOURCE_TAG="$RELEASE_TAG"
     else
         just gcp validator-build-push {{name}}
         IMAGE_TAG="{{validator_backend_git_sha}}"
+        BACKEND_RELEASE=$(python3 ops/gcp/validator_release_control.py \
+            inventory --backend "{{name}}" --field release_version)
+        SOURCE_TAG="{{name}}-v${BACKEND_RELEASE}"
     fi
+    JOB_NAME=$(python3 ops/gcp/validator_release_control.py \
+        name --backend "{{name}}" --version "$BACKEND_RELEASE" \
+        --kind job --stage "{{stage}}")
 
     # Resolve the pushed revision tag to its immutable GAR digest. Cloud Run
     # records the exact bytes it will execute, and the configured production
@@ -3869,25 +3976,68 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
     fi
     IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"
 
-    # Deploy the job with the dedicated validator SA (least-privilege).
-    # Image name MUST match what ``validator-build`` / ``validator-push``
-    # actually produced — both use the ``-validator-backend-`` prefix.
-    echo "Deploying $JOB_NAME..."
-    gcloud run jobs deploy "$JOB_NAME" \
-        --image "$IMAGE_REF" \
+    if [ -n "$RELEASE_TAG" ]; then
+        RELEASE_DIR=$(mktemp -d)
+        trap 'rm -rf "$RELEASE_DIR"' EXIT
+        RECORD_NAME="validibot-validator-backend-${IMAGE_SLUG}-v${BACKEND_RELEASE}.json"
+        gh release download "$SOURCE_TAG" \
+            --repo danielmcquillen/validibot-validator-backends \
+            --dir "$RELEASE_DIR" \
+            --pattern "$RECORD_NAME"
+        RELEASE_RECORD_SHA=$(python3 ops/gcp/validator_release_control.py \
+            release-record --backend "{{name}}" --version "$BACKEND_RELEASE" \
+            --path "$RELEASE_DIR/$RECORD_NAME")
+    else
+        RELEASE_RECORD_SHA=$(printf 'development:%s:%s' "{{name}}" "{{validator_backend_git_sha}}" \
+            | shasum -a 256 | awk '{print $1}')
+    fi
+
+    CREATE_JOB=1
+    CURRENT_JOB_JSON=$(mktemp)
+    trap 'rm -f "$CURRENT_JOB_JSON"; if [ -n "${RELEASE_DIR:-}" ]; then rm -rf "$RELEASE_DIR"; fi' EXIT
+    if gcloud run jobs describe "$JOB_NAME" \
         --region {{gcp_region}} \
-        --service-account "$VALIDATOR_SA" \
-        --cpu "$JOB_CPU" \
-        --memory "$JOB_MEMORY" \
-        --max-retries 0 \
-        --task-timeout {{gcp_validator_task_timeout}} \
-        --execution-environment gen2 \
-        --network default \
-        --subnet default \
-        --vpc-egress all-traffic \
-        --set-env-vars GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp \
-        --labels validator={{name}},release="${IMAGE_TAG//./-}",stage={{stage}} \
-        --project {{gcp_project}}
+        --project {{gcp_project}} \
+        --format=json >"$CURRENT_JOB_JSON" 2>/dev/null; then
+        CURRENT_IMAGE="$(
+            jq -r '
+                [
+                  .. | objects | .image? // empty
+                ][0] // ""
+            ' "$CURRENT_JOB_JSON"
+        )"
+        if [[ ! "$CURRENT_IMAGE" =~ @?(sha256:[0-9a-f]{64})$ ]]; then
+            echo "Error: existing release Job $JOB_NAME is not digest-selected." >&2
+            exit 1
+        fi
+        CURRENT_DIGEST="${BASH_REMATCH[1]}"
+        if [ "$CURRENT_DIGEST" != "$IMAGE_DIGEST" ]; then
+            echo "Error: immutable release Job $JOB_NAME already uses $CURRENT_DIGEST, not $IMAGE_DIGEST." >&2
+            exit 1
+        fi
+        CREATE_JOB=0
+        echo "Reusing existing release Job $JOB_NAME at $IMAGE_DIGEST; import will reverify its full specification."
+    fi
+
+    if [ "$CREATE_JOB" = "1" ]; then
+        echo "Creating immutable release Job $JOB_NAME..."
+        DEPLOYMENT_REVISION="v${BACKEND_RELEASE//./-}-$(date -u +%Y%m%d%H%M%S)"
+        gcloud run jobs create "$JOB_NAME" \
+            --image "$IMAGE_REF" \
+            --region {{gcp_region}} \
+            --service-account "$VALIDATOR_SA" \
+            --cpu "$JOB_CPU" \
+            --memory "$JOB_MEMORY" \
+            --max-retries 0 \
+            --task-timeout {{gcp_validator_task_timeout}} \
+            --execution-environment gen2 \
+            --network default \
+            --subnet default \
+            --vpc-egress all-traffic \
+            --set-env-vars GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp,VALIDIBOT_EXECUTION_SHAPE=job,VALIDIBOT_BACKEND_SLUG={{name}},VALIDIBOT_BACKEND_IMAGE_DIGEST="$IMAGE_DIGEST",VALIDIBOT_BACKEND_RELEASE="$BACKEND_RELEASE",VALIDIBOT_SOURCE_RELEASE_TAG="$SOURCE_TAG",VALIDIBOT_RELEASE_RECORD_SHA256="$RELEASE_RECORD_SHA" \
+            --labels validator={{name}},release="${IMAGE_TAG//./-}",revision="$DEPLOYMENT_REVISION",stage={{stage}},execution-shape=job \
+            --project {{gcp_project}}
+    fi
     echo "$JOB_NAME deployed at $IMAGE_REF"
 
     # Grant the main SA (web/worker) permission to trigger this job with overrides
@@ -3915,19 +4065,21 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
 
 # Deploy all managed validator Jobs without deploying Services. This is a
 # diagnostic/recovery surface; routine releases use validator-deploy-all.
-# Usage: just gcp validator-jobs-deploy-all prod v0.15.1
+# Versions are read independently from sibling backends.toml.
 [arg('stage', pattern='dev|staging|prod')]
-validator-jobs-deploy-all stage release_tag="": _require-gcp-config
-    just gcp validator-job-deploy energyplus {{stage}} "{{release_tag}}"
-    just gcp validator-job-deploy fmu {{stage}} "{{release_tag}}"
-    just gcp validator-job-deploy shacl {{stage}} "{{release_tag}}"
-    just gcp validator-job-deploy schematron {{stage}} "{{release_tag}}"
-    just gcp validator-job-deploy portfolio_manager {{stage}} "{{release_tag}}"
+validator-jobs-deploy-all stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for backend in energyplus fmu shacl schematron portfolio_manager; do
+        SOURCE_TAG=$(python3 ops/gcp/validator_release_control.py \
+            inventory --backend "$backend" --field source_tag)
+        just gcp validator-job-deploy "$backend" {{stage}} "$SOURCE_TAG"
+    done
 
 # Deploy one digest-pinned private validator Cloud Run Service. The same image
 # retains its one-shot Job entrypoint; VALIDIBOT_EXECUTION_SHAPE selects the
 # shared HTTP parent only for this Service revision.
-# Usage: just gcp validator-service-deploy energyplus prod v0.15.1
+# Usage: just gcp validator-service-deploy energyplus prod energyplus-v0.15.1
 [arg('stage', pattern='dev|staging|prod')]
 validator-service-deploy name stage release_tag="": _require-gcp-config
     #!/usr/bin/env bash
@@ -3970,34 +4122,32 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
         RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
     fi
     if [ "{{stage}}" = "prod" ]; then
-        if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Error: production validator Services require an immutable signed release tag." >&2
-            echo "Usage: just gcp validator-service-deploy {{name}} prod vX.Y.Z" >&2
+        if [[ ! "$RELEASE_TAG" =~ ^{{name}}-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?)$ ]]; then
+            echo "Error: production validator Services require {{name}}-vX.Y.Z." >&2
             exit 1
         fi
-        IMAGE_TAG="$RELEASE_TAG"
-        BACKEND_RELEASE="${RELEASE_TAG#v}"
+        BACKEND_RELEASE="${BASH_REMATCH[1]}"
+        IMAGE_TAG="v${BACKEND_RELEASE}"
+        SOURCE_TAG="$RELEASE_TAG"
         just gcp _validator-release-verify-image {{name}} "$RELEASE_TAG"
     elif [ -n "$RELEASE_TAG" ]; then
-        IMAGE_TAG="$RELEASE_TAG"
-        BACKEND_RELEASE="${RELEASE_TAG#v}"
+        if [[ ! "$RELEASE_TAG" =~ ^{{name}}-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?)$ ]]; then
+            echo "Error: release tag must be {{name}}-vX.Y.Z." >&2
+            exit 1
+        fi
+        BACKEND_RELEASE="${BASH_REMATCH[1]}"
+        IMAGE_TAG="v${BACKEND_RELEASE}"
+        SOURCE_TAG="$RELEASE_TAG"
     else
         just gcp validator-build-push {{name}}
         IMAGE_TAG="{{validator_backend_git_sha}}"
-        BACKEND_RELEASE="{{validator_backend_version}}"
+        BACKEND_RELEASE=$(python3 ops/gcp/validator_release_control.py \
+            inventory --backend "{{name}}" --field release_version)
+        SOURCE_TAG="{{name}}-v${BACKEND_RELEASE}"
     fi
-    SERVICE_NAME="${APP_NAME}-validator-service-${IMAGE_SLUG}"
-    if [ -n "$RELEASE_TAG" ]; then
-        RELEASE_LABEL="${RELEASE_TAG//./-}"
-        if [[ ! "$RELEASE_LABEL" =~ ^[a-z0-9-]+$ ]]; then
-            echo "Error: backend release tag cannot form a Cloud Run Service name." >&2
-            exit 1
-        fi
-        SERVICE_NAME="${SERVICE_NAME}-${RELEASE_LABEL}"
-    fi
-    if [ "{{stage}}" != "prod" ]; then
-        SERVICE_NAME="${SERVICE_NAME}-{{stage}}"
-    fi
+    SERVICE_NAME=$(python3 ops/gcp/validator_release_control.py \
+        name --backend "{{name}}" --version "$BACKEND_RELEASE" \
+        --kind service --stage "{{stage}}")
 
     IMAGE_REPOSITORY="{{validator_repo}}/{{app_name}}-validator-backend-${IMAGE_SLUG}"
     IMAGE_DIGEST=$(gcloud artifacts docker images list "$IMAGE_REPOSITORY" \
@@ -4012,28 +4162,66 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
     fi
     IMAGE_REF="${IMAGE_REPOSITORY}@${IMAGE_DIGEST}"
 
-    echo "Deploying private Service $SERVICE_NAME at $IMAGE_REF..."
-    gcloud run deploy "$SERVICE_NAME" \
-        --image "$IMAGE_REF" \
+    if [ -n "$RELEASE_TAG" ]; then
+        RELEASE_DIR=$(mktemp -d)
+        trap 'rm -rf "$RELEASE_DIR"' EXIT
+        RECORD_NAME="validibot-validator-backend-${IMAGE_SLUG}-v${BACKEND_RELEASE}.json"
+        gh release download "$SOURCE_TAG" \
+            --repo danielmcquillen/validibot-validator-backends \
+            --dir "$RELEASE_DIR" \
+            --pattern "$RECORD_NAME"
+        RELEASE_RECORD_SHA=$(python3 ops/gcp/validator_release_control.py \
+            release-record --backend "{{name}}" --version "$BACKEND_RELEASE" \
+            --path "$RELEASE_DIR/$RECORD_NAME")
+    else
+        RELEASE_RECORD_SHA=$(printf 'development:%s:%s' "{{name}}" "{{validator_backend_git_sha}}" \
+            | shasum -a 256 | awk '{print $1}')
+    fi
+
+    CREATE_SERVICE=1
+    CURRENT_SERVICE_JSON=$(mktemp)
+    trap 'rm -f "$CURRENT_SERVICE_JSON"; if [ -n "${RELEASE_DIR:-}" ]; then rm -rf "$RELEASE_DIR"; fi' EXIT
+    if gcloud run services describe "$SERVICE_NAME" \
         --region {{gcp_region}} \
-        --service-account "$VALIDATOR_SA" \
-        --port 8080 \
-        --ingress internal \
-        --no-allow-unauthenticated \
-        --concurrency 1 \
-        --timeout 1649s \
-        --cpu "$CPU" \
-        --memory "$MEMORY" \
-        --min "$MIN_INSTANCES" \
-        --max "$MAX_INSTANCES" \
-        --cpu-boost \
-        --execution-environment gen2 \
-        --network default \
-        --subnet default \
-        --vpc-egress all-traffic \
-        --set-env-vars GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp,VALIDIBOT_EXECUTION_SHAPE=service,VALIDIBOT_BACKEND_IMAGE_DIGEST="$IMAGE_DIGEST",VALIDIBOT_BACKEND_RELEASE="$BACKEND_RELEASE" \
-        --labels validator={{name}},release="${IMAGE_TAG//./-}",stage={{stage}},execution-shape=service,desired-min-instances="$MIN_INSTANCES" \
-        --project {{gcp_project}}
+        --project {{gcp_project}} \
+        --format=json >"$CURRENT_SERVICE_JSON" 2>/dev/null; then
+        CURRENT_IMAGE=$(jq -r '.spec.template.spec.containers[0].image // .template.containers[0].image // ""' "$CURRENT_SERVICE_JSON")
+        if [[ ! "$CURRENT_IMAGE" =~ @?(sha256:[0-9a-f]{64})$ ]]; then
+            echo "Error: existing release Service $SERVICE_NAME is not digest-selected." >&2
+            exit 1
+        fi
+        if [ "${BASH_REMATCH[1]}" != "$IMAGE_DIGEST" ]; then
+            echo "Error: immutable release Service $SERVICE_NAME uses ${BASH_REMATCH[1]}, not $IMAGE_DIGEST." >&2
+            exit 1
+        fi
+        CREATE_SERVICE=0
+        echo "Reusing existing release Service $SERVICE_NAME at $IMAGE_DIGEST; import will reverify its full specification."
+    fi
+
+    if [ "$CREATE_SERVICE" = "1" ]; then
+        echo "Creating private release Service $SERVICE_NAME at $IMAGE_REF..."
+        gcloud run deploy "$SERVICE_NAME" \
+            --image "$IMAGE_REF" \
+            --region {{gcp_region}} \
+            --service-account "$VALIDATOR_SA" \
+            --port 8080 \
+            --ingress internal \
+            --no-allow-unauthenticated \
+            --concurrency 1 \
+            --timeout 1649s \
+            --cpu "$CPU" \
+            --memory "$MEMORY" \
+            --min "$MIN_INSTANCES" \
+            --max "$MAX_INSTANCES" \
+            --cpu-boost \
+            --execution-environment gen2 \
+            --network default \
+            --subnet default \
+            --vpc-egress all-traffic \
+            --set-env-vars GCP_APP_NAME={{app_name}},VALIDIBOT_STAGE={{stage}},DEPLOYMENT_TARGET=gcp,VALIDIBOT_EXECUTION_SHAPE=service,VALIDIBOT_BACKEND_SLUG={{name}},VALIDIBOT_BACKEND_IMAGE_DIGEST="$IMAGE_DIGEST",VALIDIBOT_BACKEND_RELEASE="$BACKEND_RELEASE",VALIDIBOT_SOURCE_RELEASE_TAG="$SOURCE_TAG",VALIDIBOT_RELEASE_RECORD_SHA256="$RELEASE_RECORD_SHA" \
+            --labels validator={{name}},release="${IMAGE_TAG//./-}",stage={{stage}},execution-shape=service,desired-min-instances="$MIN_INSTANCES" \
+            --project {{gcp_project}}
+    fi
 
     # Reconcile the exact invocation policy. The provider-task identity is the
     # sole caller; even another individually named principal is rejected.
@@ -4073,24 +4261,26 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
 # validator-deploy-all.
 # Deploy all managed validator Services only (diagnostic/recovery).
 [arg('stage', pattern='dev|staging|prod')]
-validator-services-deploy-all stage release_tag="": _require-gcp-config
-    just gcp validator-service-deploy energyplus {{stage}} "{{release_tag}}"
-    just gcp validator-service-deploy fmu {{stage}} "{{release_tag}}"
-    just gcp validator-service-deploy shacl {{stage}} "{{release_tag}}"
-    just gcp validator-service-deploy schematron {{stage}} "{{release_tag}}"
-    just gcp validator-service-deploy portfolio_manager {{stage}} "{{release_tag}}"
+validator-services-deploy-all stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for backend in energyplus fmu shacl schematron portfolio_manager; do
+        SOURCE_TAG=$(python3 ops/gcp/validator_release_control.py \
+            inventory --backend "$backend" --field source_tag)
+        just gcp validator-service-deploy "$backend" {{stage}} "$SOURCE_TAG"
+    done
 
 # Stage one complete validator backend release without changing application
-# routing. The signed image is mirrored once, then the matching Job and Service
-# are deployed from the same explicit release. Production must already be in
-# maintenance mode because its retained Job name is updated in place.
-# Usage: just gcp validator-deploy energyplus prod v0.15.1
+# routing. The signed image is mirrored once, then a release-specific Job and
+# Service are created from the same explicit release. Production must already
+# be in maintenance mode while the candidate pair is imported and accepted.
+# Usage: just gcp validator-deploy energyplus prod energyplus-v0.15.1
 [arg('stage', pattern='dev|staging|prod')]
 validator-deploy name stage release_tag: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Error: release_tag must be vX.Y.Z." >&2
+    if [[ ! "{{release_tag}}" =~ ^{{name}}-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$ ]]; then
+        echo "Error: release_tag must be {{name}}-vX.Y.Z." >&2
         exit 1
     fi
     case "{{name}}" in
@@ -4105,105 +4295,85 @@ validator-deploy name stage release_tag: _require-gcp-config
     just gcp validator-service-deploy "{{name}}" {{stage}} "{{release_tag}}"
     echo "Staged {{name}} {{release_tag}} as a Job and Service on {{stage}}; routing is unchanged."
 
-# Stage every managed validator backend from one signed release. This is the
-# routine operator command: mirror every image, deploy every Job, then deploy
-# every release-specific Service. It never registers or activates a
-# route; validator-acceptance owns private testing and promotion.
-# Usage: just gcp validator-deploy-all prod v0.15.1
+# Stage every backend at its own exact version from sibling backends.toml.
+# It never registers or activates a route.
 [arg('stage', pattern='dev|staging|prod')]
-validator-deploy-all stage release_tag: _require-gcp-config
+validator-deploy-all stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Error: release_tag must be vX.Y.Z." >&2
-        exit 1
-    fi
     if [ "{{stage}}" = "prod" ]; then
         just gcp _maintenance-assert-offline {{stage}}
     fi
-    just gcp validator-release-mirror "{{release_tag}}"
-    just gcp validator-jobs-deploy-all {{stage}} "{{release_tag}}"
-    just gcp validator-services-deploy-all {{stage}} "{{release_tag}}"
-    echo "Staged all validator Jobs and Services at {{release_tag}} on {{stage}}; routing is unchanged."
-
-# Register current digest-pinned Jobs as primary routes for new attempts.
-[arg('stage', pattern='dev|staging|prod')]
-validator-deployments-sync stage: _require-gcp-config
-    just gcp management-cmd {{stage}} "sync_gcp_validator_deployments --activate-primary"
-
-# Verify/register Services while leaving all routing on Jobs.
-[arg('stage', pattern='dev|staging|prod')]
-validator-services-register stage: _require-gcp-config
-    #!/usr/bin/env bash
-    set -euo pipefail
-    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
-    if [ "{{stage}}" = "prod" ] && [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Error: set VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z for production registration." >&2
-        exit 1
-    fi
-    RELEASE_ARG=""
-    if [ -n "$RELEASE_TAG" ]; then RELEASE_ARG="--backend-release-tag=$RELEASE_TAG"; fi
-    just gcp management-cmd {{stage}} "sync_gcp_validator_services $RELEASE_ARG"
-
-# Make every verified Service primary and retain its Job as long-running.
-[arg('stage', pattern='dev|staging|prod')]
-validator-services-activate stage: _require-gcp-config
-    #!/usr/bin/env bash
-    set -euo pipefail
-    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
-    if [ "{{stage}}" = "prod" ] && [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Error: set VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z for production activation." >&2
-        exit 1
-    fi
-    RELEASE_ARG=""
-    if [ -n "$RELEASE_TAG" ]; then RELEASE_ARG="--backend-release-tag=$RELEASE_TAG"; fi
-    just gcp management-cmd {{stage}} "sync_gcp_validator_services --activate-primary $RELEASE_ARG"
-
-    # Keep only the newly activated release warm. Historical release-specific
-    # Services remain callable for immutable in-flight attempt snapshots, but
-    # their mutable service-level minimum is reduced to zero.
-    RELEASE_SUFFIX=""
-    if [ -n "$RELEASE_TAG" ]; then RELEASE_SUFFIX="-${RELEASE_TAG//./-}"; fi
-    declare -A CURRENT_SERVICES=()
-    for name in energyplus fmu shacl schematron portfolio-manager; do
-        SERVICE_NAME="{{app_name}}-validator-service-${name}${RELEASE_SUFFIX}"
-        if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
-        CURRENT_SERVICES["$SERVICE_NAME"]=1
+    for backend in energyplus fmu shacl schematron portfolio_manager; do
+        SOURCE_TAG=$(python3 ops/gcp/validator_release_control.py \
+            inventory --backend "$backend" --field source_tag)
+        just gcp validator-deploy "$backend" {{stage}} "$SOURCE_TAG"
     done
-    SERVICES=$(gcloud run services list \
-        --region={{gcp_region}} \
-        --project={{gcp_project}} \
-        --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
-        --format='value(metadata.name)')
-    while IFS= read -r SERVICE_NAME; do
-        [ -z "$SERVICE_NAME" ] && continue
-        if [ -n "${CURRENT_SERVICES[$SERVICE_NAME]:-}" ]; then
-            continue
-        fi
-        echo "Cooling superseded validator Service $SERVICE_NAME to min=0..."
-        gcloud run services update "$SERVICE_NAME" \
-            --region={{gcp_region}} \
-            --project={{gcp_project}} \
-            --min=0 \
-            --update-labels=desired-min-instances=0 \
-            --quiet
-    done <<< "$SERVICES"
+    echo "Staged every independent backend release on {{stage}}; routing is unchanged."
 
-    # Re-read every inactive registered Service by durable provider name. This
-    # records the capacity transition and rejects any unrelated provider drift.
-    just gcp management-cmd {{stage}} "sync_registered_gcp_validator_services"
+# Verify/register one release-specific Job without changing routing.
+[arg('stage', pattern='dev|staging|prod')]
+validator-deployments-sync name stage version="": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VERSION_ARG=""
+    if [ -n "{{version}}" ]; then VERSION_ARG="--version {{version}}"; fi
+    JOB_NAME=$(python3 ops/gcp/validator_release_control.py \
+        name --backend "{{name}}" $VERSION_ARG --kind job --stage "{{stage}}")
+    just gcp management-cmd {{stage}} \
+        "sync_gcp_validator_deployments --backend={{name}} --job-name=$JOB_NAME"
+
+# Verify/register one release-specific Service without changing routing.
+[arg('stage', pattern='dev|staging|prod')]
+validator-services-register name stage version="": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VERSION_ARG=""
+    if [ -n "{{version}}" ]; then VERSION_ARG="--version {{version}}"; fi
+    SERVICE_NAME=$(python3 ops/gcp/validator_release_control.py \
+        name --backend "{{name}}" $VERSION_ARG --kind service --stage "{{stage}}")
+    just gcp management-cmd {{stage}} \
+        "sync_gcp_validator_services --backend={{name}} --service-name=$SERVICE_NAME"
+
+# Route every compatible semantic Validator row for one exact backend release.
+# Normal mode is Service PRIMARY + Job LONG_RUNNING. Job-only mode is Service
+# INACTIVE + Job PRIMARY. The Django service changes all rows transactionally.
+[arg('stage', pattern='dev|staging|prod')]
+validator-backend-route name stage version mode="normal" cause="SUPERSEDED_BY_ACCEPTED_RELEASE" allow_unaccepted="" reason_b64="": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{version}}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$ ]]; then
+        echo "Error: version must be X.Y.Z." >&2
+        exit 1
+    fi
+    case "{{mode}}" in normal|job-only|inactive) ;; *) echo "Error: mode must be normal, job-only, or inactive." >&2; exit 1 ;; esac
+    ALLOW_ARG=""
+    if [ "{{allow_unaccepted}}" = "allow-unaccepted" ]; then
+        ALLOW_ARG="--allow-unaccepted"
+    elif [ -n "{{allow_unaccepted}}" ]; then
+        echo "Error: optional flag must be allow-unaccepted." >&2
+        exit 1
+    fi
+    REASON_ARG=""
+    if [ -n "{{reason_b64}}" ]; then
+        if [[ ! "{{reason_b64}}" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
+            echo "Error: operator reason must be strict base64." >&2
+            exit 1
+        fi
+        REASON_ARG="--reason-b64={{reason_b64}}"
+    fi
+    just gcp management-cmd {{stage}} \
+        "activate_validator_backend_release --backend={{name}} --version={{version}} --mode={{mode}} --cause={{cause}} $ALLOW_ARG $REASON_ARG"
 
 # Change mutable service-level warming/capacity, then verify and audit the live
 # settings without creating a new Cloud Run revision.
-# Usage: just gcp validator-service-capacity shacl prod v0.15.0 1 8
+# Usage: just gcp validator-service-capacity shacl prod 0.15.0 1 8
 [arg('stage', pattern='dev|staging|prod')]
-validator-service-capacity name stage release_tag minimum maximum: _require-gcp-config
+validator-service-capacity name stage version minimum maximum: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
-    SERVICE_SLUG="{{name}}"
-    SERVICE_SLUG="${SERVICE_SLUG//_/-}"
-    if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Error: release_tag must be vX.Y.Z." >&2
+    if [[ ! "{{version}}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$ ]]; then
+        echo "Error: version must be X.Y.Z." >&2
         exit 1
     fi
     if ! [[ "{{minimum}}" =~ ^[0-9]+$ && "{{maximum}}" =~ ^[1-9][0-9]*$ ]] \
@@ -4211,10 +4381,9 @@ validator-service-capacity name stage release_tag minimum maximum: _require-gcp-
         echo "Error: capacity requires 0 <= minimum <= maximum." >&2
         exit 1
     fi
-    RELEASE_LABEL="{{release_tag}}"
-    RELEASE_LABEL="${RELEASE_LABEL//./-}"
-    SERVICE_NAME="{{app_name}}-validator-service-${SERVICE_SLUG}-${RELEASE_LABEL}"
-    if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
+    SERVICE_NAME=$(python3 ops/gcp/validator_release_control.py \
+        name --backend "{{name}}" --version "{{version}}" \
+        --kind service --stage "{{stage}}")
     gcloud run services update "$SERVICE_NAME" \
         --region={{gcp_region}} \
         --project={{gcp_project}} \
@@ -4222,52 +4391,23 @@ validator-service-capacity name stage release_tag minimum maximum: _require-gcp-
         --max={{maximum}} \
         --update-labels=desired-min-instances={{minimum}} \
         --quiet
-    just gcp management-cmd {{stage}} "sync_gcp_validator_services --backend-release-tag={{release_tag}}"
+    just gcp management-cmd {{stage}} \
+        "sync_gcp_validator_services --backend={{name}} --service-name=$SERVICE_NAME"
 
-# Roll new attempts back to the retained Jobs. In-flight Service attempts keep
-# their immutable route and remain able to callback/reconcile.
+# Diagnostic compatibility alias for one backend's Job-only mode.
 [arg('stage', pattern='dev|staging|prod')]
-validator-services-rollback stage: _require-gcp-config
-    #!/usr/bin/env bash
-    set -euo pipefail
-    RELEASE_TAG="${VALIDATOR_BACKEND_RELEASE_TAG:-}"
-    if [ "{{stage}}" = "prod" ] && [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "Error: set VALIDATOR_BACKEND_RELEASE_TAG=vX.Y.Z for production rollback." >&2
-        exit 1
-    fi
+validator-services-rollback name stage version: _require-gcp-config
+    just gcp validator-backend-route {{name}} {{stage}} {{version}} job-only SHAPE_ROLLBACK
 
-    # Route new attempts first. Exact in-flight deployment snapshots continue
-    # to reference the retained Service revision while it drains.
-    just gcp management-cmd {{stage}} "sync_gcp_validator_deployments --activate-primary"
-
-    RELEASE_SUFFIX=""
-    RELEASE_ARG=""
-    if [ -n "$RELEASE_TAG" ]; then
-        RELEASE_SUFFIX="-${RELEASE_TAG//./-}"
-        RELEASE_ARG="--backend-release-tag=$RELEASE_TAG"
-    fi
-    for name in energyplus fmu shacl schematron portfolio-manager; do
-        SERVICE_NAME="{{app_name}}-validator-service-${name}${RELEASE_SUFFIX}"
-        if [ "{{stage}}" != "prod" ]; then SERVICE_NAME="${SERVICE_NAME}-{{stage}}"; fi
-        gcloud run services update "$SERVICE_NAME" \
-            --region={{gcp_region}} \
-            --project={{gcp_project}} \
-            --min=0 \
-            --quiet
-    done
-
-    # Re-read and audit the live zero-minimum capacity without reactivating it.
-    just gcp management-cmd {{stage}} "sync_gcp_validator_services $RELEASE_ARG"
-
-# Retire all immutable Service resources for an old release. The recipe
-# first forces min=0, re-verifies live state, and proves every deployment is
-# inactive and drained. Provider deletion is recorded only after all deletes
-# succeed. Historical deployment rows and attempt evidence are retained.
-# Usage: VALIDATOR_SERVICE_RETIRE_CONFIRM=v0.14.0 just gcp validator-services-retire prod v0.14.0
+# Removed all-backend Service-only retirement path. Provider resources are
+# retired only as complete backend release pairs by validator-cleanup.
+[private]
 [arg('stage', pattern='dev|staging|prod')]
 validator-services-retire stage release_tag: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    echo "Error: use validator-cleanup; Service-only retirement is disabled." >&2
+    exit 2
     if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "Error: release_tag must be vX.Y.Z." >&2
         exit 1
@@ -4321,6 +4461,460 @@ validator-services-retire stage release_tag: _require-gcp-config
 validator-deployments-list stage: _require-gcp-config
     just gcp management-cmd {{stage}} "list_validator_deployments --json"
 
+# Capture the remote database projection from the management-command logs.
+# The command emits one base64 marker so Cloud Logging prefixes cannot corrupt
+# the JSON document consumed by the local release controller.
+[private]
+[arg('stage', pattern='dev|staging|prod')]
+_validator-state-export stage output: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    LOG_OUTPUT=$(just gcp management-cmd {{stage}} \
+        "export_validator_release_state --base64")
+    ENCODED=$(printf '%s\n' "$LOG_OUTPUT" \
+        | sed -n 's/.*VALIDIBOT_RELEASE_STATE_JSON=//p' \
+        | tail -1)
+    if [ -z "$ENCODED" ]; then
+        echo "Error: remote application did not return validator release-state JSON." >&2
+        exit 1
+    fi
+    if ! printf '%s' "$ENCODED" | base64 --decode >"{{output}}" 2>/dev/null; then
+        printf '%s' "$ENCODED" | base64 -D >"{{output}}"
+    fi
+    jq -e '.schema_version == "validibot.validator-release-state.v1"' \
+        "{{output}}" >/dev/null
+
+# Build the complete local read-only view from inventory, database, Cloud Run,
+# Artifact Registry, and retained accepted release JSON files.
+[private]
+[arg('stage', pattern='dev|staging|prod')]
+_validator-status-json stage output: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    WORK_DIR=$(mktemp -d)
+    trap 'rm -rf "$WORK_DIR"' EXIT
+    just gcp _validator-state-export {{stage}} "$WORK_DIR/database.json"
+    gcloud run services list --region={{gcp_region}} --project={{gcp_project}} \
+        --format=json >"$WORK_DIR/services.json"
+    gcloud run jobs list --region={{gcp_region}} --project={{gcp_project}} \
+        --format=json >"$WORK_DIR/jobs.json"
+    jq -s '.[0] + .[1]' "$WORK_DIR/services.json" "$WORK_DIR/jobs.json" \
+        >"$WORK_DIR/cloud-run.json"
+    gcloud artifacts docker images list "{{validator_repo}}" \
+        --include-tags --project={{gcp_project}} --format=json \
+        >"$WORK_DIR/gar.json"
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        STORAGE_BUCKET="${APP_NAME}-storage"
+    else
+        STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
+    fi
+    : >"$WORK_DIR/records.ndjson"
+    while IFS= read -r RECORD_URI; do
+        [ -z "$RECORD_URI" ] && continue
+        RECORD_FILE="$WORK_DIR/record.json"
+        gcloud storage cat "$RECORD_URI" >"$RECORD_FILE"
+        RECORD_SHA=$(shasum -a 256 "$RECORD_FILE" | awk '{print $1}')
+        jq --arg retained_sha256 "$RECORD_SHA" \
+            '. + {_retained_sha256: $retained_sha256}' \
+            "$RECORD_FILE" >>"$WORK_DIR/records.ndjson"
+    done < <(gcloud storage ls \
+        "gs://${STORAGE_BUCKET}/operations/validator-backend-releases/*/*.json" \
+        2>/dev/null || true)
+    jq -s '.' "$WORK_DIR/records.ndjson" >"$WORK_DIR/records.json"
+    python3 ops/gcp/validator_release_control.py status \
+        --database-json "$WORK_DIR/database.json" \
+        --cloud-run-json "$WORK_DIR/cloud-run.json" \
+        --gar-json "$WORK_DIR/gar.json" \
+        --release-records-json "$WORK_DIR/records.json" >"{{output}}"
+
+# Retain the exact accepted release record in the private validation bucket.
+[private]
+[arg('stage', pattern='dev|staging|prod')]
+_validator-retain-release-record name stage release_tag: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{release_tag}}" =~ ^{{name}}-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?)$ ]]; then
+        echo "Error: release tag must be {{name}}-vX.Y.Z." >&2
+        exit 1
+    fi
+    VERSION="${BASH_REMATCH[1]}"
+    IMAGE_SLUG="{{name}}"
+    IMAGE_SLUG="${IMAGE_SLUG//_/-}"
+    WORK_DIR=$(mktemp -d)
+    trap 'rm -rf "$WORK_DIR"' EXIT
+    RECORD_NAME="validibot-validator-backend-${IMAGE_SLUG}-v${VERSION}.json"
+    gh release download "{{release_tag}}" \
+        --repo danielmcquillen/validibot-validator-backends \
+        --dir "$WORK_DIR" --pattern "$RECORD_NAME"
+    python3 ops/gcp/validator_release_control.py release-record \
+        --backend "{{name}}" --version "$VERSION" \
+        --path "$WORK_DIR/$RECORD_NAME" >/dev/null
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        STORAGE_BUCKET="${APP_NAME}-storage"
+    else
+        STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
+    fi
+    gcloud storage cp "$WORK_DIR/$RECORD_NAME" \
+        "gs://${STORAGE_BUCKET}/operations/validator-backend-releases/{{name}}/${VERSION}.json"
+
+# Routine read-only status command.
+[arg('stage', pattern='dev|staging|prod')]
+validator-status stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    STATUS_JSON=$(mktemp)
+    trap 'rm -f "$STATUS_JSON"' EXIT
+    just gcp _validator-status-json {{stage}} "$STATUS_JSON"
+    jq -r '
+      ["BACKEND","FILE SAYS","ACTIVE","ROLLBACK","MODE","ACTION"],
+      (.backends[] | [
+        .backend,
+        .file_version,
+        (.active_version // "—"),
+        (.rollback_version // "—"),
+        .routing_mode,
+        .recommended_action
+      ]) | @tsv
+    ' "$STATUS_JSON" | column -t -s $'\t'
+
+# Install all five independently versioned backends. Provider pairs are
+# accepted one at a time but returned to inactive until every backend passes;
+# the final five backend transactions run before public dispatch resumes.
+[arg('stage', pattern='dev|staging|prod')]
+validator-setup stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    STATUS_JSON=$(mktemp)
+    trap 'rm -f "$STATUS_JSON"' EXIT
+    just gcp _validator-status-json {{stage}} "$STATUS_JSON"
+    if jq -e '.backends[] | select(.active_version != null)' "$STATUS_JSON" >/dev/null; then
+        echo "Error: setup is only for an installation with no active backend releases." >&2
+        echo "Use validator-update to reconcile an existing installation." >&2
+        exit 1
+    fi
+    python3 ops/gcp/validator_release_control.py inventory
+    echo "GCP project: {{gcp_project}}"
+    echo "Region:      {{gcp_region}}"
+    read -r -p "Type the GCP project ID to continue: " REPLY
+    if [ "$REPLY" != "{{gcp_project}}" ]; then echo "Cancelled."; exit 1; fi
+    trap 'just gcp _enforce-maintenance {{stage}}' EXIT INT TERM
+    GCP_YES=1 just gcp maintenance-on {{stage}}
+    for backend in energyplus fmu shacl schematron portfolio_manager; do
+        VERSION=$(python3 ops/gcp/validator_release_control.py \
+            inventory --backend "$backend" --field release_version)
+        SOURCE_TAG="${backend}-v${VERSION}"
+        just gcp validator-deploy "$backend" {{stage}} "$SOURCE_TAG"
+        just gcp validator-acceptance "$backend" {{stage}} "$SOURCE_TAG"
+        just gcp validator-backend-route "$backend" {{stage}} "$VERSION" inactive \
+            OPERATOR_DEACTIVATION
+    done
+    GROUP_COMMAND="activate_validator_backend_release_group --mode=normal --cause=SUPERSEDED_BY_ACCEPTED_RELEASE"
+    ACTIVATION_ARGS=()
+    for backend in energyplus fmu shacl schematron portfolio_manager; do
+        VERSION=$(python3 ops/gcp/validator_release_control.py \
+            inventory --backend "$backend" --field release_version)
+        SOURCE_TAG="${backend}-v${VERSION}"
+        just gcp _validator-retain-release-record "$backend" {{stage}} "$SOURCE_TAG"
+        GROUP_COMMAND="${GROUP_COMMAND} --release=${backend}=${VERSION}"
+        ACTIVATION_ARGS+=("--release=${backend}=${VERSION}")
+    done
+    just gcp _validator-status-json {{stage}} "$STATUS_JSON"
+    python3 ops/gcp/validator_release_control.py activation-check \
+        --status-json "$STATUS_JSON" "${ACTIVATION_ARGS[@]}"
+    for backend in energyplus fmu shacl schematron portfolio_manager; do
+        VERSION=$(python3 ops/gcp/validator_release_control.py \
+            inventory --backend "$backend" --field release_version)
+        just gcp validator-deployments-sync "$backend" {{stage}} "$VERSION"
+        just gcp validator-services-register "$backend" {{stage}} "$VERSION"
+    done
+    just gcp management-cmd {{stage}} "$GROUP_COMMAND"
+    trap - EXIT INT TERM
+    GCP_YES=1 just gcp maintenance-off {{stage}}
+
+# Reconcile one backend, or every backend with a newer offered version or
+# missing semantic Validator rows. Older or rolled-back offered versions stop
+# before provider mutation.
+[arg('stage', pattern='dev|staging|prod')]
+validator-update stage backend="": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    WORK_DIR=$(mktemp -d)
+    trap 'rm -rf "$WORK_DIR"' EXIT
+    just gcp _validator-status-json {{stage}} "$WORK_DIR/status.json"
+    if [ -n "{{backend}}" ]; then
+        jq --arg backend "{{backend}}" \
+            '[.backends[] | select(.backend == $backend)]' \
+            "$WORK_DIR/status.json" >"$WORK_DIR/selected.json"
+    else
+        jq '[.backends[] | select(.recommended_action != "none")]' \
+            "$WORK_DIR/status.json" >"$WORK_DIR/selected.json"
+    fi
+    if [ "$(jq 'length' "$WORK_DIR/selected.json")" -eq 0 ]; then
+        echo "No backend release or semantic Validator rows require reconciliation."
+        exit 0
+    fi
+    if jq -e '.[] | select(.recommended_action | startswith("blocked:"))' \
+        "$WORK_DIR/selected.json" >/dev/null; then
+        jq -r '.[] | select(.recommended_action | startswith("blocked:")) |
+            "\(.backend): \(.recommended_action)"' "$WORK_DIR/selected.json" >&2
+        echo "No GCP resources were changed." >&2
+        exit 1
+    fi
+    jq -r '.[] | "\(.backend): \(.active_version // "not installed") -> \(.file_version) (\(.recommended_action))"' \
+        "$WORK_DIR/selected.json"
+    CONFIRM="{{backend}}"
+    if [ -z "$CONFIRM" ]; then CONFIRM="update"; fi
+    read -r -p "Type $CONFIRM to continue: " REPLY
+    if [ "$REPLY" != "$CONFIRM" ]; then echo "Cancelled."; exit 1; fi
+    BACKENDS=()
+    while IFS= read -r selected_backend; do
+        BACKENDS+=("$selected_backend")
+    done < <(jq -r '.[].backend' "$WORK_DIR/selected.json")
+    restore_previous_routes() {
+        local status=$?
+        trap - EXIT INT TERM
+        if [ "$status" -ne 0 ]; then
+            for selected_backend in "${BACKENDS[@]}"; do
+                old_version=$(jq -r --arg backend "$selected_backend" \
+                    '.[] | select(.backend == $backend) | .active_version // ""' \
+                    "$WORK_DIR/selected.json")
+                if [ -n "$old_version" ]; then
+                    just gcp validator-backend-route "$selected_backend" {{stage}} \
+                        "$old_version" normal ACCEPTANCE_FAILURE || true
+                fi
+            done
+            just gcp _enforce-maintenance {{stage}} || true
+        fi
+        exit "$status"
+    }
+    trap restore_previous_routes EXIT INT TERM
+    GCP_YES=1 just gcp maintenance-on {{stage}}
+    for selected_backend in "${BACKENDS[@]}"; do
+        version=$(jq -r --arg backend "$selected_backend" \
+            '.[] | select(.backend == $backend) | .file_version' \
+            "$WORK_DIR/selected.json")
+        old_version=$(jq -r --arg backend "$selected_backend" \
+            '.[] | select(.backend == $backend) | .active_version // ""' \
+            "$WORK_DIR/selected.json")
+        source_tag="${selected_backend}-v${version}"
+        if [ -n "$old_version" ] && [ "$old_version" != "$version" ]; then
+            old_source_tag="${selected_backend}-v${old_version}"
+            VALIDATOR_ALLOW_HISTORICAL=1 \
+                just gcp validator-release-verify "$selected_backend" \
+                    "$old_source_tag"
+            just gcp validator-deployments-sync "$selected_backend" {{stage}} \
+                "$old_version"
+            just gcp validator-services-register "$selected_backend" {{stage}} \
+                "$old_version"
+        fi
+        just gcp validator-deploy "$selected_backend" {{stage}} "$source_tag"
+        just gcp validator-acceptance "$selected_backend" {{stage}} "$source_tag"
+        if [ -n "$old_version" ] && [ "$old_version" != "$version" ]; then
+            just gcp validator-deployments-sync "$selected_backend" {{stage}} \
+                "$old_version"
+            just gcp validator-services-register "$selected_backend" {{stage}} \
+                "$old_version"
+            just gcp validator-backend-route "$selected_backend" {{stage}} \
+                "$old_version" normal OPERATOR_DEACTIVATION
+            just gcp validator-backend-route "$selected_backend" {{stage}} \
+                "$version" normal OPERATOR_DEACTIVATION
+        fi
+        just gcp validator-backend-route "$selected_backend" {{stage}} "$version" \
+            inactive OPERATOR_DEACTIVATION
+    done
+    GROUP_COMMAND="activate_validator_backend_release_group --mode=normal --cause=SUPERSEDED_BY_ACCEPTED_RELEASE"
+    ACTIVATION_ARGS=()
+    for selected_backend in "${BACKENDS[@]}"; do
+        version=$(jq -r --arg backend "$selected_backend" \
+            '.[] | select(.backend == $backend) | .file_version' \
+            "$WORK_DIR/selected.json")
+        source_tag="${selected_backend}-v${version}"
+        just gcp _validator-retain-release-record "$selected_backend" {{stage}} \
+            "$source_tag"
+        GROUP_COMMAND="${GROUP_COMMAND} --release=${selected_backend}=${version}"
+        ACTIVATION_ARGS+=("--release=${selected_backend}=${version}")
+    done
+    just gcp _validator-status-json {{stage}} \
+        "$WORK_DIR/status-before-activation.json"
+    python3 ops/gcp/validator_release_control.py activation-check \
+        --status-json "$WORK_DIR/status-before-activation.json" \
+        "${ACTIVATION_ARGS[@]}"
+    for selected_backend in "${BACKENDS[@]}"; do
+        version=$(jq -r --arg backend "$selected_backend" \
+            '.[] | select(.backend == $backend) | .file_version' \
+            "$WORK_DIR/selected.json")
+        just gcp validator-deployments-sync "$selected_backend" {{stage}} "$version"
+        just gcp validator-services-register "$selected_backend" {{stage}} "$version"
+    done
+    just gcp management-cmd {{stage}} "$GROUP_COMMAND"
+    trap - EXIT INT TERM
+    GCP_YES=1 just gcp maintenance-off {{stage}}
+
+# Roll back one backend release, enter Job-only mode, restore normal mode, or
+# recover an exact version previously accepted by this installation.
+[arg('stage', pattern='dev|staging|prod')]
+validator-rollback stage backend operation="release": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    WORK_DIR=$(mktemp -d)
+    trap 'rm -rf "$WORK_DIR"' EXIT
+    just gcp _validator-status-json {{stage}} "$WORK_DIR/status.json"
+    CURRENT=$(jq -r --arg backend "{{backend}}" \
+        '.backends[] | select(.backend == $backend) | .active_version // ""' \
+        "$WORK_DIR/status.json")
+    if [ -z "$CURRENT" ]; then
+        echo "Error: backend {{backend}} has no active release." >&2
+        exit 1
+    fi
+    EXACT_RECOVERY=0
+    RECOVERY_REASON_B64=""
+    case "{{operation}}" in
+        job-mode)
+            TARGET="$CURRENT"; MODE="job-only"; CAUSE="SHAPE_ROLLBACK" ;;
+        normal-mode)
+            TARGET="$CURRENT"; MODE="normal"; CAUSE="SHAPE_ROLLBACK" ;;
+        release)
+            TARGET=$(jq -r --arg backend "{{backend}}" \
+                '.backends[] | select(.backend == $backend) | .rollback_version // ""' \
+                "$WORK_DIR/status.json")
+            MODE="normal"; CAUSE="RELEASE_ROLLBACK_FROM" ;;
+        *)
+            if [[ ! "{{operation}}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?$ ]]; then
+                echo "Error: operation must be release, job-mode, normal-mode, or an exact version." >&2
+                exit 1
+            fi
+            TARGET="{{operation}}"; MODE="normal"; CAUSE="RELEASE_ROLLBACK_FROM"
+            EXACT_RECOVERY=1
+            just gcp _validator-state-export {{stage}} "$WORK_DIR/database.json"
+            if ! jq -e --arg backend "{{backend}}" --arg version "$TARGET" '
+                [.deployments[] | select(.backend == $backend and .version == $version)]
+                | length >= 2 and all(.accepted_at != null)
+            ' "$WORK_DIR/database.json" >/dev/null; then
+                echo "Error: exact recovery requires accepted deployment history." >&2
+                exit 1
+            fi
+            ;;
+    esac
+    if [ -z "$TARGET" ]; then
+        echo "Error: no eligible previous accepted release exists." >&2
+        exit 1
+    fi
+    if [ "$EXACT_RECOVERY" = "1" ]; then
+        ROLLBACK_EVENT=$(jq -c --arg backend "{{backend}}" --arg version "$TARGET" '
+            .backends[]
+            | select(.backend == $backend)
+            | .rolled_back_from[]?
+            | select(.version == $version)
+        ' "$WORK_DIR/status.json" | tail -n 1)
+        if [ -n "$ROLLBACK_EVENT" ]; then
+            echo "This installation previously rolled back from {{backend}} $TARGET."
+            echo "Recorded at:     $(jq -r '.at // "unknown"' <<<"$ROLLBACK_EVENT")"
+            echo "Previous reason: $(jq -r '.reason // "not recorded"' <<<"$ROLLBACK_EVENT")"
+            read -r -p "Explain what was repaired before reusing this release: " RECOVERY_REASON
+            if [ -z "${RECOVERY_REASON//[[:space:]]/}" ]; then
+                echo "Error: reusing a rolled-back release requires a reason." >&2
+                exit 1
+            fi
+            if [ "${#RECOVERY_REASON}" -gt 1000 ]; then
+                echo "Error: recovery reason cannot exceed 1000 characters." >&2
+                exit 1
+            fi
+            RECOVERY_REASON_B64=$(printf '%s' "$RECOVERY_REASON" | base64 | tr -d '\n')
+        fi
+    fi
+    echo "{{backend}}: $CURRENT -> $TARGET ($MODE)"
+    read -r -p "Type {{backend}} to continue: " REPLY
+    if [ "$REPLY" != "{{backend}}" ]; then echo "Cancelled."; exit 1; fi
+    trap 'just gcp _enforce-maintenance {{stage}}' EXIT INT TERM
+    GCP_YES=1 just gcp maintenance-on {{stage}}
+    if [ "{{operation}}" != "job-mode" ] && [ "{{operation}}" != "normal-mode" ]; then
+        SOURCE_TAG="{{backend}}-v${TARGET}"
+        VALIDATOR_ALLOW_HISTORICAL=1 \
+            just gcp validator-deploy "{{backend}}" {{stage}} "$SOURCE_TAG"
+        just gcp validator-deployments-sync "{{backend}}" {{stage}} "$TARGET"
+        just gcp validator-services-register "{{backend}}" {{stage}} "$TARGET"
+        if [ "$EXACT_RECOVERY" = "1" ]; then
+            just gcp validator-acceptance "{{backend}}" {{stage}} "$SOURCE_TAG"
+        fi
+    fi
+    just gcp validator-backend-route "{{backend}}" {{stage}} "$TARGET" "$MODE" \
+        "$CAUSE" "" "$RECOVERY_REASON_B64"
+    trap - EXIT INT TERM
+    GCP_YES=1 just gcp maintenance-off {{stage}}
+
+# Calculate an exact seven-day cleanup plan, require its derived identifier,
+# refresh all safety inputs, and delete only unchanged planned resources.
+[arg('stage', pattern='dev|staging|prod')]
+validator-cleanup stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    WORK_DIR=$(mktemp -d)
+    trap 'rm -rf "$WORK_DIR"' EXIT
+    just gcp _validator-status-json {{stage}} "$WORK_DIR/status.json"
+    just gcp _validator-state-export {{stage}} "$WORK_DIR/database.json"
+    python3 ops/gcp/validator_release_control.py cleanup-plan \
+        --database-json "$WORK_DIR/database.json" \
+        --status-json "$WORK_DIR/status.json" >"$WORK_DIR/plan.json"
+    jq '.' "$WORK_DIR/plan.json"
+    PLAN_ID=$(jq -r '.plan_id' "$WORK_DIR/plan.json")
+    if [ "$(jq '.delete | length' "$WORK_DIR/plan.json")" -eq 0 ]; then
+        echo "No provider release pair is eligible for deletion."
+        exit 0
+    fi
+    read -r -p "Type $PLAN_ID to delete exactly the resources shown: " REPLY
+    if [ "$REPLY" != "$PLAN_ID" ]; then echo "Cancelled."; exit 1; fi
+    just gcp _validator-status-json {{stage}} "$WORK_DIR/status-refreshed.json"
+    just gcp _validator-state-export {{stage}} "$WORK_DIR/database-refreshed.json"
+    python3 ops/gcp/validator_release_control.py cleanup-plan \
+        --database-json "$WORK_DIR/database-refreshed.json" \
+        --status-json "$WORK_DIR/status-refreshed.json" \
+        >"$WORK_DIR/plan-refreshed.json"
+    if [ "$(jq -r '.plan_id' "$WORK_DIR/plan-refreshed.json")" != "$PLAN_ID" ]; then
+        echo "Error: cleanup inputs changed; review the new plan." >&2
+        jq '.' "$WORK_DIR/plan-refreshed.json"
+        exit 1
+    fi
+    jq -c '.delete[]' "$WORK_DIR/plan-refreshed.json" |
+    while IFS= read -r release; do
+        backend=$(jq -r '.backend' <<<"$release")
+        version=$(jq -r '.version' <<<"$release")
+        jq -r '.resources[]' <<<"$release" |
+        while IFS= read -r resource; do
+            name="${resource##*/}"
+            if [[ "$resource" == *"/services/"* ]]; then
+                if gcloud run services describe "$name" --region={{gcp_region}} \
+                    --project={{gcp_project}} >/dev/null 2>&1; then
+                    gcloud run services update "$name" --region={{gcp_region}} \
+                        --project={{gcp_project}} --min=0 --quiet
+                    gcloud run services delete "$name" --region={{gcp_region}} \
+                        --project={{gcp_project}} --quiet
+                fi
+                if gcloud run services describe "$name" --region={{gcp_region}} \
+                    --project={{gcp_project}} >/dev/null 2>&1; then
+                    echo "Error: Service $name still exists after deletion." >&2
+                    exit 1
+                fi
+            else
+                if gcloud run jobs describe "$name" --region={{gcp_region}} \
+                    --project={{gcp_project}} >/dev/null 2>&1; then
+                    gcloud run jobs delete "$name" --region={{gcp_region}} \
+                        --project={{gcp_project}} --quiet
+                fi
+                if gcloud run jobs describe "$name" --region={{gcp_region}} \
+                    --project={{gcp_project}} >/dev/null 2>&1; then
+                    echo "Error: Job $name still exists after deletion." >&2
+                    exit 1
+                fi
+            fi
+            just gcp management-cmd {{stage}} \
+                "record_validator_provider_deletion --resource=$resource"
+        done
+        just gcp management-cmd {{stage}} \
+            "retire_validator_backend_release --backend=$backend --version=$version --reason='Provider pair deleted after verified seven-day drain.'"
+    done
+
 # Report persisted p50/p95 timing stages without blending Job and Service
 # deployment revisions. JSON output can be retained with rollout evidence.
 # Usage: just gcp validator-latency-report prod 168 20
@@ -4328,15 +4922,78 @@ validator-deployments-list stage: _require-gcp-config
 validator-latency-report stage since_hours="168" minimum_samples="20": _require-gcp-config
     just gcp management-cmd {{stage}} "report_validator_execution_latency --since-hours={{since_hours}} --minimum-samples={{minimum_samples}} --json"
 
-# Run the complete private validator acceptance while public traffic stays
-# offline. The recipe opens only the two internal task queues, restores full
-# maintenance mode on every exit, rolls failed candidates back to Jobs, and
-# leaves a successful candidate active for the next online window.
-# Usage: just gcp validator-acceptance prod v0.15.1
+# Run one backend-specific acceptance suite while public dispatch is offline.
+# The candidate is temporarily routed through the pair service, and successful
+# canaries record accepted_at on the exact Service and Job rows.
 [arg('stage', pattern='dev|staging|prod')]
-validator-acceptance stage release_tag attempts="20": _require-gcp-config
+validator-acceptance name stage release_tag attempts="20": _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    if [[ ! "{{release_tag}}" =~ ^{{name}}-v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?([+][0-9A-Za-z.-]+)?)$ ]]; then
+        echo "Error: release_tag must be {{name}}-vX.Y.Z." >&2
+        exit 1
+    fi
+    VERSION="${BASH_REMATCH[1]}"
+    if ! [[ "{{attempts}}" =~ ^[1-9][0-9]*$ ]] || [ "{{attempts}}" -gt 20 ]; then
+        echo "Error: attempts must be between 1 and 20." >&2
+        exit 1
+    fi
+    if [ "{{stage}}" = "prod" ] && [ "{{attempts}}" -ne 20 ]; then
+        echo "Error: production acceptance requires exactly 20 attempts." >&2
+        exit 1
+    fi
+    just gcp _maintenance-assert-offline {{stage}}
+    trap 'just gcp _enforce-maintenance {{stage}}' EXIT INT TERM
+    just gcp _maintenance-start-database {{stage}}
+    just gcp validator-deployments-sync "{{name}}" {{stage}} "$VERSION"
+    just gcp validator-services-register "{{name}}" {{stage}} "$VERSION"
+    just gcp validator-backend-route "{{name}}" {{stage}} "$VERSION" normal \
+        SUPERSEDED_BY_ACCEPTED_RELEASE allow-unaccepted
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        QUEUE_NAME="${APP_NAME}-tasks"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider"
+    else
+        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
+        PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
+    fi
+    gcloud tasks queues resume "$QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    gcloud tasks queues resume "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    GCP_MANAGEMENT_COMMAND_TIMEOUT=3600s \
+        just gcp management-cmd {{stage}} \
+        "run_validator_acceptance --backend={{name}} --release-tag={{release_tag}} --routing-mode=normal --attempts={{attempts}} --timeout-seconds=3000 --require-persisted-report --ambient-isolation-verified"
+    gcloud tasks queues pause "$QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    just gcp validator-backend-route "{{name}}" {{stage}} "$VERSION" job-only \
+        SHAPE_ROLLBACK allow-unaccepted
+    gcloud tasks queues resume "$QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    gcloud tasks queues resume "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    GCP_MANAGEMENT_COMMAND_TIMEOUT=3600s \
+        just gcp management-cmd {{stage}} \
+        "run_validator_acceptance --backend={{name}} --release-tag={{release_tag}} --routing-mode=job-only --record-acceptance --attempts={{attempts}} --timeout-seconds=3000 --require-persisted-report --skip-storage-probe --ambient-isolation-verified"
+    gcloud tasks queues pause "$QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} --quiet
+    just gcp validator-backend-route "{{name}}" {{stage}} "$VERSION" normal SHAPE_ROLLBACK
+    trap - EXIT INT TERM
+    echo "Acceptance passed for {{name}} $VERSION on {{stage}}."
+
+# Historical all-backend acceptance remains private for migration diagnosis.
+# It is not used by setup or routine updates after independent releases.
+[private]
+[arg('stage', pattern='dev|staging|prod')]
+_validator-acceptance-legacy stage release_tag attempts="20": _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Error: all-backend acceptance is disabled; use validator-acceptance for one backend." >&2
+    exit 2
     if [[ ! "{{release_tag}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "Error: release_tag must be vX.Y.Z." >&2
         exit 1

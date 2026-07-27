@@ -66,6 +66,34 @@ class ExecutionDeploymentRoutingRole(TextChoices):
     LONG_RUNNING = "LONG_RUNNING", _("Long-running compatibility")
 
 
+class ExecutionDeploymentDeactivationCause(TextChoices):
+    """Bounded reason for the current continuous period without a route."""
+
+    SUPERSEDED_BY_ACCEPTED_RELEASE = (
+        "SUPERSEDED_BY_ACCEPTED_RELEASE",
+        _("Superseded by an accepted release"),
+    )
+    RELEASE_ROLLBACK_FROM = (
+        "RELEASE_ROLLBACK_FROM",
+        _("Release rolled back from"),
+    )
+    ACCEPTANCE_FAILURE = "ACCEPTANCE_FAILURE", _("Acceptance failure")
+    SHAPE_ROLLBACK = "SHAPE_ROLLBACK", _("Execution-shape rollback")
+    OPERATOR_DEACTIVATION = (
+        "OPERATOR_DEACTIVATION",
+        _("Operator deactivation"),
+    )
+
+
+class ExecutionRoutingMode(StrEnum):
+    """Calculated execution shape for one Service/Job routing pair."""
+
+    NORMAL = "normal"
+    JOB_ONLY = "job-only"
+    INACTIVE = "inactive"
+    INCONSISTENT = "inconsistent"
+
+
 class ValidatorExecutionProfile(TextChoices):
     """Workflow-author intent for one container-based validator step.
 
@@ -304,7 +332,7 @@ class RulesetType(TextChoices):
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     THERM = "THERM", _("THERM")
     TABULAR = "TABULAR", _("Tabular")
-    PORTFOLIO_MANAGER = "PORTFOLIO_MANAGER", _("Portfolio Manager")
+    PORTFOLIO_MANAGER = "PORTFOLIO_MANAGER", _("Building Benchmark Reports")
 
 
 class ValidationType(TextChoices):
@@ -350,7 +378,10 @@ class ValidationType(TextChoices):
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
     THERM = "THERM", _("THERM Thermal Analysis")
     TABULAR = "TABULAR", _("Tabular Validator")
-    PORTFOLIO_MANAGER = "PORTFOLIO_MANAGER", _("Portfolio Manager Validator")
+    PORTFOLIO_MANAGER = (
+        "PORTFOLIO_MANAGER",
+        _("Building Benchmark Report Validator"),
+    )
     # SYSMLV2 = "SYSMLV2", _("SysMLv2 Model Validator")
 
 

@@ -56,4 +56,3 @@ Once you have chosen a target, these supporting guides become relevant:
 - [Reverse Proxy Setup](reverse-proxy.md)
 - [Docker Compose Deployment Responsibility](docker-compose-responsibility.md)
 - [Self-Hosting on DigitalOcean](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/providers/digitalocean.md) — canonical operator-facing tutorial
-- [Go-Live Checklist](go-live-checklist.md)

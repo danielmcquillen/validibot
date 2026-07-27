@@ -1,7 +1,8 @@
-# Portfolio Manager Validator
+# Building Benchmark Report Validator
 
-The Portfolio Manager Validator checks ENERGY STAR Portfolio Manager property
-report exports and turns their metrics into stable workflow outputs. It is
+The Building Benchmark Report Validator checks property report exports from
+ENERGY STAR® Portfolio Manager® and turns their metrics into stable workflow
+outputs. It is
 intended for programs that receive reports from many different building owners,
 so it does not ask the workflow author to enter one expected property ID.
 
@@ -27,24 +28,27 @@ Hidden operating-system metadata is ignored. Nested directories, nested
 archives, encrypted members, duplicate paths, path traversal, unsupported
 members, and unsafe compression ratios are rejected.
 
-## Validation profiles
+## Configure the workflow's validation policy
 
-**Portfolio Manager report contract** recognizes the report, validates known
-values, and exposes selected metrics. Add only the readiness and target checks
-your program needs.
+The validator does not include regulatory profiles or infer requirements from
+the workflow name. Authors configure every reporting-period, metric, target,
+and data-quality requirement explicitly. The saved fields are the complete
+policy executed by the backend.
 
-**Benchmark readiness** requires the core property ID, complete reporting
-period, gross floor area, and Site EUI evidence.
+An organization can name a workflow to communicate its intended use, such as
+**Washington CBPS Workflow — 2026 reporting cycle**, but that name is only a
+human-readable label. Authors remain responsible for checking that the selected
+settings reflect their program's current requirements.
 
-**Washington CBPS Tier 1 EUIt** applies the 12-month reporting-period check, a
-24-month freshness default, the Washington Standard ID, Weather Normalized Site
-EUI, the Washington Form C metric bundle, and explicit Portfolio Manager Alert
-Metric policies. It compares WNEUI with EUIt only when **Require WNEUI to meet
-EUIt** is enabled.
+The available fields can express a Washington-oriented readiness workflow,
+including a complete reporting period, an optional freshness limit, the State
+of Washington Clean Buildings Standard ID, Weather Normalized Site EUI, the
+Washington Form C metric bundle, and explicit Portfolio Manager Alert Metric
+policies. These are independent controls rather than a Washington preset.
 
-This profile is a preflight, not a legal compliance decision. It does not
-calculate EUIt, validate Form B's target calculation, confirm qualified-person
-work, determine exceptions, or produce an `is_compliant` result.
+The validator does not calculate EUIt, validate Form B's target calculation,
+confirm qualified-person work, determine exceptions, issue a legal compliance
+decision, or produce an `is_compliant` result.
 
 ## Data-quality policies
 
@@ -149,3 +153,15 @@ If a ZIP includes both a parent and its child, or duplicate property IDs would
 make population totals ambiguous, affected portfolio aggregates are
 unavailable rather than double-counted. The overlap or duplicate remains an
 observational fact unless the workflow author makes it an error.
+
+## Trademark and independence notice
+
+ENERGY STAR and the ENERGY STAR mark are registered trademarks owned by the
+U.S. Environmental Protection Agency. The name ENERGY STAR Portfolio Manager
+and the Portfolio Manager logo are registered trademarks owned by the U.S.
+Environmental Protection Agency.
+
+Validibot is independent. This validator is not approved, certified, or
+endorsed by the EPA or the ENERGY STAR program. It checks the contents of
+exported reports; it does not confer ENERGY STAR certification or determine
+regulatory compliance.

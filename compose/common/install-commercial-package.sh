@@ -21,11 +21,43 @@ fi
 
 python_bin="$1"
 commercial_package="${VALIDIBOT_COMMERCIAL_PACKAGE:-}"
-private_index_url="${VALIDIBOT_PRIVATE_INDEX_URL:-}"
+private_index_url="https://${TRUSTED_PYPI_HOST}/simple/"
 
 if [ -z "${commercial_package}" ]; then
     exit 0
 fi
+
+netrc_path="${HOME}/.netrc"
+if [ ! -f "${netrc_path}" ]; then
+    echo "A BuildKit-mounted ${netrc_path} is required for commercial installs." >&2
+    exit 1
+fi
+
+if netrc_mode="$(stat -c '%a' "${netrc_path}" 2>/dev/null)"; then
+    :
+else
+    netrc_mode="$(stat -f '%Lp' "${netrc_path}")"
+fi
+case "${netrc_mode}" in
+    ?00|??00) ;;
+    *)
+        echo "${netrc_path} must not be accessible by group or other users." >&2
+        exit 1
+        ;;
+esac
+
+python3 - "${netrc_path}" "${TRUSTED_PYPI_HOST}" <<'PY'
+from __future__ import annotations
+
+import netrc
+import sys
+
+credentials = netrc.netrc(sys.argv[1]).authenticators(sys.argv[2])
+if credentials is None or not credentials[0] or not credentials[2]:
+    raise SystemExit(
+        f"{sys.argv[1]} must contain login and password for {sys.argv[2]}.",
+    )
+PY
 
 validate_trusted_index_url() {
     python3 - "$1" "${TRUSTED_PYPI_HOST}" <<'PY'
@@ -38,26 +70,24 @@ url = urlparse(sys.argv[1])
 trusted_host = sys.argv[2]
 
 if url.scheme != "https":
-    raise SystemExit("VALIDIBOT_PRIVATE_INDEX_URL must use https.")
+    raise SystemExit("Private package index must use https.")
 
 if url.hostname != trusted_host:
     raise SystemExit(
-        f"VALIDIBOT_PRIVATE_INDEX_URL must use host {trusted_host}.",
+        f"Private package index must use host {trusted_host}.",
     )
 
 if not url.path.startswith("/simple/"):
     raise SystemExit(
-        "VALIDIBOT_PRIVATE_INDEX_URL must point at the /simple/ index path.",
+        "Private package index must point at the /simple/ index path.",
     )
+
+if url.username is not None or url.password is not None:
+    raise SystemExit("Private index URLs must not contain credentials.")
 PY
 }
 
 install_from_index() {
-    if [ -z "${private_index_url}" ]; then
-        echo "VALIDIBOT_PRIVATE_INDEX_URL must be set for pinned package installs." >&2
-        exit 1
-    fi
-
     validate_trusted_index_url "${private_index_url}"
 
     uv pip install \
@@ -92,6 +122,9 @@ if url.hostname != trusted_host:
     raise SystemExit(1)
 
 if not url.path.startswith("/packages/"):
+    raise SystemExit(1)
+
+if url.username is not None or url.password is not None:
     raise SystemExit(1)
 
 filename = url.path.rsplit("/", 1)[-1]

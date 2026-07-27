@@ -150,7 +150,7 @@ class SubmissionDataFormat(models.TextChoices):
     CSV = "csv", _("CSV (tabular)")
     PORTFOLIO_MANAGER_REPORT = (
         "portfolio_manager_report",
-        _("ENERGY STAR Portfolio Manager Report"),
+        _("ENERGY STAR® Portfolio Manager® Report"),
     )
     # SYSMLV2_JSON = "sysmlv2_json", _("SysMLv2 JSON")
     UNKNOWN = "unknown", _("Unknown")

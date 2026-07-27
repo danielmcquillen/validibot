@@ -303,11 +303,6 @@ class PortfolioManagerStepConfig(ContainerExecutionStepConfig):
     """Semantic configuration for Portfolio Manager report validation."""
 
     submission_structure: Literal["single_report", "zip_collection"] = "single_report"
-    profile: Literal[
-        "generic",
-        "benchmark_readiness",
-        "washington_cbps_tier1_euit",
-    ] = "generic"
     default_euit_kbtu_ft2_yr: Decimal | None = Field(default=None, gt=0)
     compare_to_euit: bool = False
     near_target_percent: Decimal = Field(default=Decimal("10"), ge=0, le=100)

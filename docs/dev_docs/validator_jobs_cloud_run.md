@@ -49,7 +49,7 @@ IAM roles involved:
 
 - **Web/Worker service account** (`$GCP_APP_NAME-cloudrun-{stage}`): Custom `validibot_job_runner` role (the historical ID now represents the validator controller) so Django can read exact Job/Service configuration, verify Service invoker IAM, and call the Jobs API with overrides for `VALIDIBOT_INPUT_URI`.
 - **Validator runtime service account** (`$GCP_APP_NAME-validator-{stage}`): Used by both Services and Jobs. It has `roles/run.invoker` on the worker for callbacks and renewal, but **no project or bucket storage role**. Django supplies a short-lived Credential Access Boundary token limited to one attempt prefix and the `roles/storage.objectViewer` + `roles/storage.objectCreator` permission ceiling.
-- **Provider-task invoker** (`$GCP_APP_NAME-val-invoker-{stage}`): Has no project roles. It is the only `roles/run.invoker` member on the four private validator Services and is attached only to provider-queue tasks. The abbreviated resource name stays within Google's 30-character service-account ID limit for `prod`, `staging`, and `dev`.
+- **Provider-task invoker** (`$GCP_APP_NAME-val-invoker-{stage}`): Has no project roles. It is the only `roles/run.invoker` member on the five private validator Services and is attached only to provider-queue tasks. The abbreviated resource name stays within Google's 30-character service-account ID limit for `prod`, `staging`, and `dev`.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
 
 Cloud Run Jobs remain a separate execution shape. They have queryable provider
@@ -127,15 +127,13 @@ Then update your env file (`.envs/.production/.google-cloud/.django`), run `just
 ## Deploying validator backends
 
 Development may build directly from the backend checkout. Production accepts
-only a signed `vX.Y.Z` backend release whose GHCR attestation and GAR mirror
-resolve to the same digest.
+only a backend-specific signed tag such as `energyplus-v0.15.1` whose release
+JSON, GHCR attestation, and GAR mirror resolve to the same digest.
 
 ### Development
 
 ```bash
-just gcp validator-deploy-all dev v0.15.0
-just gcp validator-deployments-sync dev
-just gcp validator-services-register dev
+just gcp validator-setup dev
 ```
 
 For a source-checkout-only Job or Service diagnostic, use the explicit
@@ -146,18 +144,15 @@ from one release.
 ### Production release deployment
 
 ```bash
-just gcp validator-deploy-all prod v0.15.0
+just gcp validator-status prod
+just gcp validator-update prod energyplus
 ```
 
-The complete deploy command verifies and mirrors the signed release, then
-deploys every managed backend Job and release-specific Service without
-registering or activating them. With production already in maintenance mode,
-run the immutable-I/O, smoke, burst, latency, and route-rollback acceptance as
-one operation:
-
-```bash
-just gcp validator-acceptance prod v0.15.0
-```
+Update reads EnergyPlus's exact offered version from the sibling
+`validibot-validator-backends/backends.toml`. It verifies and mirrors that
+backend's signed release, creates the release-specific Service and Job, imports
+one pair per compatible semantic Validator, and runs normal plus Job-only
+acceptance before it changes only EnergyPlus routes.
 
 Validator GCS capabilities are unconditional and stage IAM must already deny
 the runtime identity ambient object access. A successful command leaves
@@ -177,10 +172,16 @@ registries contain byte-identical release images.
    to the same immutable digest in GHCR and GAR. Development checkout builds
    remain available only through the low-level Job/Service commands.
 2. **Deploys** the retained Cloud Run Job with:
-   - Stage-appropriate job name (`$GCP_APP_NAME-validator-backend-energyplus-dev` for dev, `$GCP_APP_NAME-validator-backend-energyplus` for prod). The same name the runtime resolves at dispatch time via `ValidatorConfig.cloud_run_job_name`.
+   - A stage-appropriate provider name. Development uses
+     `vb-vj-energyplus-dev`; staging and production use release-specific names
+     such as `vb-vj-energyplus-v0-15-1-stg` and
+     `vb-vj-energyplus-v0-15-1`.
+   - Dispatch reads the exact provider resource stored in the attempt's
+     deployment snapshot; it never reconstructs a stable production Job name.
    - Dedicated validator service account (`$GCP_APP_NAME-validator-dev@...` for dev) with no ambient storage role
    - Memory (4Gi), CPU (2), timeout (1 hour), no retries
-   - Labels for tracking (`validator=energyplus,stage=dev,version=abc123`)
+   - Labels for backend, stage, release version, execution shape, and image
+     digest
 3. **Deploys** a separate private Service per backend release with concurrency
    one, Startup CPU Boost, service-level min/max capacity, and the shared HTTP
    parent entrypoint
@@ -253,8 +254,8 @@ offline; mixed capability-aware and legacy images are not supported:
    and the matching Django code. For the July 2026 Service rollout baseline:
 
    ```bash
-   cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp validator-deploy-all prod v0.15.1
+   cd /path/to/validibot
+   just gcp validator-update prod energyplus
    ```
 
 2. Reconcile stage IAM and deploy the matching Django release in maintenance
@@ -262,24 +263,25 @@ offline; mixed capability-aware and legacy images are not supported:
    always stages attempt inputs and delivers a bounded token:
 
    ```bash
-   cd /Users/danielmcquillen/projects/validibot/validibot
+   cd /path/to/validibot
    just gcp init-stage-maintenance prod
    just gcp deploy-maintenance prod
    ```
 
-3. Run the one acceptance operation while the stage remains offline:
+3. The update command runs the backend-specific acceptance operation while the
+   stage remains offline. For diagnostic recovery, its explicit form is:
 
    ```bash
-   cd /Users/danielmcquillen/projects/validibot/validibot
-   just gcp validator-acceptance prod v0.15.1
+   cd /path/to/validibot
+   just gcp validator-acceptance energyplus prod energyplus-v0.15.1
    ```
 
-   This command removes any known historical ambient IAM, requires Policy
+   This command requires Policy
    Troubleshooter denial, probes allowed and forbidden downscoped-token
-   operations, runs the four artifact-producing canaries and 20-attempt bursts,
-   and retains private JSON. Failure restores the capability-aware Job route
-   but never restores ambient storage access. No configuration finalization is
-   required after success.
+   operations, runs every compatible EnergyPlus semantic canary and its
+   20-attempt burst, then repeats through Job-only routing and retains private
+   JSON. Failure restores the previous accepted pair but never restores ambient
+   storage access.
 
 ### Deploy-time environment variables
 
@@ -296,8 +298,8 @@ image digest as the trust-critical backend identity.
 
 ### Implications
 
-- **One release, deploy everywhere**: Production stages resolve the same
-  attested backend digest
+- **One backend release, deploy everywhere**: Production stages resolve the
+  same attested digest for that independent backend release
 - **No ambient data credential**: The attached runtime identity can mint a
   callback token but cannot read GCS objects; the injected attempt capability
   is the data boundary

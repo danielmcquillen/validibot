@@ -200,8 +200,8 @@ no-op cleanly where the stack does not need it.
 
 | Variable | Role | Description | Example |
 | --- | --- | --- | --- |
-| `VALIDIBOT_COMMERCIAL_PACKAGE` | Build-time | **Self-hosted Pro/Enterprise operators:** the licensed package (or wheel URL) to bake into your Docker image, fetched from `VALIDIBOT_PRIVATE_INDEX_URL`. Installing it only makes the code _importable_ — to actually activate it you must _also_ set `DJANGO_SETTINGS_MODULE=config.settings.production_pro` in `.django`, which adds `validibot_pro` to `INSTALLED_APPS`. | `validibot-pro==0.1.0` |
-| `VALIDIBOT_PRIVATE_INDEX_URL` | Build-time | Private package index URL from your license email. | `https://user:pass@pypi.validibot.com/simple/` |
+| `VALIDIBOT_COMMERCIAL_PACKAGE` | Build-time | **Self-hosted Pro/Enterprise operators:** an exact package pin or credential-free SHA-256 wheel URL. Installing it only makes the code _importable_ — activate it by setting `DJANGO_SETTINGS_MODULE=config.settings.production_pro` in `.django`. | `validibot-pro==0.1.0` |
+| `VALIDIBOT_COMMERCIAL_NETRC` | Build-time | Absolute path to a mode-0600 netrc with the `pypi.validibot.com` login and one-time dashboard key. Docker Compose mounts it only as a BuildKit secret for the install step. | `/home/operator/.netrc` |
 | `ENABLE_MCP_SERVER` | Recipe | Activate the `mcp` Compose profile so the FastMCP container is built and started alongside the stack. Set to `true` for `just local-pro up` / `just local-cloud up`; ignored by `just local up` (community compose has no mcp service). | `true` / `false` |
 | `VALIDIBOT_MCP_API_BASE_URL` | Recipe | GCP-only API URL stamped into MCP as `VALIDIBOT_API_BASE_URL` and Django web as `MCP_OIDC_AUDIENCE`. Required when `ENABLE_MCP_SERVER=true` on GCP. | `https://app.your-domain.example` |
 | `VALIDIBOT_MCP_BASE_URL` | Recipe/runtime | GCP-only public MCP URL stamped into both Django and MCP as `VALIDIBOT_MCP_BASE_URL`, so OAuth audience/redirect metadata comes from one value. | `https://mcp.your-domain.example` |

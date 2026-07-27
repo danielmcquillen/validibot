@@ -45,6 +45,7 @@ from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import DefaultSourceStrategy
 from validibot.validations.constants import EnvelopeChannel
 from validibot.validations.constants import ExecutionAttemptState
+from validibot.validations.constants import ExecutionDeploymentDeactivationCause
 from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
@@ -1523,6 +1524,24 @@ class Validator(TimeStampedModel):
             "stay at TIER_1 by construction."
         ),
     )
+    execution_backend_slug = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=_(
+            "Managed backend slug used by this semantic Validator, such as "
+            "energyplus. Empty for validators without a managed backend."
+        ),
+    )
+    execution_runtime_contract = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=_(
+            "Runtime contract required from managed deployments. Empty for "
+            "validators without a managed backend."
+        ),
+    )
 
     @property
     def card_image_name(self) -> str:
@@ -1615,6 +1634,19 @@ class Validator(TimeStampedModel):
 
     def clean(self):
         super().clean()
+        if bool(self.execution_backend_slug) != bool(self.execution_runtime_contract):
+            raise ValidationError(
+                {
+                    "execution_backend_slug": _(
+                        "Managed backend slug and runtime contract must be "
+                        "declared together."
+                    ),
+                    "execution_runtime_contract": _(
+                        "Managed backend slug and runtime contract must be "
+                        "declared together."
+                    ),
+                }
+            )
         data_formats = [value for value in (self.supported_data_formats or []) if value]
         file_types_hint = [
             value for value in (self.supported_file_types or []) if value
@@ -1816,9 +1848,14 @@ class ValidatorExecutionDeployment(TimeStampedModel):
             "provider_resource_name",
             "route",
             "authentication_audience",
+            "backend_slug",
             "backend_release_identity",
+            "source_release_tag",
+            "release_record_sha256",
             "backend_image_ref",
             "backend_image_digest",
+            "provider_spec_sha256",
+            "execution_config_sha256",
             "expected_runtime_identity",
             "declared_capabilities",
             "maximum_execution_seconds",
@@ -1842,6 +1879,10 @@ class ValidatorExecutionDeployment(TimeStampedModel):
             models.Index(
                 fields=["provider_type", "provider_resource_name"],
                 name="val_execdep_resource_idx",
+            ),
+            models.Index(
+                fields=["backend_slug", "backend_release_identity"],
+                name="val_execdep_backend_rel_idx",
             ),
         ]
         constraints = [
@@ -1893,9 +1934,18 @@ class ValidatorExecutionDeployment(TimeStampedModel):
         blank=True,
         default="",
     )
+    backend_slug = models.CharField(max_length=64, blank=True, default="")
     backend_release_identity = models.CharField(max_length=128)
+    source_release_tag = models.CharField(max_length=128, blank=True, default="")
+    release_record_sha256 = models.CharField(max_length=64, blank=True, default="")
     backend_image_ref = models.CharField(max_length=512)
     backend_image_digest = models.CharField(max_length=71)
+    provider_spec_sha256 = models.CharField(max_length=64, blank=True, default="")
+    execution_config_sha256 = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
     expected_runtime_identity = models.CharField(max_length=254)
     declared_capabilities = models.JSONField(default=dict)
     verified_capabilities = models.JSONField(default=dict, blank=True)
@@ -1915,6 +1965,17 @@ class ValidatorExecutionDeployment(TimeStampedModel):
     emergency_blocked = models.BooleanField(default=False)
     emergency_block_reason = models.CharField(max_length=500, blank=True, default="")
     activated_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    deactivation_cause = models.CharField(
+        max_length=64,
+        choices=ExecutionDeploymentDeactivationCause.choices,
+        blank=True,
+        default="",
+    )
+    provider_deleted_at = models.DateTimeField(null=True, blank=True)
+    retired_at = models.DateTimeField(null=True, blank=True)
+    retirement_reason = models.CharField(max_length=500, blank=True, default="")
     maximum_execution_seconds = models.PositiveIntegerField(
         validators=[MinValueValidator(1)],
     )
@@ -2114,17 +2175,84 @@ class ValidatorExecutionDeployment(TimeStampedModel):
             errors["routing_role"] = (
                 "Only a ready deployment may occupy a routing slot."
             )
+        if self.routing_role != ExecutionDeploymentRoutingRole.INACTIVE and (
+            self.deactivated_at is not None or self.deactivation_cause
+        ):
+            errors["deactivated_at"] = (
+                "A deployment occupying a routing slot cannot be in an "
+                "inactivity period."
+            )
+        if bool(self.deactivated_at) != bool(self.deactivation_cause):
+            errors["deactivation_cause"] = (
+                "Deactivation time and cause must be recorded or cleared together."
+            )
+        if self.accepted_at is not None and self.readiness_state not in {
+            ExecutionDeploymentReadiness.READY,
+            ExecutionDeploymentReadiness.RETIRED,
+        }:
+            errors["accepted_at"] = (
+                "Only a ready or historically retired deployment can be accepted."
+            )
         if (
             self.readiness_state == ExecutionDeploymentReadiness.RETIRED
             and self.routing_role != ExecutionDeploymentRoutingRole.INACTIVE
         ):
             errors["routing_role"] = "A retired deployment must be inactive."
+        if self.readiness_state == ExecutionDeploymentReadiness.RETIRED and (
+            self.provider_deleted_at is None
+            or self.retired_at is None
+            or not self.retirement_reason
+        ):
+            errors["retired_at"] = (
+                "Retirement requires provider deletion time, retirement time, "
+                "and a reason."
+            )
+
+        for digest_field in (
+            "release_record_sha256",
+            "provider_spec_sha256",
+            "execution_config_sha256",
+        ):
+            digest_value = getattr(self, digest_field)
+            if digest_value and re.fullmatch(r"[0-9a-f]{64}", digest_value) is None:
+                errors[digest_field] = (
+                    "Must be 64 lowercase hexadecimal SHA-256 characters."
+                )
+
+        if self.provider_spec_sha256 or self.execution_config_sha256:
+            from validibot.validations.services.execution.deployment_identity import (
+                execution_config_sha256,
+            )
+            from validibot.validations.services.execution.deployment_identity import (
+                provider_spec_sha256,
+            )
+
+            if (
+                self.provider_spec_sha256
+                and self.provider_spec_sha256 != provider_spec_sha256(self)
+            ):
+                errors["provider_spec_sha256"] = (
+                    "Does not match the stored immutable provider specification."
+                )
+            if (
+                self.execution_config_sha256
+                and self.execution_config_sha256 != execution_config_sha256(self)
+            ):
+                errors["execution_config_sha256"] = (
+                    "Does not match the stored execution configuration."
+                )
 
         if not self._state.adding:
             previous = (
                 type(self)
                 .objects.filter(pk=self.pk)
-                .values("readiness_state", *self.IMMUTABLE_AFTER_READY_FIELDS)
+                .values(
+                    "readiness_state",
+                    "accepted_at",
+                    "provider_deleted_at",
+                    "retired_at",
+                    *self.IMMUTABLE_AFTER_READY_FIELDS,
+                )
                 .first()
             )
             previous_readiness = previous["readiness_state"] if previous else None
@@ -2160,6 +2288,23 @@ class ValidatorExecutionDeployment(TimeStampedModel):
                     errors["__all__"] = (
                         "A deployment that reached READY is immutable; create a new "
                         "revision to change: " + ", ".join(changed_fields)
+                    )
+            if (
+                previous is not None
+                and previous["accepted_at"] is not None
+                and previous["accepted_at"] != self.accepted_at
+            ):
+                errors["accepted_at"] = (
+                    "Acceptance time is immutable after it is recorded."
+                )
+            for lifecycle_time in ("provider_deleted_at", "retired_at"):
+                if (
+                    previous is not None
+                    and previous[lifecycle_time] is not None
+                    and previous[lifecycle_time] != getattr(self, lifecycle_time)
+                ):
+                    errors[lifecycle_time] = (
+                        f"{lifecycle_time} is immutable after it is recorded."
                     )
 
         if errors:

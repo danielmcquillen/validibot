@@ -489,6 +489,51 @@ def _enforce_cloud_run_job_image_policy(
     raise RuntimeError(msg)
 
 
+def _managed_cloud_run_job_target(attempt) -> tuple[str, str, str, str] | None:
+    """Read an exact managed Job target only from its immutable attempt snapshot."""
+    if attempt is None or not getattr(attempt, "deployment_id", None):
+        return None
+    snapshot_data = getattr(attempt, "deployment_snapshot", None)
+    if not isinstance(snapshot_data, dict) or not snapshot_data:
+        raise RuntimeError(
+            "Managed Cloud Run Job attempt has no immutable deployment snapshot."
+        )
+    from validibot.validations.constants import ExecutionDeploymentKind
+    from validibot.validations.services.execution.deployment_schemas import (
+        DeploymentRouteSnapshot,
+    )
+
+    try:
+        snapshot = DeploymentRouteSnapshot.model_validate(snapshot_data)
+    except ValueError as exc:
+        raise RuntimeError(
+            "Managed Cloud Run Job attempt has an invalid deployment snapshot."
+        ) from exc
+    if snapshot.deployment_kind != ExecutionDeploymentKind.CLOUD_RUN_JOB:
+        raise RuntimeError(
+            "Managed Cloud Run Job dispatch received a non-Job deployment snapshot."
+        )
+    parts = snapshot.provider_resource_name.split("/")
+    if (
+        len(parts) != 6  # noqa: PLR2004
+        or parts[0] != "projects"
+        or parts[2] != "locations"
+        or parts[4] != "jobs"
+        or not parts[1]
+        or not parts[3]
+        or not parts[5]
+    ):
+        raise RuntimeError(
+            "Managed Cloud Run Job snapshot has an invalid provider resource name."
+        )
+    return (
+        parts[1],
+        parts[3],
+        snapshot.provider_resource_name,
+        snapshot.backend_image_digest,
+    )
+
+
 def _dispatch_cloud_run_validation(
     *,
     step_run: ValidationStepRun,
@@ -511,30 +556,13 @@ def _dispatch_cloud_run_validation(
     )
 
     attempt = get_active_execution_attempt(step_run)
-    deployment_snapshot = (
-        getattr(attempt, "deployment_snapshot", None) if attempt is not None else None
-    )
-    deployment = (
-        attempt.deployment
-        if attempt is not None
-        and attempt.deployment_id
-        and isinstance(deployment_snapshot, dict)
-        and deployment_snapshot
-        else None
-    )
-    project_id = (
-        deployment.provider_configuration["project_id"]
-        if deployment is not None
-        else settings.GCP_PROJECT_ID
-    )
-    region = (
-        deployment.provider_configuration["region"]
-        if deployment is not None
-        else settings.GCP_REGION
-    )
-    pinned_digest = expected_image_digest or (
-        deployment.backend_image_digest if deployment is not None else None
-    )
+    managed_target = _managed_cloud_run_job_target(attempt)
+    if managed_target is None:
+        project_id = settings.GCP_PROJECT_ID
+        region = settings.GCP_REGION
+        pinned_digest = expected_image_digest
+    else:
+        project_id, region, job_name, pinned_digest = managed_target
     if pinned_digest:
         _enforce_cloud_run_job_image_policy(
             job_name,

@@ -73,6 +73,8 @@ config = ValidatorConfig(
     short_description="Validate EnergyPlus IDF files and outputs.",
     description="Validate EnergyPlus\u2122 IDF models and run simulations.",
     validation_type=ValidationType.ENERGYPLUS,
+    execution_backend_slug="energyplus",
+    execution_runtime_contract="validibot-execution-v1",
     validator_class=(
         "validibot.validations.validators.energyplus.validator.EnergyPlusValidator"
     ),

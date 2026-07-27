@@ -18,6 +18,9 @@ from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ExecutionProviderType
 from validibot.validations.models import ValidatorExecutionDeployment
+from validibot.validations.services.execution.deployment_identity import (
+    set_deployment_config_digests,
+)
 from validibot.validations.services.execution.deployments import (
     activate_service_with_job_compatibility,
 )
@@ -46,7 +49,10 @@ class GCPServiceObservation:
     service_name: str
     service_url: str
     revision: str
+    backend_slug: str
     backend_release_identity: str
+    source_release_tag: str
+    release_record_sha256: str
     image_ref: str
     image_digest: str
     runtime_service_account: str
@@ -71,7 +77,10 @@ def registered_service_observation_mismatches(
         "deployment_revision": deployment.deployment_revision,
         "route": deployment.route.rstrip("/"),
         "authentication_audience": deployment.authentication_audience.rstrip("/"),
+        "backend_slug": deployment.backend_slug,
         "backend_release_identity": deployment.backend_release_identity,
+        "source_release_tag": deployment.source_release_tag,
+        "release_record_sha256": deployment.release_record_sha256,
         "backend_image_ref": deployment.backend_image_ref,
         "backend_image_digest": deployment.backend_image_digest,
         "expected_runtime_identity": deployment.expected_runtime_identity,
@@ -97,7 +106,10 @@ def registered_service_observation_mismatches(
         "deployment_revision": observation.revision,
         "route": observation.service_url,
         "authentication_audience": observation.service_url,
+        "backend_slug": observation.backend_slug,
         "backend_release_identity": observation.backend_release_identity,
+        "source_release_tag": observation.source_release_tag,
+        "release_record_sha256": observation.release_record_sha256,
         "backend_image_ref": observation.image_ref,
         "backend_image_digest": observation.image_digest,
         "expected_runtime_identity": observation.runtime_service_account,
@@ -189,6 +201,20 @@ def observe_cloud_run_service(
     backend_release = environment.get("VALIDIBOT_BACKEND_RELEASE", "")
     if not backend_release:
         raise GCPServiceImportError("Service backend release identity is missing.")
+    backend_slug = environment.get("VALIDIBOT_BACKEND_SLUG", "")
+    source_release_tag = environment.get("VALIDIBOT_SOURCE_RELEASE_TAG", "")
+    release_record_sha256 = environment.get(
+        "VALIDIBOT_RELEASE_RECORD_SHA256",
+        "",
+    )
+    if not backend_slug or source_release_tag != f"{backend_slug}-v{backend_release}":
+        raise GCPServiceImportError(
+            "Service backend slug, version, and source tag are inconsistent."
+        )
+    if re.fullmatch(r"[0-9a-f]{64}", release_record_sha256) is None:
+        raise GCPServiceImportError(
+            "Service release-record SHA-256 digest is missing or invalid."
+        )
     resources = getattr(containers[0], "resources", None)
     if not bool(getattr(resources, "startup_cpu_boost", False)):
         raise GCPServiceImportError("Validator Service must enable Startup CPU Boost.")
@@ -229,7 +255,10 @@ def observe_cloud_run_service(
         service_name=resource_name.rsplit("/", 1)[-1],
         service_url=service_url,
         revision=latest_ready.rsplit("/", 1)[-1],
+        backend_slug=backend_slug,
         backend_release_identity=backend_release,
+        source_release_tag=source_release_tag,
+        release_record_sha256=release_record_sha256,
         image_ref=image_ref,
         image_digest=image_digest,
         runtime_service_account=runtime_service_account,
@@ -303,7 +332,10 @@ def register_observed_service_deployment(
         "provider_resource_name": observation.resource_name,
         "route": observation.service_url,
         "authentication_audience": observation.service_url,
+        "backend_slug": observation.backend_slug,
         "backend_release_identity": observation.backend_release_identity,
+        "source_release_tag": observation.source_release_tag,
+        "release_record_sha256": observation.release_record_sha256,
         "backend_image_ref": observation.image_ref,
         "backend_image_digest": observation.image_digest,
         "expected_runtime_identity": observation.runtime_service_account,
@@ -321,6 +353,16 @@ def register_observed_service_deployment(
         "maximum_instances": observation.maximum_instances,
         "concurrency": observation.concurrency,
     }
+    candidate = ValidatorExecutionDeployment(
+        validator=validator,
+        provider_type=ExecutionProviderType.GCP,
+        deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_SERVICE,
+        deployment_revision=observation.revision,
+        **defaults,
+    )
+    set_deployment_config_digests(candidate)
+    defaults["provider_spec_sha256"] = candidate.provider_spec_sha256
+    defaults["execution_config_sha256"] = candidate.execution_config_sha256
     deployment, created = ValidatorExecutionDeployment.objects.get_or_create(
         validator=validator,
         provider_type=ExecutionProviderType.GCP,

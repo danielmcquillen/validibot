@@ -541,6 +541,16 @@ def _build_execution_attempt_records(
         deployment_snapshot = attempt.deployment_snapshot
         if isinstance(deployment_snapshot, dict):
             deployment_projection = {
+                "semantic_validator_id": deployment_snapshot.get("validator_id"),
+                "semantic_validator_slug": str(
+                    deployment_snapshot.get("validator_slug") or ""
+                ),
+                "semantic_validator_version": str(
+                    deployment_snapshot.get("validator_version") or ""
+                ),
+                "semantic_validator_digest": str(
+                    deployment_snapshot.get("validator_semantic_digest") or ""
+                ),
                 "execution_deployment_id": str(
                     deployment_snapshot.get("deployment_id") or ""
                 ),
@@ -552,6 +562,31 @@ def _build_execution_attempt_records(
                 ),
                 "provider_resource_name": str(
                     deployment_snapshot.get("provider_resource_name") or ""
+                ),
+                "backend_slug": str(deployment_snapshot.get("backend_slug") or ""),
+                "backend_release_version": str(
+                    deployment_snapshot.get("backend_release_identity") or ""
+                ),
+                "source_release_tag": str(
+                    deployment_snapshot.get("source_release_tag") or ""
+                ),
+                "release_record_sha256": str(
+                    deployment_snapshot.get("release_record_sha256") or ""
+                ),
+                "backend_image_ref": str(
+                    deployment_snapshot.get("backend_image_ref") or ""
+                ),
+                "backend_image_digest": str(
+                    deployment_snapshot.get("backend_image_digest") or ""
+                ),
+                "provider_spec_sha256": str(
+                    deployment_snapshot.get("provider_spec_sha256") or ""
+                ),
+                "execution_config_sha256": str(
+                    deployment_snapshot.get("execution_config_sha256") or ""
+                ),
+                "expected_runtime_identity": str(
+                    deployment_snapshot.get("expected_runtime_identity") or ""
                 ),
             }
             attempt_kwargs.update(

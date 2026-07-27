@@ -23,7 +23,7 @@ The current shipped advanced validators:
 | `fmu` | `validibot-validator-backend-fmu:<git_sha>` | Functional Mock-up Unit simulation |
 | `shacl` | `validibot-validator-backend-shacl:<git_sha>` | RDF graph validation |
 | `schematron` | `validibot-validator-backend-schematron:<git_sha>` | Schematron XML validation |
-| `portfolio_manager` | `validibot-validator-backend-portfolio-manager:<git_sha>` | ENERGY STAR Portfolio Manager report and collection validation |
+| `portfolio_manager` | `validibot-validator-backend-portfolio-manager:<git_sha>` | ENERGY STAR® Portfolio Manager® report and collection validation |
 
 Self-hosted recipes **build validator images locally** from a sibling checkout
 of `validibot-validator-backends` by default. Signed backend releases also

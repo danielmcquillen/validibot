@@ -9,6 +9,10 @@ networks:
   validibot:
     driver: bridge
 
+secrets:
+  validibot_commercial_netrc:
+    file: ${VALIDIBOT_COMMERCIAL_NETRC:-./compose/common/empty.netrc}
+
 services:
   web: &django
     # Web app serving user-facing traffic (runserver on 8000)
@@ -18,7 +22,8 @@ services:
       dockerfile: compose/local/django/Dockerfile
       args:
         VALIDIBOT_COMMERCIAL_PACKAGE: ${VALIDIBOT_COMMERCIAL_PACKAGE:-}
-        VALIDIBOT_PRIVATE_INDEX_URL: ${VALIDIBOT_PRIVATE_INDEX_URL:-}
+      secrets:
+        - validibot_commercial_netrc
     depends_on:
       postgres:
         condition: service_healthy

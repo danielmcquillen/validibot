@@ -674,7 +674,7 @@ If you've bought a Pro license, you'll have received a private package URL and a
 
 Pro migrations are additive — they create new tables (teams, guests, signed credentials, MCP, advanced analytics) but never reshape community tables. Existing data, users, workflows, and runs are preserved.
 
-The private package URL is the licensing gate. There is no runtime phone-home. A running Pro instance keeps running even if outbound internet is cut off. License expiry blocks future package downloads (your next upgrade will fail), not the running install.
+Treat the private package URL as a credential: keep it out of shell history, logs, and source control. Valid access is required when installing or upgrading the commercial package; the license email explains renewal and credential rotation.
 
 ## Troubleshooting
 

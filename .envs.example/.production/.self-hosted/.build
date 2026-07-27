@@ -17,12 +17,12 @@
 # Set one of:
 #   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-pro==0.1.0
 #   VALIDIBOT_COMMERCIAL_PACKAGE=validibot-enterprise==0.1.0
-#   VALIDIBOT_COMMERCIAL_PACKAGE="https://YOUR_EMAIL:YOUR_API_KEY@pypi.validibot.com/packages/validibot_pro-0.1.0-py3-none-any.whl#sha256=<hash>"
+#   VALIDIBOT_COMMERCIAL_PACKAGE="https://pypi.validibot.com/packages/validibot_pro-0.1.0-py3-none-any.whl#sha256=<hash>"
 #
-# The private index URL comes from your license email and typically
-# includes embedded credentials.
+# Absolute path to a mode-0600 netrc. Compose mounts it only into the
+# commercial package install step as a BuildKit secret.
 VALIDIBOT_COMMERCIAL_PACKAGE=
-VALIDIBOT_PRIVATE_INDEX_URL=
+VALIDIBOT_COMMERCIAL_NETRC=
 
 
 # -- 2. Recipe-level knobs --------------------------------------------------

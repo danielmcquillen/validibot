@@ -171,10 +171,14 @@ Public schema symbols:
 - `ManifestPayloadDigests` — input/output SHA-256 digests
 - `ManifestExecutionInput` — URI-free identity of one strict runtime input
 - `ManifestInputRelationship` — original-to-executed byte relationship
-- `ManifestExecutionAttempt` — attempt, provider, envelope, image, and input evidence
+- `ManifestExecutionAttempt` — semantic Validator, attempt, backend release,
+  provider, envelope, image, and input evidence
 - `SCHEMA_VERSION` — `"validibot.evidence.v1"`
 
 The current manifest shape is top-level, not nested under `run`, `workflow`, or `submission` objects.
+Before Validibot's first public evidence release, the shared package version
+coordinates producer and verifier changes; the project does not maintain
+parallel schema readers for hypothetical external consumers.
 
 ```json
 {
@@ -214,15 +218,27 @@ The current manifest shape is top-level, not nested under `run`, `workflow`, or 
       "attempt_number": 1,
       "state": "COMPLETED",
       "runner_type": "CloudRunServiceExecutionBackend",
+      "semantic_validator_id": 17,
+      "semantic_validator_slug": "energyplus",
+      "semantic_validator_version": "3",
+      "semantic_validator_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "execution_deployment_id": "7821a108-7328-4fa9-a3e3-d55f52c7e8aa",
       "deployment_kind": "CLOUD_RUN_SERVICE",
       "deployment_revision": "validibot-validator-service-energyplus-v0-15-0-00001-abc",
       "provider_resource_name": "projects/example/locations/australia-southeast1/services/validibot-validator-service-energyplus-v0-15-0",
       "provider_execution_id": "projects/example/locations/australia-southeast1/queues/validibot-validator-provider/tasks/vb-attempt-2c0c8780aed847d1bd7da9b83589d712",
+      "backend_slug": "energyplus",
+      "backend_release_version": "0.15.0",
+      "source_release_tag": "energyplus-v0.15.0",
+      "release_record_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "backend_image_ref": "ghcr.io/example/backend:0.15.0",
+      "provider_spec_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "execution_config_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+      "expected_runtime_identity": "validator-runtime@example-project.iam.gserviceaccount.com",
       "attempt_contract_version": "validibot.attempt.v2",
       "input_envelope_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "output_envelope_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "backend_image_digest": "ghcr.io/example/backend@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "backend_image_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       "inputs_verified": true,
       "input_files": [
         {

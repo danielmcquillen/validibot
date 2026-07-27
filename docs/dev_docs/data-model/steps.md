@@ -1,6 +1,6 @@
 # Validation Step Runs
 
-A **Validation Step Run** is the execution of one workflow step.  
+A **Validation Step Run** is the execution of one workflow step.
 Each step run belongs to exactly one Validation Run.
 
 It records:

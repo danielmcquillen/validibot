@@ -1738,7 +1738,6 @@ def build_portfolio_manager_config(
     near_percent = cleaned.get("near_target_percent")
     return {
         "submission_structure": cleaned.get("submission_structure") or "single_report",
-        "profile": cleaned.get("profile") or "generic",
         "default_euit_kbtu_ft2_yr": (
             float(default_euit) if default_euit is not None else None
         ),

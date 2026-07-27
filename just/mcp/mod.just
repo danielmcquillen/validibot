@@ -369,7 +369,9 @@ setup stage: _require-gcp-config
 #   dev     → mcp-env-dev
 #   staging → mcp-env-staging
 #
-# Gated by ENABLE_MCP_SERVER so community-only operators who run
+# After a successful upload, retention keeps the new version, one rollback
+# version, and any version still referenced by a current Cloud Run service or
+# job. Gated by ENABLE_MCP_SERVER so community-only operators who run
 # ``just gcp secrets`` on an MCP-disabled stack get a silent skip
 # rather than an error about a missing ``.mcp`` file.
 
@@ -436,12 +438,36 @@ secrets stage: _require-gcp-config
             --quiet >/dev/null
     fi
 
-    echo "Uploading MCP secrets from $ENV_FILE to $SECRET_NAME..."
-    gcloud secrets versions add "$SECRET_NAME" \
-        --data-file="$ENV_FILE" \
-        --project={{gcp_project}}
+    command -v jq >/dev/null 2>&1 || {
+        echo "Error: jq is required to validate the uploaded secret version."
+        exit 1
+    }
 
-    echo "Secret $SECRET_NAME updated."
+    echo "Uploading MCP secrets from $ENV_FILE to $SECRET_NAME..."
+    NEW_VERSION_JSON="$(
+        gcloud secrets versions add "$SECRET_NAME" \
+            --data-file="$ENV_FILE" \
+            --project={{gcp_project}} \
+            --format=json
+    )"
+    NEW_VERSION="$(
+        jq -r '.name // "" | split("/") | last' <<< "$NEW_VERSION_JSON"
+    )"
+    if [[ ! "$NEW_VERSION" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: upload succeeded, but its version could not be verified."
+        echo "No old secret versions were changed."
+        exit 1
+    fi
+
+    echo "Secret $SECRET_NAME version $NEW_VERSION established."
+    bash ops/gcp/prune-secret-versions.sh \
+        --project={{gcp_project}} \
+        --secret="$SECRET_NAME" \
+        --new-version="$NEW_VERSION" \
+        --keep="${GCP_SECRET_VERSIONS_TO_KEEP:-2}" \
+        --mode=apply
+
+    echo "Secret $SECRET_NAME updated; bounded version history applied."
 
 
 # ── Deploy ────────────────────────────────────────────────────────────────

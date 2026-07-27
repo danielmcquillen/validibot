@@ -8,6 +8,8 @@ failure as permission to choose another deployment after contact.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from django.db import transaction
@@ -17,10 +19,12 @@ from validibot.audit.constants import AuditAction
 from validibot.audit.services import ActorSpec
 from validibot.audit.services import AuditLogService
 from validibot.validations.constants import CallbackAuthenticationMethod
+from validibot.validations.constants import ExecutionDeploymentDeactivationCause
 from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ExecutionProviderType
+from validibot.validations.constants import ExecutionRoutingMode
 from validibot.validations.constants import RuntimeStorageIsolation
 from validibot.validations.constants import StorageCapabilityMode
 from validibot.validations.constants import ValidatorExecutionProfile
@@ -38,6 +42,223 @@ if TYPE_CHECKING:
 
 class ExecutionDeploymentResolutionError(RuntimeError):
     """No explicitly activated deployment can safely execute the attempt."""
+
+
+DEPLOYMENT_PAIR_MEMBER_COUNT = 2
+DEFAULT_PROVIDER_DRAIN_DAYS = 7
+MAX_OPERATOR_REASON_LENGTH = 1000
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedDeploymentPair:
+    """One verified Service/Job pair for one semantic Validator."""
+
+    service: ValidatorExecutionDeployment
+    job: ValidatorExecutionDeployment
+    runtime_contract: str
+
+
+def _require_current_verification(
+    deployment: ValidatorExecutionDeployment,
+) -> None:
+    """Require stored provider observations to match immutable database facts."""
+    from validibot.validations.services.execution.deployment_identity import (
+        execution_config_sha256,
+    )
+    from validibot.validations.services.execution.deployment_identity import (
+        provider_spec_sha256,
+    )
+
+    if (
+        deployment.readiness_state != ExecutionDeploymentReadiness.READY
+        or deployment.last_verification_succeeded is not True
+        or deployment.last_verified_at is None
+        or not deployment.last_verification_details
+    ):
+        raise ExecutionDeploymentResolutionError(
+            f"Deployment {deployment.pk} has no successful provider observation."
+        )
+    details = deployment.last_verification_details
+    expected_observations = {
+        "observed_provider_revision": deployment.deployment_revision,
+        "observed_resource_name": deployment.provider_resource_name,
+        "observed_image_digest": deployment.backend_image_digest,
+    }
+    mismatches = [
+        key
+        for key, expected in expected_observations.items()
+        if details.get(key) != expected
+    ]
+    if mismatches:
+        raise ExecutionDeploymentResolutionError(
+            f"Deployment {deployment.pk} provider observation differs in: "
+            + ", ".join(sorted(mismatches))
+        )
+    if (
+        not deployment.provider_spec_sha256
+        or deployment.provider_spec_sha256 != provider_spec_sha256(deployment)
+    ):
+        raise ExecutionDeploymentResolutionError(
+            f"Deployment {deployment.pk} provider specification digest is missing "
+            "or incorrect."
+        )
+    if (
+        not deployment.execution_config_sha256
+        or deployment.execution_config_sha256 != execution_config_sha256(deployment)
+    ):
+        raise ExecutionDeploymentResolutionError(
+            f"Deployment {deployment.pk} execution configuration digest is missing "
+            "or incorrect."
+        )
+
+
+def verify_execution_deployment_pair(
+    *,
+    service: ValidatorExecutionDeployment,
+    job: ValidatorExecutionDeployment,
+) -> VerifiedDeploymentPair:
+    """Verify one same-release, same-image Service and Job pair.
+
+    Provider import commands must re-read both live resources immediately
+    before calling an activation service. This function then checks those
+    stored observations, all immutable release facts, runtime identity, and
+    execution limits without contacting a provider inside the DB transaction.
+    """
+    if service.pk == job.pk:
+        raise ExecutionDeploymentResolutionError(
+            "A deployment cannot serve as both pair members."
+        )
+    if service.deployment_kind != ExecutionDeploymentKind.CLOUD_RUN_SERVICE:
+        raise ExecutionDeploymentResolutionError(
+            "The Service pair member is not a Cloud Run Service deployment."
+        )
+    if job.deployment_kind != ExecutionDeploymentKind.CLOUD_RUN_JOB:
+        raise ExecutionDeploymentResolutionError(
+            "The Job pair member is not a Cloud Run Job deployment."
+        )
+    if service.validator_id != job.validator_id:
+        raise ExecutionDeploymentResolutionError(
+            "Service and Job pair members use different semantic Validators."
+        )
+    if service.provider_type != job.provider_type:
+        raise ExecutionDeploymentResolutionError(
+            "Service and Job pair members use different providers."
+        )
+    if not service.backend_slug or service.backend_slug != job.backend_slug:
+        raise ExecutionDeploymentResolutionError(
+            "Service and Job pair members do not have the same backend slug."
+        )
+    validator_backend = service.validator.execution_backend_slug
+    if validator_backend and service.backend_slug != validator_backend:
+        raise ExecutionDeploymentResolutionError(
+            "Deployment backend does not match the semantic Validator declaration."
+        )
+    if (
+        not service.backend_release_identity
+        or service.backend_release_identity != job.backend_release_identity
+    ):
+        raise ExecutionDeploymentResolutionError(
+            "Service and Job pair members do not have the same backend version."
+        )
+    expected_source_tag = f"{service.backend_slug}-v{service.backend_release_identity}"
+    if (
+        service.source_release_tag != expected_source_tag
+        or job.source_release_tag != expected_source_tag
+    ):
+        raise ExecutionDeploymentResolutionError(
+            "Service and Job source tags do not match their backend and version."
+        )
+    if (
+        not service.release_record_sha256
+        or service.release_record_sha256 != job.release_record_sha256
+    ):
+        raise ExecutionDeploymentResolutionError(
+            "Service and Job pair members do not have the same release-record "
+            "SHA-256 digest."
+        )
+    if (
+        not service.backend_image_digest
+        or service.backend_image_digest != job.backend_image_digest
+    ):
+        raise ExecutionDeploymentResolutionError(
+            "Service and Job pair members do not have the same image digest."
+        )
+    if service.emergency_blocked or job.emergency_blocked:
+        raise ExecutionDeploymentResolutionError(
+            "An emergency-blocked deployment pair cannot be activated."
+        )
+    _require_current_verification(service)
+    _require_current_verification(job)
+    service_capabilities = _validated_capabilities(service)
+    job_capabilities = _validated_capabilities(job)
+    if (
+        service_capabilities.runtime_contract_version
+        != job_capabilities.runtime_contract_version
+    ):
+        raise ExecutionDeploymentResolutionError(
+            "Service and Job runtime contracts differ."
+        )
+    validator_contract = service.validator.execution_runtime_contract
+    if (
+        validator_contract
+        and service_capabilities.runtime_contract_version != validator_contract
+    ):
+        raise ExecutionDeploymentResolutionError(
+            "Deployment runtime contract does not match the semantic Validator."
+        )
+    if service.expected_runtime_identity != job.expected_runtime_identity:
+        raise ExecutionDeploymentResolutionError(
+            "Service and Job runtime identities differ."
+        )
+    service_configuration = service.provider_configuration
+    job_configuration = job.provider_configuration
+    for coordinate in ("project_id", "region", "runtime_service_account"):
+        if service_configuration.get(coordinate) != job_configuration.get(coordinate):
+            raise ExecutionDeploymentResolutionError(
+                f"Service and Job provider coordinate differs: {coordinate}."
+            )
+    if service.concurrency != 1:
+        raise ExecutionDeploymentResolutionError(
+            "Cloud Run validator Service concurrency must be one."
+        )
+    if service.maximum_instances is None:
+        raise ExecutionDeploymentResolutionError(
+            "Cloud Run validator Service requires a maximum instance limit."
+        )
+    if job.maximum_execution_seconds < service.maximum_execution_seconds:
+        raise ExecutionDeploymentResolutionError(
+            "Cloud Run Job execution limit cannot be shorter than the Service limit."
+        )
+    return VerifiedDeploymentPair(
+        service=service,
+        job=job,
+        runtime_contract=service_capabilities.runtime_contract_version,
+    )
+
+
+def routing_mode_for_pair(
+    *,
+    service: ValidatorExecutionDeployment,
+    job: ValidatorExecutionDeployment,
+) -> ExecutionRoutingMode:
+    """Calculate routing mode from the two routing slots; persist no mode."""
+    roles = (service.routing_role, job.routing_role)
+    if roles == (
+        ExecutionDeploymentRoutingRole.PRIMARY,
+        ExecutionDeploymentRoutingRole.LONG_RUNNING,
+    ):
+        return ExecutionRoutingMode.NORMAL
+    if roles == (
+        ExecutionDeploymentRoutingRole.INACTIVE,
+        ExecutionDeploymentRoutingRole.PRIMARY,
+    ):
+        return ExecutionRoutingMode.JOB_ONLY
+    if roles == (
+        ExecutionDeploymentRoutingRole.INACTIVE,
+        ExecutionDeploymentRoutingRole.INACTIVE,
+    ):
+        return ExecutionRoutingMode.INACTIVE
+    return ExecutionRoutingMode.INCONSISTENT
 
 
 def _record_operator_audit(
@@ -63,6 +284,16 @@ def _record_operator_audit(
             **(metadata or {}),
         },
     )
+
+
+def _normalize_operator_reason(reason: str) -> str:
+    """Return bounded audit text without creating another lifecycle authority."""
+    normalized = reason.strip()
+    if len(normalized) > MAX_OPERATOR_REASON_LENGTH:
+        raise ValueError(
+            f"Operator reason cannot exceed {MAX_OPERATOR_REASON_LENGTH} characters."
+        )
+    return normalized
 
 
 def _record_displaced_route_audits(
@@ -185,9 +416,166 @@ def ensure_execution_deployment_can_retire(
         )
 
 
+def ensure_backend_release_can_retire(
+    deployments: list[ValidatorExecutionDeployment],
+    *,
+    now=None,
+    drain_days: int = DEFAULT_PROVIDER_DRAIN_DAYS,
+) -> None:
+    """Require a complete accepted release to be inactive and fully drained."""
+    from validibot.validations.constants import EXECUTION_ATTEMPT_TERMINAL_STATES
+    from validibot.validations.models import ExecutionAttempt
+
+    if drain_days < DEFAULT_PROVIDER_DRAIN_DAYS:
+        raise ValueError(
+            f"Routine drain period cannot be below {DEFAULT_PROVIDER_DRAIN_DAYS} days."
+        )
+    if not deployments:
+        raise ExecutionDeploymentResolutionError(
+            "No deployment rows exist for the selected backend release."
+        )
+    by_validator: dict[object, list[ValidatorExecutionDeployment]] = {}
+    for deployment in deployments:
+        by_validator.setdefault(deployment.validator_id, []).append(deployment)
+    for validator_id, rows in by_validator.items():
+        kinds = {row.deployment_kind for row in rows}
+        if kinds != {
+            ExecutionDeploymentKind.CLOUD_RUN_SERVICE,
+            ExecutionDeploymentKind.CLOUD_RUN_JOB,
+        }:
+            raise ExecutionDeploymentResolutionError(
+                f"Validator {validator_id} does not have one complete provider pair."
+            )
+    deadline = (now or timezone.now()) - timedelta(days=drain_days)
+    for deployment in deployments:
+        if deployment.routing_role != ExecutionDeploymentRoutingRole.INACTIVE:
+            raise ExecutionDeploymentResolutionError(
+                f"Deployment {deployment.pk} still occupies a routing slot."
+            )
+        if deployment.accepted_at is None:
+            raise ExecutionDeploymentResolutionError(
+                f"Deployment {deployment.pk} was never accepted."
+            )
+        if deployment.deactivated_at is None or deployment.deactivated_at > deadline:
+            raise ExecutionDeploymentResolutionError(
+                f"Deployment {deployment.pk} has not completed the "
+                f"{drain_days}-day drain period."
+            )
+        if (
+            deployment.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_SERVICE
+            and deployment.minimum_instances != 0
+        ):
+            raise ExecutionDeploymentResolutionError(
+                f"Service deployment {deployment.pk} must have minimum instances zero."
+            )
+    if (
+        ExecutionAttempt.objects.filter(
+            deployment_id__in=[deployment.pk for deployment in deployments]
+        )
+        .exclude(state__in=EXECUTION_ATTEMPT_TERMINAL_STATES)
+        .exists()
+    ):
+        raise ExecutionDeploymentResolutionError(
+            "The backend release still has a nonterminal attempt."
+        )
+
+
+@transaction.atomic
+def record_execution_deployment_provider_deleted(
+    deployment: ValidatorExecutionDeployment,
+    *,
+    deleted_at=None,
+) -> ValidatorExecutionDeployment:
+    """Record confirmed absence for one provider member during resumable cleanup."""
+    from validibot.validations.models import ValidatorExecutionDeployment
+
+    selected = ValidatorExecutionDeployment.objects.select_for_update().get(
+        pk=deployment.pk
+    )
+    if selected.routing_role != ExecutionDeploymentRoutingRole.INACTIVE:
+        raise ExecutionDeploymentResolutionError(
+            f"Deployment {selected.pk} still occupies a routing slot."
+        )
+    if selected.provider_deleted_at is not None:
+        return selected
+    selected.provider_deleted_at = deleted_at or timezone.now()
+    selected.save(update_fields=["provider_deleted_at", "modified"])
+    return selected
+
+
+@transaction.atomic
+def retire_backend_release_deployments(
+    *,
+    backend_slug: str,
+    backend_release_identity: str,
+    reason: str,
+    drain_days: int = DEFAULT_PROVIDER_DRAIN_DAYS,
+) -> tuple[ValidatorExecutionDeployment, ...]:
+    """Retire every semantic deployment row after both provider members vanish."""
+    from validibot.validations.models import ValidatorExecutionDeployment
+
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ValueError("Deployment retirement requires a reason.")
+    deployments = list(
+        ValidatorExecutionDeployment.objects.select_for_update()
+        .select_related("validator")
+        .filter(
+            backend_slug=backend_slug,
+            backend_release_identity=backend_release_identity,
+        )
+        .order_by("validator_id", "deployment_kind")
+    )
+    ensure_backend_release_can_retire(
+        deployments,
+        drain_days=drain_days,
+    )
+    missing_deletion = [
+        deployment.pk
+        for deployment in deployments
+        if deployment.provider_deleted_at is None
+    ]
+    if missing_deletion:
+        raise ExecutionDeploymentResolutionError(
+            "Provider deletion has not been confirmed for deployment rows: "
+            + ", ".join(str(value) for value in missing_deletion)
+        )
+    retired_at = timezone.now()
+    for deployment in deployments:
+        if deployment.readiness_state == ExecutionDeploymentReadiness.RETIRED:
+            continue
+        previous_state = deployment.readiness_state
+        deployment.readiness_state = ExecutionDeploymentReadiness.RETIRED
+        deployment.retired_at = retired_at
+        deployment.retirement_reason = normalized_reason
+        deployment.save(
+            update_fields=[
+                "readiness_state",
+                "retired_at",
+                "retirement_reason",
+                "modified",
+            ]
+        )
+        _record_operator_audit(
+            deployment,
+            action=AuditAction.VALIDATOR_DEPLOYMENT_RETIRED,
+            changes={"readiness_state": [previous_state, deployment.readiness_state]},
+            metadata={
+                "backend_slug": backend_slug,
+                "backend_release": backend_release_identity,
+                "provider_deleted_at": deployment.provider_deleted_at.isoformat(),
+                "retirement_reason": normalized_reason,
+            },
+        )
+    return tuple(deployments)
+
+
 @transaction.atomic
 def retire_execution_deployment(
     deployment: ValidatorExecutionDeployment,
+    *,
+    provider_deleted_at=None,
+    reason: str = "Provider resource deleted after verified drain.",
 ) -> ValidatorExecutionDeployment:
     """Retire an inactive Service after its provider resource was deleted."""
     from validibot.validations.models import ValidatorExecutionDeployment
@@ -198,14 +586,33 @@ def retire_execution_deployment(
     ensure_execution_deployment_can_retire(selected)
     if selected.readiness_state == ExecutionDeploymentReadiness.RETIRED:
         return selected
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ValueError("Deployment retirement requires a reason.")
     previous_state = selected.readiness_state
+    retired_at = timezone.now()
+    selected.provider_deleted_at = provider_deleted_at or retired_at
+    selected.retired_at = retired_at
+    selected.retirement_reason = normalized_reason
     selected.readiness_state = ExecutionDeploymentReadiness.RETIRED
-    selected.save(update_fields=["readiness_state", "modified"])
+    selected.save(
+        update_fields=[
+            "provider_deleted_at",
+            "retired_at",
+            "retirement_reason",
+            "readiness_state",
+            "modified",
+        ]
+    )
     _record_operator_audit(
         selected,
         action=AuditAction.VALIDATOR_DEPLOYMENT_RETIRED,
         changes={"readiness_state": [previous_state, selected.readiness_state]},
-        metadata={"provider_resource_deleted": True},
+        metadata={
+            "provider_resource_deleted": True,
+            "provider_deleted_at": selected.provider_deleted_at.isoformat(),
+            "retirement_reason": normalized_reason,
+        },
     )
     return selected
 
@@ -405,6 +812,9 @@ def build_deployment_snapshot(
     snapshot = DeploymentRouteSnapshot(
         deployment_id=deployment.pk,
         validator_id=deployment.validator_id,
+        validator_slug=deployment.validator.slug,
+        validator_version=str(deployment.validator.version),
+        validator_semantic_digest=deployment.validator.semantic_digest,
         selected_at=timezone.now(),
         provider_type=ExecutionProviderType(deployment.provider_type),
         deployment_kind=ExecutionDeploymentKind(deployment.deployment_kind),
@@ -412,9 +822,14 @@ def build_deployment_snapshot(
         provider_resource_name=deployment.provider_resource_name,
         route=deployment.route,
         authentication_audience=deployment.authentication_audience,
+        backend_slug=deployment.backend_slug,
         backend_release_identity=deployment.backend_release_identity,
+        source_release_tag=deployment.source_release_tag,
+        release_record_sha256=deployment.release_record_sha256,
         backend_image_ref=deployment.backend_image_ref,
         backend_image_digest=deployment.backend_image_digest,
+        provider_spec_sha256=deployment.provider_spec_sha256,
+        execution_config_sha256=deployment.execution_config_sha256,
         expected_runtime_identity=deployment.expected_runtime_identity,
         routing_role=ExecutionDeploymentRoutingRole(deployment.routing_role),
         declared_capabilities=deployment.declared_capabilities,
@@ -430,164 +845,467 @@ def build_deployment_snapshot(
 
 
 @transaction.atomic
-def activate_execution_deployment(
-    deployment: ValidatorExecutionDeployment,
+def mark_execution_deployment_pair_accepted(
     *,
-    routing_role: ExecutionDeploymentRoutingRole,
-) -> ValidatorExecutionDeployment:
-    """Transactionally move one READY deployment into an active routing slot."""
+    service: ValidatorExecutionDeployment,
+    job: ValidatorExecutionDeployment,
+    accepted_at=None,
+) -> VerifiedDeploymentPair:
+    """Record successful private acceptance on both verified pair members."""
     from validibot.validations.models import ValidatorExecutionDeployment
 
-    if routing_role == ExecutionDeploymentRoutingRole.INACTIVE:
-        raise ValueError("Use an explicit block or rollback workflow to deactivate.")
-    selected = ValidatorExecutionDeployment.objects.select_for_update().get(
-        pk=deployment.pk
-    )
-    previous_role = selected.routing_role
-    if selected.readiness_state != ExecutionDeploymentReadiness.READY:
+    locked = {
+        item.pk: item
+        for item in ValidatorExecutionDeployment.objects.select_for_update()
+        .select_related("validator")
+        .filter(pk__in=(service.pk, job.pk))
+    }
+    if len(locked) != DEPLOYMENT_PAIR_MEMBER_COUNT:
         raise ExecutionDeploymentResolutionError(
-            f"Deployment {selected.pk} is not ready for activation."
+            "Both deployment pair members must exist before acceptance."
         )
-    if selected.emergency_blocked:
+    pair = verify_execution_deployment_pair(
+        service=locked[service.pk],
+        job=locked[job.pk],
+    )
+    existing_acceptance_times = {
+        deployment.accepted_at
+        for deployment in (pair.service, pair.job)
+        if deployment.accepted_at is not None
+    }
+    if len(existing_acceptance_times) > 1:
         raise ExecutionDeploymentResolutionError(
-            f"Deployment {selected.pk} is emergency blocked."
+            "Deployment pair members have different acceptance times."
         )
-    _validated_capabilities(selected)
-    displaced = list(
-        ValidatorExecutionDeployment.objects.select_for_update()
-        .filter(
-            validator_id=selected.validator_id,
-            routing_role=routing_role,
+    if existing_acceptance_times:
+        existing_time = existing_acceptance_times.pop()
+        if accepted_at is not None and accepted_at != existing_time:
+            raise ExecutionDeploymentResolutionError(
+                "Deployment pair already has a different acceptance time."
+            )
+        moment = existing_time
+    else:
+        moment = accepted_at or timezone.now()
+    for deployment in (pair.service, pair.job):
+        if deployment.accepted_at is None:
+            deployment.accepted_at = moment
+            deployment.save(update_fields=["accepted_at", "modified"])
+    return pair
+
+
+def _route_locked_pair(
+    *,
+    pair: VerifiedDeploymentPair,
+    all_routes: list[ValidatorExecutionDeployment],
+    mode: ExecutionRoutingMode,
+    deactivation_cause: ExecutionDeploymentDeactivationCause,
+    operator_reason: str,
+    changed_at,
+) -> VerifiedDeploymentPair:
+    """Apply one already-verified pair transition inside the caller's lock."""
+    from validibot.validations.models import ValidatorExecutionDeployment
+
+    target_roles = {
+        pair.service.pk: (
+            ExecutionDeploymentRoutingRole.PRIMARY
+            if mode == ExecutionRoutingMode.NORMAL
+            else ExecutionDeploymentRoutingRole.INACTIVE
+        ),
+        pair.job.pk: (
+            ExecutionDeploymentRoutingRole.LONG_RUNNING
+            if mode == ExecutionRoutingMode.NORMAL
+            else (
+                ExecutionDeploymentRoutingRole.PRIMARY
+                if mode == ExecutionRoutingMode.JOB_ONLY
+                else ExecutionDeploymentRoutingRole.INACTIVE
+            )
+        ),
+    }
+    previous_roles = {item.pk: item.routing_role for item in all_routes}
+    previous_deactivation = {
+        item.pk: (item.deactivated_at, item.deactivation_cause) for item in all_routes
+    }
+    active_routes = [
+        item
+        for item in all_routes
+        if item.routing_role != ExecutionDeploymentRoutingRole.INACTIVE
+    ]
+    if active_routes:
+        ValidatorExecutionDeployment.objects.filter(
+            pk__in=[item.pk for item in active_routes]
+        ).update(
+            routing_role=ExecutionDeploymentRoutingRole.INACTIVE,
+            activated_at=None,
+            deactivated_at=changed_at,
+            deactivation_cause=deactivation_cause,
+            modified=changed_at,
         )
-        .exclude(pk=selected.pk)
-    )
-    now = timezone.now()
-    ValidatorExecutionDeployment.objects.filter(
-        pk__in=[item.pk for item in displaced]
-    ).update(
-        routing_role=ExecutionDeploymentRoutingRole.INACTIVE,
-        activated_at=None,
-        modified=now,
-    )
-    selected.routing_role = routing_role
-    selected.activated_at = now
-    selected.save(update_fields=["routing_role", "activated_at", "modified"])
-    _record_displaced_route_audits(
-        displaced,
-        replacement=selected,
-        modified_at=now,
-    )
-    if previous_role != routing_role:
+
+    for deployment in all_routes:
+        target_role = target_roles.get(
+            deployment.pk,
+            ExecutionDeploymentRoutingRole.INACTIVE,
+        )
+        previous_role = previous_roles[deployment.pk]
+        deployment.routing_role = target_role
+        if target_role == ExecutionDeploymentRoutingRole.INACTIVE:
+            deployment.activated_at = None
+            if previous_role != ExecutionDeploymentRoutingRole.INACTIVE:
+                deployment.deactivated_at = changed_at
+                deployment.deactivation_cause = deactivation_cause
+            elif deployment.pk in target_roles and deployment.deactivated_at is None:
+                # A newly imported Service can enter Job-only mode before it
+                # has ever occupied PRIMARY. This explicit transition starts
+                # its first accountable continuous inactivity period.
+                deployment.deactivated_at = changed_at
+                deployment.deactivation_cause = deactivation_cause
+        else:
+            deployment.activated_at = changed_at
+            deployment.deactivated_at = None
+            deployment.deactivation_cause = ""
+
+    # Active slots were cleared above, so these saves cannot temporarily
+    # violate the per-Validator unique routing-slot constraints.
+    for deployment in (pair.service, pair.job):
+        deployment.save(
+            update_fields=[
+                "routing_role",
+                "activated_at",
+                "deactivated_at",
+                "deactivation_cause",
+                "modified",
+            ]
+        )
+
+    changed = [
+        deployment
+        for deployment in all_routes
+        if previous_roles[deployment.pk] != deployment.routing_role
+    ]
+    for deployment in changed:
+        previous_role = previous_roles[deployment.pk]
+        action = (
+            AuditAction.VALIDATOR_DEPLOYMENT_DEACTIVATED
+            if deployment.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+            else AuditAction.VALIDATOR_DEPLOYMENT_ACTIVATED
+        )
         _record_operator_audit(
-            selected,
-            action=AuditAction.VALIDATOR_DEPLOYMENT_ACTIVATED,
-            changes={"routing_role": [previous_role, routing_role]},
+            deployment,
+            action=action,
+            changes={
+                "routing_role": [previous_role, deployment.routing_role],
+                "deactivated_at": [
+                    (
+                        previous_deactivation[deployment.pk][0].isoformat()
+                        if previous_deactivation[deployment.pk][0]
+                        else None
+                    ),
+                    (
+                        deployment.deactivated_at.isoformat()
+                        if deployment.deactivated_at
+                        else None
+                    ),
+                ],
+                "deactivation_cause": [
+                    previous_deactivation[deployment.pk][1],
+                    deployment.deactivation_cause,
+                ],
+            },
+            metadata={
+                "backend_slug": pair.service.backend_slug,
+                "backend_release": deployment.backend_release_identity,
+                "routing_mode": mode.value,
+                "pair_service_deployment_id": str(pair.service.pk),
+                "pair_job_deployment_id": str(pair.job.pk),
+                **({"operator_reason": operator_reason} if operator_reason else {}),
+            },
         )
-    return selected
+    return pair
+
+
+@transaction.atomic
+def route_execution_deployment_pair(
+    *,
+    service: ValidatorExecutionDeployment,
+    job: ValidatorExecutionDeployment,
+    mode: ExecutionRoutingMode | str,
+    deactivation_cause: ExecutionDeploymentDeactivationCause | str,
+    require_accepted: bool = True,
+    operator_reason: str = "",
+) -> VerifiedDeploymentPair:
+    """Change normal or Job-only routing for one pair in one transaction."""
+    from validibot.validations.models import ValidatorExecutionDeployment
+
+    try:
+        selected_mode = ExecutionRoutingMode(mode)
+    except ValueError as exc:
+        raise ValueError(
+            "Pair routing mode must be normal, job-only, or inactive."
+        ) from exc
+    if selected_mode not in {
+        ExecutionRoutingMode.NORMAL,
+        ExecutionRoutingMode.JOB_ONLY,
+        ExecutionRoutingMode.INACTIVE,
+    }:
+        raise ValueError("Pair routing mode must be normal, job-only, or inactive.")
+    try:
+        cause = ExecutionDeploymentDeactivationCause(deactivation_cause)
+    except ValueError as exc:
+        raise ValueError("Unknown deployment deactivation cause.") from exc
+    reason = _normalize_operator_reason(operator_reason)
+
+    routes = list(
+        ValidatorExecutionDeployment.objects.select_for_update()
+        .select_related("validator")
+        .filter(validator_id=service.validator_id)
+    )
+    selected_by_id = {item.pk: item for item in routes}
+    if service.pk not in selected_by_id or job.pk not in selected_by_id:
+        raise ExecutionDeploymentResolutionError(
+            "Both pair members must belong to the locked semantic Validator."
+        )
+    pair = verify_execution_deployment_pair(
+        service=selected_by_id[service.pk],
+        job=selected_by_id[job.pk],
+    )
+    if require_accepted and (
+        pair.service.accepted_at is None or pair.job.accepted_at is None
+    ):
+        raise ExecutionDeploymentResolutionError(
+            "Both pair members require successful private acceptance."
+        )
+    return _route_locked_pair(
+        pair=pair,
+        all_routes=routes,
+        mode=selected_mode,
+        deactivation_cause=cause,
+        operator_reason=reason,
+        changed_at=timezone.now(),
+    )
+
+
+@transaction.atomic
+def activate_backend_release(
+    *,
+    backend_slug: str,
+    backend_release_identity: str,
+    mode: ExecutionRoutingMode | str = ExecutionRoutingMode.NORMAL,
+    deactivation_cause: ExecutionDeploymentDeactivationCause
+    | str = ExecutionDeploymentDeactivationCause.SUPERSEDED_BY_ACCEPTED_RELEASE,
+    require_accepted: bool = True,
+    operator_reason: str = "",
+) -> tuple[VerifiedDeploymentPair, ...]:
+    """Activate every compatible semantic Validator row for one backend release.
+
+    Every candidate pair is verified before any routing row changes. Only
+    Validators declaring ``backend_slug`` are locked, so updating EnergyPlus
+    never locks or changes another backend.
+    """
+    from validibot.validations.constants import ValidatorAvailabilityState
+    from validibot.validations.constants import ValidatorReleaseState
+    from validibot.validations.models import Validator
+    from validibot.validations.models import ValidatorExecutionDeployment
+
+    try:
+        selected_mode = ExecutionRoutingMode(mode)
+    except ValueError as exc:
+        raise ValueError(
+            "Backend routing mode must be normal, job-only, or inactive."
+        ) from exc
+    if selected_mode not in {
+        ExecutionRoutingMode.NORMAL,
+        ExecutionRoutingMode.JOB_ONLY,
+        ExecutionRoutingMode.INACTIVE,
+    }:
+        raise ValueError("Backend routing mode must be normal, job-only, or inactive.")
+    try:
+        cause = ExecutionDeploymentDeactivationCause(deactivation_cause)
+    except ValueError as exc:
+        raise ValueError("Unknown deployment deactivation cause.") from exc
+    reason = _normalize_operator_reason(operator_reason)
+    validators = list(
+        Validator.objects.filter(
+            execution_backend_slug=backend_slug,
+            release_state=ValidatorReleaseState.PUBLISHED,
+            is_system=True,
+            is_enabled=True,
+            availability_state=ValidatorAvailabilityState.AVAILABLE,
+        ).order_by("pk")
+    )
+    if not validators:
+        raise ExecutionDeploymentResolutionError(
+            f"No published semantic Validator declares backend {backend_slug!r}."
+        )
+    validator_ids = [validator.pk for validator in validators]
+    deployments = list(
+        ValidatorExecutionDeployment.objects.select_for_update()
+        .select_related("validator")
+        .filter(
+            validator_id__in=validator_ids,
+            readiness_state=ExecutionDeploymentReadiness.READY,
+        )
+        .order_by("validator_id", "pk")
+    )
+    by_validator: dict[int, list[ValidatorExecutionDeployment]] = {
+        validator_id: [] for validator_id in validator_ids
+    }
+    for deployment in deployments:
+        by_validator[deployment.validator_id].append(deployment)
+
+    pairs: list[VerifiedDeploymentPair] = []
+    for validator in validators:
+        candidates = [
+            deployment
+            for deployment in by_validator[validator.pk]
+            if deployment.backend_slug == backend_slug
+            and deployment.backend_release_identity == backend_release_identity
+        ]
+        services = [
+            item
+            for item in candidates
+            if item.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_SERVICE
+        ]
+        jobs = [
+            item
+            for item in candidates
+            if item.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_JOB
+        ]
+        if len(services) != 1 or len(jobs) != 1:
+            raise ExecutionDeploymentResolutionError(
+                f"Validator {validator.pk} requires exactly one Service and one Job "
+                f"row for {backend_slug} {backend_release_identity}."
+            )
+        pair = verify_execution_deployment_pair(
+            service=services[0],
+            job=jobs[0],
+        )
+        if require_accepted and (
+            pair.service.accepted_at is None or pair.job.accepted_at is None
+        ):
+            raise ExecutionDeploymentResolutionError(
+                f"Validator {validator.pk} pair has not completed private acceptance."
+            )
+        pairs.append(pair)
+
+    now = timezone.now()
+    for pair in pairs:
+        _route_locked_pair(
+            pair=pair,
+            all_routes=by_validator[pair.service.validator_id],
+            mode=selected_mode,
+            deactivation_cause=cause,
+            operator_reason=reason,
+            changed_at=now,
+        )
+    return tuple(pairs)
+
+
+@transaction.atomic
+def activate_backend_release_group(
+    *,
+    releases: dict[str, str],
+    mode: ExecutionRoutingMode | str = ExecutionRoutingMode.NORMAL,
+    deactivation_cause: ExecutionDeploymentDeactivationCause
+    | str = ExecutionDeploymentDeactivationCause.SUPERSEDED_BY_ACCEPTED_RELEASE,
+    operator_reason: str = "",
+) -> dict[str, tuple[VerifiedDeploymentPair, ...]]:
+    """Activate several accepted backends as one database transaction.
+
+    Setup and explicit multi-backend updates stage and accept every candidate
+    before calling this service. Nested backend activations share this outer
+    transaction, so a failure in the final backend rolls back every earlier
+    route change in the group.
+    """
+    if not releases:
+        raise ValueError("At least one backend release is required.")
+    activated: dict[str, tuple[VerifiedDeploymentPair, ...]] = {}
+    for backend_slug in sorted(releases):
+        activated[backend_slug] = activate_backend_release(
+            backend_slug=backend_slug,
+            backend_release_identity=releases[backend_slug],
+            mode=mode,
+            deactivation_cause=deactivation_cause,
+            operator_reason=operator_reason,
+        )
+    return activated
+
+
+@transaction.atomic
+def activate_execution_deployment(
+    deployment: ValidatorExecutionDeployment,
+) -> ValidatorExecutionDeployment:
+    """Compatibility wrapper that enters Job-only mode through pair routing."""
+    from validibot.validations.models import ValidatorExecutionDeployment
+
+    selected = ValidatorExecutionDeployment.objects.get(pk=deployment.pk)
+    if selected.deployment_kind != ExecutionDeploymentKind.CLOUD_RUN_JOB:
+        raise ExecutionDeploymentResolutionError(
+            "Legacy single-deployment activation is disabled; select a pair."
+        )
+    service = (
+        ValidatorExecutionDeployment.objects.filter(
+            validator_id=selected.validator_id,
+            deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_SERVICE,
+            backend_slug=selected.backend_slug,
+            backend_release_identity=selected.backend_release_identity,
+            backend_image_digest=selected.backend_image_digest,
+            release_record_sha256=selected.release_record_sha256,
+        )
+        .order_by("-created")
+        .first()
+    )
+    if service is None:
+        raise ExecutionDeploymentResolutionError(
+            "Job-only activation requires its same-release Service pair member."
+        )
+    pair = route_execution_deployment_pair(
+        service=service,
+        job=selected,
+        mode=ExecutionRoutingMode.JOB_ONLY,
+        deactivation_cause=ExecutionDeploymentDeactivationCause.SHAPE_ROLLBACK,
+        require_accepted=False,
+    )
+    return pair.job
 
 
 @transaction.atomic
 def activate_service_with_job_compatibility(
     deployment: ValidatorExecutionDeployment,
 ) -> ValidatorExecutionDeployment:
-    """Make a Service primary while retaining the current Job for long work."""
+    """Compatibility wrapper that activates a verified normal pair."""
     from validibot.validations.models import ValidatorExecutionDeployment
 
-    routes = list(
-        ValidatorExecutionDeployment.objects.select_for_update().filter(
-            validator_id=deployment.validator_id
-        )
-    )
-    selected = next((item for item in routes if item.pk == deployment.pk), None)
-    if selected is None:
-        raise ExecutionDeploymentResolutionError("Service deployment was not found.")
+    selected = ValidatorExecutionDeployment.objects.get(pk=deployment.pk)
     if selected.deployment_kind != ExecutionDeploymentKind.CLOUD_RUN_SERVICE:
         raise ExecutionDeploymentResolutionError(
             "Service activation requires a Cloud Run Service deployment."
         )
-    if (
-        selected.readiness_state != ExecutionDeploymentReadiness.READY
-        or selected.emergency_blocked
-    ):
-        raise ExecutionDeploymentResolutionError(
-            f"Service deployment {selected.pk} is not eligible for activation."
+    job = (
+        ValidatorExecutionDeployment.objects.filter(
+            validator_id=selected.validator_id,
+            deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB,
+            backend_slug=selected.backend_slug,
+            backend_release_identity=selected.backend_release_identity,
+            backend_image_digest=selected.backend_image_digest,
+            release_record_sha256=selected.release_record_sha256,
         )
-    _validated_capabilities(selected)
-    compatibility = next(
-        (
-            item
-            for item in routes
-            if item.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_JOB
-            and item.routing_role
-            == (
-                ExecutionDeploymentRoutingRole.LONG_RUNNING
-                if selected.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
-                else ExecutionDeploymentRoutingRole.PRIMARY
-            )
-            and item.readiness_state == ExecutionDeploymentReadiness.READY
-            and not item.emergency_blocked
+        .order_by("-created")
+        .first()
+    )
+    if job is None:
+        raise ExecutionDeploymentResolutionError(
+            "Normal activation requires its same-release Job pair member."
+        )
+    pair = route_execution_deployment_pair(
+        service=selected,
+        job=job,
+        mode=ExecutionRoutingMode.NORMAL,
+        deactivation_cause=(
+            ExecutionDeploymentDeactivationCause.SUPERSEDED_BY_ACCEPTED_RELEASE
         ),
-        None,
+        require_accepted=False,
     )
-    if compatibility is None:
-        raise ExecutionDeploymentResolutionError(
-            "A ready primary Cloud Run Job is required before Service activation."
-        )
-    selected_previous_role = selected.routing_role
-    compatibility_previous_role = compatibility.routing_role
-    now = timezone.now()
-    displaced = [
-        item
-        for item in routes
-        if item.pk not in {selected.pk, compatibility.pk}
-        and item.routing_role
-        in {
-            ExecutionDeploymentRoutingRole.PRIMARY,
-            ExecutionDeploymentRoutingRole.LONG_RUNNING,
-        }
-    ]
-    ValidatorExecutionDeployment.objects.filter(
-        validator_id=selected.validator_id,
-        routing_role=ExecutionDeploymentRoutingRole.LONG_RUNNING,
-    ).exclude(pk=compatibility.pk).update(
-        routing_role=ExecutionDeploymentRoutingRole.INACTIVE,
-        activated_at=None,
-        modified=now,
-    )
-    ValidatorExecutionDeployment.objects.filter(
-        validator_id=selected.validator_id,
-        routing_role=ExecutionDeploymentRoutingRole.PRIMARY,
-    ).exclude(pk__in=(selected.pk, compatibility.pk)).update(
-        routing_role=ExecutionDeploymentRoutingRole.INACTIVE,
-        activated_at=None,
-        modified=now,
-    )
-    compatibility.routing_role = ExecutionDeploymentRoutingRole.LONG_RUNNING
-    compatibility.activated_at = now
-    compatibility.save(update_fields=["routing_role", "activated_at", "modified"])
-    selected.routing_role = ExecutionDeploymentRoutingRole.PRIMARY
-    selected.activated_at = now
-    selected.save(update_fields=["routing_role", "activated_at", "modified"])
-    _record_displaced_route_audits(
-        displaced,
-        replacement=selected,
-        modified_at=now,
-    )
-    if (
-        selected_previous_role != selected.routing_role
-        or compatibility_previous_role != compatibility.routing_role
-    ):
-        _record_operator_audit(
-            selected,
-            action=AuditAction.VALIDATOR_DEPLOYMENT_ACTIVATED,
-            changes={"routing_role": [selected_previous_role, selected.routing_role]},
-            metadata={
-                "long_running_deployment_id": str(compatibility.pk),
-                "long_running_previous_role": compatibility_previous_role,
-                "long_running_role": compatibility.routing_role,
-            },
-        )
-    return selected
+    return pair.service
 
 
 @transaction.atomic

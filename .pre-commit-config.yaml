@@ -10,6 +10,11 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        # Mermaid is copied byte-for-byte from the integrity-pinned npm
+        # package. Its minified bundle contains whitespace inside embedded
+        # shader/template source, so rewriting it makes the generated asset
+        # perpetually differ from a fresh `npm run build:docs-assets`.
+        exclude: '^docs/dev_docs/javascripts/vendor/mermaid\.min\.js$'
       - id: end-of-file-fixer
       - id: check-json
         exclude: '^\.vscode/'

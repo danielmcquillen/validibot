@@ -49,7 +49,7 @@ This endpoint is intentionally minimal - it only returns the email and display n
 
 ## API Key Storage (CLI)
 
-The [Validibot CLI](https://github.com/danielmcquillen/validibot-cli) stores API keys securely:
+The [Validibot CLI](https://github.com/mcquilleninteractive/validibot-cli) stores API keys securely:
 
 - **macOS**: Keychain
 - **Windows**: Credential Manager

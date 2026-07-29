@@ -31,7 +31,7 @@ two for you and stops with a friendly message if something else is using them.
 ## Step 1 — Get the code
 
 ```bash
-git clone https://github.com/danielmcquillen/validibot.git
+git clone https://github.com/mcquilleninteractive/validibot.git
 cd validibot
 ```
 
@@ -199,7 +199,7 @@ They live in a separate repo and build with one command — no registry, login,
 or push needed for local use:
 
 ```bash
-git clone https://github.com/danielmcquillen/validibot-validator-backends.git
+git clone https://github.com/mcquilleninteractive/validibot-validator-backends.git
 cd validibot-validator-backends
 just build-all          # or build one: just build energyplus
 ```

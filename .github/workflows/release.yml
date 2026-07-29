@@ -1,152 +1,154 @@
-# Release workflow for the validibot Django app.
+# Release the Validibot Django application as a verified source bundle.
 #
-# Validibot itself is distributed via ``git clone`` rather than PyPI
-# (per the open-core distribution model — see the trust ADR's
-# Phase 5 Session D table). That means our provenance story for
-# downstream operators rests on **signed git tags**, not wheel
-# attestations. This workflow:
+# Validibot is installed from source rather than PyPI. A release therefore
+# consists of one source archive, two CycloneDX SBOMs, flat checksums, and a
+# GitHub artifact attestation. The archive is built once and the exact same
+# bytes flow through attestation and publication.
 #
-# 1. Verifies the triggering tag carries a valid signature
-#    (``git verify-tag``). Refuses to publish a release for an
-#    unsigned tag — the signature is what proves a maintainer made
-#    the release rather than someone with stale push credentials.
-# 2. Generates a CycloneDX SBOM of the resolved Python dependency
-#    tree and attaches it to the GitHub release. Operators who pull
-#    the source tarball can audit dependencies without re-resolving.
-# 3. Creates the release object on GitHub if one doesn't already
-#    exist for this tag.
-#
-# Why we don't push a wheel: ``validibot/`` is the Django
-# application, not a library. Self-hosted operators clone the repo
-# and build images via Docker Compose; cloud operators do the same
-# via a higher-level deploy pipeline. Both paths verify integrity
-# via the signed tag, not a pip install.
-#
-# How an operator verifies a release after cloning:
-#
-#     git fetch --tags
-#     git verify-tag v1.2.3
-#     git checkout v1.2.3
-#
-# Required configuration:
-#
-# - The maintainer's GPG / SSH signing public key must be configured
-#   in the repo's ``.allowed_signers`` (for SSH signatures) or
-#   imported into the runner's GPG keyring. ``actions/checkout``
-#   doesn't do this by default; see the "Configure git for signature
-#   verification" step below for how this workflow handles SSH keys.
+# Trust boundary: the signer allowlist is read from protected origin/main, not
+# from the tag being verified. The tag commit must also be an ancestor of that
+# protected branch. This makes protected main the out-of-band trust anchor and
+# prevents a tag from authorizing its own replacement signer file.
 
 name: Release validibot
 
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to release (e.g. v1.2.3)'
-        required: true
-        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  release:
-    name: Verify signed tag and publish release
+  build:
+    name: Build verified release bundle
     runs-on: ubuntu-latest
     permissions:
-      # Required to create the GitHub release and upload SBOM.
-      contents: write
-      # Required for OIDC if/when this workflow grows to attest the
-      # tarball contents in addition to the SBOM.
-      id-token: write
-      # Required for ``actions/attest-build-provenance`` to write
-      # to the repo's transparency log.
-      attestations: write
+      contents: read
 
     steps:
-      - name: Checkout (full history for tag verification)
+      - name: Checkout the triggering tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
 
-      # Trust ADR Phase 5 Session D — refuse to publish unsigned
-      # tags. Validibot signs release tags with SSH; ``.allowed_signers``
-      # at the repo root lists the maintainer public keys that git
-      # checks against. ``git verify-tag`` exits non-zero for unsigned
-      # tags or for signatures from a key that isn't listed.
-      - name: Configure git for SSH signature verification
-        run: |
-          git config gpg.ssh.allowedSignersFile "$PWD/.allowed_signers"
-          git config gpg.format ssh
-
-      # ``TAG_REF`` is bound via env (not interpolated into the
-      # script body) — recommended practice for any input from a
-      # GitHub event payload.
-      - name: Verify tag is signed
+      - name: Verify release identity and signed tag
         env:
-          TAG_REF: ${{ inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          TRIGGER_SHA: ${{ github.sha }}
         run: |
-          if ! git verify-tag "$TAG_REF" 2>&1; then
-            echo "::error::Tag '$TAG_REF' is not signed."
-            echo ""
-            echo "Sign with: git tag -s '$TAG_REF' -m 'release notes'"
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag must exactly match vX.Y.Z."
             exit 1
           fi
-          echo "Tag '$TAG_REF' signature verified."
+
+          TAG_COMMIT="$(git rev-list -n 1 "$RELEASE_TAG")"
+          if [[ "$TAG_COMMIT" != "$TRIGGER_SHA" ]] || [[ "$TAG_COMMIT" != "$(git rev-parse HEAD)" ]]; then
+            echo "::error::Trigger, tag, and checkout do not identify the same commit."
+            exit 1
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+            echo "::error::Release tag commit is not on protected origin/main."
+            exit 1
+          fi
+
+          TRUSTED_SIGNERS="$RUNNER_TEMP/validibot-allowed-signers"
+          git show origin/main:.allowed_signers > "$TRUSTED_SIGNERS"
+          git \
+            -c gpg.format=ssh \
+            -c gpg.ssh.allowedSignersFile="$TRUSTED_SIGNERS" \
+            verify-tag "$RELEASE_TAG"
 
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v6.0.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version-file: '.python-version'
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: uv sync --group dev --frozen
 
-      - name: Generate CycloneDX SBOM (JSON)
+      - name: Build source archive, SBOMs, and checksums
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          uvx --from cyclonedx-bom cyclonedx-py environment \
+          set -euo pipefail
+          VERSION="${RELEASE_TAG#v}"
+          mkdir release
+
+          git archive \
+            --format=tar.gz \
+            --prefix="validibot-${VERSION}/" \
+            "$RELEASE_TAG" \
+            > "release/validibot-${VERSION}.tar.gz"
+
+          uvx --from cyclonedx-bom==7.3.1 cyclonedx-py environment \
             --output-format JSON \
-            --output-file validibot.cdx.json
-
-      - name: Generate CycloneDX SBOM (XML)
-        run: |
-          uvx --from cyclonedx-bom cyclonedx-py environment \
+            --output-file release/validibot.cdx.json
+          uvx --from cyclonedx-bom==7.3.1 cyclonedx-py environment \
             --output-format XML \
-            --output-file validibot.cdx.xml
+            --output-file release/validibot.cdx.xml
 
-      - name: Upload SBOM as workflow artifact
+          (
+            cd release
+            sha256sum \
+              "validibot-${VERSION}.tar.gz" \
+              validibot.cdx.json \
+              validibot.cdx.xml \
+              > SHA256SUMS
+          )
+
+      - name: Upload immutable release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: validibot-sbom
-          path: |
-            validibot.cdx.json
-            validibot.cdx.xml
+          name: validibot-release-${{ github.ref_name }}
+          path: release/
+          if-no-files-found: error
           retention-days: 90
 
-      # Create the GitHub release if one doesn't already exist for
-      # this tag (workflow_dispatch path), then upload the SBOM
-      # files. ``--clobber`` overwrites stale SBOMs from prior
-      # workflow runs against the same tag.
-      - name: Create or update GitHub Release with SBOM
+  evidence:
+    name: Attest and publish release
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+    steps:
+      - name: Download verified release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: validibot-release-${{ github.ref_name }}
+          path: release/
+
+      - name: Attest source archive and SBOM
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6  # v4.2.0
+        with:
+          subject-path: release/validibot-*.tar.gz
+          sbom-path: release/validibot.cdx.json
+
+      - name: Create immutable GitHub release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "$RELEASE_TAG" \
-              --generate-notes \
-              --verify-tag
-          fi
-          gh release upload "$RELEASE_TAG" \
-            validibot.cdx.json \
-            validibot.cdx.xml \
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" release/* \
             --repo "$GITHUB_REPOSITORY" \
-            --clobber
+            --title "$RELEASE_TAG" \
+            --generate-notes \
+            --verify-tag

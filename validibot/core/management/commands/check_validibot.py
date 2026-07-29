@@ -2466,7 +2466,7 @@ class Command(BaseCommand):
         # (clickable from most terminals).
         lookup_path = "docs/operations/self-hosting/doctor-check-ids.md"
         lookup_url = (
-            "https://github.com/danielmcquillen/validibot/blob/main/" + lookup_path
+            "https://github.com/mcquilleninteractive/validibot/blob/main/" + lookup_path
         )
 
         if counts[CheckStatus.ERROR] > 0 or counts[CheckStatus.FATAL] > 0:

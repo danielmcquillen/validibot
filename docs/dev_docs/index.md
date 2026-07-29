@@ -130,19 +130,19 @@ The customer-facing self-hosting docs live outside this dev-docs site at
 `docs/operations/self-hosting/`. They're written for someone running their own
 Validibot install on their own VM, not for someone hacking on the codebase:
 
-- **[Self-Hosting Overview](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/overview.md)** — three deployment targets, what's on the VM, recommended sizing, telemetry posture
-- **[Install](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/install.md)** — substrate-generic install on any Linux + Docker host
-- **[Configuration](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/configuration.md)** — env file reference, deployment profiles, settings module switching
-- **[Backups](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/backups.md)** and **[Restore](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/restore.md)** — application-level backup/restore with manifests and restore drills
-- **[Upgrades](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/upgrades.md)** — versioned upgrade lifecycle with idempotent retry
-- **[Validator Images](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/validator-images.md)** — what's installed, run-scoped isolation, image pinning
-- **[Security Hardening](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/security-hardening.md)** — recommended hardening checklist
-- **[Support Bundle](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/support-bundle.md)** — what's redacted, support workflow contract
-- **[Troubleshooting](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/troubleshooting.md)** — common issues
-- **[Release Notes Policy](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/release-notes-policy.md)** — what every release announces
-- **[Operator Recipes](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/operator-recipes.md)** — full `just self-hosted` reference
-- **[Doctor Check IDs](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/doctor-check-ids.md)** — every check ID and its fix
-- **[DigitalOcean Provider Tutorial](https://github.com/danielmcquillen/validibot/blob/main/docs/operations/self-hosting/providers/digitalocean.md)** — first-supported VM provider tutorial
+- **[Self-Hosting Overview](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/overview.md)** — three deployment targets, what's on the VM, recommended sizing, telemetry posture
+- **[Install](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/install.md)** — substrate-generic install on any Linux + Docker host
+- **[Configuration](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/configuration.md)** — env file reference, deployment profiles, settings module switching
+- **[Backups](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/backups.md)** and **[Restore](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/restore.md)** — application-level backup/restore with manifests and restore drills
+- **[Upgrades](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/upgrades.md)** — versioned upgrade lifecycle with idempotent retry
+- **[Validator Images](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/validator-images.md)** — what's installed, run-scoped isolation, image pinning
+- **[Security Hardening](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/security-hardening.md)** — recommended hardening checklist
+- **[Support Bundle](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/support-bundle.md)** — what's redacted, support workflow contract
+- **[Troubleshooting](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/troubleshooting.md)** — common issues
+- **[Release Notes Policy](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/release-notes-policy.md)** — what every release announces
+- **[Operator Recipes](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/operator-recipes.md)** — full `just self-hosted` reference
+- **[Doctor Check IDs](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/doctor-check-ids.md)** — every check ID and its fix
+- **[DigitalOcean Provider Tutorial](https://github.com/mcquilleninteractive/validibot/blob/main/docs/operations/self-hosting/providers/digitalocean.md)** — first-supported VM provider tutorial
 
 ---
 

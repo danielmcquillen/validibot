@@ -39,7 +39,7 @@ Before you start, make sure you have:
 ## Quick start
 
 ```bash
-git clone https://github.com/danielmcquillen/validibot.git
+git clone https://github.com/mcquilleninteractive/validibot.git
 cd validibot
 
 mkdir -p .envs/.local
@@ -241,7 +241,7 @@ Built-in validators (JSON Schema, XML Schema, Tabular, and so on) work as soon a
 These images live in a separate repo and build with one command — no registry, login, or push needed for local use:
 
 ```bash
-git clone https://github.com/danielmcquillen/validibot-validator-backends.git
+git clone https://github.com/mcquilleninteractive/validibot-validator-backends.git
 cd validibot-validator-backends
 just build-all          # or build one: just build energyplus
 ```

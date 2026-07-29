@@ -332,9 +332,10 @@ platform-status platform stage="":
 # Release
 # =============================================================================
 #
-# Cuts a signed-tag release for the validibot Django app. CI then
-# verifies the signature, generates a CycloneDX SBOM, and creates a
-# GitHub release with the SBOM attached.
+# Cuts a signed-tag release for the Validibot Django app. CI verifies
+# the tag against the signer allowlist on protected main, builds one
+# source bundle, generates CycloneDX SBOMs and checksums, attests the
+# source archive, and creates an immutable GitHub release.
 #
 # Operator verification (after clone): see RELEASING.md.
 
@@ -424,14 +425,26 @@ release VERSION:
     echo "Press Enter to continue, Ctrl+C to abort..."
     read -r
 
-    # Sign the tag. Requires `git config --global tag.gpgsign true`
-    # and a signing key configured. The CI workflow at
-    # .github/workflows/release.yml verifies the signature and
-    # publishes the GitHub release with the SBOM.
+    # Sign the tag, then verify it locally against the allowlist from
+    # protected origin/main before anything leaves this machine. Git
+    # configuration is command-scoped so the release helper does not
+    # alter the operator's global or repository signing settings.
+    TRUSTED_SIGNERS=$(mktemp)
+    trap 'rm -f "$TRUSTED_SIGNERS"' EXIT
+    git show origin/main:.allowed_signers > "$TRUSTED_SIGNERS"
     git tag -s "$TAG" -m "$TAG"
+    if ! git \
+        -c gpg.format=ssh \
+        -c gpg.ssh.allowedSignersFile="$TRUSTED_SIGNERS" \
+        verify-tag "$TAG"; then
+        echo "✗ Local signature verification failed. Tag was not pushed."
+        echo "  Inspect or remove the local tag before retrying: $TAG"
+        exit 1
+    fi
+
     git push origin "$TAG"
 
     echo ""
     echo "✓ Pushed $TAG"
-    echo "  CI will verify the signature and publish the release."
+    echo "  CI will independently verify, attest, and publish the release."
     echo "  Monitor: gh run watch"

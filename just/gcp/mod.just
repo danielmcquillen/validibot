@@ -3751,7 +3751,7 @@ _validator-release-verify-image name release_tag:
         echo "No GCP resources were changed." >&2
         exit 1
     fi
-    GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-${IMAGE_SLUG}"
+    GHCR_IMAGE="ghcr.io/mcquilleninteractive/validibot-validator-backend-${IMAGE_SLUG}"
     if ! GHCR_DETAILS=$(docker buildx imagetools inspect \
         "${GHCR_IMAGE}:${IMAGE_TAG}" 2>/dev/null); then
         echo "Missing: GHCR image ${GHCR_IMAGE}:${IMAGE_TAG}" >&2
@@ -3765,7 +3765,7 @@ _validator-release-verify-image name release_tag:
         exit 1
     fi
     if ! gh attestation verify "oci://${GHCR_IMAGE}@${GHCR_DIGEST}" \
-        --owner danielmcquillen >/dev/null 2>&1; then
+        --owner mcquilleninteractive >/dev/null 2>&1; then
         echo "Missing or invalid: image build attestation for ${GHCR_IMAGE}@${GHCR_DIGEST}" >&2
         echo "No GCP resources were changed." >&2
         exit 1
@@ -3776,7 +3776,7 @@ _validator-release-verify-image name release_tag:
     RECORD_NAME="validibot-validator-backend-${IMAGE_SLUG}-v${VERSION}.json"
     SBOM_NAME="validibot-validator-backend-${IMAGE_SLUG}.spdx.json"
     if ! gh release view "$SOURCE_TAG" \
-        --repo danielmcquillen/validibot-validator-backends >/dev/null 2>&1; then
+        --repo mcquilleninteractive/validibot-validator-backends >/dev/null 2>&1; then
         echo "Missing: GitHub Release $SOURCE_TAG" >&2
         echo "No GCP resources were changed." >&2
         exit 1
@@ -3785,7 +3785,7 @@ _validator-release-verify-image name release_tag:
         local artifact="$1"
         local description="$2"
         if ! gh release download "$SOURCE_TAG" \
-            --repo danielmcquillen/validibot-validator-backends \
+            --repo mcquilleninteractive/validibot-validator-backends \
             --dir "$RELEASE_DIR" --pattern "$artifact" >/dev/null 2>&1 \
             || [ ! -s "$RELEASE_DIR/$artifact" ]; then
             echo "Missing: $description $artifact" >&2
@@ -3805,7 +3805,7 @@ _validator-release-verify-image name release_tag:
         exit 1
     fi
     if ! gh attestation verify "$RELEASE_DIR/$RECORD_NAME" \
-        --owner danielmcquillen >/dev/null 2>&1; then
+        --owner mcquilleninteractive >/dev/null 2>&1; then
         echo "Missing or invalid: attestation for backend release JSON $RECORD_NAME" >&2
         echo "No GCP resources were changed." >&2
         exit 1
@@ -3871,7 +3871,7 @@ _validator-release-mirror-image name release_tag:
     IMAGE_TAG="v${VERSION}"
     VALIDATOR_VERIFY_GAR=0 \
         just gcp _validator-release-verify-image "{{name}}" "$SOURCE_TAG"
-    GHCR_IMAGE="ghcr.io/danielmcquillen/validibot-validator-backend-${IMAGE_SLUG}"
+    GHCR_IMAGE="ghcr.io/mcquilleninteractive/validibot-validator-backend-${IMAGE_SLUG}"
     if ! GHCR_DETAILS=$(docker buildx imagetools inspect \
         "${GHCR_IMAGE}:${IMAGE_TAG}" 2>/dev/null); then
         echo "Missing: GHCR image ${GHCR_IMAGE}:${IMAGE_TAG}" >&2
@@ -3981,7 +3981,7 @@ validator-job-deploy name stage release_tag="": _require-gcp-config
         trap 'rm -rf "$RELEASE_DIR"' EXIT
         RECORD_NAME="validibot-validator-backend-${IMAGE_SLUG}-v${BACKEND_RELEASE}.json"
         gh release download "$SOURCE_TAG" \
-            --repo danielmcquillen/validibot-validator-backends \
+            --repo mcquilleninteractive/validibot-validator-backends \
             --dir "$RELEASE_DIR" \
             --pattern "$RECORD_NAME"
         RELEASE_RECORD_SHA=$(python3 ops/gcp/validator_release_control.py \
@@ -4167,7 +4167,7 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
         trap 'rm -rf "$RELEASE_DIR"' EXIT
         RECORD_NAME="validibot-validator-backend-${IMAGE_SLUG}-v${BACKEND_RELEASE}.json"
         gh release download "$SOURCE_TAG" \
-            --repo danielmcquillen/validibot-validator-backends \
+            --repo mcquilleninteractive/validibot-validator-backends \
             --dir "$RELEASE_DIR" \
             --pattern "$RECORD_NAME"
         RELEASE_RECORD_SHA=$(python3 ops/gcp/validator_release_control.py \
@@ -4545,7 +4545,7 @@ _validator-retain-release-record name stage release_tag: _require-gcp-config
     trap 'rm -rf "$WORK_DIR"' EXIT
     RECORD_NAME="validibot-validator-backend-${IMAGE_SLUG}-v${VERSION}.json"
     gh release download "{{release_tag}}" \
-        --repo danielmcquillen/validibot-validator-backends \
+        --repo mcquilleninteractive/validibot-validator-backends \
         --dir "$WORK_DIR" --pattern "$RECORD_NAME"
     python3 ops/gcp/validator_release_control.py release-record \
         --backend "{{name}}" --version "$VERSION" \

@@ -1,92 +1,111 @@
 # Security Policy
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-If you discover a security vulnerability in Validibot, please report it responsibly by emailing **security@mcquilleninteractive.com**. Do not open a public GitHub issue.
+Use GitHub's private vulnerability reporting for this repository, or email
+**security@mcquilleninteractive.com**. Do not open a public GitHub issue.
 
 Please include a description of the vulnerability and steps to reproduce it.
-
-## What to Expect
-
-Validibot is maintained by a small team (me). I'll do my best to acknowledge reports and work toward a fix, but I can't guarantee specific response times. Critical issues will be prioritized.
-
-If you'd like to be credited in the release notes when a fix ships, let me know in your report.
+Validibot is maintained by a small team, so response times cannot be
+guaranteed, but critical issues are prioritized. If you would like credit in
+the release notes when a fix ships, say so in your report.
 
 ## Scope
 
 Security reports are welcome for:
 
-- The Validibot Django web application (this repository)
-- The REST API
-- Authentication and authorization
-- Cryptographic operations (credential signing, JWKS)
+- the Validibot Django web application;
+- the REST API;
+- authentication and authorization; and
+- cryptographic operations, credential signing, and JWKS.
 
-For vulnerabilities in third-party dependencies, please report those to the upstream project directly.
+Report vulnerabilities in third-party dependencies to their upstream projects.
 
 ## Verifying Validibot releases
 
-Validibot ships as source you `git clone` from GitHub — there's no PyPI wheel or Docker image with a third-party registry attesting "this came from the Validibot maintainers." We provide that attestation ourselves by signing each release tag with a maintainer key. The release CI in `.github/workflows/release.yml` runs the same check before publishing release artifacts, so a successful local verification matches what the pipeline did.
+Validibot is distributed as source rather than as a PyPI wheel. Each release
+has three complementary integrity controls:
 
-To verify and check out a release:
+1. an SSH-signed git tag;
+2. checksums for the canonical source archive and its CycloneDX SBOMs; and
+3. a GitHub artifact attestation binding the archive to the JSON SBOM and the
+   release workflow.
+
+### Verify the release assets
+
+Download the explicitly uploaded `validibot-X.Y.Z.tar.gz`,
+`validibot.cdx.json`, `validibot.cdx.xml`, and `SHA256SUMS` assets into one
+directory. Then run:
 
 ```bash
-# 1. Get the source. If you already have a clone, run
-#    `git fetch --tags` instead of cloning again.
-git clone https://github.com/danielmcquillen/validibot.git
-cd validibot
-
-# 2. One-time setup: tell git to check SSH signatures against
-#    .allowed_signers, which ships in this repo. Without this,
-#    git falls back to GPG and verification will fail.
-git config gpg.ssh.allowedSignersFile "$(pwd)/.allowed_signers"
-git config gpg.format ssh
-
-# 3. Verify a release tag. Exits 0 only when the signature matches
-#    a maintainer key in .allowed_signers. Non-zero means stop.
-git verify-tag v0.4.0
-
-# 4. Check out the verified tag.
-git checkout v0.4.0
+sha256sum --check SHA256SUMS
+gh attestation verify \
+  validibot-X.Y.Z.tar.gz \
+  --repo mcquilleninteractive/validibot
 ```
 
-Find the latest release tag at <https://github.com/danielmcquillen/validibot/releases/latest> and substitute it for `v0.4.0` above. After step 2, every future `git verify-tag` and `git pull --verify-signatures` in this clone uses the repo's `.allowed_signers` automatically — use `git config --global` if you work across multiple Validibot clones.
+GitHub also generates automatic “Source code” archives. Those are convenience
+downloads, not the canonical attested archive. Full release and verification
+instructions are in [`RELEASING.md`](RELEASING.md).
 
-Validibot signs tags with SSH keys, so verification succeeds when the signature matches a maintainer's public key listed in `.allowed_signers`. We don't currently publish a GPG key, so the GPG verification path applies only if a future maintainer chooses to.
+### Verify the signed tag
 
-### If verification fails
+```bash
+git clone https://github.com/mcquilleninteractive/validibot.git
+cd validibot
+git fetch --tags
 
-A non-zero exit from `git verify-tag` means **do not install**. Likely causes:
+git \
+  -c gpg.format=ssh \
+  -c gpg.ssh.allowedSignersFile="$PWD/.allowed_signers" \
+  verify-tag vX.Y.Z
 
-- **Skipped step 2.** Run the `git config` lines, then retry.
-- **Wrong repo.** Confirm the clone URL is `https://github.com/danielmcquillen/validibot.git` — not a fork or mirror that may lack `.allowed_signers`.
-- **Genuinely bad tag.** If the URL and config are right and a freshly-cloned copy still fails, don't install — open an issue at <https://github.com/danielmcquillen/validibot/issues>.
+git checkout vX.Y.Z
+```
 
-### What's in a release
+Stop if verification fails. Confirm that the clone is the canonical
+`mcquilleninteractive/validibot` repository and that the chosen tag is listed
+on the [release page](https://github.com/mcquilleninteractive/validibot/releases).
 
-Each signed-tag release publishes the verified git tag, a [GitHub release page](https://github.com/danielmcquillen/validibot/releases) with auto-generated notes, and CycloneDX SBOM artifacts (`validibot.cdx.json`, `validibot.cdx.xml`) attached to the release page as downloadable assets. The SBOMs list every Python dependency in the resolved environment, so you can audit the dependency chain without running `uv lock` yourself.
+The release workflow does not trust a signer file carried only by the tag. It
+reads `.allowed_signers` from protected `main` and also requires the tag commit
+to be on that branch. Protected main is the release-signing trust anchor.
 
-### Verifying upstream packages (optional)
+### Related packages
 
-Validibot pulls in two sister projects as dependencies — `uv sync` and the validator runner handle them automatically — but each has its own provenance trail if you want defense in depth:
+- [`validibot-shared`](https://pypi.org/project/validibot-shared/) is published
+  to PyPI through trusted publishing with provenance, SBOMs, and checksums.
+- [`validibot-validator-backends`](https://github.com/mcquilleninteractive/validibot-validator-backends)
+  publishes validator images to
+  `ghcr.io/mcquilleninteractive/validibot-validator-backend-<validator>`.
+  Its `RELEASING.md` documents digest and attestation verification.
 
-- **[`validibot-shared`](https://pypi.org/project/validibot-shared/)** — Pydantic models published to PyPI with build attestations from PyPI's trusted-publishing flow. Most operators rely on `uv`'s hash-locked install; if you want more, the package page shows the GitHub workflow run that built each release.
-- **[`validibot-validator-backends`](https://github.com/danielmcquillen/validibot-validator-backends)** — EnergyPlus / FMU container images on GitHub Container Registry, signed with sigstore attestations. If you run advanced (containerised) validators, verify each image with `gh attestation verify oci://ghcr.io/...@sha256:...`. See that repo's `RELEASING.md` for the full recipe. If you only run the built-in validators (Basic, JSON Schema, XML Schema, AI), you don't need these images at all.
+## Production deployment
 
-## Security Best Practices for Deployment
+When deploying Validibot:
 
-When deploying Validibot in production:
+1. Always use HTTPS.
+2. Generate a strong `DJANGO_SECRET_KEY`.
+3. Generate a separate `DJANGO_API_KEY_DIGEST_KEY`; never reuse the Django
+   secret key.
+4. Restrict `DJANGO_ALLOWED_HOSTS` to the deployment's domains.
+5. Store credentials in environment variables or a secrets manager.
+6. Never commit `.envs/` files.
+7. Keep locked dependencies current and review security alerts.
 
-1. **Always use HTTPS** in production
-2. **Set a strong `DJANGO_SECRET_KEY`** - generate one with:
-   ```bash
-   python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
-   ```
-3. **Set a separate `DJANGO_API_KEY_DIGEST_KEY`** - generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"` and never reuse `DJANGO_SECRET_KEY`
-4. **Restrict `DJANGO_ALLOWED_HOSTS`** to your specific domain(s)
-5. **Use environment variables** or a secrets manager for all credentials
-6. **Never commit `.envs/` files** to version control (they are gitignored by default)
-7. **Keep dependencies updated** - run `uv lock --upgrade` regularly
+Generate the Django secret key with:
+
+```bash
+python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+```
+
+Generate the API-key digest key with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
 
 ## Disclaimer
 
-This software is provided "as is", without warranty of any kind. See the [LICENSE](LICENSE) file for full terms. Security fixes are provided on a best-effort basis.
+This software is provided “as is”, without warranty of any kind. See
+[`LICENSE`](LICENSE). Security fixes are provided on a best-effort basis.

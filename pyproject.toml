@@ -130,7 +130,9 @@ dependencies = [
   # managed attempt in portable evidence manifests.
   # 0.21.0 adds independent backend-release evidence identity and makes the
   # Portfolio Manager policy contract fully explicit.
-  "validibot-shared==0.21.0",
+  # 0.22.0 preserves that contract while moving publication to the hardened
+  # organization-owned, signed-tag, single-artifact release pipeline.
+  "validibot-shared==0.22.0",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in
@@ -163,7 +165,7 @@ docker-runner = ["docker==7.2.0"]
 [project.urls]
 Homepage = "https://validibot.com"
 Documentation = "https://validibot.com/resources/docs/"
-Repository = "https://github.com/danielmcquillen/validibot"
+Repository = "https://github.com/mcquilleninteractive/validibot"
 
 # ==== pytest ====
 [tool.pytest.ini_options]

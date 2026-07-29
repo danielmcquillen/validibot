@@ -260,7 +260,7 @@ There's a Validibot helper that will eventually install Docker, validate the Dig
 
 ```bash
 ssh validibot@<droplet-ip>
-sudo git clone https://github.com/validibot/validibot.git /srv/validibot/repo
+sudo git clone https://github.com/mcquilleninteractive/validibot.git /srv/validibot/repo
 sudo chown -R validibot:validibot /srv/validibot/repo
 cd /srv/validibot/repo
 ./deploy/self-hosted/scripts/bootstrap-digitalocean --data-root /srv/validibot
@@ -315,7 +315,7 @@ curl -sSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-
   | sudo tar -xz -C /usr/local/bin just
 
 # Clone the repo into the volume so the working tree survives Droplet rebuilds
-sudo git clone https://github.com/validibot/validibot.git /srv/validibot/repo
+sudo git clone https://github.com/mcquilleninteractive/validibot.git /srv/validibot/repo
 sudo chown -R validibot:validibot /srv/validibot/repo
 
 cd /srv/validibot/repo
@@ -633,7 +633,7 @@ Advanced validators run as short-lived sibling containers spawned by the worker 
    `validibot/` checkout and build the images you need:
 
    ```bash
-   git clone https://github.com/danielmcquillen/validibot-validator-backends.git
+   git clone https://github.com/mcquilleninteractive/validibot-validator-backends.git
    cd /path/to/validibot
    just self-hosted validator-build energyplus
    just self-hosted validator-build fmu

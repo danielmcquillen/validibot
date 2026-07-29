@@ -14,5 +14,5 @@ contact_links:
     url: https://docs.validibot.com/
     about: Check our docs before asking - your question might already be answered!
   - name: Bug Reports
-    url: https://github.com/danielmcquillen/validibot/issues/new
+    url: https://github.com/mcquilleninteractive/validibot/issues/new
     about: Found a bug? Please open an issue instead of a discussion.

@@ -43,7 +43,7 @@ The helper scripts in `deploy/self-hosted/scripts/` are reserved for this role, 
 ### 2. Clone the repo (or extract a release tarball)
 
 ```bash
-git clone https://github.com/validibot/validibot.git
+git clone https://github.com/mcquilleninteractive/validibot.git
 cd validibot
 ```
 

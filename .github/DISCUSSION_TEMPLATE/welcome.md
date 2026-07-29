@@ -6,7 +6,7 @@ Thanks for being part of the Validibot community! This is the place to ask quest
 
 - **Check the docs first**: Many questions are answered in our [User Documentation](https://docs.validibot.com/) or [Developer Documentation](https://dev.validibot.com/).
 - **Search existing discussions**: Someone may have already asked your question.
-- **Bug reports go in Issues**: If you've found a bug, please [open an issue](https://github.com/danielmcquillen/validibot/issues/new) instead.
+- **Bug reports go in Issues**: If you've found a bug, please [open an issue](https://github.com/mcquilleninteractive/validibot/issues/new) instead.
 
 ## Discussion Categories
 
@@ -62,8 +62,8 @@ For discussions that don't fit elsewhere—community topics, meta discussions ab
 
 We welcome bug reports and feature suggestions! Please use:
 
-- **[GitHub Issues](https://github.com/danielmcquillen/validibot/issues)** for bug reports
-- **[Ideas category](https://github.com/danielmcquillen/validibot/discussions/categories/ideas)** in Discussions for feature requests
+- **[GitHub Issues](https://github.com/mcquilleninteractive/validibot/issues)** for bug reports
+- **[Ideas category](https://github.com/mcquilleninteractive/validibot/discussions/categories/ideas)** in Discussions for feature requests
 
 ### Code Contributions
 
@@ -79,7 +79,7 @@ This helps us avoid duplicate work and ensures contributions align with our road
 
 ### Validator Contributions
 
-We're more open to contributions for **[validibot-validator-backends](https://github.com/danielmcquillen/validibot-validator-backends)** (MIT licensed). If you've built a custom validator backend that might benefit others, open an issue to discuss adding it.
+We're more open to contributions for **[validibot-validator-backends](https://github.com/mcquilleninteractive/validibot-validator-backends)** (MIT licensed). If you've built a custom validator backend that might benefit others, open an issue to discuss adding it.
 
 ### Sponsoring Features
 

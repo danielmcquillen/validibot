@@ -227,7 +227,7 @@ Weekly cleanup at 3am Sunday. The log shows what was removed; if nothing matched
 ## Image registry (planned, not yet active)
 
 Today, validator images are built locally on each operator's host from
-the [`validibot-validator-backends`](https://github.com/danielmcquillen/validibot-validator-backends)
+the [`validibot-validator-backends`](https://github.com/mcquilleninteractive/validibot-validator-backends)
 checkout (see [What's pre-installed](#whats-pre-installed) above).
 There is no public registry to pull from yet.
 

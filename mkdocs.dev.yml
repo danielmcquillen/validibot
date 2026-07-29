@@ -9,8 +9,8 @@ use_directory_urls: true
 
 dev_addr: 127.0.0.1:9000
 
-repo_url: https://github.com/danielmcquillen/validibot
-repo_name: danielmcquillen/validibot
+repo_url: https://github.com/mcquilleninteractive/validibot
+repo_name: mcquilleninteractive/validibot
 # Dev docs live in the public repo, so every page gets a working
 # "edit this page" pencil (content.action.edit below).
 edit_uri: edit/main/docs/dev_docs/

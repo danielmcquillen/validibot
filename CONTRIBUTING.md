@@ -8,7 +8,7 @@ the process for contributing to this project.
 Validibot is under active development. We follow semver and the API will
 stabilize for v1.0, but until then breaking changes to APIs, database schemas,
 and configuration are possible between minor versions. If you're building on
-Validibot, watch the repo or [join the discussion](https://github.com/danielmcquillen/validibot/discussions) to stay updated.
+Validibot, watch the repo or [join the discussion](https://github.com/mcquilleninteractive/validibot/discussions) to stay updated.
 
 ## Copyright and Licensing
 

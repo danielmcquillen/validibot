@@ -1,7 +1,8 @@
 name: Docs
 
-# The main CI workflow ignores docs/** entirely (paths-ignore), so docs
-# changes get their own fast guard here instead. Two checks:
+# The main CI workflow now runs for every pull request, including docs-only
+# changes, so the stable `ci` aggregate is always present. Documentation
+# changes also get this dedicated fast guard with two checks:
 #
 #   1. scripts/check_doc_links.py — every relative markdown link must
 #      resolve to a real file (the June 2026 docs audit found links to

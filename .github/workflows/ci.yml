@@ -11,11 +11,9 @@ env:
 on:
   pull_request:
     branches: ['master', 'main']
-    paths-ignore: ['docs/**']
 
   push:
     branches: ['master', 'main']
-    paths-ignore: ['docs/**']
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}
@@ -101,8 +99,8 @@ jobs:
       - name: Checkout SHACL validator backend
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          repository: danielmcquillen/validibot-validator-backends
-          ref: 3b4ef068f15e7035f734a78dcf66a8d3a7f93da0  # v0.14.0
+          repository: mcquilleninteractive/validibot-validator-backends
+          ref: c7ecea561b0ea908fe9491d1481b4827978a8971  # shacl-v0.15.3
           path: .ci/validibot-validator-backends
           persist-credentials: false
 
@@ -236,3 +234,42 @@ jobs:
       # turns the check red instead of letting it pass on zero tests.
       - name: Run front-end unit tests
         run: npm test -- --passWithNoTests=false
+
+  # Branch protection requires only this stable aggregate check. Individual
+  # job names can evolve without weakening the protected-main gate, while the
+  # explicit result inspection ensures failed, cancelled, or skipped jobs make
+  # the aggregate fail. CI runs for docs-only changes too, so every PR produces
+  # this check instead of becoming permanently unmergeable.
+  ci:
+    name: ci
+    if: ${{ always() }}
+    needs:
+      - linter
+      - typecheck
+      - pytest
+      - frontend-assets
+      - frontend-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every CI job to pass
+        env:
+          LINTER_RESULT: ${{ needs.linter.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          PYTEST_RESULT: ${{ needs.pytest.result }}
+          FRONTEND_ASSETS_RESULT: ${{ needs.frontend-assets.result }}
+          FRONTEND_TESTS_RESULT: ${{ needs.frontend-tests.result }}
+        run: |
+          set -euo pipefail
+          for result in \
+            "$LINTER_RESULT" \
+            "$TYPECHECK_RESULT" \
+            "$PYTEST_RESULT" \
+            "$FRONTEND_ASSETS_RESULT" \
+            "$FRONTEND_TESTS_RESULT"
+          do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::At least one required CI job did not succeed."
+              exit 1
+            fi
+          done
+          echo "Every required CI job succeeded."

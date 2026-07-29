@@ -151,7 +151,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 ARG APP_HOME=/app
 ARG VALIDIBOT_VERSION=""
 ARG VALIDIBOT_REVISION=""
-ARG VALIDIBOT_SOURCE="https://github.com/danielmcquillen/validibot"
+ARG VALIDIBOT_SOURCE="https://github.com/mcquilleninteractive/validibot"
 
 ENV VALIDIBOT_VERSION="${VALIDIBOT_VERSION}"
 LABEL org.opencontainers.image.title="Validibot" \

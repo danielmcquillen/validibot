@@ -1,15 +1,15 @@
 <div align="center">
 
 <picture>
-  <img src="https://github.com/danielmcquillen/validibot/blob/main/robot.png" alt="Validibot - Data Validation Robot" width="250" >
+  <img src="https://github.com/mcquilleninteractive/validibot/blob/main/robot.png" alt="Validibot - Data Validation Robot" width="250" >
 </picture>
 
 # Validibot
 
 **Open-source data validation engine**
 
-[![Build Status](https://github.com/danielmcquillen/validibot/actions/workflows/ci.yml/badge.svg)](https://github.com/danielmcquillen/validibot/actions)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/danielmcquillen/validibot/badge)](https://scorecard.dev/viewer/?uri=github.com/danielmcquillen/validibot)
+[![Build Status](https://github.com/mcquilleninteractive/validibot/actions/workflows/ci.yml/badge.svg)](https://github.com/mcquilleninteractive/validibot/actions)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mcquilleninteractive/validibot/badge)](https://scorecard.dev/viewer/?uri=github.com/mcquilleninteractive/validibot)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-green.svg)](https://djangoproject.com/)
@@ -17,7 +17,7 @@
 [User Documentation](https://docs.validibot.com/) •
 [Developer Documentation](https://dev.validibot.com/) •
 [Getting Started](https://docs.validibot.com/getting-started) •
-[Community](https://github.com/danielmcquillen/validibot/discussions) •
+[Community](https://github.com/mcquilleninteractive/validibot/discussions) •
 [Pricing](https://validibot.com/pricing)
 
 </div>
@@ -31,10 +31,10 @@ Validibot is composed of several repositories that work together:
 
 | Repository                                                                          | Description                                                                                            | License  |
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------- |
-| **[validibot](https://github.com/danielmcquillen/validibot)**                       | Core platform (this repo) — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
-| **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and scripts                              | MIT      |
-| **[validibot-validator-backends](https://github.com/danielmcquillen/validibot-validator-backends)** | Validator backends for advanced validators (EnergyPlus™, FMU) — run as isolated Docker containers      | MIT      |
-| **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators                | MIT      |
+| **[validibot](https://github.com/mcquilleninteractive/validibot)**                       | Core platform (this repo) — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
+| **[validibot-cli](https://github.com/mcquilleninteractive/validibot-cli)**               | Command-line interface for running validations from terminals and scripts                              | MIT      |
+| **[validibot-validator-backends](https://github.com/mcquilleninteractive/validibot-validator-backends)** | Validator backends for advanced validators (EnergyPlus™, FMU) — run as isolated Docker containers      | MIT      |
+| **[validibot-shared](https://github.com/mcquilleninteractive/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators                | MIT      |
 
 How they fit together:
 
@@ -125,7 +125,7 @@ curl -X POST https://your-instance.com/api/v1/submissions/ \
 
 See the [API documentation](https://docs.validibot.com/api) for complete reference.
 
-(And check out the **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)** for a simple way to access the API...)
+(And check out the **[validibot-cli](https://github.com/mcquilleninteractive/validibot-cli)** for a simple way to access the API...)
 
 ### MCP Server for AI Agents
 
@@ -149,7 +149,7 @@ The server is a thin protocol-translation layer: it forwards REST calls to Valid
 
 ```bash
 # Clone the repository
-git clone https://github.com/danielmcquillen/validibot.git
+git clone https://github.com/mcquilleninteractive/validibot.git
 cd validibot
 
 # Copy local environment templates
@@ -263,8 +263,8 @@ The AGPL-3.0 license requires that if you modify Validibot and provide it as a n
 
 ### Community Support
 
-- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/danielmcquillen/validibot/discussions)
-- **GitHub Issues**: [Report bugs](https://github.com/danielmcquillen/validibot/issues)
+- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/mcquilleninteractive/validibot/discussions)
+- **GitHub Issues**: [Report bugs](https://github.com/mcquilleninteractive/validibot/issues)
 
 > [!NOTE]
 > Community support is provided on a best-effort basis (by me). For guaranteed response times and priority support, consider [Validibot Pro](https://validibot.com/pricing).
@@ -295,7 +295,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 # Clone the repo
-git clone https://github.com/danielmcquillen/validibot.git
+git clone https://github.com/mcquilleninteractive/validibot.git
 cd validibot
 
 # Install dependencies with uv
@@ -317,8 +317,8 @@ See the [Developer Docs](https://dev.validibot.com/) for complete instructions.
 
 Track our progress and upcoming features:
 
-- [GitHub Issues & Milestones](https://github.com/danielmcquillen/validibot/milestones)
-- [Release Notes](https://github.com/danielmcquillen/validibot/releases)
+- [GitHub Issues & Milestones](https://github.com/mcquilleninteractive/validibot/milestones)
+- [Release Notes](https://github.com/mcquilleninteractive/validibot/releases)
 
 ## Acknowledgments
 
@@ -357,7 +357,7 @@ For trademark usage guidelines, contact [hello@mcquilleninteractive.com](mailto:
 
 [Website](https://validibot.com) •
 [Docs](https://docs.validibot.com) •
-[Community](https://github.com/danielmcquillen/validibot/discussions) •
+[Community](https://github.com/mcquilleninteractive/validibot/discussions) •
 [Contact](mailto:hello@mcquilleninteractive.com)
 
 </div>

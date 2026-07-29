@@ -132,7 +132,7 @@ For submissions with `DO_NOT_STORE` retention:
 
 ## Alternative Considered: Reference Original URI
 
-[Issue #73](https://github.com/danielmcquillen/validibot/issues/73) proposed referencing the original submission URI in the input envelope instead of copying. We decided against this because:
+[Issue #73](https://github.com/mcquilleninteractive/validibot/issues/73) proposed referencing the original submission URI in the input envelope instead of copying. We decided against this because:
 
 - Docker Compose requires the copy regardless (DB content isn't a file)
 - Introduces ordering dependencies between purge and container execution

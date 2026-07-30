@@ -252,7 +252,11 @@ The Phase 4 MVP doesn't yet implement:
 
 - **`--drain` flag** — wait for in-flight runs to finish before proceeding. Recommended pattern for deployments running long validators; until it lands, schedule upgrades manually during quiet windows.
 - **`--components`-aware rollback** — restore is whole-system today. Component-selective restore is reserved in `validibot.backup.v1` (the manifest schema has the slot) but not yet wired through the recipe.
-- **Pre-built image pulls** — the recipe checks out the version tag and builds locally. A future enhancement could pull a pre-built image from GHCR / Docker Hub when the network can reach them, falling back to local build otherwise.
+- **Pre-built image pulls in the self-hosted recipe** — canonical validator
+  packages are public in GHCR, but the recipe still checks out the version tag
+  and builds locally. A future enhancement could pull the canonical GHCR
+  digest when the network can reach it, falling back to a verified local build
+  otherwise.
 
 These are documented follow-ups, not gaps in design.
 

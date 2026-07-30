@@ -13,7 +13,7 @@ A manifested backup contains:
 
 What's NOT in a manifested backup:
 
-- Container images themselves — pull them from GHCR / Docker Hub on restore.
+- Container images themselves — pull released images from the canonical public GHCR packages, or rebuild them from source, on restore.
 - The host OS or Docker daemon — that's an infrastructure-level concern.
 - DNS records or TLS certificates — managed by Caddy, your reverse proxy, or your DNS provider.
 - Application logs older than the rotation window — those go to log rotation, not backup.

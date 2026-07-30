@@ -91,7 +91,10 @@ def _attempt(*, state=ExecutionAttemptState.PENDING):
             f"projects/{PROJECT_ID}/locations/{REGION}/services/{SERVICE_NAME}"
         ),
         backend_release_identity="0.15.0",
-        backend_image_ref=f"ghcr.io/validibot/energyplus@{DIGEST}",
+        backend_image_ref=(
+            "ghcr.io/mcquilleninteractive/"
+            f"validibot-validator-backend-energyplus@{DIGEST}"
+        ),
         backend_image_digest=DIGEST,
         expected_runtime_identity=RUNTIME_IDENTITY,
         declared_capabilities=_capabilities(),

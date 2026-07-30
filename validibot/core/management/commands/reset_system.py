@@ -2,8 +2,9 @@
 
 This command is the "factory reset" for a deployed environment. It wipes the
 operational data an instance accumulates — validation runs, submissions,
-workflows, and projects — and rebuilds the system validator catalogue from the
-current code, then re-seeds validator resource files.
+workflows, projects, and managed validator deployments — and rebuilds the
+system validator catalogue from the current code, then re-seeds validator
+resource files.
 
 What it deletes
 ---------------
@@ -16,7 +17,10 @@ What it deletes
 2. **Submissions** (and their uploaded files / ``PurgeRetry`` rows).
 3. **Workflows** (cascading their steps and step resources).
 4. **Projects** (cascading anything project-owned that survived the above).
-5. **Validators** (cascading ``CustomValidator``, ``StepIODefinition``,
+5. **Validator execution deployments**, which use ``on_delete=PROTECT`` for
+   their validator reference and therefore must be removed explicitly before
+   the validator catalogue.
+6. **Validators** (cascading ``CustomValidator``, ``StepIODefinition``,
    ``Derivation``, and ``ValidatorResourceFile``), then recreated from the
    current ``ValidatorConfig`` declarations at the versions those configs
    declare — the genuine "latest specifications".
@@ -33,8 +37,10 @@ The order above is forced by the foreign-key ``PROTECT`` graph, not chosen for
 convenience. ``ValidationRun.workflow`` and ``Submission.workflow`` are
 ``PROTECT``, so runs and submissions must die before workflows.
 ``WorkflowStep.validator`` is ``PROTECT``, so workflows (and their cascaded
-steps) must die before validators. Running these deletes in any other order
-raises ``ProtectedError`` and aborts the whole transaction.
+steps) must die before validators. ``ValidatorExecutionDeployment.validator``
+is also ``PROTECT``, so deployment records must die before validators. Running
+these deletes in any other order raises ``ProtectedError`` and aborts the whole
+transaction.
 
 Why a confirmation argument and not just a prompt
 -------------------------------------------------
@@ -90,6 +96,7 @@ from validibot.projects.models import Project
 from validibot.submissions.models import Submission
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import Validator
+from validibot.validations.models import ValidatorExecutionDeployment
 from validibot.validations.utils import create_default_validators
 from validibot.workflows.models import Workflow
 
@@ -104,8 +111,9 @@ CONFIRM_PHRASE = "RESET-EVERYTHING"
 
 class Command(BaseCommand):
     help = (
-        "DESTRUCTIVE: delete all runs, submissions, workflows, projects and "
-        "validators, then rebuild the validator catalogue. Dry-run by default; "
+        "DESTRUCTIVE: delete all runs, submissions, workflows, projects, "
+        "validator deployments and validators, then rebuild the validator "
+        "catalogue. Dry-run by default; "
         f'requires --confirm "{CONFIRM_PHRASE}" to actually delete.'
     )
 
@@ -211,6 +219,7 @@ class Command(BaseCommand):
             "submissions": Submission.objects.count(),
             "workflows": Workflow.objects.count(),
             "projects": Project.objects.count(),
+            "validator deployments": ValidatorExecutionDeployment.objects.count(),
             "validators": Validator.objects.count(),
         }
 
@@ -344,9 +353,18 @@ class Command(BaseCommand):
         proj_deleted, _ = Project.objects.all().delete()
         self.stdout.write(f"  Deleted {proj_deleted} project row(s).")
 
-        # Validators last: now that no step references them, they (and their
-        # CustomValidator / StepIODefinition / Derivation / ValidatorResourceFile
-        # children) delete cleanly.
+        # Deployment records also PROTECT their validators. They describe
+        # provider routes for the old catalogue, so a factory reset removes
+        # them rather than carrying stale image and provider identities into
+        # the rebuilt catalogue.
+        deployment_deleted, _ = ValidatorExecutionDeployment.objects.all().delete()
+        self.stdout.write(
+            f"  Deleted {deployment_deleted} validator deployment row(s).",
+        )
+
+        # Validators last: now that neither steps nor execution deployments
+        # reference them, they (and their CustomValidator / StepIODefinition /
+        # Derivation / ValidatorResourceFile children) delete cleanly.
         val_deleted, _ = Validator.objects.all().delete()
         self.stdout.write(f"  Deleted {val_deleted} validator row(s).")
 

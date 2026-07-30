@@ -16,15 +16,24 @@ run it against anything you care about.
 then rebuilds the validator catalogue from the current code:
 
 - **Deletes** every validation run, submission (including the uploaded files in
-  storage), workflow, project, and validator.
+  storage), workflow, project, managed validator execution deployment, and
+  validator.
 - **Rebuilds** the system validators from their config declarations, at
-  version 1, and re-seeds their resource files (weather data and the like).
+  the versions those declarations currently specify, and re-seeds their
+  resource files (weather data and the like).
 - **Preserves** your users and organizations. Nothing about identity or
   membership is touched.
 
 So after a reset you still log in as the same people in the same orgs, but
-every workflow, project, run, and uploaded file is gone, and the validator
-catalogue looks like a fresh install.
+every workflow, project, run, managed provider route, and uploaded file is gone,
+and the validator catalogue looks like a fresh install.
+
+The deletion order is deliberate. Managed execution deployments protect their
+validator rows so that historical routing provenance cannot disappear
+accidentally during ordinary operation. A factory reset therefore deletes those
+deployment records explicitly before replacing the validator catalogue. This
+prevents stale provider resource names, image digests, and release identities
+from surviving into the fresh catalogue.
 
 ## How it keeps you safe
 
@@ -105,6 +114,7 @@ Validibot system reset
     - 388 submissions
     - 57 workflows
     - 120 projects
+    - 12 validator deployments
     - 34 validators
   Will REBUILD: system validators (from current configs) + resource files
   Will PRESERVE: users, organizations
@@ -127,6 +137,7 @@ breakdown and a success line:
   Deleted 388 submission row(s).
   Deleted 57 workflow row(s).
   Deleted 120 project row(s).
+  Deleted 12 validator deployment row(s).
   Deleted 34 validator row(s).
   Recreated 7 baseline validator(s).
   Purged 800 storage object(s).
@@ -152,10 +163,10 @@ force a preview even when the phrase is present.
 
 ## A note on validator versions
 
-After a reset, every system validator is rebuilt at **version 1**. The
-catalogue's config declarations are the source of truth for that, so the reset,
-`setup_validibot`, and `sync_validators` all agree on version 1 — there is no
-risk of a later sync re-introducing higher-numbered rows. If you are bringing an
-older database in line, run `reset_system` rather than a bare `sync_validators`:
-the reset wipes the validators first, whereas syncing without wiping would add
-version 1 rows alongside any older ones still in the table.
+After a reset, every system validator is rebuilt at the version declared by its
+current `ValidatorConfig`. Those declarations are the source of truth, so
+`reset_system`, `setup_validibot`, and `sync_validators` produce the same
+catalogue for the deployed code. If you are bringing an older database in line,
+run `reset_system` rather than a bare `sync_validators`: the reset removes the
+old validators and their managed deployment routes first, whereas syncing
+without wiping intentionally preserves historical catalogue rows.

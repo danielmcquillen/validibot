@@ -68,7 +68,8 @@ Self-hosted Validibot is **telemetry-off by default**. No product
 analytics. No license phone-home. No usage reporting. The default
 install makes only these outbound calls:
 
-- container image pulls during install/upgrade (Docker Hub / GHCR);
+- container image pulls during install/upgrade (the canonical public GHCR
+  packages, or an operator-configured private registry);
 - email delivery if you configure an email provider;
 - Let's Encrypt ACME challenges if you enable the bundled Caddy proxy;
 - nothing else.

@@ -542,7 +542,7 @@ Enable advanced validators by listing container images in settings:
 
 ```bash
 # Environment variable
-ADVANCED_VALIDATOR_IMAGES=ghcr.io/validibot/energyplus:24.2.0,ghcr.io/validibot/fmu:0.9.0
+ADVANCED_VALIDATOR_IMAGES=ghcr.io/mcquilleninteractive/validibot-validator-backend-energyplus:v0.15.4,ghcr.io/mcquilleninteractive/validibot-validator-backend-fmu:v0.15.3
 ```
 
 Then sync validators from container metadata:
@@ -555,7 +555,7 @@ python manage.py sync_validators
 python manage.py sync_validators --dry-run
 
 # Sync specific image (ignores ADVANCED_VALIDATOR_IMAGES)
-python manage.py sync_validators --image ghcr.io/validibot/energyplus:24.2.0
+python manage.py sync_validators --image ghcr.io/mcquilleninteractive/validibot-validator-backend-energyplus:v0.15.4
 
 # Skip pulling images (if already present locally)
 python manage.py sync_validators --no-pull

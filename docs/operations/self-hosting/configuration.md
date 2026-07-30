@@ -124,7 +124,7 @@ Off by default for self-hosted.
 | Setting | Purpose |
 |---|---|
 | `VALIDIBOT_IMAGE_TAG` | Validibot image tag. `latest` for evaluation, exact version (e.g. `0.8.0`) for production. |
-| `VALIDIBOT_IMAGE_REGISTRY` | Image registry. Default: `ghcr.io/validibot`. Mirror: `validibot` on Docker Hub. |
+| `VALIDIBOT_IMAGE_REGISTRY` | Image registry namespace used by deployment tooling. Published Validibot packages use `ghcr.io/mcquilleninteractive`; no Docker Hub mirror is maintained. |
 | `VALIDIBOT_COMMERCIAL_PACKAGE` | For Pro: `validibot-pro==<version>`. Empty for community. |
 | `VALIDIBOT_PRIVATE_INDEX_URL` | For Pro: `https://<email>:<token>@pypi.validibot.com/simple/`. Empty for community. |
 | `VALIDATOR_CONTAINER_SOCKET` | Host path to the Docker-compatible API socket mounted into the worker. Defaults to `/var/run/docker.sock`; use `/run/user/<numeric-uid>/docker.sock` for rootless Docker. |

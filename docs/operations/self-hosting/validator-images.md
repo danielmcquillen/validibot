@@ -104,7 +104,7 @@ Policy values:
 
 | Policy | What it does |
 |---|---|
-| `tag` | Default for community quick-start. Image references like `ghcr.io/validibot/energyplus:24.2.0`. |
+| `tag` | Default for community quick-start. Image references like `ghcr.io/mcquilleninteractive/validibot-validator-backend-energyplus:v0.15.4`. |
 | `digest` | Production-recommended. Image references include `@sha256:...` digests pinned at deploy time. |
 | `signed-digest` | High-trust deployments. Requires digest pinning plus enabled/configured cosign verification. |
 
@@ -224,22 +224,30 @@ A reasonable cron entry:
 
 Weekly cleanup at 3am Sunday. The log shows what was removed; if nothing matched, the recipe prints "Nothing to clean up." and exits 0.
 
-## Image registry (planned, not yet active)
+## Public validator images
 
-Today, validator images are built locally on each operator's host from
-the [`validibot-validator-backends`](https://github.com/mcquilleninteractive/validibot-validator-backends)
-checkout (see [What's pre-installed](#whats-pre-installed) above).
-There is no public registry to pull from yet.
+Released validator images are published as public GHCR packages under the
+McQuillen Interactive organization:
 
-When pre-built validator images do ship, the registry plan is:
+```text
+ghcr.io/mcquilleninteractive/validibot-validator-backend-<slug>:v<release>
+```
 
-| Registry | Path | Use |
-|---|---|---|
-| GHCR | `ghcr.io/validibot/<image>` | Canonical source. No pull rate limits. |
-| Docker Hub | `validibot/<image>` | Discoverability mirror. Rate-limited (100 anonymous pulls per 6h per IP). |
+For example:
 
-This table is documented here so operators know the eventual shape;
-nothing breaks today by ignoring it.
+```text
+ghcr.io/mcquilleninteractive/validibot-validator-backend-energyplus:v0.15.4
+```
+
+Public pulls do not require a GHCR login. Validibot does not maintain a Docker
+Hub mirror, and `ghcr.io/validibot/...` is not a Validibot-owned namespace.
+Operators can still build the images locally from the
+[`validibot-validator-backends`](https://github.com/mcquilleninteractive/validibot-validator-backends)
+checkout when auditing or customizing a backend.
+
+Use an exact release tag for evaluation. For production, resolve that tag and
+register the corresponding `@sha256:...` digest before enabling the `digest`
+image policy.
 
 ## See also
 

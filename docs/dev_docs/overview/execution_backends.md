@@ -305,7 +305,12 @@ COMPOSE_PROJECT_NAME=validibot docker compose -f docker-compose.production.yml u
 
 ### Private Registry Authentication
 
-By default, validator images are pulled from Docker Hub. If you're using a private registry (GitHub Container Registry, AWS ECR, Google Artifact Registry, etc.), you need to configure Docker credentials on the host.
+Published validator releases are public packages in GitHub Container
+Registry (GHCR), under
+`ghcr.io/mcquilleninteractive/validibot-validator-backend-<slug>:v<release>`.
+Public pulls do not require a registry login. Configure Docker credentials on
+the host only when using a private or internally mirrored registry (for
+example, private GHCR, AWS ECR, or Google Artifact Registry).
 
 **Option 1: Docker login on the host**
 

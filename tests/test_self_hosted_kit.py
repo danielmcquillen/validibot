@@ -854,14 +854,15 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "spec.template.spec.template.spec.containers[0].image" in block
         assert "spec.template.template.containers[0].image" not in block
 
-    def test_health_is_load_balancer_aware_and_maintenance_is_strict(self):
-        """Health uses the public LB while maintenance checks the offline state.
+    def test_health_and_status_cover_every_stage_lifecycle_state(self):
+        """Health uses the public LB while status classifies lifecycle state.
 
         The direct run.app URL is deliberately unavailable under
         ``internal-and-cloud-load-balancing``. Health checks therefore use the
-        configured public ``SITE_URL`` and fail on non-2xx responses. A stage
-        only counts as safely offline when ingress, minimum capacity, database,
-        and queues all agree; checking ingress alone hides billable instances.
+        configured public ``SITE_URL`` and fail on non-2xx responses. Status
+        distinguishes online, runtime-isolated maintenance, fully parked, and
+        partially transitioned states so an incomplete inspection cannot be
+        mistaken for a safe or ready deployment.
         """
         health_block = self._block_between(
             "health-check stage:",
@@ -878,21 +879,27 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "WEB_SERVICE_MIN" in maintenance_block
         assert "WEB_REVISION_MIN" in maintenance_block
         assert "DB_ACTIVE_OPERATION" in maintenance_block
+        assert 'DB_STATUS" = "RUNNABLE"' in maintenance_block
         assert 'DB_STATUS" = "STOPPED"' in maintenance_block
         assert '-z "$DB_ACTIVE_OPERATION"' in maintenance_block
         assert 'QUEUE_STATUS" = "PAUSED"' in maintenance_block
-        assert "MAINTENANCE (safely offline)" in maintenance_block
+        assert "RUNTIME_INSPECTION_ERRORS" in maintenance_block
+        assert "MAINTENANCE (isolated, database available)" in maintenance_block
+        assert "PARKED (isolated, database stopped)" in maintenance_block
+        assert "ONLINE" in maintenance_block
+        assert "PARTIALLY TRANSITIONED" in maintenance_block
 
     def test_maintenance_enforcement_scales_every_runtime_surface_to_zero(self):
-        """Maintenance must stop warm instances as well as block public traffic.
+        """Maintenance isolates runtime and work without changing Cloud SQL.
 
         Web, worker, optional MCP, and validator Services can each retain paid
         minimum capacity. Central enforcement prevents a partial shutdown from
-        looking safe while one of those surfaces remains warm.
+        looking safe while one of those surfaces remains warm, while keeping
+        the database available for consecutive operator tasks.
         """
         block = self._block_between(
             "_enforce-maintenance stage:",
-            "# Put a stage into maintenance mode",
+            "_maintenance-stop-database stage:",
         )
 
         assert "--ingress internal --min=0" in block
@@ -904,13 +911,51 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "VALIDIBOT_MCP_ENABLED=false" in block
         assert 'queues pause "$QUEUE_NAME"' in block
         assert 'queues pause "$PROVIDER_QUEUE_NAME"' in block
+        assert "--activation-policy NEVER" not in block
+        assert "database state unchanged" in block
+        assert "MAINTENANCE_ERRORS" in block
+        assert "completed all possible safeguards" in block
+
+    def test_maintenance_park_is_the_only_explicit_database_stop_path(self):
+        """Parking, and only parking, explicitly stops an isolated database.
+
+        Keeping the SQL stop in one helper prevents deployments, management
+        commands, and validator setup from repeatedly stopping and restarting
+        Cloud SQL during a single maintenance session.
+        """
+        block = self._block_between(
+            "_maintenance-stop-database stage:",
+            "# Put a stage into maintenance mode",
+        )
+
+        assert "_maintenance-assert-offline" in block
         assert "--activation-policy NEVER" in block
         assert "--quiet --async" in block
         assert "another operation was already in progress" in block
         assert "GCP_SQL_TRANSITION_TIMEOUT_SECONDS" in block
         assert "sql operations list" in block
-        assert "MAINTENANCE_ERRORS" in block
-        assert "completed all possible safeguards" in block
+        assert 'DB_STATUS" = "STOPPED"' in block
+        assert '-z "$ACTIVE_OPERATION"' in block
+        assert self._gcp_mod_text().count("--activation-policy NEVER") == 1
+
+    def test_maintenance_on_isolates_runtime_then_starts_database(self):
+        """Entering maintenance leaves an isolated stage ready for DB work.
+
+        Runtime isolation must happen before Cloud SQL is made available. The
+        fail-closed trap restores isolation if the start fails, but it never
+        parks the database implicitly.
+        """
+        block = self._block_between(
+            "maintenance-on stage:",
+            "# Park an already isolated stage",
+        )
+
+        assert block.index("_enforce-maintenance") < block.index(
+            "_maintenance-start-database"
+        )
+        assert "trap 'just gcp _enforce-maintenance" in block
+        assert "_maintenance-stop-database" not in block
+        assert "runtime isolated, work paused, database available" in block
 
     def test_maintenance_database_start_polls_provider_state_asynchronously(self):
         """A slow Cloud SQL control-plane operation must not defeat cleanup.
@@ -935,11 +980,12 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert '-z "$ACTIVE_OPERATION"' in block
 
     def test_maintenance_deploy_restores_offline_state_on_every_exit(self):
-        """An offline deployment must fail closed if any intermediate step fails.
+        """A maintenance deploy must fail closed if an intermediate step fails.
 
-        Migrations require Cloud SQL briefly, but traffic and task dispatch must
-        remain disabled. The EXIT trap is the recovery guarantee for build,
-        migration, web, worker, scheduler, and MCP failures.
+        Cloud SQL remains available throughout the maintenance session while
+        traffic and task dispatch stay disabled. The EXIT trap is the recovery
+        guarantee for build, migration, web, worker, scheduler, and MCP
+        failures, and must not implicitly park the database.
         """
         block = self._block_between(
             "deploy-maintenance stage:",
@@ -949,10 +995,34 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "_maintenance-assert-offline" in block
         assert "trap 'just gcp _enforce-maintenance" in block
         assert "_maintenance-start-database" in block
+        assert "_maintenance-stop-database" not in block
         assert "_migrate" in block
         maintenance_safe_child_steps = 4
         assert block.count("GCP_DEPLOY_MAINTENANCE=1") == maintenance_safe_child_steps
         assert "trap - EXIT" in block
+
+    def test_validator_database_commands_fail_fast_and_setup_enters_maintenance(self):
+        """Validator reconciliation must not depend on accidental SQL starts.
+
+        Read operations reject a stopped or transitioning database with a
+        concrete recovery command. First-time setup confirms its target before
+        entering maintenance, then performs its database-backed status check.
+        """
+        status_block = self._block_between(
+            "_validator-status-json stage output:",
+            "# Retain the exact accepted release record",
+        )
+        setup_block = self._block_between(
+            "validator-setup stage:",
+            "# Reconcile one backend",
+        )
+
+        assert "_maintenance-require-database" in status_block
+        assert "Type the GCP project ID to continue" in setup_block
+        assert setup_block.index("maintenance-on") < setup_block.index(
+            "_validator-status-json"
+        )
+        assert "_enforce-maintenance" in setup_block
 
     def test_maintenance_off_waits_for_database_before_resuming_work(self):
         """No traffic or queued work may resume against a starting database.
@@ -963,7 +1033,7 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         """
         block = self._block_between(
             "maintenance-off stage:",
-            "# Report the signals that define maintenance mode",
+            "# Report whether a stage is online",
         )
 
         ready = block.index("_maintenance-start-database")

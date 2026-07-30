@@ -172,28 +172,29 @@ just gcp deploy-all <stage>
 
 The standard deploy recipes require Cloud SQL to be running and refuse a stage
 that is in maintenance mode. To stage the latest application while keeping the
-site offline, use `just gcp deploy-maintenance <stage>`. It confirms the stage
-is already offline, starts only Cloud SQL for migrations, deploys web, worker,
-schedulers, and optional MCP with internal ingress and zero minimum capacity,
-then stops Cloud SQL and re-pauses all work. An exit trap restores maintenance
-mode even if an intermediate step fails. The cleanup first inspects Cloud Run
-and skips services that are already internal with zero minimum capacity. That
-matters when a newly selected revision is unhealthy: a redundant service update
-could otherwise fail before cleanup reaches Cloud SQL. Other service, queue,
-and scheduler failures are collected while every remaining safeguard is still
-attempted; the recipe reports failure only after the database stop path runs.
+site offline, first use `just gcp maintenance-on <stage>`, then
+`just gcp deploy-maintenance <stage>`. Maintenance entry isolates every runtime,
+pauses queues and schedulers, and starts or keeps Cloud SQL RUNNABLE. The deploy
+uses that same database for migrations and deploys web, worker, schedulers, and
+optional MCP with internal ingress and zero minimum capacity. An exit trap
+restores runtime isolation after success or failure without stopping the
+database, so consecutive maintenance operations do not repeatedly restart SQL.
+The cleanup first inspects Cloud Run and skips services already internal with
+zero minimum capacity. That matters when a newly selected revision is
+unhealthy: a redundant service update could otherwise fail before the remaining
+runtime safeguards are restored.
 
-Database start and stop requests are submitted asynchronously and the recipes
-poll both the instance state and the absence of an active control-plane
-operation, which also covers slow provider maintenance and eventual state
-reporting. The default transition deadline is 30 minutes; set
+Use `just gcp maintenance-park <stage>` as the sole explicit database stop after
+all maintenance work is complete. Database start and stop requests are
+submitted asynchronously and poll both instance state and the absence of an
+active control-plane operation, covering slow provider maintenance and eventual
+state reporting. The default transition deadline is 30 minutes; set
 `GCP_SQL_TRANSITION_TIMEOUT_SECONDS` for an exceptional longer operation.
-`maintenance-status` applies the same two-part database check, so a transitional
-`STOPPED` state is not reported as safely offline too early. Optional MCP is
-also internal, zero-capacity, and explicitly disabled while offline. Its
-revision starts without contacting the unavailable Django issuer; taking the
-stage online exposes web first and then restores the configured MCP kill-switch
-value, which runs the normal license check.
+`maintenance-status` reports `ONLINE`, `MAINTENANCE`, `PARKED`, or
+`PARTIALLY TRANSITIONED` from runtime, queue, scheduler, and database signals.
+Optional MCP is internal, zero-capacity, and explicitly disabled while isolated.
+Taking the stage online exposes web first and then restores the configured MCP
+kill-switch value, which runs the normal license check.
 
 ### Step 5: Database and Application Initialization
 
@@ -514,17 +515,20 @@ just gcp status-all
 ### Pause/Resume Service
 
 ```bash
-# Fully stop a stage: internal ingress, min=0, paused work, stopped database
+# Isolate runtime/work and start or keep the database available
 just gcp maintenance-on dev
 
-# Check every offline-state signal
+# Report ONLINE, MAINTENANCE, PARKED, or PARTIALLY TRANSITIONED
 just gcp maintenance-status dev
 
 # Stage a release or run a management command without opening the stage
 just gcp deploy-maintenance dev
 just gcp maintenance-management-cmd dev "check_validibot --strict"
 
-# Restore database first, then capacity, queues, schedulers, and ingress
+# Explicitly stop the database after all maintenance work
+just gcp maintenance-park dev
+
+# Or restore capacity, queues, schedulers, and ingress
 just gcp maintenance-off dev
 ```
 

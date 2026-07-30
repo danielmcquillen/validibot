@@ -19,7 +19,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         """Require exact identity and the auditable retirement reason."""
         parser.add_argument("--backend", required=True)
-        parser.add_argument("--version", required=True)
+        parser.add_argument(
+            "--release-version",
+            required=True,
+            help="Exact semantic backend release version to retire.",
+        )
         parser.add_argument("--reason", required=True)
 
     def handle(self, *args, **options):
@@ -27,7 +31,7 @@ class Command(BaseCommand):
         try:
             deployments = retire_backend_release_deployments(
                 backend_slug=options["backend"],
-                backend_release_identity=options["version"],
+                backend_release_identity=options["release_version"],
                 reason=options["reason"],
             )
         except (ExecutionDeploymentResolutionError, ValueError) as exc:

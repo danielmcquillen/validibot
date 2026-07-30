@@ -203,6 +203,33 @@ def test_exact_recovery_requires_and_transports_a_recorded_repair_reason():
     assert "--reason-b64={{reason_b64}}" in route
 
 
+def test_release_lifecycle_recipes_avoid_django_reserved_version_option():
+    """Operator recipes must not shadow Django's global ``--version`` flag."""
+
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    route = _recipe(
+        text,
+        (
+            "validator-backend-route name stage version "
+            'mode="normal" cause="SUPERSEDED_BY_ACCEPTED_RELEASE" '
+            'allow_unaccepted="" reason_b64=""'
+        ),
+        "# Change mutable service-level warming",
+    )
+    cleanup = _recipe(
+        text,
+        "validator-cleanup stage",
+        "# Report persisted p50/p95 timing stages",
+    )
+
+    assert "activate_validator_backend_release" in route
+    assert "--release-version={{version}}" in route
+    assert "--version={{version}}" not in route
+    assert "retire_validator_backend_release" in cleanup
+    assert "--release-version=$version" in cleanup
+    assert "--version=$version" not in cleanup
+
+
 def test_release_preflight_names_each_missing_publication_artifact():
     """Operators must see the exact absent trust artifact before GCP mutation."""
 

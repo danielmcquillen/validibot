@@ -4363,7 +4363,7 @@ validator-backend-route name stage version mode="normal" cause="SUPERSEDED_BY_AC
         REASON_ARG="--reason-b64={{reason_b64}}"
     fi
     just gcp management-cmd {{stage}} \
-        "activate_validator_backend_release --backend={{name}} --version={{version}} --mode={{mode}} --cause={{cause}} $ALLOW_ARG $REASON_ARG"
+        "activate_validator_backend_release --backend={{name}} --release-version={{version}} --mode={{mode}} --cause={{cause}} $ALLOW_ARG $REASON_ARG"
 
 # Change mutable service-level warming/capacity, then verify and audit the live
 # settings without creating a new Cloud Run revision.
@@ -4912,7 +4912,7 @@ validator-cleanup stage: _require-gcp-config
                 "record_validator_provider_deletion --resource=$resource"
         done
         just gcp management-cmd {{stage}} \
-            "retire_validator_backend_release --backend=$backend --version=$version --reason='Provider pair deleted after verified seven-day drain.'"
+            "retire_validator_backend_release --backend=$backend --release-version=$version --reason='Provider pair deleted after verified seven-day drain.'"
     done
 
 # Report persisted p50/p95 timing stages without blending Job and Service

@@ -27,7 +27,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         """Require exact backend, version, mode, and bounded lifecycle cause."""
         parser.add_argument("--backend", required=True)
-        parser.add_argument("--version", required=True)
+        parser.add_argument(
+            "--release-version",
+            required=True,
+            help="Exact semantic backend release version to activate.",
+        )
         parser.add_argument(
             "--mode",
             choices=[
@@ -75,7 +79,7 @@ class Command(BaseCommand):
         try:
             pairs = activate_backend_release(
                 backend_slug=options["backend"],
-                backend_release_identity=options["version"],
+                backend_release_identity=options["release_version"],
                 mode=options["mode"],
                 deactivation_cause=options["cause"],
                 require_accepted=not options["allow_unaccepted"],
@@ -91,6 +95,6 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Activated {len(pairs)} pair(s) for {options['backend']} "
-                f"{options['version']} in {options['mode']} mode."
+                f"{options['release_version']} in {options['mode']} mode."
             )
         )

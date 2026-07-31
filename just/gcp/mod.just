@@ -4742,6 +4742,7 @@ validator-update stage backend="": _require-gcp-config
     MODE_CHANGED=0
     BACKENDS=()
     TOUCHED_BACKENDS=()
+    LEGACY_RECORD_BLOCKER="active accepted release record is not retained"
     restore_previous_routes() {
         local status=$?
         local cleanup_status=$status
@@ -4751,37 +4752,42 @@ validator-update stage backend="": _require-gcp-config
             echo "Update stopped before the final activation transaction."
             echo "Restoring each backend to its previously accepted route, or"
             echo "parking an unaccepted candidate as inactive so it cannot receive work."
-            for selected_backend in "${TOUCHED_BACKENDS[@]}"; do
-                candidate_version=$(jq -r --arg backend "$selected_backend" \
-                    '.[] | select(.backend == $backend) | .file_version' \
-                    "$WORK_DIR/selected.json")
-                old_version=$(jq -r --arg backend "$selected_backend" \
-                    '.[] | select(.backend == $backend) | .active_version // ""' \
-                    "$WORK_DIR/selected.json")
-                old_accepted="false"
-                if [ -n "$old_version" ]; then
-                    old_accepted=$(jq -r --arg backend "$selected_backend" \
-                        --arg version "$old_version" \
-                        '.[] | select(.backend == $backend) |
-                         (.release_health[$version].all_accepted // false) | tostring' \
+            # Bash 3.2 treats an empty array expansion as an unbound variable
+            # under ``set -u``. A read-only preflight can fail before any
+            # backend is touched, so guard the loop explicitly.
+            if [ "${#TOUCHED_BACKENDS[@]}" -gt 0 ]; then
+                for selected_backend in "${TOUCHED_BACKENDS[@]}"; do
+                    candidate_version=$(jq -r --arg backend "$selected_backend" \
+                        '.[] | select(.backend == $backend) | .file_version' \
                         "$WORK_DIR/selected.json")
-                fi
-                if [ -n "$old_version" ] && [ "$old_accepted" = "true" ]; then
-                    echo "  $selected_backend: restoring accepted release $old_version in normal mode."
-                    if ! just gcp validator-backend-route "$selected_backend" {{stage}} \
-                        "$old_version" normal ACCEPTANCE_FAILURE; then
-                        echo "Error: failed to restore $selected_backend $old_version." >&2
-                        cleanup_status=1
+                    old_version=$(jq -r --arg backend "$selected_backend" \
+                        '.[] | select(.backend == $backend) | .active_version // ""' \
+                        "$WORK_DIR/selected.json")
+                    old_accepted="false"
+                    if [ -n "$old_version" ]; then
+                        old_accepted=$(jq -r --arg backend "$selected_backend" \
+                            --arg version "$old_version" \
+                            '.[] | select(.backend == $backend) |
+                             (.release_health[$version].all_accepted // false) | tostring' \
+                            "$WORK_DIR/selected.json")
                     fi
-                else
-                    echo "  $selected_backend: no accepted route is available; deactivating candidate $candidate_version."
-                    if ! just gcp validator-backend-route "$selected_backend" {{stage}} \
-                        "$candidate_version" inactive ACCEPTANCE_FAILURE allow-unaccepted; then
-                        echo "Error: failed to deactivate $selected_backend $candidate_version." >&2
-                        cleanup_status=1
+                    if [ -n "$old_version" ] && [ "$old_accepted" = "true" ]; then
+                        echo "  $selected_backend: restoring accepted release $old_version in normal mode."
+                        if ! just gcp validator-backend-route "$selected_backend" {{stage}} \
+                            "$old_version" normal ACCEPTANCE_FAILURE; then
+                            echo "Error: failed to restore $selected_backend $old_version." >&2
+                            cleanup_status=1
+                        fi
+                    else
+                        echo "  $selected_backend: no accepted route is available; deactivating candidate $candidate_version."
+                        if ! just gcp validator-backend-route "$selected_backend" {{stage}} \
+                            "$candidate_version" inactive ACCEPTANCE_FAILURE allow-unaccepted; then
+                            echo "Error: failed to deactivate $selected_backend $candidate_version." >&2
+                            cleanup_status=1
+                        fi
                     fi
-                fi
-            done
+                done
+            fi
         fi
         if [ "$MODE_CHANGED" = "1" ]; then
             if ! just gcp _mode-restore {{stage}} "$INITIAL_MODE"; then
@@ -4813,10 +4819,21 @@ validator-update stage backend="": _require-gcp-config
         echo "No backend release or semantic Validator rows require reconciliation."
         exit 0
     fi
-    if jq -e '.[] | select(.recommended_action | startswith("blocked:"))' \
-        "$WORK_DIR/selected.json" >/dev/null; then
-        jq -r '.[] | select(.recommended_action | startswith("blocked:")) |
-            "\(.backend): \(.recommended_action)"' "$WORK_DIR/selected.json" >&2
+    # Releases accepted before retained records were introduced need one
+    # append-only evidence migration. It is safe to perform after operator
+    # confirmation, then status revalidates the record against the database,
+    # provider resources, and registry digest before deployment continues.
+    if jq -e --arg legacy_record_blocker "$LEGACY_RECORD_BLOCKER" '
+        .[]
+        | select(.recommended_action | startswith("blocked:"))
+        | select(.blockers != [$legacy_record_blocker])
+    ' "$WORK_DIR/selected.json" >/dev/null; then
+        jq -r --arg legacy_record_blocker "$LEGACY_RECORD_BLOCKER" '
+            .[]
+            | select(.recommended_action | startswith("blocked:"))
+            | select(.blockers != [$legacy_record_blocker])
+            | "\(.backend): \(.recommended_action)"
+        ' "$WORK_DIR/selected.json" >&2
         echo "No GCP resources were changed." >&2
         exit 1
     fi
@@ -4827,6 +4844,11 @@ validator-update stage backend="": _require-gcp-config
     echo "Selected backend changes:"
     jq -r '.[] | "  \(.backend): \(.active_version // "not installed") -> \(.file_version) (\(.recommended_action))"' \
         "$WORK_DIR/selected.json"
+    if jq -e --arg legacy_record_blocker "$LEGACY_RECORD_BLOCKER" '
+        .[] | select(.blockers == [$legacy_record_blocker])
+    ' "$WORK_DIR/selected.json" >/dev/null; then
+        echo "  One-time migration: retain signed evidence for the accepted outgoing release."
+    fi
     CONFIRM="{{backend}}"
     if [ -z "$CONFIRM" ]; then CONFIRM="update"; fi
     read -r -p "Type $CONFIRM to continue: " REPLY
@@ -4839,6 +4861,47 @@ validator-update stage backend="": _require-gcp-config
     echo ""
     echo "Putting {{stage}} into MAINTENANCE so validator routes and queues can be changed safely."
     GCP_YES=1 just gcp mode-maintenance {{stage}}
+    MIGRATED_LEGACY_RECORD=0
+    for selected_backend in "${BACKENDS[@]}"; do
+        if jq -e --arg backend "$selected_backend" \
+            --arg legacy_record_blocker "$LEGACY_RECORD_BLOCKER" '
+            .[]
+            | select(.backend == $backend)
+            | select(.blockers == [$legacy_record_blocker])
+        ' "$WORK_DIR/selected.json" >/dev/null; then
+            old_version=$(jq -r --arg backend "$selected_backend" \
+                '.[] | select(.backend == $backend) | .active_version // ""' \
+                "$WORK_DIR/selected.json")
+            if [ -z "$old_version" ]; then
+                echo "Error: $selected_backend has no active release to retain." >&2
+                exit 1
+            fi
+            echo "Retaining signed evidence for accepted $selected_backend $old_version..."
+            just gcp _validator-retain-release-record "$selected_backend" {{stage}} \
+                "${selected_backend}-v${old_version}"
+            MIGRATED_LEGACY_RECORD=1
+        fi
+    done
+    if [ "$MIGRATED_LEGACY_RECORD" = "1" ]; then
+        just gcp _validator-status-json {{stage}} \
+            "$WORK_DIR/status-after-record-migration.json"
+        for selected_backend in "${BACKENDS[@]}"; do
+            if ! jq -e --arg backend "$selected_backend" '
+                .backends[]
+                | select(.backend == $backend)
+                | (.blockers | length == 0)
+            ' "$WORK_DIR/status-after-record-migration.json" >/dev/null; then
+                jq -r --arg backend "$selected_backend" '
+                    .backends[]
+                    | select(.backend == $backend)
+                    | "\(.backend): \(.recommended_action)"
+                ' "$WORK_DIR/status-after-record-migration.json" >&2
+                echo "Error: retained release evidence did not match the active deployment." >&2
+                exit 1
+            fi
+        done
+        echo "Accepted outgoing release evidence retained and verified."
+    fi
     BACKEND_INDEX=0
     for selected_backend in "${BACKENDS[@]}"; do
         BACKEND_INDEX=$((BACKEND_INDEX + 1))
@@ -6375,6 +6438,31 @@ mode-live stage: _require-gcp-config
         --region {{gcp_region}} --project {{gcp_project}} \
         --ingress "$WEB_INGRESS" --min="$WEB_MIN" --quiet
     if gcloud run services describe "$MCP_SERVICE" --region {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
+        # The MCP revision performs this same license request once during
+        # startup. Wait for the newly opened Django route first so a brief
+        # load-balancer propagation delay cannot make that revision fail.
+        if [[ "$MCP_ENABLED" =~ ^(true|True|TRUE|1|yes|Yes|YES)$ ]]; then
+            if [ -z "${VALIDIBOT_MCP_API_BASE_URL:-}" ]; then
+                echo "Error: VALIDIBOT_MCP_API_BASE_URL is required to enable MCP." >&2
+                exit 1
+            fi
+            MCP_LICENSE_URL="${VALIDIBOT_MCP_API_BASE_URL%/}/api/v1/license/features/"
+            MCP_LICENSE_READY=0
+            echo "Waiting for the MCP license check endpoint..."
+            for attempt in {1..12}; do
+                if curl --fail --silent --show-error --location \
+                    --connect-timeout 5 --max-time 10 "$MCP_LICENSE_URL" 2>/dev/null \
+                    | jq -e '.features | index("mcp_server") != null' >/dev/null; then
+                    MCP_LICENSE_READY=1
+                    break
+                fi
+                if [ "$attempt" -lt 12 ]; then sleep 5; fi
+            done
+            if [ "$MCP_LICENSE_READY" != "1" ]; then
+                echo "Error: the MCP license endpoint did not become ready." >&2
+                exit 1
+            fi
+        fi
         gcloud run services update "$MCP_SERVICE" \
             --region {{gcp_region}} --project {{gcp_project}} \
             --ingress "$MCP_INGRESS" --min=0 \

@@ -208,6 +208,57 @@ def test_update_reverifies_and_round_trips_the_outgoing_release():
     assert update.index(rollback) < update.index(restore_candidate)
 
 
+def test_update_migrates_missing_legacy_release_evidence_after_confirmation():
+    """Older accepted releases gain retained evidence without a repair command.
+
+    Retained release records were introduced after some installations already
+    had accepted provider pairs. The routine update command must distinguish
+    that one repairable blocker from unsafe drift, retain the signed public
+    record only after the normal operator confirmation, and re-run status so a
+    mismatched record still fails before provider deployment begins.
+    """
+
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    update = _recipe(
+        text,
+        'validator-update stage backend=""',
+        "# Roll back one backend",
+    )
+
+    assert (
+        'LEGACY_RECORD_BLOCKER="active accepted release record is not retained"'
+        in update
+    )
+    assert "select(.blockers != [$legacy_record_blocker])" in update
+    assert "_validator-retain-release-record" in update
+    assert "status-after-record-migration.json" in update
+    assert "retained release evidence did not match the active deployment" in update
+    confirmation = 'read -r -p "Type $CONFIRM to continue: " REPLY'
+    assert update.index(confirmation) < update.index("_validator-retain-release-record")
+
+
+def test_update_cleanup_handles_a_preflight_failure_before_any_backend_is_touched():
+    """A read-only update failure must not crash while iterating an empty array.
+
+    macOS ships Bash 3.2, where expanding an empty array under ``set -u`` raises
+    an unbound-variable error. The cleanup trap must therefore guard the route
+    restoration loop when preflight stopped before provider mutation.
+    """
+
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    update = _recipe(
+        text,
+        'validator-update stage backend=""',
+        "# Roll back one backend",
+    )
+
+    guard = 'if [ "${#TOUCHED_BACKENDS[@]}" -gt 0 ]; then'
+    loop = 'for selected_backend in "${TOUCHED_BACKENDS[@]}"; do'
+    assert guard in update
+    assert loop in update
+    assert update.index(guard) < update.index(loop)
+
+
 def test_exact_recovery_requires_and_transports_a_recorded_repair_reason():
     """Reusing a rolled-back version must create accountable audit metadata."""
 

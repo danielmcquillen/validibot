@@ -1210,6 +1210,12 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert block.rindex('--ingress "$WEB_INGRESS"') > block.index(
             "scheduler jobs resume"
         )
+        license_wait = block.index("Waiting for the MCP license check endpoint")
+        assert license_wait > block.rindex('--ingress "$WEB_INGRESS"')
+        assert license_wait < block.index(
+            "VALIDIBOT_MCP_ENABLED=$MCP_ENABLED",
+        )
+        assert 'index("mcp_server") != null' in block
         assert "VALIDIBOT_MCP_ENABLED=$MCP_ENABLED" in block
         assert "desired-min-instances" in block
         assert "trap cleanup EXIT INT TERM" in block

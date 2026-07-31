@@ -80,7 +80,7 @@ if TYPE_CHECKING:
 
     from validibot.projects.models import Project
 
-ACCEPTANCE_SCHEMA_VERSION = "validibot.validator-acceptance.v1"
+ACCEPTANCE_SCHEMA_VERSION = "validibot.validator-acceptance.v2"
 ACCEPTANCE_FIXTURE_VERSION = 1
 ACCEPTANCE_ORG_SLUG = "validibot-validator-acceptance"
 ACCEPTANCE_USERNAME = "validibot-validator-acceptance"
@@ -101,7 +101,6 @@ class BackendSpec:
     key: str
     validation_type: str
     ruleset_type: str
-    provider_start_target_seconds: float
 
 
 BACKENDS = (
@@ -109,21 +108,18 @@ BACKENDS = (
         "energyplus",
         ValidationType.ENERGYPLUS,
         RulesetType.ENERGYPLUS,
-        30.0,
     ),
-    BackendSpec("fmu", ValidationType.FMU, RulesetType.FMU, 20.0),
-    BackendSpec("shacl", ValidationType.SHACL, RulesetType.SHACL, 15.0),
+    BackendSpec("fmu", ValidationType.FMU, RulesetType.FMU),
+    BackendSpec("shacl", ValidationType.SHACL, RulesetType.SHACL),
     BackendSpec(
         "schematron",
         ValidationType.SCHEMATRON,
         RulesetType.SCHEMATRON,
-        15.0,
     ),
     BackendSpec(
         "portfolio_manager",
         ValidationType.PORTFOLIO_MANAGER,
         RulesetType.PORTFOLIO_MANAGER,
-        20.0,
     ),
 )
 BACKENDS_BY_KEY = {spec.key: spec for spec in BACKENDS}
@@ -1033,11 +1029,20 @@ class ValidatorAcceptanceRunner:
         scenario: AcceptanceScenario,
         launched,
     ) -> None:
-        """Measure this exact burst without blending revisions or old runs."""
+        """Measure one immutable burst without an arbitrary startup threshold.
+
+        Correctness, complete timing evidence, and immutable revision identity
+        remain release gates. Provider-start and provider-total latency are
+        retained as observations, but neither is compared with a universal
+        startup target. The measured provider-start interval can include
+        provider queueing, Cloud Run provisioning, container startup, and
+        backend setup, so it is not a portable cold-start SLO.
+        """
         provider_start_samples = []
         provider_total_samples = []
         revisions = set()
         minimum_instances = set()
+        service_minimum_instances = set()
         for _sequence, run in launched:
             attempt = (
                 ExecutionAttempt.objects.filter(step_run__validation_run=run)
@@ -1048,7 +1053,13 @@ class ValidatorAcceptanceRunner:
             if attempt is None or attempt.deployment is None:
                 continue
             revisions.add(attempt.deployment.deployment_revision)
-            minimum_instances.add(attempt.deployment.minimum_instances)
+            observed_minimum = attempt.deployment.minimum_instances
+            minimum_instances.add(observed_minimum)
+            if getattr(attempt.deployment, "deployment_kind", "") in {
+                ExecutionDeploymentKind.CLOUD_RUN_SERVICE,
+                "",
+            }:
+                service_minimum_instances.add(observed_minimum)
             if (
                 attempt.provider_accepted_at
                 and attempt.provider_started_at
@@ -1076,11 +1087,16 @@ class ValidatorAcceptanceRunner:
             "representative_sample": (
                 self.attempts_per_backend >= REPRESENTATIVE_SAMPLE_SIZE
             ),
-            "provider_start_target_seconds": (
-                scenario.backend.provider_start_target_seconds
-            ),
             "deployment_revisions": sorted(revisions),
-            "service_minimum_instances": sorted(minimum_instances),
+            "minimum_instances": sorted(minimum_instances),
+            "service_minimum_instances": sorted(service_minimum_instances),
+            "latency_policy": "observed_no_universal_startup_threshold",
+            "provider_start_measurement": (
+                "provider_accepted_at_to_provider_started_at"
+            ),
+            "provider_total_measurement": (
+                "provider_accepted_at_to_callback_received_at"
+            ),
         }
         failure = ""
         if len(provider_start_samples) != self.attempts_per_backend:
@@ -1089,6 +1105,8 @@ class ValidatorAcceptanceRunner:
             failure = "one or more provider-total samples is missing"
         elif len(revisions) != 1:
             failure = "the burst did not use exactly one immutable revision"
+        elif service_minimum_instances and service_minimum_instances != {0}:
+            failure = "validator Service minimum instances must remain zero"
         else:
             start_p50 = _percentile(provider_start_samples, 50)
             start_p95 = _percentile(provider_start_samples, 95)
@@ -1102,15 +1120,12 @@ class ValidatorAcceptanceRunner:
                     "provider_total_p95_seconds": total_p95,
                 }
             )
-            if start_p95 > scenario.backend.provider_start_target_seconds:
-                failure = "provider-start p95 exceeded its recorded target"
-
         check_id = _scenario_check_id(scenario, "LATENCY")
         if failure:
             report.add(
                 check_id,
                 "failed",
-                "The exact acceptance burst missed its latency evidence gate.",
+                "The exact acceptance burst did not produce valid latency evidence.",
                 error=failure,
                 **details,
             )
@@ -1118,7 +1133,11 @@ class ValidatorAcceptanceRunner:
             report.add(
                 check_id,
                 "passed",
-                "The exact acceptance burst met its provider-start target.",
+                (
+                    "The exact acceptance burst produced complete latency "
+                    "evidence; startup timing is observed, not compared with "
+                    "a universal threshold."
+                ),
                 **details,
             )
 

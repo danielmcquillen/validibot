@@ -4143,7 +4143,10 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
         portfolio_manager) CPU=2; MEMORY=4Gi; DEFAULT_MAX_INSTANCES=8 ;;
         *) echo "Error: unknown validator Service '{{name}}'" >&2; exit 1 ;;
     esac
-    MIN_INSTANCES="${VALIDATOR_SERVICE_MIN_INSTANCES:-0}"
+    # Validator Services are intentionally scale-to-zero.  Do not make a
+    # release rollout depend on a hidden environment override that could turn
+    # twenty otherwise idle validators into twenty warm billable instances.
+    MIN_INSTANCES=0
     MAX_INSTANCES="${VALIDATOR_SERVICE_MAX_INSTANCES:-$DEFAULT_MAX_INSTANCES}"
     if ! [[ "$MIN_INSTANCES" =~ ^[0-9]+$ && "$MAX_INSTANCES" =~ ^[1-9][0-9]*$ ]] \
         || [ "$MIN_INSTANCES" -gt "$MAX_INSTANCES" ]; then
@@ -4233,7 +4236,15 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
             exit 1
         fi
         CREATE_SERVICE=0
-        echo "Reusing existing release Service $SERVICE_NAME at $IMAGE_DIGEST; import will reverify its full specification."
+        echo "Reusing existing release Service $SERVICE_NAME at $IMAGE_DIGEST."
+        echo "Enforcing the scale-to-zero policy on the reused Service before verification."
+        gcloud run services update "$SERVICE_NAME" \
+            --region {{gcp_region}} \
+            --project {{gcp_project}} \
+            --min=0 \
+            --update-labels=desired-min-instances=0 \
+            --quiet
+        echo "Import will now reverify the full immutable Service specification."
     fi
 
     if [ "$CREATE_SERVICE" = "1" ]; then
@@ -4403,9 +4414,10 @@ validator-backend-route name stage version mode="normal" cause="SUPERSEDED_BY_AC
     just gcp management-cmd {{stage}} \
         "activate_validator_backend_release --backend={{name}} --release-version={{version}} --mode={{mode}} --cause={{cause}} $ALLOW_ARG $REASON_ARG"
 
-# Change mutable service-level warming/capacity, then verify and audit the live
-# settings without creating a new Cloud Run revision.
-# Usage: just gcp validator-service-capacity shacl prod 0.15.0 1 8
+# Set mutable service-level capacity, then verify and audit the live settings
+# without creating a new Cloud Run revision. Validator Services always retain
+# minimum zero; this command changes only the maximum instance limit.
+# Usage: just gcp validator-service-capacity shacl prod 0.15.0 0 8
 [arg('stage', pattern='dev|staging|prod')]
 validator-service-capacity name stage version minimum maximum: _require-gcp-config
     #!/usr/bin/env bash
@@ -4417,6 +4429,10 @@ validator-service-capacity name stage version minimum maximum: _require-gcp-conf
     if ! [[ "{{minimum}}" =~ ^[0-9]+$ && "{{maximum}}" =~ ^[1-9][0-9]*$ ]] \
         || [ "{{minimum}}" -gt "{{maximum}}" ]; then
         echo "Error: capacity requires 0 <= minimum <= maximum." >&2
+        exit 1
+    fi
+    if [ "{{minimum}}" != "0" ]; then
+        echo "Error: validator Services use scale-to-zero; minimum must be 0." >&2
         exit 1
     fi
     SERVICE_NAME=$(python3 ops/gcp/validator_release_control.py \
@@ -4725,17 +4741,45 @@ validator-update stage backend="": _require-gcp-config
     esac
     MODE_CHANGED=0
     BACKENDS=()
+    TOUCHED_BACKENDS=()
     restore_previous_routes() {
         local status=$?
+        local cleanup_status=$status
         trap - EXIT INT TERM
-        if [ "$status" -ne 0 ]; then
-            for selected_backend in "${BACKENDS[@]}"; do
+        if [ "$status" -ne 0 ] && [ -f "$WORK_DIR/selected.json" ]; then
+            echo ""
+            echo "Update stopped before the final activation transaction."
+            echo "Restoring each backend to its previously accepted route, or"
+            echo "parking an unaccepted candidate as inactive so it cannot receive work."
+            for selected_backend in "${TOUCHED_BACKENDS[@]}"; do
+                candidate_version=$(jq -r --arg backend "$selected_backend" \
+                    '.[] | select(.backend == $backend) | .file_version' \
+                    "$WORK_DIR/selected.json")
                 old_version=$(jq -r --arg backend "$selected_backend" \
                     '.[] | select(.backend == $backend) | .active_version // ""' \
                     "$WORK_DIR/selected.json")
+                old_accepted="false"
                 if [ -n "$old_version" ]; then
-                    just gcp validator-backend-route "$selected_backend" {{stage}} \
-                        "$old_version" normal ACCEPTANCE_FAILURE || true
+                    old_accepted=$(jq -r --arg backend "$selected_backend" \
+                        --arg version "$old_version" \
+                        '.[] | select(.backend == $backend) |
+                         (.release_health[$version].all_accepted // false) | tostring' \
+                        "$WORK_DIR/selected.json")
+                fi
+                if [ -n "$old_version" ] && [ "$old_accepted" = "true" ]; then
+                    echo "  $selected_backend: restoring accepted release $old_version in normal mode."
+                    if ! just gcp validator-backend-route "$selected_backend" {{stage}} \
+                        "$old_version" normal ACCEPTANCE_FAILURE; then
+                        echo "Error: failed to restore $selected_backend $old_version." >&2
+                        cleanup_status=1
+                    fi
+                else
+                    echo "  $selected_backend: no accepted route is available; deactivating candidate $candidate_version."
+                    if ! just gcp validator-backend-route "$selected_backend" {{stage}} \
+                        "$candidate_version" inactive ACCEPTANCE_FAILURE allow-unaccepted; then
+                        echo "Error: failed to deactivate $selected_backend $candidate_version." >&2
+                        cleanup_status=1
+                    fi
                 fi
             done
         fi
@@ -4743,11 +4787,11 @@ validator-update stage backend="": _require-gcp-config
             if ! just gcp _mode-restore {{stage}} "$INITIAL_MODE"; then
                 echo "Error: failed to restore {{stage}} to its initial $INITIAL_MODE mode." >&2
                 just gcp _enforce-maintenance {{stage}} || true
-                status=1
+                cleanup_status=1
             fi
         fi
         rm -rf "$WORK_DIR"
-        exit "$status"
+        exit "$cleanup_status"
     }
     trap restore_previous_routes EXIT INT TERM
     # A parked database cannot serve the read-only release preflight. Starting
@@ -4776,7 +4820,12 @@ validator-update stage backend="": _require-gcp-config
         echo "No GCP resources were changed." >&2
         exit 1
     fi
-    jq -r '.[] | "\(.backend): \(.active_version // "not installed") -> \(.file_version) (\(.recommended_action))"' \
+    echo ""
+    echo "Validator release update for {{stage}}"
+    echo "Capacity policy: every release-specific validator Service uses min=0."
+    echo "Acceptance records cold-start latency as evidence; it does not require warm instances."
+    echo "Selected backend changes:"
+    jq -r '.[] | "  \(.backend): \(.active_version // "not installed") -> \(.file_version) (\(.recommended_action))"' \
         "$WORK_DIR/selected.json"
     CONFIRM="{{backend}}"
     if [ -z "$CONFIRM" ]; then CONFIRM="update"; fi
@@ -4785,9 +4834,15 @@ validator-update stage backend="": _require-gcp-config
     while IFS= read -r selected_backend; do
         BACKENDS+=("$selected_backend")
     done < <(jq -r '.[].backend' "$WORK_DIR/selected.json")
+    BACKEND_COUNT=${#BACKENDS[@]}
     MODE_CHANGED=1
+    echo ""
+    echo "Putting {{stage}} into MAINTENANCE so validator routes and queues can be changed safely."
     GCP_YES=1 just gcp mode-maintenance {{stage}}
+    BACKEND_INDEX=0
     for selected_backend in "${BACKENDS[@]}"; do
+        BACKEND_INDEX=$((BACKEND_INDEX + 1))
+        TOUCHED_BACKENDS+=("$selected_backend")
         version=$(jq -r --arg backend "$selected_backend" \
             '.[] | select(.backend == $backend) | .file_version' \
             "$WORK_DIR/selected.json")
@@ -4795,6 +4850,9 @@ validator-update stage backend="": _require-gcp-config
             '.[] | select(.backend == $backend) | .active_version // ""' \
             "$WORK_DIR/selected.json")
         source_tag="${selected_backend}-v${version}"
+        echo ""
+        echo "[$BACKEND_INDEX/$BACKEND_COUNT] $selected_backend $version"
+        echo "  Stage: deploy the immutable Job and scale-to-zero Service pair."
         if [ -n "$old_version" ] && [ "$old_version" != "$version" ]; then
             old_source_tag="${selected_backend}-v${old_version}"
             VALIDATOR_ALLOW_HISTORICAL=1 \
@@ -4806,7 +4864,9 @@ validator-update stage backend="": _require-gcp-config
                 "$old_version"
         fi
         just gcp validator-deploy "$selected_backend" {{stage}} "$source_tag"
+        echo "  Accept: run correctness, storage, route, provenance, and latency evidence."
         just gcp validator-acceptance "$selected_backend" {{stage}} "$source_tag"
+        echo "  Passed: parking the accepted pair until every selected backend is ready."
         if [ -n "$old_version" ] && [ "$old_version" != "$version" ]; then
             just gcp validator-deployments-sync "$selected_backend" {{stage}} \
                 "$old_version"
@@ -4820,6 +4880,9 @@ validator-update stage backend="": _require-gcp-config
         just gcp validator-backend-route "$selected_backend" {{stage}} "$version" \
             inactive OPERATOR_DEACTIVATION
     done
+    echo ""
+    echo "All selected backend pairs passed acceptance and are parked inactive."
+    echo "Retaining signed release evidence before the group activation transaction."
     GROUP_COMMAND="activate_validator_backend_release_group --mode=normal --cause=SUPERSEDED_BY_ACCEPTED_RELEASE"
     ACTIVATION_ARGS=()
     for selected_backend in "${BACKENDS[@]}"; do
@@ -4832,6 +4895,7 @@ validator-update stage backend="": _require-gcp-config
         GROUP_COMMAND="${GROUP_COMMAND} --release=${selected_backend}=${version}"
         ACTIVATION_ARGS+=("--release=${selected_backend}=${version}")
     done
+    echo "Verifying the complete activation set before changing any route..."
     just gcp _validator-status-json {{stage}} \
         "$WORK_DIR/status-before-activation.json"
     python3 ops/gcp/validator_release_control.py activation-check \
@@ -4844,7 +4908,9 @@ validator-update stage backend="": _require-gcp-config
         just gcp validator-deployments-sync "$selected_backend" {{stage}} "$version"
         just gcp validator-services-register "$selected_backend" {{stage}} "$version"
     done
+    echo "Activating all accepted backend pairs together in normal mode."
     just gcp management-cmd {{stage}} "$GROUP_COMMAND"
+    echo "All selected validator backends are active; restoring {{stage}} to $INITIAL_MODE."
     just gcp _mode-restore {{stage}} "$INITIAL_MODE"
     MODE_CHANGED=0
     trap - EXIT INT TERM
@@ -5050,7 +5116,9 @@ validator-latency-report stage since_hours="168" minimum_samples="20": _require-
 
 # Run one backend-specific acceptance suite while public dispatch is offline.
 # The candidate is temporarily routed through the pair service, and successful
-# canaries record accepted_at on the exact Service and Job rows.
+# canaries record accepted_at on the exact Service and Job rows. Validator
+# Services deliberately remain at min=0; latency evidence is not a
+# warm-instance gate.
 [arg('stage', pattern='dev|staging|prod')]
 validator-acceptance name stage release_tag attempts="20": _require-gcp-config
     #!/usr/bin/env bash
@@ -5069,12 +5137,6 @@ validator-acceptance name stage release_tag attempts="20": _require-gcp-config
         exit 1
     fi
     just gcp _maintenance-assert-offline {{stage}}
-    trap 'just gcp _enforce-maintenance {{stage}}' EXIT INT TERM
-    just gcp _maintenance-start-database {{stage}}
-    just gcp validator-deployments-sync "{{name}}" {{stage}} "$VERSION"
-    just gcp validator-services-register "{{name}}" {{stage}} "$VERSION"
-    just gcp validator-backend-route "{{name}}" {{stage}} "$VERSION" normal \
-        SUPERSEDED_BY_ACCEPTED_RELEASE allow-unaccepted
     APP_NAME="{{app_name}}"
     if [ "{{stage}}" = "prod" ]; then
         QUEUE_NAME="${APP_NAME}-tasks"
@@ -5083,6 +5145,50 @@ validator-acceptance name stage release_tag attempts="20": _require-gcp-config
         QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
         PROVIDER_QUEUE_NAME="${APP_NAME}-validator-provider-{{stage}}"
     fi
+    CANDIDATE_ROUTED=0
+    ACCEPTANCE_PASSED=0
+    pause_acceptance_queues() {
+        gcloud tasks queues pause "$QUEUE_NAME" \
+            --location {{gcp_region}} --project {{gcp_project}} --quiet \
+            >/dev/null 2>&1 || true
+        gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
+            --location {{gcp_region}} --project {{gcp_project}} --quiet \
+            >/dev/null 2>&1 || true
+    }
+    cleanup_acceptance() {
+        local status=$?
+        local cleanup_status=$status
+        trap - EXIT INT TERM
+        pause_acceptance_queues
+        if [ "$ACCEPTANCE_PASSED" != "1" ] && [ "$CANDIDATE_ROUTED" = "1" ]; then
+            echo ""
+            echo "Acceptance did not complete successfully."
+            echo "Parking {{name}} $VERSION as inactive so an unaccepted release cannot receive work."
+            if ! just gcp validator-backend-route "{{name}}" {{stage}} "$VERSION" \
+                inactive ACCEPTANCE_FAILURE allow-unaccepted; then
+                echo "Error: failed to deactivate the failed acceptance candidate." >&2
+                cleanup_status=1
+            fi
+        fi
+        if ! just gcp _enforce-maintenance {{stage}}; then
+            echo "Error: failed to leave {{stage}} in enforced maintenance mode." >&2
+            cleanup_status=1
+        fi
+        exit "$cleanup_status"
+    }
+    trap cleanup_acceptance EXIT INT TERM
+    echo ""
+    echo "Validator acceptance: {{name}} $VERSION on {{stage}}"
+    echo "Policy: the candidate Service uses scale-to-zero (min=0); the run measures cold-start latency without warming it."
+    just gcp _maintenance-start-database {{stage}}
+    echo "Registering and verifying the exact immutable Job/Service pair..."
+    just gcp validator-deployments-sync "{{name}}" {{stage}} "$VERSION"
+    just gcp validator-services-register "{{name}}" {{stage}} "$VERSION"
+    echo "Temporarily routing private acceptance traffic to the candidate Service..."
+    just gcp validator-backend-route "{{name}}" {{stage}} "$VERSION" normal \
+        SUPERSEDED_BY_ACCEPTED_RELEASE allow-unaccepted
+    CANDIDATE_ROUTED=1
+    echo "Acceptance phase 1/2: resuming isolated queues for Service canaries."
     gcloud tasks queues resume "$QUEUE_NAME" \
         --location {{gcp_region}} --project {{gcp_project}} --quiet
     gcloud tasks queues resume "$PROVIDER_QUEUE_NAME" \
@@ -5090,10 +5196,12 @@ validator-acceptance name stage release_tag attempts="20": _require-gcp-config
     GCP_MANAGEMENT_COMMAND_TIMEOUT=3600s \
         just gcp management-cmd {{stage}} \
         "run_validator_acceptance --backend={{name}} --release-tag={{release_tag}} --routing-mode=normal --attempts={{attempts}} --timeout-seconds=3000 --require-persisted-report --ambient-isolation-verified"
+    echo "Service canaries passed. Pausing queues before changing the candidate route to Job-only."
     gcloud tasks queues pause "$QUEUE_NAME" \
         --location {{gcp_region}} --project {{gcp_project}} --quiet
     gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
         --location {{gcp_region}} --project {{gcp_project}} --quiet
+    echo "Acceptance phase 2/2: routing private acceptance traffic to the fallback Job."
     just gcp validator-backend-route "{{name}}" {{stage}} "$VERSION" job-only \
         SHAPE_ROLLBACK allow-unaccepted
     gcloud tasks queues resume "$QUEUE_NAME" \
@@ -5103,13 +5211,16 @@ validator-acceptance name stage release_tag attempts="20": _require-gcp-config
     GCP_MANAGEMENT_COMMAND_TIMEOUT=3600s \
         just gcp management-cmd {{stage}} \
         "run_validator_acceptance --backend={{name}} --release-tag={{release_tag}} --routing-mode=job-only --record-acceptance --attempts={{attempts}} --timeout-seconds=3000 --require-persisted-report --skip-storage-probe --ambient-isolation-verified"
+    echo "Job canaries passed and acceptance is recorded. Pausing queues and restoring normal candidate routing."
     gcloud tasks queues pause "$QUEUE_NAME" \
         --location {{gcp_region}} --project {{gcp_project}} --quiet
     gcloud tasks queues pause "$PROVIDER_QUEUE_NAME" \
         --location {{gcp_region}} --project {{gcp_project}} --quiet
     just gcp validator-backend-route "{{name}}" {{stage}} "$VERSION" normal SHAPE_ROLLBACK
+    ACCEPTANCE_PASSED=1
     trap - EXIT INT TERM
     echo "Acceptance passed for {{name}} $VERSION on {{stage}}."
+    echo "The pair is accepted and in normal mode; validator-update will park it until group activation."
 
 # Historical all-backend acceptance remains private for migration diagnosis.
 # It is not used by setup or routine updates after independent releases.
@@ -6210,7 +6321,9 @@ mode-live stage: _require-gcp-config
     if gcloud compute network-endpoint-groups describe "$WEB_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then WEB_INGRESS="internal-and-cloud-load-balancing"; else WEB_INGRESS="all"; fi
     if gcloud compute network-endpoint-groups describe "$MCP_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then MCP_INGRESS="internal-and-cloud-load-balancing"; else MCP_INGRESS="all"; fi
 
-    # Restore capacity while all externally reachable ingress remains closed.
+    # Restore application capacity while all externally reachable ingress
+    # remains closed. Validator Services are always returned to min=0 so a
+    # lifecycle transition cannot silently restore warm billable instances.
     gcloud run services update "$WEB_SERVICE" \
         --region {{gcp_region}} --project {{gcp_project}} \
         --ingress internal --min="$WEB_MIN" --quiet
@@ -6228,17 +6341,11 @@ mode-live stage: _require-gcp-config
         --format='value(metadata.name)')
     while IFS= read -r service; do
         [ -z "$service" ] && continue
-        desired=$(gcloud run services describe "$service" \
-            --region {{gcp_region}} --project {{gcp_project}} \
-            --format="value(metadata.labels.'desired-min-instances')" 2>/dev/null || true)
-        desired="${desired:-0}"
-        if ! [[ "$desired" =~ ^[0-9]+$ ]]; then
-            echo "Error: invalid desired-min-instances label '$desired' on $service." >&2
-            exit 1
-        fi
+        echo "Restoring validator Service $service with scale-to-zero min=0."
         gcloud run services update "$service" \
             --region {{gcp_region}} --project {{gcp_project}} \
-            --ingress internal --min="$desired" --quiet
+            --ingress internal --min=0 \
+            --update-labels=desired-min-instances=0 --quiet
     done <<< "$SERVICES"
 
     # Reconcile the managed jobs in a paused state before any scheduler can

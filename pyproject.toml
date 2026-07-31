@@ -39,7 +39,7 @@ dependencies = [
   "django-allauth[mfa]==65.18.0",
   "django-anymail[postmark]==15.0",
   "django-cors-headers==4.9.0",
-  "django-crispy-forms==2.6",
+  "django-crispy-forms==2.7",
   "django-environ==0.14.0",
   "django-filter==26.1",
   "django-markdownify==0.9.7",
@@ -91,7 +91,7 @@ dependencies = [
   # guerrillamail, tempmail, etc). Used by UserSignupForm when
   # REJECT_DISPOSABLE_EMAILS is enabled — off by default for community/
   # self-hosted deployments, on in cloud to deter free-trial abuse.
-  "disposable-email-domains==0.0.233",
+  "disposable-email-domains==0.0.234",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # 0.7.0 adds ``StepValidatorRecord.validator_backend_image_digest``;
   # 0.7.1–0.7.3 shipped publish-workflow fixes;
@@ -156,7 +156,7 @@ dependencies = [
 
 [project.optional-dependencies]
 cloud = [
-  "stripe==15.3.1",
+  "stripe==15.4.0",
 ]
 # Docker SDK for the Docker-based validator runner (VALIDATOR_RUNNER=docker).
 # Not needed for Cloud Run deployments. Reduces attack surface when omitted.

@@ -628,11 +628,11 @@ wheels = [
 
 [[package]]
 name = "disposable-email-domains"
-version = "0.0.233"
+version = "0.0.234"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2f/93/0f11edaafb5e00f83bfaf6cb763f53ebe08f8b2c4e31e2104b59dcc96d14/disposable_email_domains-0.0.233.tar.gz", hash = "sha256:02edad45cb4c021a48d9e47bff0ffdfb7c7021d41ba8d6e7801929a7aed22e46", size = 99888, upload-time = "2026-07-28T12:34:54.644Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/6f/1636b7b3fd5fbf96b28cdf2f708d7d28ce098c5711edba44446042ec6947/disposable_email_domains-0.0.234.tar.gz", hash = "sha256:3db1d2f47676648632c89893fd5c9a42546a72622fe655ee8d26f781ef0e7c1a", size = 99914, upload-time = "2026-07-29T12:04:22.352Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/89/d7/825c763f5939ae4b863dec03ed792459d19d7b1a9b283ebdef47f8df3a19/disposable_email_domains-0.0.233-py3-none-any.whl", hash = "sha256:9158c88075b7d50b15a3b002af0381cc6a51dfe201ea3adfa2b42cd1d29d25cf", size = 51372, upload-time = "2026-07-28T12:34:53.181Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/2b/db874c31642406a427fcbba7f7cb92573c44073aed51c64e7934f81081be/disposable_email_domains-0.0.234-py3-none-any.whl", hash = "sha256:fd03fffb1ad59c635294f7028eb2f621017f6bf5b90ade3afdf90de18f0792fa", size = 51384, upload-time = "2026-07-29T12:04:21.075Z" },
 ]
 
 [[package]]
@@ -737,14 +737,14 @@ wheels = [
 
 [[package]]
 name = "django-crispy-forms"
-version = "2.6"
+version = "2.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/73/42/c2cfb672493730b963ef377b103e29871c56348a215d0ae8cf362fe8ab1e/django_crispy_forms-2.6.tar.gz", hash = "sha256:4921a1087c6cd4f9fa3c139654c1de1c1c385f8bd6729aaee530bc0121ab4b93", size = 1097838, upload-time = "2026-03-01T09:03:37.138Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bc/f5/b79e3ed7cae871d5d71bf3448d627e1fabab769358bb90808bec056556fe/django_crispy_forms-2.7.tar.gz", hash = "sha256:4c59bed60417375cba26cebb2c67ab350b655934670270b1c89dbcd7e60f1b4c", size = 1097842, upload-time = "2026-07-29T11:12:12.081Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/96/e3/4c5915a732d6ab54da8871400852b67529518eedfb6b78ecf10bbccfcabb/django_crispy_forms-2.6-py3-none-any.whl", hash = "sha256:8ee0ae28b6b0ac41ff48a65944480c049fe8d1b0047086874fd7efabf4ec1374", size = 31479, upload-time = "2026-03-01T09:03:36.048Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/44/50335d09c4deb70affee0c54feef07ba458df015e32e45490615d9dc5b6b/django_crispy_forms-2.7-py3-none-any.whl", hash = "sha256:42a7ecb05ac3fd050d006dfe7aeceb7f318c30e5b5124ff619e2be252f36f096", size = 31478, upload-time = "2026-07-29T11:12:11.052Z" },
 ]
 
 [[package]]
@@ -3031,15 +3031,15 @@ wheels = [
 
 [[package]]
 name = "stripe"
-version = "15.3.1"
+version = "15.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b6/a0/52b623a5c07238af6282dfc07ba8c8a9b332f4d7ef69d0006e8a52e6b34d/stripe-15.3.1.tar.gz", hash = "sha256:2f9a8d961e5c2ec19149fb4e0b47d9709d014a68592cdb1f4efd044abc8d2359", size = 1516385, upload-time = "2026-07-16T00:47:46.829Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/e5/2dcf53bed6061f615d5cd03a89a311c2ca969a5b1e415d6fcfa2965ec0b6/stripe-15.4.0.tar.gz", hash = "sha256:f94c2780a7728c5fb49789e0fbb18e984267f93fa724e8400b31aebf36d01b1e", size = 1538270, upload-time = "2026-07-29T23:36:21.722Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/7a/58f266c262bbf903e2eca438ef752ed0fcc7273c9a4bc42edc20effa962f/stripe-15.3.1-py3-none-any.whl", hash = "sha256:f7c87a9a9072db7316e9ba497b4dbaa1dbae51f67ca201ba6155fe8b6487e5e3", size = 2173610, upload-time = "2026-07-16T00:47:45.173Z" },
+    { url = "https://files.pythonhosted.org/packages/00/e1/3047b4e244cc78bb598b0d5fcab6632b8bf8a4d526f2e840c4f4de02c989/stripe-15.4.0-py3-none-any.whl", hash = "sha256:cb1b23253473c17fa8e8d9bd3b5e66bc1454089f904843ca92ac785d5bf0d4d9", size = 2197834, upload-time = "2026-07-29T23:36:19.802Z" },
 ]
 
 [[package]]
@@ -3384,13 +3384,13 @@ requires-dist = [
     { name = "crispy-bootstrap5", specifier = "==2026.3" },
     { name = "cryptography", specifier = "==49.0.0" },
     { name = "defusedxml", specifier = "==0.7.1" },
-    { name = "disposable-email-domains", specifier = "==0.0.233" },
+    { name = "disposable-email-domains", specifier = "==0.0.234" },
     { name = "django", specifier = "==6.0.7" },
     { name = "django-allauth", extras = ["mfa"], specifier = "==65.18.0" },
     { name = "django-anymail", extras = ["postmark"], specifier = "==15.0" },
     { name = "django-celery-beat", specifier = "==2.9.0" },
     { name = "django-cors-headers", specifier = "==4.9.0" },
-    { name = "django-crispy-forms", specifier = "==2.6" },
+    { name = "django-crispy-forms", specifier = "==2.7" },
     { name = "django-csp", specifier = "==4.0" },
     { name = "django-environ", specifier = "==0.14.0" },
     { name = "django-filter", specifier = "==26.1" },
@@ -3425,7 +3425,7 @@ requires-dist = [
     { name = "python-slugify", specifier = "==8.0.4" },
     { name = "rdflib", specifier = "==7.6.0" },
     { name = "sentry-sdk", specifier = "==2.66.1" },
-    { name = "stripe", marker = "extra == 'cloud'", specifier = "==15.3.1" },
+    { name = "stripe", marker = "extra == 'cloud'", specifier = "==15.4.0" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.52.0" },
     { name = "uvicorn-worker", specifier = "==0.4.0" },
     { name = "validibot-shared", specifier = "==0.22.0" },

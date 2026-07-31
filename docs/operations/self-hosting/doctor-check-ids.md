@@ -427,9 +427,10 @@ invoker: it invokes validator Services, not the worker callback endpoint.
 **Severity:** info while Jobs are primary; ok once Services are primary
 **Trigger:** Always reported on GCP. It projects the registered minimum,
 maximum, and concurrency policy for active Service routes.
-**Fix:** No action for info. If measured latency requires warming, deploy a new
-Service revision with `VALIDATOR_SERVICE_MIN_INSTANCES=1`, register and verify
-it, then activate that immutable deployment.
+**Fix:** No action for info when the cost policy is scale-to-zero. Keep the
+validator Service at minimum zero and use the retained acceptance report to
+explain cold-start latency. Any decision to warm a Service must be an explicit,
+separately reviewed capacity change rather than part of routine deployment.
 
 ---
 

@@ -41,6 +41,7 @@ from validibot.validations.models import Validator
 EXPECTED_SINGLE_SAMPLE_P95 = 3.0
 EXPECTED_TWENTY_SAMPLE_P50 = 10.0
 EXPECTED_TWENTY_SAMPLE_P95 = 19.0
+EXPECTED_SCALE_TO_ZERO_START_P95 = 30.0
 EXPECTED_ENERGYPLUS_U_FACTOR = 2.0
 EXPECTED_FMU_INPUT = 42.0
 EXPECTED_PORTFOLIO_MANAGER_PROPERTY_ID = "9876543"
@@ -65,7 +66,7 @@ def test_report_is_machine_readable_and_fails_closed():
 
     document = report.as_dict()
 
-    assert document["schema_version"] == "validibot.validator-acceptance.v1"
+    assert document["schema_version"] == "validibot.validator-acceptance.v2"
     assert document["stage"] == "staging"
     assert document["backend"] == ACCEPTANCE_BACKEND
     assert document["source_release_tag"] == ACCEPTANCE_RELEASE_TAG
@@ -348,6 +349,132 @@ def test_latency_gate_uses_only_attempts_from_the_exact_launched_burst():
     assert check.details["provider_start_p95_seconds"] == EXPECTED_SINGLE_SAMPLE_P95
     assert check.details["deployment_revisions"] == ["service-r7"]
     assert check.details["representative_sample"] is False
+
+
+def test_scale_to_zero_startup_latency_is_observed_without_universal_threshold():
+    """Startup evidence must not be judged by one target for every backend."""
+    runner = ValidatorAcceptanceRunner(
+        backend=ACCEPTANCE_BACKEND,
+        release_tag=ACCEPTANCE_RELEASE_TAG,
+        attempts_per_backend=2,
+    )
+    scenario = AcceptanceScenario(
+        backend=BACKENDS[2],
+        workflow=SimpleNamespace(),
+        inline_text="fixture",
+        filename="fixture.ttl",
+        file_type=SubmissionFileType.TEXT,
+        fixture_sha256="a" * 64,
+    )
+    accepted_at = timezone.now()
+    attempts = [
+        SimpleNamespace(
+            deployment=SimpleNamespace(
+                deployment_revision="service-r7",
+                minimum_instances=0,
+            ),
+            provider_accepted_at=accepted_at,
+            provider_started_at=accepted_at + timedelta(seconds=20),
+            callback_received_at=accepted_at + timedelta(seconds=25),
+        ),
+        SimpleNamespace(
+            deployment=SimpleNamespace(
+                deployment_revision="service-r7",
+                minimum_instances=0,
+            ),
+            provider_accepted_at=accepted_at,
+            provider_started_at=accepted_at + timedelta(seconds=30),
+            callback_received_at=accepted_at + timedelta(seconds=35),
+        ),
+    ]
+    querysets = []
+    for attempt in attempts:
+        queryset = MagicMock()
+        queryset.select_related.return_value.order_by.return_value.last.return_value = (
+            attempt
+        )
+        querysets.append(queryset)
+    report = AcceptanceReport(
+        backend=ACCEPTANCE_BACKEND,
+        release_tag=ACCEPTANCE_RELEASE_TAG,
+        attempts_per_backend=2,
+    )
+    launched = [
+        (1, SimpleNamespace(pk="run-1")),
+        (2, SimpleNamespace(pk="run-2")),
+    ]
+
+    with patch(
+        "validibot.validations.acceptance.ExecutionAttempt.objects.filter",
+        side_effect=querysets,
+    ):
+        runner._record_latency(report, scenario, launched)
+
+    check = report.checks[-1]
+    assert check.status == "passed"
+    assert check.details["latency_policy"] == (
+        "observed_no_universal_startup_threshold"
+    )
+    assert (
+        check.details["provider_start_p95_seconds"] == EXPECTED_SCALE_TO_ZERO_START_P95
+    )
+    assert "provider_start_target_seconds" not in check.details
+    assert (
+        check.details["provider_start_measurement"]
+        == "provider_accepted_at_to_provider_started_at"
+    )
+
+
+def test_latency_evidence_rejects_a_nonzero_validator_service_minimum():
+    """Acceptance must protect the zero-minimum cost policy from drift."""
+    runner = ValidatorAcceptanceRunner(
+        backend=ACCEPTANCE_BACKEND,
+        release_tag=ACCEPTANCE_RELEASE_TAG,
+        attempts_per_backend=1,
+    )
+    scenario = AcceptanceScenario(
+        backend=BACKENDS[2],
+        workflow=SimpleNamespace(),
+        inline_text="fixture",
+        filename="fixture.ttl",
+        file_type=SubmissionFileType.TEXT,
+        fixture_sha256="a" * 64,
+    )
+    accepted_at = timezone.now()
+    attempt = SimpleNamespace(
+        deployment=SimpleNamespace(
+            deployment_revision="service-r7",
+            minimum_instances=1,
+        ),
+        provider_accepted_at=accepted_at,
+        provider_started_at=accepted_at + timedelta(seconds=1),
+        callback_received_at=accepted_at + timedelta(seconds=2),
+    )
+    queryset = MagicMock()
+    queryset.select_related.return_value.order_by.return_value.last.return_value = (
+        attempt
+    )
+    report = AcceptanceReport(
+        backend=ACCEPTANCE_BACKEND,
+        release_tag=ACCEPTANCE_RELEASE_TAG,
+        attempts_per_backend=1,
+    )
+
+    with patch(
+        "validibot.validations.acceptance.ExecutionAttempt.objects.filter",
+        return_value=queryset,
+    ):
+        runner._record_latency(
+            report,
+            scenario,
+            [(1, SimpleNamespace(pk="run-1"))],
+        )
+
+    check = report.checks[-1]
+    assert check.status == "failed"
+    assert check.details["error"] == (
+        "validator Service minimum instances must remain zero"
+    )
 
 
 def test_smoke_verdict_requires_matching_immutable_attempt_provenance():
@@ -657,7 +784,8 @@ def test_gcp_recipe_accepts_one_backend_in_both_execution_shapes():
     acceptance_recipe = recipe[start:end]
 
     assert "_maintenance-assert-offline" in acceptance_recipe
-    assert "trap 'just gcp _enforce-maintenance" in acceptance_recipe
+    assert "cleanup_acceptance()" in acceptance_recipe
+    assert "just gcp _enforce-maintenance" in acceptance_recipe
     assert 'validator-deployments-sync "{{name}}"' in acceptance_recipe
     assert 'validator-services-register "{{name}}"' in acceptance_recipe
     assert '"$VERSION" normal' in acceptance_recipe
@@ -672,4 +800,24 @@ def test_gcp_recipe_accepts_one_backend_in_both_execution_shapes():
     assert "--require-persisted-report" in acceptance_recipe
     assert "--ambient-isolation-verified" in acceptance_recipe
     assert "production acceptance requires exactly 20" in acceptance_recipe
+    assert "scale-to-zero" in acceptance_recipe
+    assert "CANDIDATE_ROUTED=0" in acceptance_recipe
+    assert "ACCEPTANCE_FAILURE allow-unaccepted" in acceptance_recipe
+    assert "Parking {{name}} $VERSION as inactive" in acceptance_recipe
     assert "maintenance-off" not in acceptance_recipe
+
+    update_start = recipe.index("validator-update stage backend")
+    update_end = recipe.index("# Roll back one backend release", update_start)
+    update_recipe = recipe[update_start:update_end]
+    assert (
+        "Capacity policy: every release-specific validator Service uses min=0."
+        in update_recipe
+    )
+    assert "Restoring each backend to its previously accepted route" in update_recipe
+    assert "deactivating candidate $candidate_version" in update_recipe
+
+    service_start = recipe.index("validator-service-deploy name stage")
+    service_end = recipe.index("# Provision all managed Services", service_start)
+    service_recipe = recipe[service_start:service_end]
+    assert "MIN_INSTANCES=0" in service_recipe
+    assert "VALIDATOR_SERVICE_MIN_INSTANCES" not in service_recipe

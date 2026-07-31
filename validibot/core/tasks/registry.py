@@ -263,8 +263,7 @@ SCHEDULED_ADMIN_TASKS: tuple[ScheduledAdminTaskDefinition, ...] = (
 # Extension point for downstream packages (``validibot-cloud``,
 # ``validibot-pro``, ``validibot-enterprise``) to contribute their own
 # scheduled tasks. Community code never knows about these — a cloud-only
-# concern like "verify license-document hashes against stored
-# acceptances" has no business being in the public-repo registry.
+# concern has no business being in the public-repo registry.
 #
 # Downstream packages call ``register_scheduled_admin_task(...)`` from
 # their ``AppConfig.ready()``, mirroring how commercial packages call

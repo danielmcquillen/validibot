@@ -524,7 +524,7 @@ deploy stage: _require-gcp-config
         # A maintenance revision must become ready while the Django issuer/API
         # is intentionally internal and Cloud SQL is about to stop. Disabling
         # MCP skips its startup license request and makes every tool return 503;
-        # maintenance-off restores the configured value after web is online.
+        # mode-live restores the configured value after web is online.
         MCP_ENABLED=false
     fi
     SET_ENV_VARS="VALIDIBOT_API_BASE_URL=${API_BASE_URL},VALIDIBOT_MCP_BASE_URL=${MCP_BASE_URL},VALIDIBOT_MCP_ENABLED=${MCP_ENABLED}"

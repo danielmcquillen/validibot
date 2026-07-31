@@ -174,27 +174,33 @@ just gcp scheduler-setup dev           # Create scheduled jobs
 just gcp lb-setup prod "example.com"   # Set up HTTPS load balancer
 
 # Maintenance
-just gcp maintenance-on dev            # Internal/min=0, pause work, stop DB
-just gcp maintenance-status dev        # Verify all offline-state signals
+just gcp mode-maintenance dev          # Isolate runtime/work, start/keep DB ready
+just gcp mode-status dev               # Report LIVE/MAINTENANCE/PARKED/transition
 just gcp deploy-maintenance dev         # Deploy latest but remain offline
 just gcp init-stage-maintenance dev     # Reconcile infra but remain offline
 just gcp maintenance-management-cmd dev "check_validibot --strict"
-just gcp maintenance-off dev           # Start DB first, then safely resume
+just gcp mode-parked dev               # Take the stage offline and stop DB
+just gcp mode-live dev                 # Ensure DB ready, then safely resume
 ```
 
-`deploy`, `deploy-worker`, and `deploy-all` deliberately refuse to run while
-Cloud SQL is stopped. `deploy-maintenance` is the fail-closed alternative: it
-briefly starts only the database for migrations, forces all deployed services
-to internal ingress and zero minimums, pauses new scheduler/queue work, and
-restores full maintenance mode on success or failure. Its Cloud SQL transitions
-are asynchronous and poll both instance state and active provider operations,
-so scheduled maintenance cannot outlive the local CLI wait; the default
+`deploy`, `deploy-worker`, and `deploy-all` deliberately require a complete
+`LIVE` stage: database ready, normal public runtime ingress, running queues,
+and every managed scheduler job enabled. `mode-maintenance` is the fail-closed
+entry point: it forces all services to internal ingress and zero minimums,
+pauses scheduler/queue work, and starts or keeps Cloud SQL RUNNABLE for
+consecutive operator tasks.
+`deploy-maintenance`, maintenance management commands, and validator operations
+leave the database running; their EXIT traps restore runtime isolation without
+changing database state. Use `mode-parked` as the sole explicit SQL stop
+after all maintenance work is complete. Database starts and stops are
+asynchronous and poll both instance state and active provider operations, so
+slow provider maintenance cannot outlive the local CLI wait; the default
 30-minute deadline can be overridden with
-`GCP_SQL_TRANSITION_TIMEOUT_SECONDS`. Cleanup is best-effort across individual
-Cloud Run, scheduler, and queue operations: it skips resources already in the
-desired offline state, records failures, and continues to the database stop
-before returning a non-zero status. Optional MCP revisions are deployed with
-`VALIDIBOT_MCP_ENABLED=false`; `maintenance-off` makes web reachable first and
+`GCP_SQL_TRANSITION_TIMEOUT_SECONDS`. Runtime cleanup is best-effort across
+individual Cloud Run, scheduler, and queue operations: it skips resources
+already isolated, records failures, and attempts every remaining safeguard
+before returning non-zero. Optional MCP revisions are deployed with
+`VALIDIBOT_MCP_ENABLED=false`; `mode-live` makes web reachable first and
 then restores the configured MCP value so its normal startup license check can
 succeed without weakening the gate.
 

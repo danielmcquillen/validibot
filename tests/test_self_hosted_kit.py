@@ -54,6 +54,7 @@ ENVS_EXAMPLE_ROOT = REPO_ROOT / ".envs.example" / ".production" / ".self-hosted"
 DOCS_ROOT = REPO_ROOT / "docs" / "operations" / "self-hosting"
 GCP_SERVICE_ACCOUNT_ID_MAX_LENGTH = 30
 EXPECTED_RELEASE_VERIFICATION_CALL_COUNT = 2
+EXPECTED_LIVE_GUARDED_DEPLOYMENTS = 3
 
 # The two host-prep helper scripts the kit ships. Only these two
 # remain as scripts because they have to run *before* ``just`` is
@@ -860,7 +861,7 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         The direct run.app URL is deliberately unavailable under
         ``internal-and-cloud-load-balancing``. Health checks therefore use the
         configured public ``SITE_URL`` and fail on non-2xx responses. Status
-        distinguishes online, runtime-isolated maintenance, fully parked, and
+        distinguishes LIVE, runtime-isolated maintenance, fully parked, and
         partially transitioned states so an incomplete inspection cannot be
         mistaken for a safe or ready deployment.
         """
@@ -868,26 +869,170 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             "health-check stage:",
             "# Management Commands",
         )
-        maintenance_block = self._block_between(
-            "maintenance-status stage:",
+        status_block = self._block_between(
+            "mode-status stage:",
             "# Load Balancer & DNS",
         )
 
         assert "DJANGO_ENV_FILE" in health_block
         assert "SITE_URL" in health_block
         assert "curl --fail" in health_block
-        assert "WEB_SERVICE_MIN" in maintenance_block
-        assert "WEB_REVISION_MIN" in maintenance_block
-        assert "DB_ACTIVE_OPERATION" in maintenance_block
-        assert 'DB_STATUS" = "RUNNABLE"' in maintenance_block
-        assert 'DB_STATUS" = "STOPPED"' in maintenance_block
-        assert '-z "$DB_ACTIVE_OPERATION"' in maintenance_block
-        assert 'QUEUE_STATUS" = "PAUSED"' in maintenance_block
-        assert "RUNTIME_INSPECTION_ERRORS" in maintenance_block
-        assert "MAINTENANCE (isolated, database available)" in maintenance_block
-        assert "PARKED (isolated, database stopped)" in maintenance_block
-        assert "ONLINE" in maintenance_block
-        assert "PARTIALLY TRANSITIONED" in maintenance_block
+        assert "WEB_SERVICE_MIN" in status_block
+        assert "WEB_REVISION_MIN" in status_block
+        assert "DB_ACTIVE_OPERATION" in status_block
+        assert 'DB_STATUS" = "RUNNABLE"' in status_block
+        assert 'DB_STATUS" = "STOPPED"' in status_block
+        assert '-z "$DB_ACTIVE_OPERATION"' in status_block
+        assert 'QUEUE_STATUS" = "PAUSED"' in status_block
+        assert "RUNTIME_INSPECTION_ERRORS" in status_block
+        assert "SCHEDULER_EXPECTED=10" in status_block
+        assert "ENABLED)" in status_block
+        assert 'SCHEDULER_ENABLED" = "$SCHEDULER_EXPECTED"' in status_block
+        assert "Overall:       LIVE" in status_block
+        assert "Overall:       MAINTENANCE" in status_block
+        assert "Overall:       PARKED" in status_block
+        assert "PARTIALLY_TRANSITIONED" in status_block
+
+    def test_gcp_lifecycle_exposes_only_the_explicit_mode_commands(self):
+        """Operators need four unambiguous commands for lifecycle control.
+
+        The old maintenance verbs conflated runtime isolation with Cloud SQL
+        parking. Keeping only the explicit status, maintenance, parked, and
+        live commands prevents a future recipe from silently reintroducing the
+        database-only interpretation of maintenance.
+        """
+        text = self._gcp_mod_text()
+
+        for header in (
+            "mode-status stage:",
+            "mode-maintenance stage:",
+            "mode-parked stage:",
+            "mode-live stage:",
+        ):
+            assert header in text
+        for legacy_header in (
+            "maintenance-status stage:",
+            "maintenance-on stage:",
+            "maintenance-park stage:",
+            "maintenance-off stage:",
+        ):
+            assert legacy_header not in text
+
+    def test_live_guard_requires_reconciled_runtime_not_only_cloud_sql(self):
+        """Ordinary deploys must reject an isolated but RUNNABLE database.
+
+        MAINTENANCE intentionally keeps Cloud SQL online, so a database-only
+        check would let an ordinary deploy expose queues or ingress halfway
+        through an operator task. The guard must consume the complete mode
+        classifier and every ordinary deployment path must use it.
+        """
+        guard = self._block_between(
+            "_mode-require-live stage:",
+            "# Print the reconciled lifecycle mode",
+        )
+        text = self._gcp_mod_text()
+
+        assert "_mode-current" in guard
+        assert "sql instances describe" not in guard
+        assert (
+            text.count("(_mode-require-live stage)")
+            == EXPECTED_LIVE_GUARDED_DEPLOYMENTS
+        )
+
+    def test_init_stage_requires_live_unless_maintenance_wrapper_opted_in(self):
+        """Existing infrastructure must not be reconciled through isolation.
+
+        `init-stage` can mutate a deployed stage, so it accepts an existing
+        database only after proving complete LIVE state. The dedicated wrapper
+        explicitly opts in after it has installed its own fail-closed cleanup.
+        """
+        text = self._gcp_mod_text()
+        start = text.index("init-stage stage:")
+        init_block = text[start : start + 7000]
+        wrapper = self._block_between(
+            "init-stage-maintenance stage:",
+            "# Build and deploy the newest app revision",
+        )
+
+        assert 'GCP_INIT_STAGE_MAINTENANCE:-0}" != "1"' in init_block
+        assert "CURRENT_MODE=$(just gcp _mode-current {{stage}})" in init_block
+        assert "existing stage {{stage}} is not LIVE" in init_block
+        assert "GCP_INIT_STAGE_MAINTENANCE=1 just gcp init-stage {{stage}}" in wrapper
+
+    def test_mode_transitions_trap_failures_and_verify_their_target(self):
+        """Lifecycle mutations must be interrupt-safe and fail closed.
+
+        An EXIT-only cleanup misses common Ctrl-C and termination paths. Each
+        transition therefore handles EXIT, INT, and TERM, keeps the trap until
+        its target mode is observed, and restores maintenance isolation if a
+        preceding mutation fails.
+        """
+        recipes = (
+            (
+                "mode-maintenance stage:",
+                "# Reconcile a stage to PARKED.",
+                "MAINTENANCE",
+            ),
+            (
+                "mode-parked stage:",
+                "# Reconcile existing stage infrastructure",
+                "PARKED",
+            ),
+            ("mode-live stage:", "# Report the reconciled lifecycle mode.", "LIVE"),
+        )
+
+        for start, end, target in recipes:
+            block = self._block_between(start, end)
+            assert "trap cleanup EXIT INT TERM" in block
+            assert "_enforce-maintenance" in block
+            assert "_mode-current" in block
+            assert f"did not converge to {target}" in block
+            assert "trap - EXIT INT TERM" in block
+
+    def test_maintenance_wrappers_preserve_isolation_on_every_exit(self):
+        """Maintenance-only operations may change resources but never exposure.
+
+        Infrastructure reconciliation, staged deployment, and management
+        commands each install full signal coverage before their first mutation
+        and verify that MAINTENANCE remains in force before removing cleanup.
+        """
+        init_block = self._block_between(
+            "init-stage-maintenance stage:",
+            "# Build and deploy the newest app revision",
+        )
+        deploy_block = self._block_between(
+            "deploy-maintenance stage:",
+            "# Run a Django management command during MAINTENANCE",
+        )
+        management_block = self._block_between(
+            "maintenance-management-cmd stage command:",
+            "# Reconcile a stage to LIVE.",
+        )
+
+        for block in (init_block, deploy_block, management_block):
+            assert block.index("_maintenance-assert-offline") < block.index(
+                "trap cleanup EXIT INT TERM",
+            )
+            assert "trap cleanup EXIT INT TERM" in block
+            assert "mode-maintenance" in block
+            assert "_mode-current" in block
+            assert "trap - EXIT INT TERM" in block
+        assert "GCP_INIT_STAGE_MAINTENANCE=1" in init_block
+
+    def test_parking_prompt_names_the_live_outage_and_database_stop(self):
+        """Parking confirmation must accurately describe its production impact.
+
+        The command itself first isolates runtime, so describing it as merely
+        stopping an already-isolated database would understate an invocation
+        made against a LIVE production stage.
+        """
+        block = self._block_between(
+            "mode-parked stage:",
+            "# Reconcile existing stage infrastructure",
+        )
+
+        assert "take LIVE PRODUCTION offline" in block
+        assert "stop Cloud SQL" in block
 
     def test_maintenance_enforcement_scales_every_runtime_surface_to_zero(self):
         """Maintenance isolates runtime and work without changing Cloud SQL.
@@ -916,6 +1061,21 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "MAINTENANCE_ERRORS" in block
         assert "completed all possible safeguards" in block
 
+    def test_maintenance_diagnostics_include_the_mcp_kill_switch_value(self):
+        """An MCP-only isolation failure must identify the hidden mismatch.
+
+        Internal ingress and zero capacity can look correct while an enabled
+        MCP container can still serve tools to internal callers. Printing the
+        effective `VALIDIBOT_MCP_ENABLED` value makes that failure actionable
+        instead of reporting three apparently healthy runtime fields.
+        """
+        block = self._block_between(
+            "_maintenance-assert-offline stage:",
+            "_enforce-maintenance stage:",
+        )
+
+        assert "VALIDIBOT_MCP_ENABLED=$mcp_enabled" in block
+
     def test_maintenance_park_is_the_only_explicit_database_stop_path(self):
         """Parking, and only parking, explicitly stops an isolated database.
 
@@ -925,7 +1085,7 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         """
         block = self._block_between(
             "_maintenance-stop-database stage:",
-            "# Put a stage into maintenance mode",
+            "# Lifecycle states are reconciled rather than toggled.",
         )
 
         assert "_maintenance-assert-offline" in block
@@ -938,7 +1098,7 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert '-z "$ACTIVE_OPERATION"' in block
         assert self._gcp_mod_text().count("--activation-policy NEVER") == 1
 
-    def test_maintenance_on_isolates_runtime_then_starts_database(self):
+    def test_mode_maintenance_isolates_runtime_then_starts_database(self):
         """Entering maintenance leaves an isolated stage ready for DB work.
 
         Runtime isolation must happen before Cloud SQL is made available. The
@@ -946,16 +1106,18 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         parks the database implicitly.
         """
         block = self._block_between(
-            "maintenance-on stage:",
-            "# Park an already isolated stage",
+            "mode-maintenance stage:",
+            "# Reconcile a stage to PARKED.",
         )
 
         assert block.index("_enforce-maintenance") < block.index(
             "_maintenance-start-database"
         )
-        assert "trap 'just gcp _enforce-maintenance" in block
+        assert "trap cleanup EXIT INT TERM" in block
+        assert "trap - EXIT INT TERM" in block
         assert "_maintenance-stop-database" not in block
         assert "runtime isolated, work paused, database available" in block
+        assert "Cloud SQL is still running and billed" in block
 
     def test_maintenance_database_start_polls_provider_state_asynchronously(self):
         """A slow Cloud SQL control-plane operation must not defeat cleanup.
@@ -989,24 +1151,25 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         """
         block = self._block_between(
             "deploy-maintenance stage:",
-            "# Run a Django management command during maintenance",
+            "# Run a Django management command during MAINTENANCE",
         )
 
         assert "_maintenance-assert-offline" in block
-        assert "trap 'just gcp _enforce-maintenance" in block
-        assert "_maintenance-start-database" in block
+        assert "trap cleanup EXIT INT TERM" in block
+        assert "mode-maintenance" in block
         assert "_maintenance-stop-database" not in block
         assert "_migrate" in block
         maintenance_safe_child_steps = 4
         assert block.count("GCP_DEPLOY_MAINTENANCE=1") == maintenance_safe_child_steps
-        assert "trap - EXIT" in block
+        assert "trap - EXIT INT TERM" in block
 
     def test_validator_database_commands_fail_fast_and_setup_enters_maintenance(self):
         """Validator reconciliation must not depend on accidental SQL starts.
 
         Read operations reject a stopped or transitioning database with a
-        concrete recovery command. First-time setup confirms its target before
-        entering maintenance, then performs its database-backed status check.
+        concrete diagnostic. First-time setup checks an existing installation
+        before changing a LIVE or MAINTENANCE stage; a PARKED stage needs an
+        isolated database start before that same read-only check can run.
         """
         status_block = self._block_between(
             "_validator-status-json stage output:",
@@ -1019,12 +1182,16 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
 
         assert "_maintenance-require-database" in status_block
         assert "Type the GCP project ID to continue" in setup_block
-        assert setup_block.index("maintenance-on") < setup_block.index(
-            "_validator-status-json"
+        assert "ensure_uninstalled" in setup_block
+        assert setup_block.index(
+            'if [ "$INITIAL_MODE" != "PARKED" ]',
+        ) < setup_block.index(
+            "mode-maintenance",
         )
-        assert "_enforce-maintenance" in setup_block
+        assert 'if [ "$INITIAL_MODE" = "PARKED" ]' in setup_block
+        assert "_mode-restore" in setup_block
 
-    def test_maintenance_off_waits_for_database_before_resuming_work(self):
+    def test_mode_live_waits_for_database_before_resuming_work(self):
         """No traffic or queued work may resume against a starting database.
 
         The database readiness helper must run before service ingress, queues,
@@ -1032,8 +1199,8 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         so temporary maintenance scaling does not erase the chosen capacity.
         """
         block = self._block_between(
-            "maintenance-off stage:",
-            "# Report whether a stage is online",
+            "mode-live stage:",
+            "# Report the reconciled lifecycle mode.",
         )
 
         ready = block.index("_maintenance-start-database")
@@ -1045,13 +1212,20 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         )
         assert "VALIDIBOT_MCP_ENABLED=$MCP_ENABLED" in block
         assert "desired-min-instances" in block
+        assert "trap cleanup EXIT INT TERM" in block
+        assert "did not converge to LIVE" in block
+        assert "CURRENT_MODE=$(just gcp _mode-current {{stage}})" in block
+        assert "is already LIVE" in block
+        assert block.index("trap cleanup EXIT INT TERM") < block.rindex(
+            "just gcp _enforce-maintenance {{stage}}",
+        )
 
     def test_mcp_maintenance_deploy_is_disabled_until_stage_reopens(self):
         """An offline MCP revision must not require the offline Django API.
 
         The FastMCP startup license gate calls Django whenever MCP is enabled.
         Maintenance deployment therefore stamps the kill switch off; the main
-        maintenance-off recipe restores the operator's configured value only
+        mode-live recipe restores the operator's configured value only
         after web ingress is public again.
         """
         mcp_module = (REPO_ROOT / "just" / "mcp" / "mod.just").read_text(

@@ -49,7 +49,7 @@ deployments. Two independent gates protect it:
    immediately on this check. GCP maintenance is intentionally different:
    the staged revision is internal and has `VALIDIBOT_MCP_ENABLED=false`, so
    it can become ready while Django is offline but every tool is still closed
-   with 503. `maintenance-off` exposes web first, re-enables MCP, and the new
+   with 503. `mode-live` exposes web first, re-enables MCP, and the new
    online revision then performs the normal license check.
 
 Both gates exist deliberately: the build-time flag keeps the MCP

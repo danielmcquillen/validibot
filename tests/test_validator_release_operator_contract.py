@@ -144,6 +144,38 @@ def test_setup_and_multi_update_activate_selected_backends_as_one_group():
         assert 'management-cmd {{stage}} "$GROUP_COMMAND"' in recipe
 
 
+def test_validator_mutations_restore_the_mode_that_was_active_on_entry():
+    """Release work must not turn a parked or maintenance stage into LIVE.
+
+    Each operation records the complete lifecycle classification before its
+    first mutation, rejects an already partial transition, performs isolated
+    work in MAINTENANCE, and delegates restoration to the shared exact-mode
+    helper on both success and cleanup paths.
+    """
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    recipes = (
+        _recipe(text, "validator-setup stage", "# Reconcile one backend"),
+        _recipe(
+            text,
+            'validator-update stage backend=""',
+            "# Roll back one backend",
+        ),
+        _recipe(
+            text,
+            'validator-rollback stage backend operation="release"',
+            "# Calculate an exact seven-day cleanup plan",
+        ),
+    )
+
+    for recipe in recipes:
+        assert "INITIAL_MODE=$(just gcp _mode-current {{stage}})" in recipe
+        assert "PARTIALLY_TRANSITIONED" in recipe
+        assert "trap" in recipe
+        assert "EXIT INT TERM" in recipe
+        assert "mode-maintenance {{stage}}" in recipe
+        assert '_mode-restore {{stage}} "$INITIAL_MODE"' in recipe
+
+
 def test_update_reverifies_and_round_trips_the_outgoing_release():
     """Candidate acceptance must prove the advertised rollback pair still works."""
 

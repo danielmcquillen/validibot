@@ -208,7 +208,7 @@ happens when `validibot-pro` (or enterprise) is installed. So a
 community-only deployment can build and deploy the image but the
 enabled container will exit during the license check. A
 `deploy-maintenance` revision is instead internal and explicitly disabled, so
-it can become ready while Django is offline. `maintenance-off` exposes Django
+it can become ready while Django is offline. `mode-live` exposes Django
 first and then re-enables MCP, which creates an enabled revision that performs
 the same fail-closed license check before serving traffic.
 

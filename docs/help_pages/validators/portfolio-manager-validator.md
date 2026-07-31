@@ -30,13 +30,19 @@ members, and unsafe compression ratios are rejected.
 
 The step editor shows one matching assertion-output group:
 
-- **Single property outputs** for single property reports; or
-- **Grouped property outputs** for ZIP collections.
+- **Single property outputs** — 26 property-specific values for single property
+  reports; or
+- **Grouped property outputs** — 32 counts, coverage values, and aggregates for
+  ZIP collections.
 
 Changing the submission structure changes the available output list. If an
 existing assertion uses an output from the current group, Validibot blocks the
 change and lists the affected `o.*` values. Update or remove those assertions
 first; Validibot never silently deletes or rewrites them.
+
+Internally, the validator retains one stable 58-key scalar result contract for
+run evidence and compatibility. The grouping changes what is meaningful and
+available to authors; it does not create two backend result formats.
 
 ## Configure the workflow's validation policy
 

@@ -170,9 +170,10 @@ just gcp deploy-all <stage>
 # e.g., just gcp deploy-all dev|staging|prod
 ```
 
-The standard deploy recipes require Cloud SQL to be running and refuse a stage
-that is in maintenance mode. To stage the latest application while keeping the
-site offline, first use `just gcp maintenance-on <stage>`, then
+The standard deploy recipes require a complete `LIVE` stage: database ready,
+normal public runtime ingress, running queues, and every managed scheduler job
+enabled. To stage the latest application while keeping the site offline, first
+use `just gcp mode-maintenance <stage>`, then
 `just gcp deploy-maintenance <stage>`. Maintenance entry isolates every runtime,
 pauses queues and schedulers, and starts or keeps Cloud SQL RUNNABLE. The deploy
 uses that same database for migrations and deploys web, worker, schedulers, and
@@ -184,14 +185,14 @@ zero minimum capacity. That matters when a newly selected revision is
 unhealthy: a redundant service update could otherwise fail before the remaining
 runtime safeguards are restored.
 
-Use `just gcp maintenance-park <stage>` as the sole explicit database stop after
+Use `just gcp mode-parked <stage>` as the sole explicit database stop after
 all maintenance work is complete. Database start and stop requests are
 submitted asynchronously and poll both instance state and the absence of an
 active control-plane operation, covering slow provider maintenance and eventual
 state reporting. The default transition deadline is 30 minutes; set
 `GCP_SQL_TRANSITION_TIMEOUT_SECONDS` for an exceptional longer operation.
-`maintenance-status` reports `ONLINE`, `MAINTENANCE`, `PARKED`, or
-`PARTIALLY TRANSITIONED` from runtime, queue, scheduler, and database signals.
+`mode-status` reports `LIVE`, `MAINTENANCE`, `PARKED`, or
+`PARTIALLY_TRANSITIONED` from runtime, queue, scheduler, and database signals.
 Optional MCP is internal, zero-capacity, and explicitly disabled while isolated.
 Taking the stage online exposes web first and then restores the configured MCP
 kill-switch value, which runs the normal license check.
@@ -516,20 +517,20 @@ just gcp status-all
 
 ```bash
 # Isolate runtime/work and start or keep the database available
-just gcp maintenance-on dev
+just gcp mode-maintenance dev
 
-# Report ONLINE, MAINTENANCE, PARKED, or PARTIALLY TRANSITIONED
-just gcp maintenance-status dev
+# Report LIVE, MAINTENANCE, PARKED, or PARTIALLY_TRANSITIONED
+just gcp mode-status dev
 
 # Stage a release or run a management command without opening the stage
 just gcp deploy-maintenance dev
 just gcp maintenance-management-cmd dev "check_validibot --strict"
 
 # Explicitly stop the database after all maintenance work
-just gcp maintenance-park dev
+just gcp mode-parked dev
 
 # Or restore capacity, queues, schedulers, and ingress
-just gcp maintenance-off dev
+just gcp mode-live dev
 ```
 
 The lower-level `pause`/`resume` recipes only change web ingress. Use the

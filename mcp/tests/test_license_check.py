@@ -16,7 +16,7 @@ These tests cover the three outcomes that matter operationally:
 
 Maintenance is the deliberate exception: a disabled, internal revision skips
 the API request so Cloud Run can stage it while Django is offline. MCP's global
-gate returns 503 in that state, and maintenance-off re-enables it so the next
+gate returns 503 in that state, and mode-live re-enables it so the next
 revision performs the normal license check.
 """
 

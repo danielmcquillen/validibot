@@ -109,30 +109,67 @@ _require-gcp-config:
         exit 1
     fi
 
-# Helper to block deploys when a stage is in maintenance mode.
-# Checks the Cloud SQL instance status — if it's stopped, maintenance is on.
+# Require the complete LIVE lifecycle state before an ordinary deploy or other
+# online-only operation. Database availability alone is insufficient because
+# MAINTENANCE deliberately keeps Cloud SQL running while runtime ingress,
+# queues, and schedulers remain isolated.
 [private]
-_require-not-maintenance stage:
+_mode-require-live stage:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP_NAME="{{app_name}}"
-    if [ "{{stage}}" = "prod" ]; then
-        DB_INSTANCE="${APP_NAME}-db"
-    else
-        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
-    fi
-    DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
-        --project {{gcp_project}} \
-        --format="value(state)" 2>/dev/null || echo "unknown")
-    if [ "$DB_STATUS" != "RUNNABLE" ]; then
-        echo "Error: {{stage}} is in maintenance mode (database is $DB_STATUS)."
+    MODE=$(just gcp _mode-current {{stage}})
+    if [ "$MODE" != "LIVE" ]; then
+        echo "Error: {{stage}} is not LIVE (current mode: $MODE)."
         echo ""
-        echo "Deploying while maintenance is on would leave services unable to"
-        echo "reach the database. Bring the stage online first:"
+        echo "This command is blocked unless every lifecycle signal is healthy:"
+        echo "database ready, public runtime restored, queues running, and managed"
+        echo "scheduler jobs active. Inspect and reconcile the stage first:"
         echo ""
-        echo "  just gcp maintenance-off {{stage}}"
+        echo "  just gcp mode-status {{stage}}"
+        echo "  just gcp mode-live {{stage}}"
         exit 1
     fi
+
+# Print the reconciled lifecycle mode for a stage. The public status recipe
+# remains intentionally verbose for operators; callers use this small helper
+# when they need a machine-readable decision.
+[private]
+_mode-current stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    STATUS=$(just gcp mode-status {{stage}})
+    MODE=$(awk '/^[[:space:]]*Overall:/ {print $2; exit}' <<< "$STATUS")
+    case "$MODE" in
+        LIVE|MAINTENANCE|PARKED)
+            printf '%s\n' "$MODE"
+            ;;
+        *)
+            printf '%s\n' "PARTIALLY_TRANSITIONED"
+            ;;
+    esac
+
+# Return a stage to the lifecycle state captured by a higher-level operation.
+# Validator workflows use this after their isolated work completes so they do
+# not accidentally convert a PARKED or MAINTENANCE stage into LIVE.
+[private]
+_mode-restore stage mode:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{mode}}" in
+        LIVE)
+            GCP_YES=1 just gcp mode-live {{stage}}
+            ;;
+        MAINTENANCE)
+            GCP_YES=1 just gcp mode-maintenance {{stage}}
+            ;;
+        PARKED)
+            GCP_YES=1 just gcp mode-parked {{stage}}
+            ;;
+        *)
+            echo "Error: cannot restore unknown lifecycle mode '{{mode}}'." >&2
+            exit 1
+            ;;
+    esac
 
 # Git SHA for image tagging (inherited from common.just via root justfile)
 git_sha := `git rev-parse --short HEAD`
@@ -504,7 +541,7 @@ _confirm-deploy stage:
     fi
 
 [arg('stage', pattern='dev|staging|prod')]
-deploy stage: _require-gcp-config (_confirm-deploy stage) (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage)
+deploy stage: _require-gcp-config (_confirm-deploy stage) (_mode-require-live stage) build push (_maybe-migrate stage) (_deploy-web stage)
 
 # Deploy worker service to a specific stage.
 # The worker handles background tasks triggered by Cloud Tasks.
@@ -519,7 +556,7 @@ deploy stage: _require-gcp-config (_confirm-deploy stage) (_require-not-maintena
 #
 # Usage: just gcp deploy-worker dev | just gcp deploy-worker prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-worker stage: _require-gcp-config (_confirm-deploy stage) (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-worker stage)
+deploy-worker stage: _require-gcp-config (_confirm-deploy stage) (_mode-require-live stage) build push (_maybe-migrate stage) (_deploy-worker stage)
 
 # Deploy every service to a stage (single build+push for Django, plus
 # an MCP build+deploy when ENABLE_MCP_SERVER is set).
@@ -551,7 +588,7 @@ deploy-worker stage: _require-gcp-config (_confirm-deploy stage) (_require-not-m
 # Usage (with MCP, ad-hoc): ENABLE_MCP_SERVER=true just gcp deploy-all prod
 # Usage (with MCP, persisted via .build file): just gcp deploy-all prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-all stage: _require-gcp-config (_confirm-deploy stage) (_require-not-maintenance stage) build push (_maybe-migrate stage) (_deploy-web stage) (_deploy-worker stage) (scheduler-setup stage) (_maybe-deploy-mcp stage)
+deploy-all stage: _require-gcp-config (_confirm-deploy stage) (_mode-require-live stage) build push (_maybe-migrate stage) (_deploy-web stage) (_deploy-worker stage) (scheduler-setup stage) (_maybe-deploy-mcp stage)
     @echo ""
     @echo "All services deployed to {{stage}}"
     @echo ""
@@ -2166,7 +2203,7 @@ _run-backup stage image:
 #     surface (``data-only`` / ``config-only`` / ``full``).
 #   - Active maintenance-mode toggling.  Cloud SQL import takes
 #     the DB offline briefly; the operator can ``just gcp
-#     maintenance-on`` first if they want to be explicit.
+#     mode-maintenance`` first if they want to be explicit.
 [private]
 _run-restore stage path image:
     #!/usr/bin/env bash
@@ -2396,7 +2433,7 @@ _run-restore stage path image:
 
     # ── Step 1: Cloud SQL import ───────────────────────────────────────
     # Cloud SQL takes the DB offline during import; running services
-    # queue requests.  The operator can ``just gcp maintenance-on``
+    # queue requests.  The operator can ``just gcp mode-maintenance``
     # first if they want a clean drain.
     echo "Step 1/3: Importing Cloud SQL database from ${DB_OBJECT}..."
     gcloud sql import sql "${DB_INSTANCE}" "${DB_OBJECT}" \
@@ -2705,21 +2742,22 @@ init-stage stage: _require-gcp-config
     SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
     PROVIDER_INVOKER_EMAIL="$PROVIDER_INVOKER_NAME@{{gcp_project}}.iam.gserviceaccount.com"
 
-    # ``init-stage`` is the low-level bootstrap path and needs a running
-    # existing database to inspect/create its database and user.  An offline
-    # stage deliberately has activationPolicy=NEVER; fail before making any
-    # partial changes and direct the operator to the wrapper that briefly
-    # starts Cloud SQL and restores maintenance mode on every exit.
+    # ``init-stage`` is the low-level bootstrap path. Existing infrastructure
+    # may only be reconciled while the complete stage is LIVE. Database state
+    # alone is not sufficient: MAINTENANCE deliberately leaves Cloud SQL
+    # RUNNABLE while runtime traffic, queues, and schedulers stay isolated.
+    # The maintenance wrapper opts into this path only after proving isolation
+    # and arranging fail-closed cleanup.
     if gcloud sql instances describe "$DB_INSTANCE" \
         --project={{gcp_project}} &>/dev/null; then
-        DB_ACTIVATION_POLICY=$(gcloud sql instances describe "$DB_INSTANCE" \
-            --project={{gcp_project}} \
-            --format="value(settings.activationPolicy)")
-        if [ "$DB_ACTIVATION_POLICY" = "NEVER" ]; then
-            echo "Error: $DB_INSTANCE is stopped for maintenance." >&2
-            echo "Use the maintenance-safe wrapper instead:" >&2
-            echo "  just gcp init-stage-maintenance {{stage}}" >&2
-            exit 1
+        if [ "${GCP_INIT_STAGE_MAINTENANCE:-0}" != "1" ]; then
+            CURRENT_MODE=$(just gcp _mode-current {{stage}})
+            if [ "$CURRENT_MODE" != "LIVE" ]; then
+                echo "Error: existing stage {{stage}} is not LIVE (current mode: $CURRENT_MODE)." >&2
+                echo "Use the maintenance-safe wrapper to reconcile it without opening traffic:" >&2
+                echo "  just gcp init-stage-maintenance {{stage}}" >&2
+                exit 1
+            fi
         fi
     fi
 
@@ -4588,29 +4626,52 @@ validator-setup stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     STATUS_JSON=$(mktemp)
-    MAINTENANCE_ENTERED=0
+    INITIAL_MODE=$(just gcp _mode-current {{stage}})
+    case "$INITIAL_MODE" in
+        LIVE|MAINTENANCE|PARKED) ;;
+        *)
+            echo "Error: {{stage}} is PARTIALLY_TRANSITIONED; reconcile it before validator setup." >&2
+            exit 1
+            ;;
+    esac
+    MODE_CHANGED=0
     cleanup() {
         local status=$?
         trap - EXIT INT TERM
-        rm -f "$STATUS_JSON"
-        if [ "$MAINTENANCE_ENTERED" = "1" ]; then
-            just gcp _enforce-maintenance {{stage}} || true
+        if [ "$MODE_CHANGED" = "1" ]; then
+            if ! just gcp _mode-restore {{stage}} "$INITIAL_MODE"; then
+                echo "Error: failed to restore {{stage}} to its initial $INITIAL_MODE mode." >&2
+                just gcp _enforce-maintenance {{stage}} || true
+                status=1
+            fi
         fi
+        rm -f "$STATUS_JSON"
         exit "$status"
     }
     trap cleanup EXIT INT TERM
+    ensure_uninstalled() {
+        just gcp _validator-status-json {{stage}} "$STATUS_JSON"
+        if jq -e '.backends[] | select(.active_version != null)' "$STATUS_JSON" >/dev/null; then
+            echo "Error: setup is only for an installation with no active backend releases." >&2
+            echo "Use validator-update to reconcile an existing installation." >&2
+            return 1
+        fi
+    }
     python3 ops/gcp/validator_release_control.py inventory
     echo "GCP project: {{gcp_project}}"
     echo "Region:      {{gcp_region}}"
     read -r -p "Type the GCP project ID to continue: " REPLY
     if [ "$REPLY" != "{{gcp_project}}" ]; then echo "Cancelled."; exit 1; fi
-    MAINTENANCE_ENTERED=1
-    GCP_YES=1 just gcp maintenance-on {{stage}}
-    just gcp _validator-status-json {{stage}} "$STATUS_JSON"
-    if jq -e '.backends[] | select(.active_version != null)' "$STATUS_JSON" >/dev/null; then
-        echo "Error: setup is only for an installation with no active backend releases." >&2
-        echo "Use validator-update to reconcile an existing installation." >&2
-        exit 1
+    # LIVE and MAINTENANCE have a usable database, so reject an existing
+    # installation before changing any lifecycle signal. PARKED must first
+    # enter MAINTENANCE because its database is deliberately stopped.
+    if [ "$INITIAL_MODE" != "PARKED" ]; then
+        ensure_uninstalled
+    fi
+    MODE_CHANGED=1
+    GCP_YES=1 just gcp mode-maintenance {{stage}}
+    if [ "$INITIAL_MODE" = "PARKED" ]; then
+        ensure_uninstalled
     fi
     for backend in energyplus fmu shacl schematron portfolio_manager; do
         VERSION=$(python3 ops/gcp/validator_release_control.py \
@@ -4641,8 +4702,8 @@ validator-setup stage: _require-gcp-config
         just gcp validator-services-register "$backend" {{stage}} "$VERSION"
     done
     just gcp management-cmd {{stage}} "$GROUP_COMMAND"
-    GCP_YES=1 just gcp maintenance-off {{stage}}
-    MAINTENANCE_ENTERED=0
+    just gcp _mode-restore {{stage}} "$INITIAL_MODE"
+    MODE_CHANGED=0
     trap - EXIT INT TERM
     rm -f "$STATUS_JSON"
 
@@ -4654,7 +4715,47 @@ validator-update stage backend="": _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     WORK_DIR=$(mktemp -d)
-    trap 'rm -rf "$WORK_DIR"' EXIT
+    INITIAL_MODE=$(just gcp _mode-current {{stage}})
+    case "$INITIAL_MODE" in
+        LIVE|MAINTENANCE|PARKED) ;;
+        *)
+            echo "Error: {{stage}} is PARTIALLY_TRANSITIONED; reconcile it before validator update." >&2
+            exit 1
+            ;;
+    esac
+    MODE_CHANGED=0
+    BACKENDS=()
+    restore_previous_routes() {
+        local status=$?
+        trap - EXIT INT TERM
+        if [ "$status" -ne 0 ]; then
+            for selected_backend in "${BACKENDS[@]}"; do
+                old_version=$(jq -r --arg backend "$selected_backend" \
+                    '.[] | select(.backend == $backend) | .active_version // ""' \
+                    "$WORK_DIR/selected.json")
+                if [ -n "$old_version" ]; then
+                    just gcp validator-backend-route "$selected_backend" {{stage}} \
+                        "$old_version" normal ACCEPTANCE_FAILURE || true
+                fi
+            done
+        fi
+        if [ "$MODE_CHANGED" = "1" ]; then
+            if ! just gcp _mode-restore {{stage}} "$INITIAL_MODE"; then
+                echo "Error: failed to restore {{stage}} to its initial $INITIAL_MODE mode." >&2
+                just gcp _enforce-maintenance {{stage}} || true
+                status=1
+            fi
+        fi
+        rm -rf "$WORK_DIR"
+        exit "$status"
+    }
+    trap restore_previous_routes EXIT INT TERM
+    # A parked database cannot serve the read-only release preflight. Starting
+    # it remains isolated and is restored to PARKED by the trap on every exit.
+    if [ "$INITIAL_MODE" = "PARKED" ]; then
+        MODE_CHANGED=1
+        GCP_YES=1 just gcp mode-maintenance {{stage}}
+    fi
     just gcp _validator-status-json {{stage}} "$WORK_DIR/status.json"
     if [ -n "{{backend}}" ]; then
         jq --arg backend "{{backend}}" \
@@ -4681,29 +4782,11 @@ validator-update stage backend="": _require-gcp-config
     if [ -z "$CONFIRM" ]; then CONFIRM="update"; fi
     read -r -p "Type $CONFIRM to continue: " REPLY
     if [ "$REPLY" != "$CONFIRM" ]; then echo "Cancelled."; exit 1; fi
-    BACKENDS=()
     while IFS= read -r selected_backend; do
         BACKENDS+=("$selected_backend")
     done < <(jq -r '.[].backend' "$WORK_DIR/selected.json")
-    restore_previous_routes() {
-        local status=$?
-        trap - EXIT INT TERM
-        if [ "$status" -ne 0 ]; then
-            for selected_backend in "${BACKENDS[@]}"; do
-                old_version=$(jq -r --arg backend "$selected_backend" \
-                    '.[] | select(.backend == $backend) | .active_version // ""' \
-                    "$WORK_DIR/selected.json")
-                if [ -n "$old_version" ]; then
-                    just gcp validator-backend-route "$selected_backend" {{stage}} \
-                        "$old_version" normal ACCEPTANCE_FAILURE || true
-                fi
-            done
-            just gcp _enforce-maintenance {{stage}} || true
-        fi
-        exit "$status"
-    }
-    trap restore_previous_routes EXIT INT TERM
-    GCP_YES=1 just gcp maintenance-on {{stage}}
+    MODE_CHANGED=1
+    GCP_YES=1 just gcp mode-maintenance {{stage}}
     for selected_backend in "${BACKENDS[@]}"; do
         version=$(jq -r --arg backend "$selected_backend" \
             '.[] | select(.backend == $backend) | .file_version' \
@@ -4762,8 +4845,10 @@ validator-update stage backend="": _require-gcp-config
         just gcp validator-services-register "$selected_backend" {{stage}} "$version"
     done
     just gcp management-cmd {{stage}} "$GROUP_COMMAND"
+    just gcp _mode-restore {{stage}} "$INITIAL_MODE"
+    MODE_CHANGED=0
     trap - EXIT INT TERM
-    GCP_YES=1 just gcp maintenance-off {{stage}}
+    rm -rf "$WORK_DIR"
 
 # Roll back one backend release, enter Job-only mode, restore normal mode, or
 # recover an exact version previously accepted by this installation.
@@ -4772,7 +4857,33 @@ validator-rollback stage backend operation="release": _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     WORK_DIR=$(mktemp -d)
-    trap 'rm -rf "$WORK_DIR"' EXIT
+    INITIAL_MODE=$(just gcp _mode-current {{stage}})
+    case "$INITIAL_MODE" in
+        LIVE|MAINTENANCE|PARKED) ;;
+        *)
+            echo "Error: {{stage}} is PARTIALLY_TRANSITIONED; reconcile it before validator rollback." >&2
+            exit 1
+            ;;
+    esac
+    MODE_CHANGED=0
+    restore_initial_mode() {
+        local status=$?
+        trap - EXIT INT TERM
+        if [ "$MODE_CHANGED" = "1" ]; then
+            if ! just gcp _mode-restore {{stage}} "$INITIAL_MODE"; then
+                echo "Error: failed to restore {{stage}} to its initial $INITIAL_MODE mode." >&2
+                just gcp _enforce-maintenance {{stage}} || true
+                status=1
+            fi
+        fi
+        rm -rf "$WORK_DIR"
+        exit "$status"
+    }
+    trap restore_initial_mode EXIT INT TERM
+    if [ "$INITIAL_MODE" = "PARKED" ]; then
+        MODE_CHANGED=1
+        GCP_YES=1 just gcp mode-maintenance {{stage}}
+    fi
     just gcp _validator-status-json {{stage}} "$WORK_DIR/status.json"
     CURRENT=$(jq -r --arg backend "{{backend}}" \
         '.backends[] | select(.backend == $backend) | .active_version // ""' \
@@ -4840,8 +4951,8 @@ validator-rollback stage backend operation="release": _require-gcp-config
     echo "{{backend}}: $CURRENT -> $TARGET ($MODE)"
     read -r -p "Type {{backend}} to continue: " REPLY
     if [ "$REPLY" != "{{backend}}" ]; then echo "Cancelled."; exit 1; fi
-    trap 'just gcp _enforce-maintenance {{stage}}' EXIT INT TERM
-    GCP_YES=1 just gcp maintenance-on {{stage}}
+    MODE_CHANGED=1
+    GCP_YES=1 just gcp mode-maintenance {{stage}}
     if [ "{{operation}}" != "job-mode" ] && [ "{{operation}}" != "normal-mode" ]; then
         SOURCE_TAG="{{backend}}-v${TARGET}"
         VALIDATOR_ALLOW_HISTORICAL=1 \
@@ -4854,8 +4965,10 @@ validator-rollback stage backend operation="release": _require-gcp-config
     fi
     just gcp validator-backend-route "{{backend}}" {{stage}} "$TARGET" "$MODE" \
         "$CAUSE" "" "$RECOVERY_REASON_B64"
+    just gcp _mode-restore {{stage}} "$INITIAL_MODE"
+    MODE_CHANGED=0
     trap - EXIT INT TERM
-    GCP_YES=1 just gcp maintenance-off {{stage}}
+    rm -rf "$WORK_DIR"
 
 # Calculate an exact seven-day cleanup plan, require its derived identifier,
 # refresh all safety inputs, and delete only unchanged planned resources.
@@ -5550,7 +5663,8 @@ _maintenance-require-database stage:
         --filter="status=RUNNING" --limit=1 --format="value(name)" 2>/dev/null || echo "unknown")
     if [ "$DB_STATUS" != "RUNNABLE" ] || [ -n "$ACTIVE_OPERATION" ]; then
         echo "Error: Cloud SQL instance $DB_INSTANCE is not ready (state=$DB_STATUS active-operation=${ACTIVE_OPERATION:-none})." >&2
-        echo "Run 'just gcp maintenance-on {{stage}}' before this command." >&2
+        echo "Inspect the lifecycle with 'just gcp mode-status {{stage}}'." >&2
+        echo "If the stage is intentionally offline, use 'just gcp mode-maintenance {{stage}}'." >&2
         exit 1
     fi
 
@@ -5648,7 +5762,11 @@ _maintenance-assert-offline stage:
         revision_min=$(jq -r '.spec.template.metadata.annotations["autoscaling.knative.dev/minScale"] // "0"' <<< "$service_json")
         mcp_enabled=$(jq -r '[.spec.template.spec.containers[0].env[]? | select(.name == "VALIDIBOT_MCP_ENABLED") | .value][0] // "true"' <<< "$service_json")
         if [ "$ingress" != "internal" ] || [ "$service_min" != "0" ] || [ "$revision_min" != "0" ] || { [ "$expect_mcp_disabled" = "1" ] && [ "$mcp_enabled" != "false" ]; }; then
-            record_isolation_error "$service is not isolated (ingress=$ingress service-min=$service_min revision-min=$revision_min)."
+            if [ "$expect_mcp_disabled" = "1" ]; then
+                record_isolation_error "$service is not isolated (ingress=$ingress service-min=$service_min revision-min=$revision_min VALIDIBOT_MCP_ENABLED=$mcp_enabled)."
+            else
+                record_isolation_error "$service is not isolated (ingress=$ingress service-min=$service_min revision-min=$revision_min)."
+            fi
         fi
     }
     check_isolated_service "$WEB_SERVICE" 0 1
@@ -5677,7 +5795,7 @@ _maintenance-assert-offline stage:
     if [ "$PROVIDER_STATE" != "PAUSED" ] && [ "$PROVIDER_STATE" != "NOT_FOUND" ]; then
         record_isolation_error "provider queue is $PROVIDER_STATE, not PAUSED."
     fi
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention ${APP_NAME}-verify-license-document-hashes; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         state=$(gcloud scheduler jobs describe "$job" \
             --project {{gcp_project}} --location {{gcp_region}} \
@@ -5773,7 +5891,7 @@ _enforce-maintenance stage:
         record_maintenance_error "could not list validator Cloud Run services."
     fi
 
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention ${APP_NAME}-verify-license-document-hashes; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
         if gcloud scheduler jobs describe "$job" --project {{gcp_project}} --location {{gcp_region}} &>/dev/null; then
             if ! gcloud scheduler jobs pause "$job" \
@@ -5853,53 +5971,110 @@ _maintenance-stop-database stage:
     echo "Error: Cloud SQL instance $DB_INSTANCE did not become STOPPED within the transition timeout." >&2
     exit 1
 
-# Put a stage into maintenance mode: isolate runtime and keep its database ready.
+# Lifecycle states are reconciled rather than toggled. Every successful public
+# transition verifies its requested target, while any error or interruption
+# restores maintenance isolation before returning the original failure status.
+
+# Reconcile a stage to MAINTENANCE: runtime isolated, work paused, database
+# RUNNABLE. Cloud SQL remains billable in this state for consecutive operator
+# tasks; use mode-parked when the stage will be idle for a longer period.
 [arg('stage', pattern='dev|staging|prod')]
-maintenance-on stage: _require-gcp-config
+mode-maintenance stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "{{stage}}" = "prod" ] && [ "${GCP_YES:-0}" != "1" ]; then
-        echo "WARNING: This will take PRODUCTION offline."
-        read -r -p "Type 'yes' to confirm: " REPLY
-        if [ "$REPLY" != "yes" ]; then echo "Cancelled."; exit 1; fi
+        echo "WARNING: This will take PRODUCTION offline while Cloud SQL remains running and billable."
+        read -r -p "Type 'maintenance' to confirm: " REPLY
+        if [ "$REPLY" != "maintenance" ]; then echo "Cancelled."; exit 1; fi
     fi
-    trap 'just gcp _enforce-maintenance {{stage}}' EXIT
+    cleanup() {
+        local status=$?
+        trap - EXIT INT TERM
+        if [ "$status" -ne 0 ]; then
+            if ! just gcp _enforce-maintenance {{stage}}; then
+                echo "Error: failed to restore maintenance isolation after the interrupted transition." >&2
+                exit 1
+            fi
+        fi
+        exit "$status"
+    }
+    trap cleanup EXIT INT TERM
     just gcp _enforce-maintenance {{stage}}
     just gcp _maintenance-start-database {{stage}}
-    trap - EXIT
+    MODE=$(just gcp _mode-current {{stage}})
+    if [ "$MODE" != "MAINTENANCE" ]; then
+        echo "Error: {{stage}} did not converge to MAINTENANCE (current mode: $MODE)." >&2
+        exit 1
+    fi
+    trap - EXIT INT TERM
     echo "{{stage}} is in MAINTENANCE: runtime isolated, work paused, database available."
+    echo "Cloud SQL is still running and billed; use 'just gcp mode-parked {{stage}}' when it can be stopped."
 
-# Park an already isolated stage by explicitly stopping its database.
+# Reconcile a stage to PARKED. This takes a live stage offline before stopping
+# Cloud SQL, so it is safe to use from LIVE, MAINTENANCE, PARKED, or a partial
+# transition.
 [arg('stage', pattern='dev|staging|prod')]
-maintenance-park stage: _require-gcp-config
+mode-parked stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "{{stage}}" = "prod" ] && [ "${GCP_YES:-0}" != "1" ]; then
-        echo "WARNING: This will stop the PRODUCTION database while keeping the runtime isolated."
+        echo "WARNING: This will take LIVE PRODUCTION offline, isolate runtime and work, and stop Cloud SQL."
         read -r -p "Type 'park' to confirm: " REPLY
         if [ "$REPLY" != "park" ]; then echo "Cancelled."; exit 1; fi
     fi
-    trap 'just gcp _enforce-maintenance {{stage}}' EXIT
+    cleanup() {
+        local status=$?
+        trap - EXIT INT TERM
+        if [ "$status" -ne 0 ]; then
+            if ! just gcp _enforce-maintenance {{stage}}; then
+                echo "Error: failed to restore maintenance isolation after the interrupted transition." >&2
+                exit 1
+            fi
+        fi
+        exit "$status"
+    }
+    trap cleanup EXIT INT TERM
     just gcp _enforce-maintenance {{stage}}
     just gcp _maintenance-stop-database {{stage}}
-    trap - EXIT
+    MODE=$(just gcp _mode-current {{stage}})
+    if [ "$MODE" != "PARKED" ]; then
+        echo "Error: {{stage}} did not converge to PARKED (current mode: $MODE)." >&2
+        exit 1
+    fi
+    trap - EXIT INT TERM
     echo "{{stage}} is PARKED: runtime isolated, work paused, database stopped."
 
-# Reconcile existing stage infrastructure while preserving maintenance mode.
+# Reconcile existing stage infrastructure while preserving MAINTENANCE.
 [arg('stage', pattern='dev|staging|prod')]
 init-stage-maintenance stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     just gcp _maintenance-assert-offline {{stage}}
-    trap 'just gcp _enforce-maintenance {{stage}}' EXIT
-    just gcp _maintenance-start-database {{stage}}
-    just gcp init-stage {{stage}}
+    cleanup() {
+        local status=$?
+        trap - EXIT INT TERM
+        if [ "$status" -ne 0 ]; then
+            if ! just gcp _enforce-maintenance {{stage}}; then
+                echo "Error: failed to restore maintenance isolation after init-stage failed." >&2
+                exit 1
+            fi
+        fi
+        exit "$status"
+    }
+    trap cleanup EXIT INT TERM
+    GCP_YES=1 just gcp mode-maintenance {{stage}}
+    GCP_INIT_STAGE_MAINTENANCE=1 just gcp init-stage {{stage}}
     just gcp _enforce-maintenance {{stage}}
-    trap - EXIT
+    MODE=$(just gcp _mode-current {{stage}})
+    if [ "$MODE" != "MAINTENANCE" ]; then
+        echo "Error: init-stage did not leave {{stage}} in MAINTENANCE (current mode: $MODE)." >&2
+        exit 1
+    fi
+    trap - EXIT INT TERM
 
 # Build and deploy the newest app revision without bringing the stage online.
-# Cloud SQL stays available for maintenance work; an EXIT trap restores runtime
-# isolation even if a build, migration, or deployment fails.
+# Cloud SQL stays available for maintenance work; a failed or interrupted
+# command leaves runtime and asynchronous work isolated.
 [arg('stage', pattern='dev|staging|prod')]
 deploy-maintenance stage: _require-gcp-config
     #!/usr/bin/env bash
@@ -5910,44 +6085,96 @@ deploy-maintenance stage: _require-gcp-config
         if [ "$REPLY" != "prod" ]; then echo "Cancelled."; exit 1; fi
     fi
     just gcp _maintenance-assert-offline {{stage}}
-    trap 'just gcp _enforce-maintenance {{stage}}' EXIT
-    just gcp _enforce-maintenance {{stage}}
+    cleanup() {
+        local status=$?
+        trap - EXIT INT TERM
+        if [ "$status" -ne 0 ]; then
+            if ! just gcp _enforce-maintenance {{stage}}; then
+                echo "Error: failed to restore maintenance isolation after the interrupted deploy." >&2
+                exit 1
+            fi
+        fi
+        exit "$status"
+    }
+    trap cleanup EXIT INT TERM
+    GCP_YES=1 just gcp mode-maintenance {{stage}}
     just gcp build
     just gcp push
-    just gcp _maintenance-start-database {{stage}}
     just gcp _migrate {{stage}}
     GCP_DEPLOY_MAINTENANCE=1 just gcp _deploy-web {{stage}}
     GCP_DEPLOY_MAINTENANCE=1 just gcp _deploy-worker {{stage}}
     GCP_DEPLOY_MAINTENANCE=1 just gcp scheduler-setup {{stage}}
     GCP_DEPLOY_MAINTENANCE=1 just gcp _maybe-deploy-mcp {{stage}}
     just gcp _enforce-maintenance {{stage}}
-    trap - EXIT
-    echo "Latest revision deployed to {{stage}}; maintenance mode remains on."
+    MODE=$(just gcp _mode-current {{stage}})
+    if [ "$MODE" != "MAINTENANCE" ]; then
+        echo "Error: maintenance deploy did not leave {{stage}} in MAINTENANCE (current mode: $MODE)." >&2
+        exit 1
+    fi
+    trap - EXIT INT TERM
+    echo "Latest revision deployed to {{stage}}; MAINTENANCE remains active."
 
-# Run a Django management command during maintenance without opening traffic.
+# Run a Django management command during MAINTENANCE without opening traffic.
 [arg('stage', pattern='dev|staging|prod')]
 maintenance-management-cmd stage command: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     just gcp _maintenance-assert-offline {{stage}}
-    trap 'just gcp _enforce-maintenance {{stage}}' EXIT
-    just gcp _maintenance-start-database {{stage}}
+    cleanup() {
+        local status=$?
+        trap - EXIT INT TERM
+        if [ "$status" -ne 0 ]; then
+            if ! just gcp _enforce-maintenance {{stage}}; then
+                echo "Error: failed to restore maintenance isolation after the management command." >&2
+                exit 1
+            fi
+        fi
+        exit "$status"
+    }
+    trap cleanup EXIT INT TERM
+    GCP_YES=1 just gcp mode-maintenance {{stage}}
     just gcp management-cmd {{stage}} "{{command}}"
     just gcp _enforce-maintenance {{stage}}
-    trap - EXIT
+    MODE=$(just gcp _mode-current {{stage}})
+    if [ "$MODE" != "MAINTENANCE" ]; then
+        echo "Error: management command did not leave {{stage}} in MAINTENANCE (current mode: $MODE)." >&2
+        exit 1
+    fi
+    trap - EXIT INT TERM
 
-# Bring a stage online. Database readiness is proven before any service,
-# queue, scheduler, or public ingress is restored.
+# Reconcile a stage to LIVE. Database readiness, runtime capacity, queues, and
+# every managed scheduler job are restored before either public ingress opens.
 [arg('stage', pattern='dev|staging|prod')]
-maintenance-off stage: _require-gcp-config
+mode-live stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
+    CURRENT_MODE=$(just gcp _mode-current {{stage}})
+    if [ "$CURRENT_MODE" = "LIVE" ]; then
+        echo "{{stage}} is already LIVE."
+        exit 0
+    fi
     if [ "{{stage}}" = "prod" ] && [ "${GCP_YES:-0}" != "1" ]; then
         echo "WARNING: This will bring PRODUCTION online."
-        read -r -p "Type 'prod' to confirm: " REPLY
-        if [ "$REPLY" != "prod" ]; then echo "Cancelled."; exit 1; fi
+        read -r -p "Type 'live' to confirm: " REPLY
+        if [ "$REPLY" != "live" ]; then echo "Cancelled."; exit 1; fi
     fi
+    cleanup() {
+        local status=$?
+        trap - EXIT INT TERM
+        if [ "$status" -ne 0 ]; then
+            if ! just gcp _enforce-maintenance {{stage}}; then
+                echo "Error: failed to restore maintenance isolation after the interrupted LIVE transition." >&2
+                exit 1
+            fi
+        fi
+        exit "$status"
+    }
+    trap cleanup EXIT INT TERM
+    # Begin every non-LIVE reconciliation from the known-safe isolated state.
+    # This repairs partially opened runtime components before queues, capacity,
+    # schedulers, and public ingress are restored in their strict order.
+    just gcp _enforce-maintenance {{stage}}
     if [ "{{stage}}" = "prod" ]; then
         WEB_SERVICE="${APP_NAME}-web"
         WORKER_SERVICE="${APP_NAME}-worker"
@@ -5983,8 +6210,7 @@ maintenance-off stage: _require-gcp-config
     if gcloud compute network-endpoint-groups describe "$WEB_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then WEB_INGRESS="internal-and-cloud-load-balancing"; else WEB_INGRESS="all"; fi
     if gcloud compute network-endpoint-groups describe "$MCP_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then MCP_INGRESS="internal-and-cloud-load-balancing"; else MCP_INGRESS="all"; fi
 
-    # Restore desired capacity while ingress remains closed. Public traffic is
-    # the final transition only after every queue and scheduler is ready.
+    # Restore capacity while all externally reachable ingress remains closed.
     gcloud run services update "$WEB_SERVICE" \
         --region {{gcp_region}} --project {{gcp_project}} \
         --ingress internal --min="$WEB_MIN" --quiet
@@ -6014,17 +6240,30 @@ maintenance-off stage: _require-gcp-config
             --region {{gcp_region}} --project {{gcp_project}} \
             --ingress internal --min="$desired" --quiet
     done <<< "$SERVICES"
+
+    # Reconcile the managed jobs in a paused state before any scheduler can
+    # dispatch. The strict loop below verifies every expected job before
+    # resuming it.
+    GCP_DEPLOY_MAINTENANCE=1 just gcp scheduler-setup {{stage}}
     gcloud tasks queues resume "$QUEUE_NAME" \
         --location {{gcp_region}} --project {{gcp_project}} --quiet
-    gcloud tasks queues resume "$PROVIDER_QUEUE_NAME" \
-        --location {{gcp_region}} --project {{gcp_project}} --quiet
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention ${APP_NAME}-verify-license-document-hashes; do
+    if gcloud tasks queues describe "$PROVIDER_QUEUE_NAME" \
+        --location {{gcp_region}} --project {{gcp_project}} &>/dev/null; then
+        gcloud tasks queues resume "$PROVIDER_QUEUE_NAME" \
+            --location {{gcp_region}} --project {{gcp_project}} --quiet
+    fi
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
-        if gcloud scheduler jobs describe "$job" --project {{gcp_project}} --location {{gcp_region}} &>/dev/null; then
-            gcloud scheduler jobs resume "$job" \
-                --project {{gcp_project}} --location {{gcp_region}} --quiet
+        if ! gcloud scheduler jobs describe "$job" --project {{gcp_project}} --location {{gcp_region}} &>/dev/null; then
+            echo "Error: required managed scheduler job $job is missing." >&2
+            exit 1
         fi
+        gcloud scheduler jobs resume "$job" \
+            --project {{gcp_project}} --location {{gcp_region}} --quiet
     done
+
+    # Public ingress is deliberately the final mutation after all dependent
+    # runtime work has been restored.
     gcloud run services update "$WEB_SERVICE" \
         --region {{gcp_region}} --project {{gcp_project}} \
         --ingress "$WEB_INGRESS" --min="$WEB_MIN" --quiet
@@ -6034,11 +6273,18 @@ maintenance-off stage: _require-gcp-config
             --ingress "$MCP_INGRESS" --min=0 \
             --update-env-vars "VALIDIBOT_MCP_ENABLED=$MCP_ENABLED" --quiet
     fi
-    echo "{{stage}} is online: database ready, service capacity restored, work resumed."
+    MODE=$(just gcp _mode-current {{stage}})
+    if [ "$MODE" != "LIVE" ]; then
+        echo "Error: {{stage}} did not converge to LIVE (current mode: $MODE)." >&2
+        exit 1
+    fi
+    trap - EXIT INT TERM
+    echo "{{stage}} is LIVE: database ready, runtime restored, queues and schedulers enabled."
 
-# Report whether a stage is online, in maintenance, parked, or mid-transition.
+# Report the reconciled lifecycle mode. LIVE requires every managed scheduler
+# job to be exactly ENABLED; a missing, paused, or unknown job is not LIVE.
 [arg('stage', pattern='dev|staging|prod')]
-maintenance-status stage: _require-gcp-config
+mode-status stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -6073,7 +6319,8 @@ maintenance-status stage: _require-gcp-config
     WEB_INGRESS="unknown"
     WEB_SERVICE_MIN="unknown"
     WEB_REVISION_MIN="unknown"
-    RUNTIME_ISSUES=0
+    RUNTIME_ISOLATION_ISSUES=0
+    LIVE_RUNTIME_ISSUES=0
     RUNTIME_INSPECTION_ERRORS=0
     echo "Stage status for {{stage}}"
     check_service() {
@@ -6085,7 +6332,8 @@ maintenance-status stage: _require-gcp-config
             --region {{gcp_region}} --project {{gcp_project}} --format=json 2>/dev/null); then
             if [ "$required" = "1" ]; then
                 echo "  Runtime:       $service could not be inspected"
-                RUNTIME_ISSUES=$((RUNTIME_ISSUES + 1))
+                RUNTIME_ISOLATION_ISSUES=$((RUNTIME_ISOLATION_ISSUES + 1))
+                LIVE_RUNTIME_ISSUES=$((LIVE_RUNTIME_ISSUES + 1))
                 RUNTIME_INSPECTION_ERRORS=$((RUNTIME_INSPECTION_ERRORS + 1))
             else
                 echo "  Runtime:       $service not present"
@@ -6107,7 +6355,12 @@ maintenance-status stage: _require-gcp-config
             echo "  Runtime:       $service ingress=$ingress service-min=$service_min revision-min=$revision_min"
         fi
         if [ "$ingress" != "internal" ] || [ "$service_min" != "0" ] || [ "$revision_min" != "0" ] || { [ "$expect_mcp_disabled" = "1" ] && [ "$mcp_enabled" != "false" ]; }; then
-            RUNTIME_ISSUES=$((RUNTIME_ISSUES + 1))
+            RUNTIME_ISOLATION_ISSUES=$((RUNTIME_ISOLATION_ISSUES + 1))
+        fi
+        if [ "$service" = "$WEB_SERVICE" ] || [ "$service" = "$MCP_SERVICE" ]; then
+            if [ "$ingress" != "all" ] && [ "$ingress" != "internal-and-cloud-load-balancing" ]; then
+                LIVE_RUNTIME_ISSUES=$((LIVE_RUNTIME_ISSUES + 1))
+            fi
         fi
     }
     check_service "$WEB_SERVICE" 0 1
@@ -6123,20 +6376,27 @@ maintenance-status stage: _require-gcp-config
         done <<< "$SERVICES"
     else
         echo "  Runtime:       validator services could not be listed"
-        RUNTIME_ISSUES=$((RUNTIME_ISSUES + 1))
+        RUNTIME_ISOLATION_ISSUES=$((RUNTIME_ISOLATION_ISSUES + 1))
+        LIVE_RUNTIME_ISSUES=$((LIVE_RUNTIME_ISSUES + 1))
         RUNTIME_INSPECTION_ERRORS=$((RUNTIME_INSPECTION_ERRORS + 1))
     fi
-    SCHEDULER_ACTIVE=0
+    SCHEDULER_EXPECTED=10
+    SCHEDULER_ENABLED=0
     SCHEDULER_PAUSED=0
-    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention ${APP_NAME}-verify-license-document-hashes; do
+    SCHEDULER_OTHER=0
+    SCHEDULER_MISSING=0
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-purge-expired-outputs ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs ${APP_NAME}-verify-validator-deployments ${APP_NAME}-send-periodic-emails ${APP_NAME}-enforce-audit-retention; do
         job="${job_base}${JOB_SUFFIX}"
-        state=$(gcloud scheduler jobs describe "$job" \
+        if state=$(gcloud scheduler jobs describe "$job" \
             --project {{gcp_project}} --location {{gcp_region}} \
-            --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
-        if [ "$state" = "PAUSED" ]; then
-            SCHEDULER_PAUSED=$((SCHEDULER_PAUSED + 1))
-        elif [ "$state" != "NOT_FOUND" ]; then
-            SCHEDULER_ACTIVE=$((SCHEDULER_ACTIVE + 1))
+            --format="value(state)" 2>/dev/null); then
+            case "$state" in
+                ENABLED) SCHEDULER_ENABLED=$((SCHEDULER_ENABLED + 1)) ;;
+                PAUSED) SCHEDULER_PAUSED=$((SCHEDULER_PAUSED + 1)) ;;
+                *) SCHEDULER_OTHER=$((SCHEDULER_OTHER + 1)) ;;
+            esac
+        else
+            SCHEDULER_MISSING=$((SCHEDULER_MISSING + 1))
         fi
     done
     echo "  Web ingress:   $WEB_INGRESS"
@@ -6145,20 +6405,19 @@ maintenance-status stage: _require-gcp-config
     echo "  DB operation:  ${DB_ACTIVE_OPERATION:-none}"
     echo "  Main queue:    $QUEUE_STATUS"
     echo "  Provider queue: $PROVIDER_STATUS"
-    echo "  Active schedulers: $SCHEDULER_ACTIVE"
-    echo "  Paused schedulers: $SCHEDULER_PAUSED"
+    echo "  Scheduler jobs: enabled=$SCHEDULER_ENABLED paused=$SCHEDULER_PAUSED other=$SCHEDULER_OTHER missing=$SCHEDULER_MISSING expected=$SCHEDULER_EXPECTED"
     RUNTIME_ISOLATED=0
-    if [ "$WEB_INGRESS" = "internal" ] && [ "$WEB_SERVICE_MIN" = "0" ] && [ "$WEB_REVISION_MIN" = "0" ] && [ "$QUEUE_STATUS" = "PAUSED" ] && [ "$RUNTIME_ISSUES" = "0" ] && [ "$SCHEDULER_ACTIVE" = "0" ] && { [ "$PROVIDER_STATUS" = "PAUSED" ] || [ "$PROVIDER_STATUS" = "NOT_FOUND" ]; }; then
+    if [ "$WEB_INGRESS" = "internal" ] && [ "$WEB_SERVICE_MIN" = "0" ] && [ "$WEB_REVISION_MIN" = "0" ] && [ "$QUEUE_STATUS" = "PAUSED" ] && [ "$RUNTIME_ISOLATION_ISSUES" = "0" ] && [ "$SCHEDULER_ENABLED" = "0" ] && [ "$SCHEDULER_OTHER" = "0" ] && { [ "$PROVIDER_STATUS" = "PAUSED" ] || [ "$PROVIDER_STATUS" = "NOT_FOUND" ]; }; then
         RUNTIME_ISOLATED=1
     fi
     if [ "$RUNTIME_ISOLATED" = "1" ] && [ "$DB_STATUS" = "RUNNABLE" ] && [ -z "$DB_ACTIVE_OPERATION" ]; then
-        echo "  Overall:       MAINTENANCE (isolated, database available)"
+        echo "  Overall:       MAINTENANCE"
     elif [ "$RUNTIME_ISOLATED" = "1" ] && [ "$DB_STATUS" = "STOPPED" ] && [ -z "$DB_ACTIVE_OPERATION" ]; then
-        echo "  Overall:       PARKED (isolated, database stopped)"
-    elif [ "$RUNTIME_INSPECTION_ERRORS" = "0" ] && [ "$DB_STATUS" = "RUNNABLE" ] && [ -z "$DB_ACTIVE_OPERATION" ] && [ "$WEB_INGRESS" != "internal" ] && [ "$WEB_INGRESS" != "unknown" ] && [ "$QUEUE_STATUS" = "RUNNING" ] && [ "$SCHEDULER_PAUSED" = "0" ] && { [ "$PROVIDER_STATUS" = "RUNNING" ] || [ "$PROVIDER_STATUS" = "NOT_FOUND" ]; }; then
-        echo "  Overall:       ONLINE"
+        echo "  Overall:       PARKED"
+    elif [ "$RUNTIME_INSPECTION_ERRORS" = "0" ] && [ "$LIVE_RUNTIME_ISSUES" = "0" ] && [ "$DB_STATUS" = "RUNNABLE" ] && [ -z "$DB_ACTIVE_OPERATION" ] && [ "$QUEUE_STATUS" = "RUNNING" ] && [ "$SCHEDULER_ENABLED" = "$SCHEDULER_EXPECTED" ] && [ "$SCHEDULER_PAUSED" = "0" ] && [ "$SCHEDULER_OTHER" = "0" ] && [ "$SCHEDULER_MISSING" = "0" ] && { [ "$PROVIDER_STATUS" = "RUNNING" ] || [ "$PROVIDER_STATUS" = "NOT_FOUND" ]; }; then
+        echo "  Overall:       LIVE"
     else
-        echo "  Overall:       PARTIALLY TRANSITIONED"
+        echo "  Overall:       PARTIALLY_TRANSITIONED"
     fi
     echo ""
 
@@ -7490,7 +7749,7 @@ backup stage: _require-gcp-config
 #     drain).  Cloud SQL import takes the DB offline briefly; the
 #     deployed Cloud Run services queue requests during that
 #     window.  Future iteration may add explicit
-#     ``maintenance-on`` / ``maintenance-off`` wrapping.
+#     ``mode-maintenance`` / ``mode-live`` wrapping.
 
 # Restore from a backup (DB import + media rsync + manifest verification).
 [arg('stage', pattern='dev|staging|prod')]

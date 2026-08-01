@@ -1085,6 +1085,115 @@ def test_backend_activation_does_not_change_another_backend_route():
 
 
 @pytest.mark.django_db
+def test_backend_activation_selects_the_most_recently_verified_service_revision():
+    """Reconciliation may retain old revisions without making routing ambiguous.
+
+    Cloud Run creates a new immutable revision when Service-level settings
+    change. The importer keeps the old row for pinned attempts and audit
+    history, while activation must route the revision that the immediately
+    preceding provider observation verified.
+    """
+    validator = ValidatorFactory(
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    old_service, job = _release_pair(
+        validator=validator,
+        backend="energyplus",
+        version="0.15.4",
+        suffix="old",
+    )
+    activate_backend_release(
+        backend_slug="energyplus",
+        backend_release_identity="0.15.4",
+        require_accepted=False,
+    )
+    replacement = _service_deployment(
+        validator=validator,
+        revision="energyplus-service-0.15.4-current",
+        backend_slug="energyplus",
+        backend_release_identity="0.15.4",
+        source_release_tag="energyplus-v0.15.4",
+        release_record_sha256=RELEASE_RECORD_SHA256,
+    )
+    set_deployment_config_digests(replacement)
+    replacement = _save_ready(
+        replacement,
+        role=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    ValidatorExecutionDeployment.objects.filter(pk=replacement.pk).update(
+        last_verified_at=timezone.now() + timedelta(minutes=1),
+    )
+
+    activated = activate_backend_release(
+        backend_slug="energyplus",
+        backend_release_identity="0.15.4",
+        require_accepted=False,
+    )
+
+    assert activated[0].service.pk == replacement.pk
+    old_service.refresh_from_db()
+    job.refresh_from_db()
+    replacement.refresh_from_db()
+    assert old_service.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+    assert replacement.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
+    assert job.routing_role == ExecutionDeploymentRoutingRole.LONG_RUNNING
+
+
+@pytest.mark.django_db
+def test_backend_activation_restores_the_latest_accepted_service_revision():
+    """Failed candidate acceptance must leave a known-good route recoverable.
+
+    An interrupted same-release reconciliation can leave a newer verified
+    Service revision that has not passed private acceptance. Normal routing
+    must ignore that candidate, while the explicit acceptance-only path tested
+    above may still select it for certification.
+    """
+    validator = ValidatorFactory(
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    accepted_service, job = _release_pair(
+        validator=validator,
+        backend="energyplus",
+        version="0.15.4",
+        suffix="a",
+    )
+    mark_execution_deployment_pair_accepted(service=accepted_service, job=job)
+    activate_backend_release(
+        backend_slug="energyplus",
+        backend_release_identity="0.15.4",
+    )
+    candidate_service = _service_deployment(
+        validator=validator,
+        revision="energyplus-service-0.15.4-candidate",
+        backend_slug="energyplus",
+        backend_release_identity="0.15.4",
+        source_release_tag="energyplus-v0.15.4",
+        release_record_sha256=RELEASE_RECORD_SHA256,
+    )
+    set_deployment_config_digests(candidate_service)
+    candidate_service = _save_ready(
+        candidate_service,
+        role=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    ValidatorExecutionDeployment.objects.filter(pk=candidate_service.pk).update(
+        last_verified_at=timezone.now() + timedelta(minutes=1),
+    )
+
+    restored = activate_backend_release(
+        backend_slug="energyplus",
+        backend_release_identity="0.15.4",
+    )
+
+    assert restored[0].service.pk == accepted_service.pk
+    accepted_service.refresh_from_db()
+    candidate_service.refresh_from_db()
+    assert accepted_service.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
+    assert candidate_service.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+
+
+@pytest.mark.django_db
 def test_release_rollback_exports_its_own_version_and_reason_to_status():
     """Audit production and status reconstruction must agree on the old release."""
     validator = ValidatorFactory(
@@ -1139,6 +1248,10 @@ def test_release_rollback_exports_its_own_version_and_reason_to_status():
     status = release_control.calculate_status((intent,), database)
     rolled_back = status["backends"][0]["rolled_back_from"]
 
+    assert any(
+        row["deployment_revision"] == outgoing[0].deployment_revision
+        for row in database["deployments"]
+    )
     assert [fact["version"] for fact in rolled_back] == ["0.18.0"]
     assert rolled_back[0]["reason"] == (
         "Repaired callback routing before exact recovery."
@@ -1249,6 +1362,62 @@ def test_group_activation_rolls_back_every_backend_when_one_backend_is_invalid()
     energyplus_pair[1].refresh_from_db()
     assert energyplus_pair[0].routing_role == ExecutionDeploymentRoutingRole.INACTIVE
     assert energyplus_pair[1].routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+
+
+@pytest.mark.django_db
+def test_retirement_allows_unaccepted_older_service_revision_history():
+    """Immutable history must not prevent cleanup of an accepted current pair.
+
+    Provider imports retain superseded Cloud Run Service revisions because
+    attempts and audit evidence may still reference them. Once one complete
+    pair was accepted, an older revision that never received traffic must not
+    make the entire drained release unretirable.
+    """
+    validator = ValidatorFactory(
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    service, job = _release_pair(
+        validator=validator,
+        backend="energyplus",
+        version="0.14.0",
+        suffix="c",
+    )
+    accepted = mark_execution_deployment_pair_accepted(service=service, job=job)
+    historical_service = _service_deployment(
+        validator=validator,
+        revision="energyplus-service-0.14.0-history",
+        backend_slug="energyplus",
+        backend_release_identity="0.14.0",
+        source_release_tag="energyplus-v0.14.0",
+        release_record_sha256=RELEASE_RECORD_SHA256,
+    )
+    set_deployment_config_digests(historical_service)
+    historical_service = _save_ready(
+        historical_service,
+        role=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    now = timezone.now()
+    drained_at = now - timedelta(days=8)
+    ValidatorExecutionDeployment.objects.filter(
+        pk__in=[accepted.service.pk, accepted.job.pk, historical_service.pk],
+    ).update(
+        deactivated_at=drained_at,
+        deactivation_cause=(
+            ExecutionDeploymentDeactivationCause.SUPERSEDED_BY_ACCEPTED_RELEASE
+        ),
+    )
+    ValidatorExecutionDeployment.objects.filter(pk=historical_service.pk).update(
+        last_verified_at=now - timedelta(days=1),
+    )
+    service.refresh_from_db()
+    job.refresh_from_db()
+    historical_service.refresh_from_db()
+
+    ensure_backend_release_can_retire(
+        [historical_service, service, job],
+        now=now,
+    )
 
 
 @pytest.mark.django_db

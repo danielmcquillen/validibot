@@ -389,6 +389,20 @@ def update_execution_deployment_capacity(
     return selected
 
 
+def _latest_verified_deployment(
+    deployments: list[ValidatorExecutionDeployment],
+) -> ValidatorExecutionDeployment:
+    """Return the deployment observed most recently by the provider importer."""
+    return max(
+        deployments,
+        key=lambda item: (
+            item.last_verified_at or item.created,
+            item.created,
+            str(item.pk),
+        ),
+    )
+
+
 def ensure_execution_deployment_can_retire(
     deployment: ValidatorExecutionDeployment,
 ) -> None:
@@ -446,15 +460,21 @@ def ensure_backend_release_can_retire(
             raise ExecutionDeploymentResolutionError(
                 f"Validator {validator_id} does not have one complete provider pair."
             )
+        accepted_kinds = {
+            row.deployment_kind for row in rows if row.accepted_at is not None
+        }
+        if accepted_kinds != {
+            ExecutionDeploymentKind.CLOUD_RUN_SERVICE,
+            ExecutionDeploymentKind.CLOUD_RUN_JOB,
+        }:
+            raise ExecutionDeploymentResolutionError(
+                f"Validator {validator_id} has no accepted provider pair."
+            )
     deadline = (now or timezone.now()) - timedelta(days=drain_days)
     for deployment in deployments:
         if deployment.routing_role != ExecutionDeploymentRoutingRole.INACTIVE:
             raise ExecutionDeploymentResolutionError(
                 f"Deployment {deployment.pk} still occupies a routing slot."
-            )
-        if deployment.accepted_at is None:
-            raise ExecutionDeploymentResolutionError(
-                f"Deployment {deployment.pk} was never accepted."
             )
         if deployment.deactivated_at is None or deployment.deactivated_at > deadline:
             raise ExecutionDeploymentResolutionError(
@@ -1179,21 +1199,31 @@ def activate_backend_release(
             for item in candidates
             if item.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_JOB
         ]
-        if len(services) != 1 or len(jobs) != 1:
+        if not services or not jobs:
             raise ExecutionDeploymentResolutionError(
-                f"Validator {validator.pk} requires exactly one Service and one Job "
+                f"Validator {validator.pk} requires a Service and Job "
                 f"row for {backend_slug} {backend_release_identity}."
             )
+        eligible_services = services
+        eligible_jobs = jobs
+        if require_accepted:
+            eligible_services = [item for item in services if item.accepted_at]
+            eligible_jobs = [item for item in jobs if item.accepted_at]
+            if not eligible_services or not eligible_jobs:
+                raise ExecutionDeploymentResolutionError(
+                    f"Validator {validator.pk} pair has not completed private "
+                    "acceptance."
+                )
+        # A failed provider reconciliation can leave an older immutable Cloud
+        # Run revision in deployment history. Acceptance-only routing selects
+        # the revision just observed by the importer; production routing
+        # selects the latest such revision that completed private acceptance.
+        service = _latest_verified_deployment(eligible_services)
+        job = _latest_verified_deployment(eligible_jobs)
         pair = verify_execution_deployment_pair(
-            service=services[0],
-            job=jobs[0],
+            service=service,
+            job=job,
         )
-        if require_accepted and (
-            pair.service.accepted_at is None or pair.job.accepted_at is None
-        ):
-            raise ExecutionDeploymentResolutionError(
-                f"Validator {validator.pk} pair has not completed private acceptance."
-            )
         pairs.append(pair)
 
     now = timezone.now()

@@ -83,6 +83,7 @@ class Command(BaseCommand):
                 "source_release_tag": deployment.source_release_tag,
                 "release_record_sha256": deployment.release_record_sha256,
                 "kind": deployment.deployment_kind,
+                "deployment_revision": deployment.deployment_revision,
                 "provider_type": deployment.provider_type,
                 "provider_resource_name": deployment.provider_resource_name,
                 "provider_configuration": deployment.provider_configuration,

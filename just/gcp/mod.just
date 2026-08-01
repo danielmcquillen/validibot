@@ -2632,12 +2632,30 @@ management-cmd stage command: _require-gcp-config
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py {{command}}" \
         --project {{gcp_project}}
 
-    # Execute and wait for completion
-    EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
+    # Execute and wait for completion. On failure, print the application log
+    # before the temporary Job is removed so the useful Django error is not
+    # hidden behind gcloud's generic non-zero exit message.
+    if ! EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
         --wait \
-        --format="value(metadata.name)")
+        --format="value(metadata.name)"); then
+        EXECUTION=$(gcloud run jobs executions list \
+            --job "$JOB_NAME" \
+            --region {{gcp_region}} \
+            --project {{gcp_project}} \
+            --sort-by='~metadata.creationTimestamp' \
+            --limit=1 \
+            --format='value(metadata.name)' 2>/dev/null || true)
+        if [ -n "$EXECUTION" ]; then
+            echo ""
+            echo "Execution: $EXECUTION"
+            gcloud beta run jobs executions logs read "$EXECUTION" \
+                --region {{gcp_region}} \
+                --project {{gcp_project}} || true
+        fi
+        exit 1
+    fi
 
     echo "Execution: $EXECUTION"
     echo ""
@@ -4237,14 +4255,7 @@ validator-service-deploy name stage release_tag="": _require-gcp-config
         fi
         CREATE_SERVICE=0
         echo "Reusing existing release Service $SERVICE_NAME at $IMAGE_DIGEST."
-        echo "Enforcing the scale-to-zero policy on the reused Service before verification."
-        gcloud run services update "$SERVICE_NAME" \
-            --region {{gcp_region}} \
-            --project {{gcp_project}} \
-            --min=0 \
-            --update-labels=desired-min-instances=0 \
-            --quiet
-        echo "Import will now reverify the full immutable Service specification."
+        echo "Leaving the Service definition unchanged; import will reverify its full specification."
     fi
 
     if [ "$CREATE_SERVICE" = "1" ]; then
@@ -4443,7 +4454,6 @@ validator-service-capacity name stage version minimum maximum: _require-gcp-conf
         --project={{gcp_project}} \
         --min={{minimum}} \
         --max={{maximum}} \
-        --update-labels=desired-min-instances={{minimum}} \
         --quiet
     just gcp management-cmd {{stage}} \
         "sync_gcp_validator_services --backend={{name}} --service-name=$SERVICE_NAME"
@@ -4800,6 +4810,19 @@ validator-update stage backend="": _require-gcp-config
         exit "$cleanup_status"
     }
     trap restore_previous_routes EXIT INT TERM
+    select_status_rows() {
+        local status_file="$1"
+        local selected_file="$2"
+        if [ -n "{{backend}}" ]; then
+            jq --arg backend "{{backend}}" \
+                '[.backends[] | select(
+                    .backend == $backend and .recommended_action != "none"
+                )]' "$status_file" >"$selected_file"
+        else
+            jq '[.backends[] | select(.recommended_action != "none")]' \
+                "$status_file" >"$selected_file"
+        fi
+    }
     # A parked database cannot serve the read-only release preflight. Starting
     # it remains isolated and is restored to PARKED by the trap on every exit.
     if [ "$INITIAL_MODE" = "PARKED" ]; then
@@ -4807,14 +4830,7 @@ validator-update stage backend="": _require-gcp-config
         GCP_YES=1 just gcp mode-maintenance {{stage}}
     fi
     just gcp _validator-status-json {{stage}} "$WORK_DIR/status.json"
-    if [ -n "{{backend}}" ]; then
-        jq --arg backend "{{backend}}" \
-            '[.backends[] | select(.backend == $backend)]' \
-            "$WORK_DIR/status.json" >"$WORK_DIR/selected.json"
-    else
-        jq '[.backends[] | select(.recommended_action != "none")]' \
-            "$WORK_DIR/status.json" >"$WORK_DIR/selected.json"
-    fi
+    select_status_rows "$WORK_DIR/status.json" "$WORK_DIR/selected.json"
     if [ "$(jq 'length' "$WORK_DIR/selected.json")" -eq 0 ]; then
         echo "No backend release or semantic Validator rows require reconciliation."
         exit 0
@@ -4885,6 +4901,24 @@ validator-update stage backend="": _require-gcp-config
     if [ "$MIGRATED_LEGACY_RECORD" = "1" ]; then
         just gcp _validator-status-json {{stage}} \
             "$WORK_DIR/status-after-record-migration.json"
+        select_status_rows "$WORK_DIR/status-after-record-migration.json" \
+            "$WORK_DIR/selected-after-record-migration.json"
+        mv "$WORK_DIR/selected-after-record-migration.json" \
+            "$WORK_DIR/selected.json"
+        BACKENDS=()
+        while IFS= read -r selected_backend; do
+            BACKENDS+=("$selected_backend")
+        done < <(jq -r '.[].backend' "$WORK_DIR/selected.json")
+        if [ "${#BACKENDS[@]}" -eq 0 ]; then
+            echo "Outgoing release evidence retained and verified."
+            echo "No validator release deployment is required."
+            just gcp _mode-restore {{stage}} "$INITIAL_MODE"
+            MODE_CHANGED=0
+            trap - EXIT INT TERM
+            rm -rf "$WORK_DIR"
+            exit 0
+        fi
+        BACKEND_COUNT=${#BACKENDS[@]}
         for selected_backend in "${BACKENDS[@]}"; do
             if ! jq -e --arg backend "$selected_backend" '
                 .backends[]
@@ -4900,7 +4934,7 @@ validator-update stage backend="": _require-gcp-config
                 exit 1
             fi
         done
-        echo "Accepted outgoing release evidence retained and verified."
+        echo "Outgoing release evidence retained and verified."
     fi
     BACKEND_INDEX=0
     for selected_backend in "${BACKENDS[@]}"; do
@@ -6045,6 +6079,32 @@ _enforce-maintenance stage:
             record_maintenance_error "could not make Cloud Run service $service maintenance-safe."
         fi
     }
+    ensure_validator_service_safe() {
+        local service="$1"
+        local service_json ingress service_min revision_min
+        if ! service_json=$(gcloud run services describe "$service" \
+            --region {{gcp_region}} --project {{gcp_project}} --format=json 2>/dev/null); then
+            record_maintenance_error "validator Cloud Run service $service could not be inspected."
+            return
+        fi
+        ingress=$(jq -r '.metadata.annotations["run.googleapis.com/ingress"] // "unknown"' <<< "$service_json")
+        service_min=$(jq -r '.spec.scaling.minInstanceCount // .metadata.annotations["run.googleapis.com/minScale"] // "0"' <<< "$service_json")
+        revision_min=$(jq -r '.spec.template.metadata.annotations["autoscaling.knative.dev/minScale"] // "0"' <<< "$service_json")
+        if [ "$ingress" != "internal" ] || [ "$revision_min" != "0" ]; then
+            record_maintenance_error "$service has immutable definition drift (ingress=$ingress revision-min=$revision_min); refusing to create an unaccepted revision."
+            return
+        fi
+        if [ "$service_min" = "0" ]; then
+            echo "   Validator Service $service is internal with zero minimum capacity."
+            return
+        fi
+        echo "   Cooling validator Service $service to service-level min=0."
+        if ! gcloud run services update "$service" \
+            --region {{gcp_region}} --project {{gcp_project}} \
+            --min=0 --quiet; then
+            record_maintenance_error "could not cool validator Cloud Run service $service."
+        fi
+    }
 
     # A failed desired revision can make even a no-op Cloud Run update fail.
     # Inspect first so already-safe services are left alone, and aggregate any
@@ -6059,7 +6119,7 @@ _enforce-maintenance stage:
         --format='value(metadata.name)'); then
         while IFS= read -r service; do
             [ -z "$service" ] && continue
-            ensure_offline_service "$service"
+            ensure_validator_service_safe "$service"
         done <<< "$SERVICES"
     else
         record_maintenance_error "could not list validator Cloud Run services."
@@ -6385,8 +6445,8 @@ mode-live stage: _require-gcp-config
     if gcloud compute network-endpoint-groups describe "$MCP_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then MCP_INGRESS="internal-and-cloud-load-balancing"; else MCP_INGRESS="all"; fi
 
     # Restore application capacity while all externally reachable ingress
-    # remains closed. Validator Services are always returned to min=0 so a
-    # lifecycle transition cannot silently restore warm billable instances.
+    # remains closed. Validator Service definitions remain untouched; their
+    # provider queue is still paused and their minimum capacity remains zero.
     gcloud run services update "$WEB_SERVICE" \
         --region {{gcp_region}} --project {{gcp_project}} \
         --ingress internal --min="$WEB_MIN" --quiet
@@ -6398,19 +6458,6 @@ mode-live stage: _require-gcp-config
             --region {{gcp_region}} --project {{gcp_project}} \
             --ingress internal --min=0 --quiet
     fi
-    SERVICES=$(gcloud run services list \
-        --region {{gcp_region}} --project {{gcp_project}} \
-        --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
-        --format='value(metadata.name)')
-    while IFS= read -r service; do
-        [ -z "$service" ] && continue
-        echo "Restoring validator Service $service with scale-to-zero min=0."
-        gcloud run services update "$service" \
-            --region {{gcp_region}} --project {{gcp_project}} \
-            --ingress internal --min=0 \
-            --update-labels=desired-min-instances=0 --quiet
-    done <<< "$SERVICES"
-
     # Reconcile the managed jobs in a paused state before any scheduler can
     # dispatch. The strict loop below verifies every expected job before
     # resuming it.

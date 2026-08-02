@@ -383,7 +383,7 @@ deterministic `.tar.gz`:
 
 - `manifest.json` — same canonical bytes the manifest endpoint
   returns; verifiers re-hash this to confirm integrity.
-- `manifest.sig` — the compact-JWS signed credential (only when
+- `credential.jwt` — the compact-JWS signed credential (only when
   `validibot-pro` is installed AND the run has an
   `IssuedCredential`). Carries the
   `credentialSubject.validationRun.manifestHash` claim that binds
@@ -403,7 +403,7 @@ byte-for-byte identical archives.
 Pro-aware inclusion: the bundle service uses
 `apps.is_installed("validibot_pro")` (mirroring
 `get_signed_credential_display_context`) to decide whether to
-look up an `IssuedCredential` and include `manifest.sig`. A
+look up an `IssuedCredential` and include `credential.jwt`. A
 community-only deployment produces a bundle without the
 signature, no feature flag, no separate code path.
 
@@ -415,7 +415,7 @@ themselves. A future extension may include raw bytes for runs whose
 retention policy permits.
 
 Verification consumes the bundle: parses the JWS in
-`manifest.sig`, validates the signature against the issuer's
+`credential.jwt`, validates the signature against the issuer's
 public key, recomputes SHA-256 of `manifest.json` bytes, and
 compares to the credential's `manifestHash` claim.
 

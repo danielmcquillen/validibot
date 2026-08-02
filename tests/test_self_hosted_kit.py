@@ -1038,9 +1038,9 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         """Maintenance isolates runtime and work without changing Cloud SQL.
 
         Web, worker, optional MCP, and validator Services can each retain paid
-        minimum capacity. Central enforcement prevents a partial shutdown from
-        looking safe while one of those surfaces remains warm, while keeping
-        the database available for consecutive operator tasks.
+        minimum capacity. Validator Services use only mutable service-level
+        scaling during isolation, preserving their accepted revision identity,
+        while the database remains available for consecutive operator tasks.
         """
         block = self._block_between(
             "_enforce-maintenance stage:",
@@ -1052,6 +1052,13 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "already internal with zero minimum capacity" in block
         assert 'ensure_offline_service "$WORKER_SERVICE" 0 1' in block
         assert 'ensure_offline_service "$MCP_SERVICE" 1' in block
+        assert 'ensure_validator_service_safe "$service"' in block
+        validator_guard = block.split(
+            "ensure_validator_service_safe()",
+            maxsplit=1,
+        )[1].split('ensure_offline_service "$WEB_SERVICE"', maxsplit=1)[0]
+        assert "--min=0 --quiet" in validator_guard
+        assert "--min-instances" not in validator_guard
         assert "metadata.labels.validator" in block
         assert "VALIDIBOT_MCP_ENABLED=false" in block
         assert 'queues pause "$QUEUE_NAME"' in block
@@ -1195,8 +1202,8 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         """No traffic or queued work may resume against a starting database.
 
         The database readiness helper must run before service ingress, queues,
-        or schedulers are restored. Validator minimums come from a durable label
-        so temporary maintenance scaling does not erase the chosen capacity.
+        or schedulers are restored. Release-specific validator Service
+        definitions remain untouched throughout the lifecycle transition.
         """
         block = self._block_between(
             "mode-live stage:",
@@ -1210,8 +1217,15 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert block.rindex('--ingress "$WEB_INGRESS"') > block.index(
             "scheduler jobs resume"
         )
+        license_wait = block.index("Waiting for the MCP license check endpoint")
+        assert license_wait > block.rindex('--ingress "$WEB_INGRESS"')
+        assert license_wait < block.index(
+            "VALIDIBOT_MCP_ENABLED=$MCP_ENABLED",
+        )
+        assert 'index("mcp_server") != null' in block
         assert "VALIDIBOT_MCP_ENABLED=$MCP_ENABLED" in block
-        assert "desired-min-instances" in block
+        assert "Restoring validator Service" not in block
+        assert "desired-min-instances" not in block
         assert "trap cleanup EXIT INT TERM" in block
         assert "did not converge to LIVE" in block
         assert "CURRENT_MODE=$(just gcp _mode-current {{stage}})" in block

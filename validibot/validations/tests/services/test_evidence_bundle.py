@@ -7,7 +7,7 @@ tests pin the bundle's contract:
 
 1. **Always-present members**: ``manifest.json`` (bytes match
    storage) and ``README.txt`` (human-readable).
-2. **Conditional ``manifest.sig``**: included when validibot-pro
+2. **Conditional ``credential.jwt``**: included when validibot-pro
    is installed AND the run has an ``IssuedCredential``; omitted
    otherwise.
 3. **Determinism**: building the same run twice produces
@@ -129,8 +129,8 @@ class EvidenceBundleBuilderTests(TestCase):
         assert "Validibot Evidence Bundle" in readme_text
         assert "manifest.json" in readme_text
 
-    def test_bundle_omits_manifest_sig_in_community_only_deployment(self):
-        """Without validibot_pro installed, no ``manifest.sig`` member."""
+    def test_bundle_omits_credential_jwt_in_community_only_deployment(self):
+        """Without validibot_pro installed, no ``credential.jwt`` member."""
         _, run = _setup_run_with_owner_access()
         stamp_evidence_manifest(run)
 
@@ -140,11 +140,11 @@ class EvidenceBundleBuilderTests(TestCase):
         # _other_ pro-installed test below covers the pro path.)
         bundle = EvidenceBundleBuilder.build(run)
         members = _list_tar_members(bundle)
-        assert "manifest.sig" not in members
+        assert "credential.jwt" not in members
         # Check the README mentions the absence so operators
         # opening the tarball understand why.
         readme = _read_tar_member(bundle, "README.txt").decode("utf-8")
-        assert "manifest.sig is not present" in readme
+        assert "credential.jwt is not present" in readme
 
     def test_bundle_is_deterministic(self):
         """Building twice produces byte-identical output.
@@ -389,12 +389,12 @@ class EvidenceCardBundleActionTests(TestCase):
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Pro-aware ``manifest.sig`` inclusion
+# Pro-aware ``credential.jwt`` inclusion
 # ──────────────────────────────────────────────────────────────────────
 
 
 class BundleProAwarenessTests(TestCase):
-    """``manifest.sig`` is included only when pro is installed + credential exists.
+    """``credential.jwt`` is included only when pro is installed + credential exists.
 
     The validibot-shared test suite doesn't install validibot_pro,
     so we exercise the pro-aware path via two indirections:
@@ -406,20 +406,20 @@ class BundleProAwarenessTests(TestCase):
        chain.
 
     This pins the *contract* (when both gates pass, the JWS bytes
-    land in the tarball as ``manifest.sig``) without needing pro
+    land in the tarball as ``credential.jwt``) without needing pro
     installed.
     """
 
     def test_no_signature_when_pro_not_installed(self):
-        """Default test settings have no pro -> no manifest.sig."""
+        """Default test settings have no pro -> no credential.jwt."""
         _, run = _setup_run_with_owner_access()
         stamp_evidence_manifest(run)
 
         bundle = EvidenceBundleBuilder.build(run)
-        assert "manifest.sig" not in _list_tar_members(bundle)
+        assert "credential.jwt" not in _list_tar_members(bundle)
 
     def test_signature_included_when_pro_installed_and_credential_exists(self):
-        """Both gates pass -> JWS bytes flow into the tarball as manifest.sig.
+        """Both gates pass -> JWS bytes flow into the tarball as credential.jwt.
 
         We can't use ``override_settings(INSTALLED_APPS=[..., 'validibot_pro'])``
         because Django actually tries to import the app config when
@@ -471,6 +471,6 @@ class BundleProAwarenessTests(TestCase):
             bundle = EvidenceBundleBuilder.build(run)
 
         members = _list_tar_members(bundle)
-        assert "manifest.sig" in members
-        sig_bytes = _read_tar_member(bundle, "manifest.sig")
+        assert "credential.jwt" in members
+        sig_bytes = _read_tar_member(bundle, "credential.jwt")
         assert sig_bytes == _FakeCredential.credential_jws.encode("ascii")

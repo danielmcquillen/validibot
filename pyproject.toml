@@ -27,7 +27,7 @@ exclude = [
 
 [project]
 name = "validibot"
-version = "0.13.0"
+version = "0.14.0"
 description = "Open-source data validation platform"
 requires-python = ">=3.13"
 license = { text = "AGPL-3.0-only" }
@@ -150,7 +150,9 @@ dependencies = [
   # Portfolio Manager policy contract fully explicit.
   # 0.22.0 preserves that contract while moving publication to the hardened
   # organization-owned, signed-tag, single-artifact release pipeline.
-  "validibot-shared==0.22.0",
+  # 0.23.0 adds the minimal permanent evidence receipt and its optional
+  # per-step backend image identity.
+  "validibot-shared==0.23.0",
   "django-csp==4.0",
   "django-permissions-policy==4.32.0",
   # OIDC provider runtime deps. allauth.idp.oidc is unconditionally in

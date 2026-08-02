@@ -322,9 +322,59 @@ def _database_releases(
     return releases
 
 
-def _pair_complete(rows: list[dict[str, Any]]) -> bool:
-    kinds = {row.get("kind") for row in rows}
-    return {"CLOUD_RUN_SERVICE", "CLOUD_RUN_JOB"}.issubset(kinds)
+DEPLOYMENT_PAIR_KINDS = {"CLOUD_RUN_SERVICE", "CLOUD_RUN_JOB"}
+
+
+def _all_validator_pairs_complete(rows: list[dict[str, Any]]) -> bool:
+    """Return whether every represented semantic Validator has both routes."""
+    if not rows or any(not row.get("validator_id") for row in rows):
+        return False
+    validator_ids = {str(row["validator_id"]) for row in rows}
+    return all(
+        DEPLOYMENT_PAIR_KINDS.issubset(
+            {
+                row.get("kind")
+                for row in rows
+                if str(row["validator_id"]) == validator_id
+            }
+        )
+        for validator_id in validator_ids
+    )
+
+
+def _select_pair_rows(
+    rows: list[dict[str, Any]],
+    *,
+    prefer_routed: bool = True,
+) -> list[dict[str, Any]]:
+    """Select one Service and Job candidate per semantic Validator."""
+    selected = []
+    validator_ids = sorted(
+        {str(row.get("validator_id")) for row in rows if row.get("validator_id")}
+    )
+    for validator_id in validator_ids:
+        validator_rows = [
+            row for row in rows if str(row.get("validator_id")) == validator_id
+        ]
+        for kind in ("CLOUD_RUN_SERVICE", "CLOUD_RUN_JOB"):
+            kind_rows = [row for row in validator_rows if row.get("kind") == kind]
+            routed = [
+                row
+                for row in kind_rows
+                if row.get("routing_role") in {"PRIMARY", "LONG_RUNNING"}
+            ]
+            candidates = routed if prefer_routed and routed else kind_rows
+            if candidates:
+                selected.append(
+                    max(
+                        candidates,
+                        key=lambda row: (
+                            str(row.get("last_verified_at") or ""),
+                            str(row.get("deployment_id") or ""),
+                        ),
+                    )
+                )
+    return selected
 
 
 def _active_release(rows_by_version: dict[str, list[dict[str, Any]]]) -> str | None:
@@ -417,8 +467,10 @@ def _rollback_release(
         if (
             version == active_version
             or version in rolled_back
-            or not _pair_complete(rows)
-            or not all(row.get("accepted_at") for row in rows)
+            or not _all_validator_pairs_complete(rows)
+            or not _all_validator_pairs_complete(
+                [row for row in rows if row.get("accepted_at")]
+            )
             or any(row.get("retired_at") for row in rows)
             or SemVer.parse(version).compare(active_semver) >= 0
         ):
@@ -593,6 +645,25 @@ def calculate_status(
             activation_rows = [
                 row for row in release_rows if row.get("retired_at") is None
             ]
+            routed_pair_rows = _select_pair_rows(activation_rows)
+            latest_pair_rows = _select_pair_rows(
+                activation_rows,
+                prefer_routed=False,
+            )
+            routed_deployment_ids = {
+                (str(row.get("validator_id")), str(row.get("kind"))): str(
+                    row.get("deployment_id") or ""
+                )
+                for row in routed_pair_rows
+            }
+            has_unrouted_candidate_pair = any(
+                bool(row.get("deployment_id"))
+                and routed_deployment_ids.get(
+                    (str(row.get("validator_id")), str(row.get("kind")))
+                )
+                != str(row.get("deployment_id"))
+                for row in latest_pair_rows
+            )
             expected_validator_ids = {
                 str(validator.get("validator_id"))
                 for validator in validators
@@ -607,8 +678,8 @@ def calculate_status(
                 ]
                 kinds = [row.get("kind") for row in validator_rows]
                 if (
-                    kinds.count("CLOUD_RUN_SERVICE") != 1
-                    or kinds.count("CLOUD_RUN_JOB") != 1
+                    kinds.count("CLOUD_RUN_SERVICE") < 1
+                    or kinds.count("CLOUD_RUN_JOB") < 1
                 ):
                     missing_pair_validator_ids.append(validator_id)
             record = retained.get((intent.slug, version))
@@ -647,16 +718,17 @@ def calculate_status(
                 if cloud_inventory_provided
                 else None,
                 "missing_pair_validator_ids": missing_pair_validator_ids,
-                "all_accepted": bool(activation_rows)
-                and all(row.get("accepted_at") for row in activation_rows),
-                "all_ready": bool(activation_rows)
-                and all(row.get("readiness") == "READY" for row in activation_rows),
-                "all_unblocked": bool(activation_rows)
-                and all(row.get("blocked") is not True for row in activation_rows),
-                "all_verified": bool(activation_rows)
+                "has_unrouted_candidate_pair": has_unrouted_candidate_pair,
+                "all_accepted": bool(routed_pair_rows)
+                and all(row.get("accepted_at") for row in routed_pair_rows),
+                "all_ready": bool(routed_pair_rows)
+                and all(row.get("readiness") == "READY" for row in routed_pair_rows),
+                "all_unblocked": bool(routed_pair_rows)
+                and all(row.get("blocked") is not True for row in routed_pair_rows),
+                "all_verified": bool(routed_pair_rows)
                 and all(
                     row.get("last_verification_succeeded") is True
-                    for row in activation_rows
+                    for row in routed_pair_rows
                 ),
             }
         routing_mode = _routing_mode(active_rows)
@@ -677,6 +749,11 @@ def calculate_status(
             ):
                 blockers.append("an active deployment failed its last verification")
             active_health = release_health.get(active_version, {})
+            if action == "none":
+                if active_health.get("has_unrouted_candidate_pair"):
+                    action = "reconcile active release deployment pair"
+                elif not active_health.get("all_accepted"):
+                    action = "run private acceptance for active release"
             if release_inventory_provided and not active_health.get(
                 "release_record_retained"
             ):
@@ -827,9 +904,11 @@ def calculate_cleanup_plan(
             reasons.append("rollback release")
         if any(int(row.get("unfinished_attempts", 0)) for row in rows):
             reasons.append("unfinished attempt")
-        if not _pair_complete(rows):
+        if not _all_validator_pairs_complete(rows):
             reasons.append("incomplete deployment pair")
-        if not all(row.get("accepted_at") for row in rows):
+        if not _all_validator_pairs_complete(
+            [row for row in rows if row.get("accepted_at")]
+        ):
             reasons.append("release was not accepted")
         if any(row.get("retired_at") for row in rows):
             reasons.append("already retired")

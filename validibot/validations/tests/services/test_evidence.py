@@ -1,27 +1,10 @@
-"""Tests for ``EvidenceManifestBuilder`` and ``stamp_evidence_manifest``.
+"""Tests for the minimal evidence-manifest builder.
 
-ADR-2026-04-27 Phase 4 Session A: every completed validation run
-gets a canonical-JSON manifest written to storage and a
-``RunEvidenceArtifact`` row pinning its hash. These tests pin down
-the Session A contract:
-
-1. The builder produces a schema-valid manifest with the workflow's
-   contract snapshot, validator metadata per step, and input schema.
-2. The stamp function is best-effort — it records FAILED state
-   instead of raising when something goes wrong, so a manifest
-   problem never fails an otherwise-successful run.
-3. The hash on the artifact row matches the SHA-256 of the
-   canonical JSON bytes the manifest_path FileField persists.
-4. Re-stamping is idempotent (same hash, same row updated in place).
-
-What's *not* covered here
-=========================
-
-- Retention-aware redaction → Session B.
-- Signed credential link / export UI → Session C.
-- The cross-path wiring (sync orchestrator + async callback both
-  call the stamper) is exercised indirectly by the existing
-  end-to-end tests; here we test the stamper in isolation.
+The builder is the Django-side boundary that turns a completed run into a
+permanent receipt. These tests ensure it emits only the run outcome, workflow
+step projection, and payload digests; persists the canonical bytes; preserves
+digests independently of payload retention; and remains best-effort on
+generation failure.
 """
 
 from __future__ import annotations
@@ -34,862 +17,165 @@ import pytest
 from validibot_shared.evidence import SCHEMA_VERSION
 from validibot_shared.evidence import EvidenceManifest
 
-from validibot.submissions.constants import OutputRetention
-from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.constants import SubmissionRetention
-from validibot.submissions.models import SubmissionInputFile
 from validibot.submissions.tests.factories import SubmissionFactory
-from validibot.validations.constants import BindingSourceScope
-from validibot.validations.constants import CatalogValueType
-from validibot.validations.constants import EnvelopeChannel
-from validibot.validations.constants import ExecutionAttemptState
-from validibot.validations.constants import ResourceFileType
-from validibot.validations.constants import StepIODirection
-from validibot.validations.constants import StepIOMedium
-from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.constants import ValidationType
-from validibot.validations.models import ResolvedInputTrace
-from validibot.validations.models import RunEvidenceArtifact
 from validibot.validations.models import RunEvidenceArtifactAvailability
 from validibot.validations.services.evidence import EvidenceManifestBuilder
 from validibot.validations.services.evidence import stamp_evidence_manifest
-from validibot.validations.tests.factories import ArtifactFactory
-from validibot.validations.tests.factories import ExecutionAttemptFactory
-from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidationRunFactory
-from validibot.validations.tests.factories import ValidationStepRunFactory
-from validibot.validations.tests.factories import ValidatorFactory
-from validibot.validations.tests.factories import ValidatorResourceFileFactory
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
-from validibot.workflows.tests.factories import WorkflowStepResourceFactory
 
 pytestmark = pytest.mark.django_db
 
 
-def _completed_run(workflow=None, **run_overrides):
-    """Build a workflow + step + completed run for the builder to consume.
+def _completed_run(*, workflow=None, input_hash="a" * 64, output_hash="b" * 64):
+    """Build a completed run with deterministic input/output identities."""
 
-    Sets ``ended_at`` because Session A's manifest requires a
-    terminal timestamp; the factory leaves it null by default.
-    """
     if workflow is None:
         workflow = WorkflowFactory(
-            allowed_file_types=[SubmissionFileType.JSON],
             input_retention=SubmissionRetention.STORE_30_DAYS,
         )
         WorkflowStepFactory(workflow=workflow)
-    run_overrides.setdefault(
-        "submission",
-        SubmissionFactory(
-            workflow=workflow,
-            org=workflow.org,
-            project=workflow.project,
-            user=workflow.user,
-        ),
-    )
 
-    defaults = {
-        "workflow": workflow,
-        "status": ValidationRunStatus.SUCCEEDED,
-        "ended_at": datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC),
-    }
-    defaults.update(run_overrides)
-    return ValidationRunFactory(**defaults)
-
-
-def _artifact_port(validator, *, contract_key, role, envelope_channel, data_format):
-    """Create a validator-owned artifact input port for evidence tests."""
-
-    return StepIODefinitionFactory(
-        validator=validator,
-        workflow_step=None,
-        contract_key=contract_key,
-        native_name=contract_key,
-        direction=StepIODirection.INPUT,
-        data_type=CatalogValueType.ARTIFACT_REF,
-        io_medium=StepIOMedium.ARTIFACT,
-        envelope_channel=envelope_channel,
-        role=role,
-        data_format=data_format,
-    )
-
-
-def _energyplus_run_with_ports():
-    """Build an EnergyPlus run with primary-model and weather file ports."""
-
-    validator = ValidatorFactory(
-        validation_type=ValidationType.ENERGYPLUS,
-        version=2,
-    )
-    workflow = WorkflowFactory(
-        allowed_file_types=[SubmissionFileType.TEXT],
-        input_retention=SubmissionRetention.STORE_30_DAYS,
-    )
-    step = WorkflowStepFactory(
+    submission = SubmissionFactory(
         workflow=workflow,
-        validator=validator,
-        name="Simulate Model",
-        step_key="simulate",
-        order=10,
+        org=workflow.org,
+        project=workflow.project,
+        user=workflow.user,
+        checksum_sha256=input_hash,
     )
-    primary_port = _artifact_port(
-        validator,
-        contract_key="primary_model",
-        role="primary-model",
-        envelope_channel=EnvelopeChannel.INPUT_FILES,
-        data_format="energyplus_idf",
+    return ValidationRunFactory(
+        workflow=workflow,
+        submission=submission,
+        status=ValidationRunStatus.SUCCEEDED,
+        ended_at=datetime(2026, 8, 2, 4, 12, 55, tzinfo=UTC),
+        output_hash=output_hash,
     )
-    weather_port = _artifact_port(
-        validator,
-        contract_key="weather_file",
-        role="weather",
-        envelope_channel=EnvelopeChannel.RESOURCE_FILES,
-        data_format=ResourceFileType.ENERGYPLUS_WEATHER,
-    )
-    run = _completed_run(workflow=workflow)
-    run.submission.original_filename = "model.idf"
-    run.submission.file_type = SubmissionFileType.TEXT
-    run.submission.size_bytes = 123
-    run.submission.checksum_sha256 = "1" * 64
-    run.submission.save(
-        update_fields=[
-            "original_filename",
-            "file_type",
-            "size_bytes",
-            "checksum_sha256",
-            "modified",
-        ],
-    )
-    step_run = ValidationStepRunFactory(
-        validation_run=run,
-        workflow_step=step,
-        step_order=step.order,
-        status=StepStatus.PASSED,
-        validator_backend_image_digest="repo/eplus@sha256:" + "e" * 64,
-    )
-    return run, step, step_run, primary_port, weather_port
 
 
-# ──────────────────────────────────────────────────────────────────────
-# EvidenceManifestBuilder.build — schema content
-# ──────────────────────────────────────────────────────────────────────
+class TestEvidenceManifestBuilder:
+    """The builder emits the small public receipt rather than the run record."""
 
+    def test_build_returns_minimal_manifest(self):
+        """A completed run produces only the fields needed to explain it."""
 
-class TestBuildManifest:
-    """The builder harvests a run into a schema-valid Pydantic model."""
-
-    def test_build_returns_evidence_manifest_instance(self):
-        """Happy path: the result validates against the current v2 schema."""
         run = _completed_run()
         manifest = EvidenceManifestBuilder.build(run)
+
         assert isinstance(manifest, EvidenceManifest)
-        assert manifest.schema_version == SCHEMA_VERSION
-
-    def test_build_includes_run_identity(self):
-        """run_id, workflow_slug, workflow_version, org_id, executed_at all present."""
-        run = _completed_run()
-        manifest = EvidenceManifestBuilder.build(run)
+        assert manifest.schema_url == SCHEMA_VERSION
         assert manifest.run_id == str(run.id)
-        assert manifest.workflow_id == run.workflow_id
-        assert manifest.workflow_slug == run.workflow.slug
-        assert manifest.workflow_version == str(run.workflow.version)
-        assert manifest.org_id == run.org_id
-        # ``executed_at`` is the ISO 8601 form of run.ended_at — string
-        # rather than datetime so canonical JSON is byte-stable.
-        assert manifest.executed_at == run.ended_at.isoformat()
-
-    def test_build_projects_attempt_bound_execution_identity(self):
-        """Manifest evidence binds verified files and envelopes to one attempt."""
-        workflow = WorkflowFactory(
-            input_retention=SubmissionRetention.STORE_30_DAYS,
-            output_retention=OutputRetention.STORE_30_DAYS,
-        )
-        step = WorkflowStepFactory(workflow=workflow)
-        run = _completed_run(
-            workflow=workflow,
-            output_retention_policy=OutputRetention.STORE_30_DAYS,
-        )
-        step_run = ValidationStepRunFactory(
-            validation_run=run,
-            workflow_step=step,
-            step_order=step.order,
-            status=StepStatus.PASSED,
-        )
-        attempt = ExecutionAttemptFactory(
-            step_run=step_run,
-            state=ExecutionAttemptState.COMPLETED,
-            runner_type="cloud_run_job",
-            provider_execution_id="execution-1",
-            deployment_snapshot={
-                "schema_version": 2,
-                "deployment_id": "deployment-1",
-                "validator_id": step.validator_id,
-                "validator_slug": step.validator.slug,
-                "validator_version": str(step.validator.version),
-                "validator_semantic_digest": "1" * 64,
-                "deployment_kind": "CLOUD_RUN_SERVICE",
-                "deployment_revision": "validator-shacl-00042-abc",
-                "provider_resource_name": (
-                    "projects/example/locations/australia-southeast1/"
-                    "services/validibot-validator-service-shacl"
-                ),
-                "backend_slug": "shacl",
-                "backend_release_identity": "0.15.1",
-                "source_release_tag": "shacl-v0.15.1",
-                "release_record_sha256": "2" * 64,
-                "backend_image_ref": "ghcr.io/example/validator-shacl:v0.15.1",
-                "backend_image_digest": "sha256:" + "3" * 64,
-                "provider_spec_sha256": "4" * 64,
-                "execution_config_sha256": "5" * 64,
-                "expected_runtime_identity": (
-                    "validator-runtime@example-project.iam.gserviceaccount.com"
-                ),
-            },
-            input_envelope_sha256="c" * 64,
-            output_envelope_sha256="d" * 64,
-            backend_image_digest="registry/backend@sha256:" + "e" * 64,
-            input_evidence_snapshot={
-                "attempt_contract_version": "validibot.attempt.v2",
-                "input_files": [
-                    {
-                        "channel": "input_files",
-                        "name": "generated.idf",
-                        "role": "primary-model",
-                        "port_key": "primary_model",
-                        "size_bytes": 321,
-                        "sha256": "b" * 64,
-                        "storage_version": "sha256:" + "b" * 64,
-                    },
-                ],
-                "input_relationships": [
-                    {
-                        "source_kind": "submission",
-                        "source_id": str(run.submission_id),
-                        "source_name": "parameters.json",
-                        "source_size_bytes": 100,
-                        "source_sha256": "a" * 64,
-                        "target_channel": "input_files",
-                        "target_name": "generated.idf",
-                        "target_port_key": "primary_model",
-                        "target_sha256": "b" * 64,
-                        "relationship": "transformed",
-                        "transformation": "energyplus-template-substitution.v1",
-                    },
-                ],
-            },
-        )
-
-        manifest = EvidenceManifestBuilder.build(run)
-
-        record = manifest.execution_attempts[0]
-        assert record.execution_attempt_id == str(attempt.pk)
-        assert record.step_run_id == str(step_run.pk)
-        assert record.input_envelope_sha256 == "c" * 64
-        assert record.output_envelope_sha256 == "d" * 64
-        assert record.inputs_verified is True
-        assert record.input_files[0].storage_version == "sha256:" + "b" * 64
-        assert record.input_relationships[0].source_sha256 == "a" * 64
-        assert record.input_relationships[0].target_sha256 == "b" * 64
-        assert record.execution_deployment_id == "deployment-1"
-        assert record.deployment_kind == "CLOUD_RUN_SERVICE"
-        assert record.deployment_revision == "validator-shacl-00042-abc"
-        assert record.semantic_validator_id == step.validator_id
-        assert record.semantic_validator_slug == step.validator.slug
-        assert record.semantic_validator_version == str(step.validator.version)
-        assert record.semantic_validator_digest == "1" * 64
-        assert record.backend_slug == "shacl"
-        assert record.backend_release_version == "0.15.1"
-        assert record.source_release_tag == "shacl-v0.15.1"
-        assert record.release_record_sha256 == "2" * 64
-        assert record.backend_image_ref.endswith(":v0.15.1")
-        assert record.backend_image_digest == "sha256:" + "3" * 64
-        assert record.provider_spec_sha256 == "4" * 64
-        assert record.expected_runtime_identity.startswith("validator-runtime@")
-
-    def test_build_redacts_attempt_output_digest_without_losing_verification(self):
-        """DO_NOT_STORE hides output identity but retains confirmed input evidence."""
-        workflow = WorkflowFactory(input_retention=SubmissionRetention.DO_NOT_STORE)
-        step = WorkflowStepFactory(workflow=workflow)
-        run = _completed_run(workflow=workflow)
-        step_run = ValidationStepRunFactory(
-            validation_run=run,
-            workflow_step=step,
-            step_order=step.order,
-            status=StepStatus.PASSED,
-        )
-        ExecutionAttemptFactory(
-            step_run=step_run,
-            state=ExecutionAttemptState.COMPLETED,
-            input_envelope_sha256="c" * 64,
-            output_envelope_sha256="d" * 64,
-            input_evidence_snapshot={
-                "attempt_contract_version": "validibot.attempt.v2",
-                "input_files": [],
-                "input_relationships": [],
-            },
-        )
-
-        record = EvidenceManifestBuilder.build(run).execution_attempts[0]
-
-        assert record.output_envelope_sha256 is None
-        assert record.inputs_verified is True
-
-    def test_build_captures_workflow_contract_snapshot(self):
-        """Every CONTRACT_FIELD value lives on manifest.workflow_contract."""
-        workflow = WorkflowFactory(
-            allowed_file_types=[
-                SubmissionFileType.JSON,
-                SubmissionFileType.XML,
-            ],
-            input_retention=SubmissionRetention.DO_NOT_STORE,
-            # The Workflow field is ``mcp_enabled`` after the 2026-06-27
-            # rename; the evidence contract still records it under the
-            # frozen ``agent_access_enabled`` key (mapped in evidence.py).
-            mcp_enabled=True,
-        )
-        WorkflowStepFactory(workflow=workflow)
-        run = _completed_run(workflow=workflow)
-
-        manifest = EvidenceManifestBuilder.build(run)
-        contract = manifest.workflow_contract
-        assert set(contract.allowed_file_types) == {
-            SubmissionFileType.JSON,
-            SubmissionFileType.XML,
+        assert manifest.completed_at == run.ended_at.isoformat()
+        assert manifest.status == str(run.status)
+        assert manifest.workflow.slug == run.workflow.slug
+        assert manifest.workflow.version == str(run.workflow.version)
+        assert manifest.input_sha256 == "a" * 64
+        assert manifest.output_envelope_sha256 == "b" * 64
+        assert set(manifest.model_dump(mode="json", by_alias=True)) == {
+            "$schema",
+            "run_id",
+            "completed_at",
+            "status",
+            "workflow",
+            "input_sha256",
+            "output_envelope_sha256",
         }
-        assert contract.input_retention == SubmissionRetention.DO_NOT_STORE
-        # Evidence contract keeps the legacy field name, sourced from
-        # ``workflow.mcp_enabled``.
-        assert contract.agent_access_enabled is True
 
-    def test_build_records_validator_per_step(self):
-        """Each step with a validator contributes a StepValidatorRecord."""
-        workflow = WorkflowFactory()
-        step1 = WorkflowStepFactory(workflow=workflow, order=1)
-        step2 = WorkflowStepFactory(workflow=workflow, order=2)
-        # Force a known semantic_digest so the manifest mirrors it.
-        step1.validator.semantic_digest = "a" * 64
-        step1.validator.save(update_fields=["semantic_digest"])
-        step2.validator.semantic_digest = "b" * 64
-        step2.validator.save(update_fields=["semantic_digest"])
-        run = _completed_run(workflow=workflow)
-
-        manifest = EvidenceManifestBuilder.build(run)
-        # Steps land in execution order.
-        assert [s.step_order for s in manifest.steps] == [1, 2]
-        digests = [s.validator_semantic_digest for s in manifest.steps]
-        assert digests == ["a" * 64, "b" * 64]
-
-    def test_build_records_empty_digest_as_none(self):
-        """Custom validators with no digest -> manifest field is None.
-
-        The manifest documents the absence rather than coercing it
-        to an empty string. That makes "this step's validator has
-        no proof" externally observable in the JSON.
-        """
-        workflow = WorkflowFactory()
-        step = WorkflowStepFactory(workflow=workflow)
-        step.validator.semantic_digest = ""
-        step.validator.save(update_fields=["semantic_digest"])
-        run = _completed_run(workflow=workflow)
-
-        manifest = EvidenceManifestBuilder.build(run)
-        assert manifest.steps[0].validator_semantic_digest is None
-
-    def test_build_carries_input_schema_when_present(self):
-        """Workflow.input_schema lands as manifest.input_schema."""
-        schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
-        workflow = WorkflowFactory(input_schema=schema)
-        WorkflowStepFactory(workflow=workflow)
-        run = _completed_run(workflow=workflow)
-
-        manifest = EvidenceManifestBuilder.build(run)
-        assert manifest.input_schema == schema
-
-    def test_build_input_schema_none_when_workflow_has_no_contract(self):
-        """No structured input contract -> manifest.input_schema is None."""
-        workflow = WorkflowFactory(input_schema=None)
-        WorkflowStepFactory(workflow=workflow)
-        run = _completed_run(workflow=workflow)
-
-        manifest = EvidenceManifestBuilder.build(run)
-        assert manifest.input_schema is None
-
-    # ── Manifest source field ──────────────────────────────────────
-    #
-    # ``ValidationRun.source`` is set by the launch path from the
-    # authenticated route.  The manifest builder propagates it
-    # verbatim so external verifiers can answer "what surface
-    # produced this run?" without consulting the producer database
-    # (which may have been purged under DO_NOT_STORE retention).
-    #
-    # The builder uses a forward-compat shim that emits the field
-    # only when the installed ``validibot-shared`` schema accepts it.
-    # These tests assume the installed shared library is recent
-    # enough; if validibot-shared regresses the field, the tests
-    # surface the regression at the integration boundary.
-    def test_build_propagates_x402_source(self):
-        """An x402-originated run records ``X402_AGENT`` in the manifest."""
-        from validibot.validations.constants import ValidationRunSource
+    def test_build_projects_ordered_validator_steps_without_lineage(self):
+        """Step identity explains execution order without a duplicate graph."""
 
         workflow = WorkflowFactory()
-        WorkflowStepFactory(workflow=workflow)
-        run = _completed_run(
+        first = WorkflowStepFactory(
             workflow=workflow,
-            source=ValidationRunSource.X402_AGENT,
+            order=1,
+            step_key="first",
         )
+        second = WorkflowStepFactory(
+            workflow=workflow,
+            order=2,
+            step_key="second",
+        )
+        run = _completed_run(workflow=workflow)
 
         manifest = EvidenceManifestBuilder.build(run)
-        assert manifest.source == ValidationRunSource.X402_AGENT.value
 
-    def test_build_propagates_api_source(self):
-        """A REST-API-originated run records ``API`` in the manifest."""
-        from validibot.validations.constants import ValidationRunSource
+        assert [step.key for step in manifest.workflow.steps] == [
+            first.step_key,
+            second.step_key,
+        ]
+        assert all(step.validator for step in manifest.workflow.steps)
+        assert "lineage" not in manifest.model_dump(mode="json", by_alias=True)
+
+    def test_output_digest_is_not_gated_by_output_retention(self):
+        """Payload deletion policy does not delete the permanent output identity."""
 
         workflow = WorkflowFactory()
         WorkflowStepFactory(workflow=workflow)
-        run = _completed_run(
-            workflow=workflow,
-            source=ValidationRunSource.API,
-        )
-
-        manifest = EvidenceManifestBuilder.build(run)
-        assert manifest.source == ValidationRunSource.API.value
-
-
-class TestBuildManifestArtifactLineage:
-    """Artifact lineage evidence records runtime file-port provenance."""
-
-    def test_build_records_primary_model_and_weather_resource_bindings(self):
-        """EnergyPlus file ports appear without leaking private runtime URIs."""
-        run, step, step_run, primary_port, weather_port = _energyplus_run_with_ports()
-        weather_file = ValidatorResourceFileFactory(
-            validator=step.validator,
-            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
-            filename="weather.epw",
-        )
-        weather_resource = WorkflowStepResourceFactory(
-            step=step,
-            role="WEATHER_FILE",
-            validator_resource_file=weather_file,
-        )
-        private_model_uri = "file:///private/workspace/input/model.idf"
-        private_weather_uri = "gs://validibot-private/resources/weather.epw"
-        ResolvedInputTrace.objects.create(
-            step_run=step_run,
-            io_definition=primary_port,
-            input_contract_key="primary_model",
-            source_scope_used=BindingSourceScope.SUBMISSION_FILE,
-            source_data_path_used="primary_file_uri",
-            resolved=True,
-            used_default=False,
-            value_snapshot={
-                "source": BindingSourceScope.SUBMISSION_FILE,
-                "port_key": "primary_model",
-                "role": "primary-model",
-                "uri": private_model_uri,
-            },
-        )
-        ResolvedInputTrace.objects.create(
-            step_run=step_run,
-            io_definition=weather_port,
-            input_contract_key="weather_file",
-            source_scope_used=BindingSourceScope.WORKFLOW_RESOURCE,
-            source_data_path_used=ResourceFileType.ENERGYPLUS_WEATHER,
-            resolved=True,
-            used_default=False,
-            value_snapshot=[
-                {
-                    "source": BindingSourceScope.WORKFLOW_RESOURCE,
-                    "id": str(weather_resource.validator_resource_file_id),
-                    "type": ResourceFileType.ENERGYPLUS_WEATHER,
-                    "port_key": "weather_file",
-                    "uri": private_weather_uri,
-                },
-            ],
-        )
+        run = _completed_run(workflow=workflow, output_hash="c" * 64)
 
         manifest = EvidenceManifestBuilder.build(run)
 
-        bindings = {b.target_port_key: b for b in manifest.artifact_input_bindings}
-        assert set(bindings) == {"primary_model", "weather_file"}
-        assert (
-            bindings["primary_model"].source_scope == BindingSourceScope.SUBMISSION_FILE
-        )
-        assert bindings["primary_model"].source_submission_id == str(run.submission_id)
-        assert bindings["primary_model"].source_filename == "model.idf"
-        assert bindings["primary_model"].source_sha256 == "1" * 64
-        assert (
-            bindings["weather_file"].source_scope
-            == BindingSourceScope.WORKFLOW_RESOURCE
-        )
-        assert bindings["weather_file"].source_resource_id == str(weather_file.pk)
-        assert bindings["weather_file"].source_filename == "weather.epw"
-        assert bindings["weather_file"].source_data_format == (
-            ResourceFileType.ENERGYPLUS_WEATHER
-        )
-        raw = EvidenceManifestBuilder.serialise(manifest).decode("ascii")
-        assert private_model_uri not in raw
-        assert private_weather_uri not in raw
+        assert manifest.output_envelope_sha256 == "c" * 64
 
-    def test_build_records_submitted_artifact_port_file_metadata(self):
-        """Submitted files beyond the primary payload keep their own file id/hash."""
-        run, step, step_run, _primary_port, weather_port = _energyplus_run_with_ports()
-        submitted = SubmissionInputFile.objects.create(
-            submission=run.submission,
-            workflow_step=step,
-            port_key="weather_file",
-            original_filename="submitted-weather.epw",
-            content_type="text/plain",
-            size_bytes=99,
-            checksum_sha256="2" * 64,
-        )
-        private_weather_uri = "file:///private/workspace/input/submitted-weather.epw"
-        ResolvedInputTrace.objects.create(
-            step_run=step_run,
-            io_definition=weather_port,
-            input_contract_key="weather_file",
-            source_scope_used=BindingSourceScope.SUBMISSION_FILE,
-            source_data_path_used="",
-            resolved=True,
-            used_default=False,
-            value_snapshot={
-                "source": BindingSourceScope.SUBMISSION_FILE,
-                "port_key": "weather_file",
-                "role": "weather",
-                "uri": private_weather_uri,
-            },
-        )
-
-        manifest = EvidenceManifestBuilder.build(run)
-
-        binding = manifest.artifact_input_bindings[0]
-        assert binding.source_submission_file_id == str(submitted.pk)
-        assert binding.source_submission_id == str(run.submission_id)
-        assert binding.source_filename == "submitted-weather.epw"
-        assert binding.source_size_bytes == 99  # noqa: PLR2004
-        assert binding.source_sha256 == "2" * 64
-        raw = EvidenceManifestBuilder.serialise(manifest).decode("ascii")
-        assert private_weather_uri not in raw
-
-    def test_build_records_upstream_artifact_edge(self):
-        """An upstream artifact input becomes an explicit producer→consumer edge."""
-        run, step, step_run, primary_port, _weather_port = _energyplus_run_with_ports()
-        upstream_step = WorkflowStepFactory(
-            workflow=run.workflow,
-            validator=step.validator,
-            name="Build Model",
-            step_key="build_model",
-            order=5,
-        )
-        upstream_step_run = ValidationStepRunFactory(
-            validation_run=run,
-            workflow_step=upstream_step,
-            step_order=upstream_step.order,
-            status=StepStatus.PASSED,
-        )
-        artifact = ArtifactFactory(
-            validation_run=run,
-            step_run=upstream_step_run,
-            workflow_step=upstream_step,
-            contract_key="generated_model",
-            label="model.epjson",
-            content_type="application/json",
-            storage_uri="gs://validibot-private/runs/run-1/model.epjson",
-            size_bytes=456,
-            sha256="a" * 64,
-            storage_version="42",
-            role="generated-model",
-            data_format="energyplus_epjson",
-        )
-        ResolvedInputTrace.objects.create(
-            step_run=step_run,
-            io_definition=primary_port,
-            input_contract_key="primary_model",
-            source_scope_used=BindingSourceScope.UPSTREAM_ARTIFACT,
-            source_data_path_used="build_model.generated_model",
-            upstream_step_key="build_model",
-            resolved=True,
-            used_default=False,
-            value_snapshot={
-                "source": BindingSourceScope.UPSTREAM_ARTIFACT,
-                "port_key": "primary_model",
-                "source_data_path": "build_model.generated_model",
-                "artifact": {
-                    "artifact_id": str(artifact.pk),
-                    "run_id": str(run.pk),
-                    "producer_step_key": "build_model",
-                    "contract_key": "generated_model",
-                    "filename": "model.epjson",
-                    "uri": artifact.storage_uri,
-                    "sha256": "a" * 64,
-                    "storage_version": "42",
-                },
-            },
-        )
-
-        manifest = EvidenceManifestBuilder.build(run)
-
-        produced = manifest.produced_artifacts[0]
-        assert produced.artifact_id == str(artifact.pk)
-        assert produced.producer_step_key == "build_model"
-        assert produced.contract_key == "generated_model"
-        assert produced.sha256 == "a" * 64
-        assert produced.storage_version == "42"
-        binding = manifest.artifact_input_bindings[0]
-        assert binding.source_artifact_id == str(artifact.pk)
-        assert binding.producer_step_key == "build_model"
-        assert binding.producer_contract_key == "generated_model"
-        assert binding.source_storage_version == "42"
-        edge = manifest.artifact_lineage_edges[0]
-        assert edge.source_artifact_id == str(artifact.pk)
-        assert edge.source_step_key == "build_model"
-        assert edge.target_step_key == "simulate"
-        assert edge.target_port_key == "primary_model"
-        raw = EvidenceManifestBuilder.serialise(manifest).decode("ascii")
-        assert artifact.storage_uri not in raw
-
-    def test_lineage_survives_artifact_byte_purge(self):
-        """Evidence uses retained hashes/provenance after storage pointers clear."""
-        run, step, step_run, primary_port, _weather_port = _energyplus_run_with_ports()
-        upstream_step = WorkflowStepFactory(
-            workflow=run.workflow,
-            validator=step.validator,
-            name="Build Model",
-            step_key="build_model",
-            order=5,
-        )
-        upstream_step_run = ValidationStepRunFactory(
-            validation_run=run,
-            workflow_step=upstream_step,
-            step_order=upstream_step.order,
-            status=StepStatus.PASSED,
-        )
-        private_uri = "gs://validibot-private/runs/run-1/purged-model.epjson"
-        artifact = ArtifactFactory(
-            validation_run=run,
-            step_run=upstream_step_run,
-            workflow_step=upstream_step,
-            contract_key="generated_model",
-            label="purged-model.epjson",
-            content_type="application/json",
-            storage_uri=private_uri,
-            size_bytes=456,
-            sha256="c" * 64,
-            role="generated-model",
-        )
-        ResolvedInputTrace.objects.create(
-            step_run=step_run,
-            io_definition=primary_port,
-            input_contract_key="primary_model",
-            source_scope_used=BindingSourceScope.UPSTREAM_ARTIFACT,
-            source_data_path_used="build_model.generated_model",
-            upstream_step_key="build_model",
-            resolved=True,
-            used_default=False,
-            value_snapshot={
-                "source": BindingSourceScope.UPSTREAM_ARTIFACT,
-                "port_key": "primary_model",
-                "artifact": {
-                    "artifact_id": str(artifact.pk),
-                    "run_id": str(run.pk),
-                    "producer_step_key": "build_model",
-                    "contract_key": "generated_model",
-                    "filename": "purged-model.epjson",
-                    "uri": private_uri,
-                    "sha256": "c" * 64,
-                },
-            },
-        )
-        artifact.storage_uri = ""
-        artifact.file = ""
-        artifact.save(update_fields=["storage_uri", "file", "modified"])
-
-        manifest = EvidenceManifestBuilder.build(run)
-
-        assert manifest.produced_artifacts[0].sha256 == "c" * 64
-        assert manifest.produced_artifacts[0].filename == "purged-model.epjson"
-        assert manifest.artifact_lineage_edges[0].source_sha256 == "c" * 64
-        raw = EvidenceManifestBuilder.serialise(manifest).decode("ascii")
-        assert private_uri not in raw
-
-
-# ──────────────────────────────────────────────────────────────────────
-# EvidenceManifestBuilder.serialise — canonical JSON contract
-# ──────────────────────────────────────────────────────────────────────
-
-
-class TestSerialiseCanonicalJson:
-    """The serialised bytes are stable; same manifest -> same bytes -> same hash."""
-
-    def test_serialise_is_deterministic(self):
-        """Calling serialise twice returns identical bytes."""
-        run = _completed_run()
-        manifest = EvidenceManifestBuilder.build(run)
-        b1 = EvidenceManifestBuilder.serialise(manifest)
-        b2 = EvidenceManifestBuilder.serialise(manifest)
-        assert b1 == b2
-
-    def test_serialise_is_ascii(self):
-        """Bytes are always ASCII (ensure_ascii=True)."""
-        run = _completed_run()
-        manifest = EvidenceManifestBuilder.build(run)
-        raw = EvidenceManifestBuilder.serialise(manifest)
-        # All bytes < 128 means pure ASCII. Named constant rather
-        # than the literal so PLR2004 sees the contract not magic.
-        ascii_high_byte = 128
-        assert all(b < ascii_high_byte for b in raw)
-
-    def test_serialise_has_no_unnecessary_whitespace(self):
-        """Compact JSON: no spaces between keys/values."""
-        run = _completed_run()
-        manifest = EvidenceManifestBuilder.build(run)
-        raw = EvidenceManifestBuilder.serialise(manifest).decode("ascii")
-        # Compact format produces no ", " or ": " separators.
-        assert ", " not in raw
-        assert ": " not in raw
-
-
-# ──────────────────────────────────────────────────────────────────────
-# EvidenceManifestBuilder.persist — DB row + hash
-# ──────────────────────────────────────────────────────────────────────
-
-
-class TestPersist:
-    """Persisting the manifest writes to storage and pins the hash."""
-
-    def test_persist_creates_artifact_row(self):
-        """One row per run, populated with availability=GENERATED."""
-        run = _completed_run()
-        manifest = EvidenceManifestBuilder.build(run)
-        artifact = EvidenceManifestBuilder.persist(run, manifest)
-
-        assert isinstance(artifact, RunEvidenceArtifact)
-        assert artifact.run_id == run.id
-        assert artifact.availability == RunEvidenceArtifactAvailability.GENERATED
-        assert artifact.schema_version == SCHEMA_VERSION
-
-    def test_persist_writes_manifest_bytes_to_storage(self):
-        """manifest_path FileField is set, file content is the canonical JSON."""
-        run = _completed_run()
-        manifest = EvidenceManifestBuilder.build(run)
-        artifact = EvidenceManifestBuilder.persist(run, manifest)
-
-        # Re-read the file from storage via the FileField.
-        artifact.manifest_path.open("rb")
-        try:
-            written = artifact.manifest_path.read()
-        finally:
-            artifact.manifest_path.close()
-        expected = EvidenceManifestBuilder.serialise(manifest)
-        assert written == expected
-
-    def test_manifest_hash_matches_serialised_bytes(self):
-        """artifact.manifest_hash == sha256(serialised manifest)."""
-        from validibot.core.filesafety import sha256_hexdigest
+    def test_build_requires_completed_timestamp(self):
+        """An incomplete run cannot receive an authoritative permanent receipt."""
 
         run = _completed_run()
-        manifest = EvidenceManifestBuilder.build(run)
-        artifact = EvidenceManifestBuilder.persist(run, manifest)
+        run.ended_at = None
 
-        expected_hash = sha256_hexdigest(
-            EvidenceManifestBuilder.serialise(manifest),
-        )
-        assert artifact.manifest_hash == expected_hash
+        with pytest.raises(ValueError, match="before run completion"):
+            EvidenceManifestBuilder.build(run)
 
-    def test_persist_is_idempotent(self):
-        """Calling persist twice updates the same row, same hash."""
-        run = _completed_run()
-        manifest = EvidenceManifestBuilder.build(run)
+    def test_serialise_uses_schema_alias_and_canonical_order(self):
+        """The hashed bytes contain ``$schema`` and are deterministic."""
 
-        a1 = EvidenceManifestBuilder.persist(run, manifest)
-        a2 = EvidenceManifestBuilder.persist(run, manifest)
+        manifest = EvidenceManifestBuilder.build(_completed_run())
+        first = EvidenceManifestBuilder.serialise(manifest)
+        second = EvidenceManifestBuilder.serialise(manifest)
 
-        # Same row, same hash.
-        assert a1.pk == a2.pk
-        assert a1.manifest_hash == a2.manifest_hash
-        # Only one row exists.
-        assert RunEvidenceArtifact.objects.filter(run=run).count() == 1
-
-
-# ──────────────────────────────────────────────────────────────────────
-# stamp_evidence_manifest — best-effort wrapper
-# ──────────────────────────────────────────────────────────────────────
+        assert first == second
+        assert b'"$schema":"https://validibot.com/schemas/' in first
+        assert b"lineage" not in first
 
 
 class TestStampEvidenceManifest:
-    """The wrapper called from run-completion hooks must never raise."""
+    """Persistence and failure handling keep evidence advisory to run outcome."""
 
-    def test_happy_path_returns_artifact(self):
-        """Successful stamp returns a GENERATED artifact."""
+    def test_stamp_persists_canonical_manifest_and_hash(self):
+        """The database hash matches the exact bytes stored in manifest_path."""
+
         run = _completed_run()
+
         artifact = stamp_evidence_manifest(run)
+
         assert artifact is not None
         assert artifact.availability == RunEvidenceArtifactAvailability.GENERATED
+        artifact.manifest_path.open("rb")
+        try:
+            stored = artifact.manifest_path.read()
+        finally:
+            artifact.manifest_path.close()
+        assert artifact.schema_version == SCHEMA_VERSION
+        assert artifact.manifest_hash
+        from validibot.core.filesafety import sha256_hexdigest
 
-    def test_builder_failure_records_failed_artifact(self):
-        """Builder exception -> FAILED row + log, no re-raise.
+        assert sha256_hexdigest(stored) == artifact.manifest_hash
 
-        Patches the builder to raise. The wrapper must:
-        1. NOT re-raise (the run continues).
-        2. Record availability=FAILED with the exception message.
-        """
+    def test_stamp_records_failure_without_raising(self):
+        """Manifest errors do not change the completed run's outcome."""
+
         run = _completed_run()
         with mock.patch.object(
             EvidenceManifestBuilder,
             "build",
-            side_effect=RuntimeError("boom"),
+            side_effect=RuntimeError("receipt failed"),
         ):
-            artifact = stamp_evidence_manifest(run)
+            result = stamp_evidence_manifest(run)
 
-        # Returned None to caller (so the caller can carry on).
-        assert artifact is None
-        # FAILED row recorded with the exception message.
-        recorded = RunEvidenceArtifact.objects.get(run=run)
-        assert recorded.availability == RunEvidenceArtifactAvailability.FAILED
-        assert "boom" in recorded.generation_error
-
-    def test_failed_then_success_lifts_artifact_to_generated(self):
-        """Re-stamp after fix: FAILED row gets updated to GENERATED."""
-        run = _completed_run()
-
-        # First attempt fails.
-        with mock.patch.object(
-            EvidenceManifestBuilder,
-            "build",
-            side_effect=RuntimeError("transient"),
-        ):
-            stamp_evidence_manifest(run)
-
-        # Confirm it's recorded as FAILED.
-        artifact = RunEvidenceArtifact.objects.get(run=run)
+        assert result is None
+        artifact = run.evidence_artifact
         assert artifact.availability == RunEvidenceArtifactAvailability.FAILED
-
-        # Second attempt succeeds.
-        result = stamp_evidence_manifest(run)
-        assert result is not None
-        assert result.availability == RunEvidenceArtifactAvailability.GENERATED
-        # generation_error is cleared on successful re-stamp.
-        result.refresh_from_db()
-        assert result.generation_error == ""
-
-    def test_run_status_is_unchanged_by_manifest_failure(self):
-        """A FAILED stamp must not mutate the run row.
-
-        The run's status / ended_at / etc. are the source of truth
-        for "did the validation succeed?". Manifest generation is
-        observability — it must never alter run state.
-        """
-        run = _completed_run(status=ValidationRunStatus.SUCCEEDED)
-        original_status = run.status
-
-        with mock.patch.object(
-            EvidenceManifestBuilder,
-            "build",
-            side_effect=RuntimeError("nope"),
-        ):
-            stamp_evidence_manifest(run)
-
-        run.refresh_from_db()
-        assert run.status == original_status
+        assert artifact.generation_error == "receipt failed"
+        assert run.status == ValidationRunStatus.SUCCEEDED

@@ -27,6 +27,7 @@ ROUTINE_RECIPE_HEADERS = (
     "validator-cleanup stage",
 )
 EXPECTED_OUTGOING_PROVIDER_REVERIFY_COUNT = 2
+EXPECTED_STATUS_SELECTION_CALL_COUNT = 3
 
 
 def _recipe(text: str, name: str, next_marker: str) -> str:
@@ -100,6 +101,48 @@ def test_release_service_and_job_share_release_identity_environment():
         assert value in service
     assert "latest" not in job
     assert "latest" not in service
+
+
+def test_reusing_a_release_service_does_not_create_another_revision():
+    """An idempotent update must observe an immutable Service without updating it."""
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    service = _recipe(
+        text,
+        'validator-service-deploy name stage release_tag=""',
+        "# Provision all managed Services",
+    )
+    reuse = service.split('if [ "$CREATE_SERVICE" = "1" ]', maxsplit=1)[0]
+
+    assert "Leaving the Service definition unchanged" in reuse
+    assert 'gcloud run services update "$SERVICE_NAME"' not in reuse
+
+
+def test_live_transition_does_not_update_validator_service_definitions():
+    """Opening a stage must not create new revisions of accepted releases."""
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    live = _recipe(
+        text,
+        "mode-live stage",
+        "# Report the reconciled lifecycle mode.",
+    )
+
+    assert "Restoring validator Service" not in live
+    assert "desired-min-instances" not in live
+
+
+def test_validator_capacity_uses_only_service_level_scaling():
+    """Capacity reconciliation must not change revision-level configuration."""
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    capacity = _recipe(
+        text,
+        "validator-service-capacity name stage version minimum maximum",
+        "# Diagnostic compatibility alias",
+    )
+
+    assert "--min={{minimum}}" in capacity
+    assert "--max={{maximum}}" in capacity
+    assert "--min-instances" not in capacity
+    assert "--update-labels" not in capacity
 
 
 def test_status_reads_retained_accepted_release_records_for_selected_stage():
@@ -206,6 +249,85 @@ def test_update_reverifies_and_round_trips_the_outgoing_release():
     assert rollback in update
     assert restore_candidate in update
     assert update.index(rollback) < update.index(restore_candidate)
+
+
+def test_update_migrates_missing_legacy_release_evidence_after_confirmation():
+    """Older accepted releases gain retained evidence without a repair command.
+
+    Retained release records were introduced after some installations already
+    had accepted provider pairs. The routine update command must distinguish
+    that one repairable blocker from unsafe drift, retain the signed public
+    record only after the normal operator confirmation, and re-run status so a
+    mismatched record still fails before provider deployment begins.
+    """
+
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    update = _recipe(
+        text,
+        'validator-update stage backend=""',
+        "# Roll back one backend",
+    )
+
+    assert (
+        'LEGACY_RECORD_BLOCKER="active accepted release record is not retained"'
+        in update
+    )
+    assert "select(.blockers != [$legacy_record_blocker])" in update
+    assert "_validator-retain-release-record" in update
+    assert "status-after-record-migration.json" in update
+    assert "retained release evidence did not match the active deployment" in update
+    confirmation = 'read -r -p "Type $CONFIRM to continue: " REPLY'
+    assert update.index(confirmation) < update.index("_validator-retain-release-record")
+
+
+def test_update_stops_when_the_requested_release_is_already_reconciled():
+    """Naming a healthy backend explicitly must not force a duplicate rollout."""
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    update = _recipe(
+        text,
+        'validator-update stage backend=""',
+        "# Roll back one backend",
+    )
+
+    assert '.backend == $backend and .recommended_action != "none"' in update
+    assert "No validator release deployment is required." in update
+    assert update.count("select_status_rows") >= EXPECTED_STATUS_SELECTION_CALL_COUNT
+
+
+def test_management_command_failure_prints_the_django_execution_log():
+    """A failed remote command must expose its useful error before cleanup."""
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    command = _recipe(
+        text,
+        "management-cmd stage command",
+        "# DESTRUCTIVE: completely reset",
+    )
+
+    assert "if ! EXECUTION=$(gcloud run jobs execute" in command
+    assert "gcloud run jobs executions list" in command
+    assert "gcloud beta run jobs executions logs read" in command
+
+
+def test_update_cleanup_handles_a_preflight_failure_before_any_backend_is_touched():
+    """A read-only update failure must not crash while iterating an empty array.
+
+    macOS ships Bash 3.2, where expanding an empty array under ``set -u`` raises
+    an unbound-variable error. The cleanup trap must therefore guard the route
+    restoration loop when preflight stopped before provider mutation.
+    """
+
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    update = _recipe(
+        text,
+        'validator-update stage backend=""',
+        "# Roll back one backend",
+    )
+
+    guard = 'if [ "${#TOUCHED_BACKENDS[@]}" -gt 0 ]; then'
+    loop = 'for selected_backend in "${TOUCHED_BACKENDS[@]}"; do'
+    assert guard in update
+    assert loop in update
+    assert update.index(guard) < update.index(loop)
 
 
 def test_exact_recovery_requires_and_transports_a_recorded_repair_reason():

@@ -10,7 +10,7 @@ Two endpoints, two granularities:
   operator only needs the canonical record for hashing or audit.
 - ``EvidenceBundleDownloadView`` (Session C/3): a ``.tar.gz``
   bundle with ``manifest.json`` + (when pro is installed and a
-  credential exists) ``manifest.sig`` + ``README.txt``. The
+  credential exists) ``credential.jwt`` + ``README.txt``. The
   bundle is what the verify flow (Session C/4) consumes.
 
 Both endpoints share permission gating via
@@ -135,7 +135,7 @@ class EvidenceBundleDownloadView(
     """Download the run's evidence bundle as ``evidence-<run>.tar.gz``.
 
     Builds a deterministic ``.tar.gz`` containing ``manifest.json``,
-    ``manifest.sig`` (when ``validibot-pro`` is installed and the
+    ``credential.jwt`` (when ``validibot-pro`` is installed and the
     run has a signed credential), and ``README.txt``. See
     :mod:`validibot.validations.services.evidence_bundle` for the
     full spec.

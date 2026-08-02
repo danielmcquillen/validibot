@@ -6,7 +6,7 @@ that bundles everything an external verifier needs into a single
 
 - ``manifest.json`` — the canonical-JSON manifest (Session A's
   output, copied verbatim from the run's ``RunEvidenceArtifact``).
-- ``manifest.sig`` — the compact-JWS signed credential (Session
+- ``credential.jwt`` — the compact-JWS signed credential (Session
   C/2's output) when ``validibot-pro`` is installed AND the run
   has an ``IssuedCredential``. Carries the
   ``credentialSubject.validationRun.manifestHash`` claim that
@@ -36,47 +36,17 @@ policy). Those are deferred:
 Pro-awareness
 =============
 
-The signature (``manifest.sig``) is conditionally included via
+The signed credential (``credential.jwt``) is conditionally included via
 ``apps.is_installed("validibot_pro")``, mirroring the pattern in
 :func:`validibot.validations.credential_utils.get_signed_credential_display_context`.
 A community-only deployment produces a bundle with just
 ``manifest.json`` and ``README.txt``; a pro-enabled deployment
-adds ``manifest.sig`` automatically. No feature flag, no separate
+adds ``credential.jwt`` automatically. No feature flag, no separate
 code path — the same builder produces both shapes.
 
-A note on naming: ``manifest.sig`` vs ``credential.jwt``
-========================================================
-
-The same JWS bytes ship under two different filenames depending on
-how a user downloads them:
-
-- **``credential.jwt``** — served by the standalone "Download
-  Credential" button on the run detail page (the Signed Credential
-  card). This is the W3C VC ecosystem's de facto extension for
-  compact-JWS credentials and matches the JWT-tooling convention
-  most third-party verifiers expect.
-
-- **``manifest.sig``** — written into the evidence bundle tarball
-  next to ``manifest.json``. The ``.sig`` extension follows the
-  long-standing sidecar-signature convention used by signed
-  release artefacts (``package.tar.gz`` + ``package.tar.gz.sig``,
-  ``release.zip`` + ``release.zip.asc``). Inside the bundle, this
-  filename communicates "I am the signature *over the file next to
-  me*" more clearly than ``credential.jwt`` would.
-
-Both files are byte-identical — both pull from
-``IssuedCredential.credential_jws`` and both verify against the
-same JWKS. The W3C VC 2.0 spec defines IANA media types
-(``application/vc+jwt``, etc.) but deliberately does **not**
-mandate a file extension; implementers choose what serves their
-context. We chose context-appropriate names for each surface
-rather than forcing one name to win in both places.
-
-If you ever rename one, rename neither — pick a single filename
-that reads well in both contexts (no obvious candidate exists),
-and update the README in this module's ``_build_readme`` plus the
-download view in ``validations/views/evidence.py``. Cross-reference
-in the README so users aren't surprised by either form.
+The bundle and standalone download use the same filename, ``credential.jwt``.
+It is the complete compact-JWS credential, not a detached signature, and the
+single name keeps the bundle, verifier, and download surface consistent.
 """
 
 from __future__ import annotations
@@ -188,11 +158,11 @@ class EvidenceBundleBuilder:
     def _read_signature_bytes(run) -> bytes | None:
         """Return the signed-credential JWS bytes when pro+credential exist.
 
-        ``manifest.sig`` is the full compact-JWS credential. A verify
+        ``credential.jwt`` is the full compact-JWS credential. A verify
         flow re-parses the JWS, validates the signature, extracts the
         ``credentialSubject.validationRun.manifestHash`` claim, and
         confirms it matches a fresh hash of ``manifest.json``.
-        Putting the full JWS in ``manifest.sig`` (rather than just
+        Putting the full JWS in ``credential.jwt`` (rather than just
         the detached signature) is what makes that verify path work
         from the bundle alone.
 
@@ -248,27 +218,21 @@ class EvidenceBundleBuilder:
         signature_section = (
             textwrap.dedent(
                 """\
-                manifest.sig
-                ============
+                credential.jwt
+                ==============
 
                 A W3C Verifiable Credential 2.0 in compact-JWS format
                 (media type ``application/vc+jwt``). Contains a
                 ``credentialSubject.validationRun.manifestHash`` claim
                 binding the credential to ``manifest.json``'s bytes.
 
-                Note on naming: this file is byte-for-byte identical
-                to the ``credential.jwt`` you can download separately
-                from the run detail page in Validibot. Two filenames,
-                same bytes — the ``.sig`` extension reflects this
-                file's role as a sidecar attestation about the
-                ``manifest.json`` next to it; the ``.jwt`` extension
-                reflects the standalone download's role as a
-                self-describing credential. Either filename verifies
-                identically against the issuer's JWKS.
+                This is the same file available from the run detail page
+                in Validibot. The credential contains the
+                ``manifestHash`` claim binding it to ``manifest.json``.
 
                 To verify:
 
-                1. Parse manifest.sig as a JWT.
+                1. Parse credential.jwt as a JWT.
                 2. Verify the JWS signature against the issuer's
                    public key (publicly available at the issuer's
                    .well-known/jwks.json).
@@ -282,7 +246,7 @@ class EvidenceBundleBuilder:
             )
             if has_signature
             else (
-                "manifest.sig is not present in this bundle.\n"
+                "credential.jwt is not present in this bundle.\n"
                 "The originating deployment did not issue a signed "
                 "credential for this run. The manifest's hash is\n"
                 "still recoverable by re-fetching manifest.json from\n"
@@ -325,11 +289,10 @@ class EvidenceBundleBuilder:
             -------------------------
 
             Raw input or output bytes are not currently included.
-            The manifest's ``payload_digests`` carry the SHA-256
-            hashes of the input and (where retention permits) output;
-            those hashes are the cryptographic identity of the
-            payload data without exposing the bytes themselves. A
-            future bundle revision may include raw bytes for runs
+            The manifest's top-level input/output SHA-256 fields carry
+            the cryptographic identity of the payload data without
+            exposing the bytes themselves. A future bundle revision may
+            include raw bytes for runs
             where the workflow's retention policy permits.
 
             More information
@@ -373,7 +336,7 @@ class EvidenceBundleBuilder:
             if signature_bytes is not None:
                 EvidenceBundleBuilder._add_member(
                     tar,
-                    "manifest.sig",
+                    "credential.jwt",
                     signature_bytes,
                 )
             EvidenceBundleBuilder._add_member(tar, "README.txt", readme_bytes)

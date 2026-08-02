@@ -224,7 +224,7 @@ def test_exact_recovery_requires_and_transports_a_recorded_repair_reason():
             'mode="normal" cause="SUPERSEDED_BY_ACCEPTED_RELEASE" '
             'allow_unaccepted="" reason_b64=""'
         ),
-        "# Change mutable service-level warming",
+        "# Set mutable service-level capacity",
     )
 
     assert ".rolled_back_from[]?" in rollback
@@ -246,7 +246,7 @@ def test_release_lifecycle_recipes_avoid_django_reserved_version_option():
             'mode="normal" cause="SUPERSEDED_BY_ACCEPTED_RELEASE" '
             'allow_unaccepted="" reason_b64=""'
         ),
-        "# Change mutable service-level warming",
+        "# Set mutable service-level capacity",
     )
     cleanup = _recipe(
         text,

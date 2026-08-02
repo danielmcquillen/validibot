@@ -44,21 +44,56 @@ Each stage gets its own Cloud Run services, Cloud SQL instance, secrets, and que
 ## Signed credentials on GCP
 
 GCP deployments should use Google Cloud KMS rather than a local PEM file.
-Set the credential-signing key in your stage `.django` env file:
+Set both the credential-signing key and one explicit active version in your
+stage `.django` env file:
 
 ```bash
 GCP_KMS_SIGNING_KEY=projects/your-project/locations/your-region/keyRings/your-app-name-keys/cryptoKeys/credential-signing
+GCP_KMS_SIGNING_KEY_VERSION=1
 CREDENTIAL_ISSUER_URL=https://validibot.example.com
 ```
 
-The Cloud Run service account also needs permission to sign with that key.
-At minimum, grant the runtime service account:
+Validibot never chooses the highest enabled KMS version automatically. The
+explicit version prevents a newly created version from signing before its
+public key has reached the application's JWKS. The Cloud Run service account
+needs these key-scoped roles:
 
 - `roles/cloudkms.viewer`
+- `roles/cloudkms.publicKeyViewer`
 - `roles/cloudkms.signerVerifier`
 
 Use a different KMS key per stage so dev, staging, and prod credentials do not
 share the same issuer key material.
+
+After the database migration has run, register the active version's public key
+before enabling workflows that issue credentials:
+
+```bash
+python manage.py register_signing_key --gcp-version 1
+python manage.py signing_key_status
+```
+
+The registration command asks KMS only for the public key and stores a public
+JWK in the normal application database. Private key bytes remain in KMS.
+
+### Rotate a credential-signing key
+
+Rotation is publish-before-use:
+
+1. Create a new version in the existing asymmetric signing key.
+2. Leave `GCP_KMS_SIGNING_KEY_VERSION` on the old version.
+3. Run `python manage.py register_signing_key --gcp-version NEW_VERSION` in the
+   deployed application environment.
+4. Confirm `/.well-known/jwks.json` contains the reported `kid`, allowing for
+   its five-minute cache.
+5. Change `GCP_KMS_SIGNING_KEY_VERSION` in the stage `.django` file, upload the
+   secret, and redeploy every credential-issuing service.
+6. Run `python manage.py signing_key_status`, issue a test credential, and
+   confirm both the new credential and an older credential verify.
+
+Old public JWKs stay in the registry indefinitely so existing credentials keep
+verifying. Disabling an old private KMS version later does not remove its public
+verification key from Validibot.
 
 ## Set up the env files
 

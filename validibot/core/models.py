@@ -129,6 +129,39 @@ class SiteSettings(TimeStampedModel):
                 )
 
 
+class CredentialVerificationKey(TimeStampedModel):
+    """Public key retained so historical credentials remain verifiable.
+
+    Signing backends and private key material remain Pro-owned. This community
+    model stores only the public JWK needed by the instance-local verifier and
+    JWKS endpoint. Rows are intentionally permanent during ordinary rotation.
+    """
+
+    kid = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text=_("Stable key identifier published in credential JOSE headers."),
+    )
+    jwk = models.JSONField(
+        help_text=_("Public JSON Web Key used for verification."),
+    )
+    provider_reference = models.CharField(
+        max_length=1024,
+        blank=True,
+        help_text=_(
+            "Optional provider reference, such as a Google Cloud KMS key version."
+        ),
+    )
+
+    class Meta:
+        ordering = ["created", "kid"]
+        verbose_name = "Credential verification key"
+        verbose_name_plural = "Credential verification keys"
+
+    def __str__(self) -> str:
+        return self.kid
+
+
 class BaseInvite(TimeStampedModel):
     """
     Abstract base model for all invite types.

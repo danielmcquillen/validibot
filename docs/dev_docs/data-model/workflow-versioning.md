@@ -292,30 +292,16 @@ Future feature adds a behavior-defining field to `ValidatorConfig`:
 
 ## Evidence manifests
 
-A completed run also gets a *manifest* — a canonical-JSON document
-that snapshots "what rules and inputs run X was operating under."
-The manifest is hashed, written to default storage, and indexed by a
-`RunEvidenceArtifact` row pointing at the file.
+A completed run gets a canonical JSON evidence manifest. It is a small
+permanent receipt, not a workflow snapshot. The v2 schema resolves at
+`https://validibot.com/schemas/evidence-manifest-v2.json` and contains only run
+identity/outcome, workflow slug/version, ordered validator-step identity and
+status, optional backend image digests, and top-level input/output digests.
 
-The schema is `validibot.evidence.v1` (see
-`validibot_shared.evidence` in the published `validibot-shared`
-package — version 0.5.1+). It lives in shared so external verifiers
-(validibot-pro, third-party tools) can consume it without pulling in
-the Django stack. The manifest contains:
-
-- Run identity: run UUID, workflow slug + version, org, executed at.
-- Workflow contract snapshot: every field in `CONTRACT_FIELDS` at the
-  moment the run completed.
-- Per-step validator records: slug, version, and `semantic_digest`
-  pulled directly from each step's validator row.
-- Input schema: the workflow's structured input contract if any.
-- Retention info: `retention_class` plus `redactions_applied` — a
-  list of field names the retention policy stripped from
-  this manifest.
-- Payload digests: `input_sha256` (always; preimage-resistant and
-  safe even under input `DO_NOT_STORE`) and `output_envelope_sha256`
-  (gated by the independent output policy — present for output `STORE_*`
-  runs, omitted for output `DO_NOT_STORE`, and recorded as a redaction).
+It excludes the full workflow contract, accepted-file policy, embedded input
+schemas, retention settings, filenames, lineage, provider execution identity,
+and raw payloads. See [Evidence Bundles](../overview/evidence-bundles.md) for the
+normative field list and verification model.
 
 The stamper lives at
 `validibot/validations/services/evidence.py`. Both run-completion
@@ -328,31 +314,10 @@ is unaffected. The auditor then surfaces the gap.
 
 ### Retention policy
 
-The decision of *what* to include is centralised in
-`validibot/validations/services/evidence_retention.py`. The
-`RetentionPolicy` class exposes static methods like
-`includes_input_hash(input_retention)` and
-`includes_output_hash(output_retention)`; the builder consults them
-when populating `payload_digests`. Stripped fields are recorded in
-`retention.redactions_applied` so verifiers see "the policy
-deliberately omitted these" rather than guessing whether absence
-means policy or bug.
-
-Why the input hash is always included (even under `DO_NOT_STORE`):
-SHA-256 is preimage-resistant — recipients of the manifest cannot
-reconstruct the original bytes from the hash, so retaining the hash
-doesn't violate the privacy promise. It IS the proof "this run
-consumed *this exact input*" that makes the manifest meaningful.
-Withholding it would break that property. The submission row's
-`checksum_sha256` is computed at upload time and explicitly
-preserved through `Submission.purge_content()`.
-
-Curated runtime logs in the manifest (e.g. step start/end events,
-finding emit events) are deferred follow-up work. Adding them requires new optional fields in the
-`validibot.evidence.v1` schema, which is a separate
-`validibot-shared` release. The current shape already meets the
-DO_NOT_STORE acceptance criteria — no payload bytes leak through
-any field that exists today.
+Input and output retention deletes payload bytes but does not select manifest
+fields or delete the permanent receipt. The same v2 shape is emitted for every
+retention class. Its hashes remain records about deleted payloads and must not
+be described as anonymous data.
 
 ### Operator export
 
@@ -360,26 +325,22 @@ The run-detail page exposes a "Download manifest.json" action
 backed by `EvidenceManifestDownloadView` at
 `validations:evidence_manifest_download`. The endpoint streams the
 canonical-JSON bytes that `RunEvidenceArtifact.manifest_path`
-points at and includes two helpful headers for CLI consumers:
+points at and includes two receipt-identity headers:
 
-- `X-Validibot-Manifest-Sha256` — the stored manifest hash, so
-  CLI tools can verify the body without re-parsing the JSON.
-- `X-Validibot-Schema-Version` — the schema string the manifest
-  was produced under (currently `validibot.evidence.v1`).
+- `X-Validibot-Manifest-Sha256` — the stored manifest hash.
+- `X-Validibot-Schema-Version` — the v2 schema URL.
 
 `Cache-Control: no-store` is set so re-stamping a manifest (e.g.
 after a builder fix) surfaces fresh bytes on the next download.
 
-Permissions piggyback on the run-detail view: if a user can see
-the run, they can download its manifest. Cross-org and FAILED-
-artifact accesses both return `404` (consistent with the existing
-"don't leak run existence" convention on the run-detail surface).
+Permissions piggyback on the run-detail view. Cross-org and failed-artifact
+accesses return `404`. Ordinary input/output expiry does not hide the permanent
+manifest.
 
 ### Operator export — bundle
 
 A second endpoint at `validations:evidence_bundle_download`
-(`<uuid:pk>/evidence/bundle/`) returns the run's evidence as a
-deterministic `.tar.gz`:
+(`<uuid:pk>/evidence/bundle/`) returns the run's evidence as `.tar.gz`:
 
 - `manifest.json` — same canonical bytes the manifest endpoint
   returns; verifiers re-hash this to confirm integrity.
@@ -388,17 +349,6 @@ deterministic `.tar.gz`:
   `IssuedCredential`). Carries the
   `credentialSubject.validationRun.manifestHash` claim that binds
   the credential to the manifest's exact bytes.
-- `README.txt` — orientation: what's here, how to verify, where
-  the corresponding workflow lives. Uses the run's `ended_at` (not
-  export wall-clock) so re-exporting the same run produces
-  byte-identical bundles — supporting a future "bundle hash"
-  story.
-
-Determinism notes for the tarball: tarfile member metadata (mode,
-mtime, uid, gid, uname, gname) is normalised to constants, and
-the gzip wrapper is built with `GzipFile(mtime=0)` so the gzip
-header's timestamp is fixed. Two builds of the same run produce
-byte-for-byte identical archives.
 
 Pro-aware inclusion: the bundle service uses
 `apps.is_installed("validibot_pro")` (mirroring
@@ -407,12 +357,9 @@ look up an `IssuedCredential` and include `credential.jwt`. A
 community-only deployment produces a bundle without the
 signature, no feature flag, no separate code path.
 
-What's *not* in the bundle today: raw input or output bytes. The
-manifest's `payload_digests` carry SHA-256 hashes of input and
-(where retention permits) output, so the bundle has the
-*identity* of the payload data without exposing the bytes
-themselves. A future extension may include raw bytes for runs whose
-retention policy permits.
+There is no README, bundle descriptor, separate signature file, or raw input or
+output member. A Community bundle contains only `manifest.json` and is a record,
+not cryptographic proof.
 
 Verification consumes the bundle: parses the JWS in
 `credential.jwt`, validates the signature against the issuer's

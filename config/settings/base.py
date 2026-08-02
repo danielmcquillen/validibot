@@ -1184,6 +1184,7 @@ WORKER_URL = env("WORKER_URL", default="")
 CREDENTIAL_ISSUER_URL = env("CREDENTIAL_ISSUER_URL", default=SITE_URL)
 SIGNING_KEY_PATH = env("SIGNING_KEY_PATH", default="")
 GCP_KMS_SIGNING_KEY = env("GCP_KMS_SIGNING_KEY", default="")
+GCP_KMS_SIGNING_KEY_VERSION = env("GCP_KMS_SIGNING_KEY_VERSION", default="")
 SIGNING_ALGORITHM = env("SIGNING_ALGORITHM", default="ES256")
 CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")
 # HTTP delivery is only the short Django orchestration request; validator

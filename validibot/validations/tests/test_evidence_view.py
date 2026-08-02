@@ -14,7 +14,7 @@ tests pin the contract:
 3. **Successful download streams ``manifest.json`` with the
    manifest's bytes**, ``Content-Type: application/json``, and
    ``Cache-Control: no-store`` so re-stamps surface fresh bytes.
-4. **Hash header allows CLI verification without parsing the
+4. **Hash header identifies the downloaded bytes without parsing the
    body**. ``X-Validibot-Manifest-Sha256`` mirrors what's on the
    ``RunEvidenceArtifact`` row.
 """
@@ -96,8 +96,7 @@ class EvidenceManifestDownloadViewTests(TestCase):
     def test_response_carries_hash_header(self):
         """X-Validibot-Manifest-Sha256 mirrors the artifact row's hash.
 
-        Lets CLI consumers verify the body's hash without re-parsing
-        the JSON.
+        It lets a caller identify the body without re-parsing the JSON.
         """
         user, run = _setup_run_with_owner_access()
         artifact = stamp_evidence_manifest(run)
@@ -167,8 +166,8 @@ class EvidenceManifestDownloadViewTests(TestCase):
         )
         assert response.status_code == HTTPStatus.NOT_FOUND
 
-    def test_expired_output_manifest_returns_404_before_physical_purge(self):
-        """A delayed worker must not extend access to retained evidence bytes."""
+    def test_expired_output_manifest_remains_available(self):
+        """Payload expiry does not hide the permanent evidence receipt."""
         user, run = _setup_run_with_owner_access()
         stamp_evidence_manifest(run)
         run.output_retention_policy = OutputRetention.STORE_1_DAY
@@ -182,7 +181,8 @@ class EvidenceManifestDownloadViewTests(TestCase):
             reverse("validations:evidence_manifest_download", args=[run.id]),
         )
 
-        assert response.status_code == HTTPStatus.NOT_FOUND
+        assert response.status_code == HTTPStatus.OK
+        assert b"".join(response.streaming_content)
 
     def test_run_without_artifact_returns_404(self):
         """A run that hasn't been stamped yet -> 404.

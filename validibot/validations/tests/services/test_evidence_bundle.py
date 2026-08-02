@@ -1,25 +1,8 @@
-"""Tests for ``EvidenceBundleBuilder`` and the bundle download view.
+"""Tests for the minimal evidence archive and its authenticated download.
 
-ADR-2026-04-27 Phase 4 Session C/3: the bundle is the artefact a
-verifier reads to confirm "this credential is signed by an
-expected issuer and refers to the manifest bytes I have." These
-tests pin the bundle's contract:
-
-1. **Always-present members**: ``manifest.json`` (bytes match
-   storage) and ``README.txt`` (human-readable).
-2. **Conditional ``credential.jwt``**: included when validibot-pro
-   is installed AND the run has an ``IssuedCredential``; omitted
-   otherwise.
-3. **Determinism**: building the same run twice produces
-   identical bytes (so a future "bundle hash" story is possible).
-4. **Failure modes**: no artifact / FAILED artifact -> the
-   builder raises ``BundleNotAvailableError`` and the view
-   produces a 404.
-
-The pro-side path is exercised via a minimal monkey-patched
-``apps.is_installed`` + a fake ``IssuedCredential`` model so we
-don't need the full pro install in this test suite. The
-integration path (real pro installed) is covered elsewhere.
+The archive has one fixed community member, ``manifest.json``, and one optional
+Pro member, ``credential.jwt``. It contains no descriptor, README, or payload
+bytes. The permanent download remains available after ordinary output expiry.
 """
 
 from __future__ import annotations
@@ -95,7 +78,7 @@ def _list_tar_members(bundle_bytes: bytes) -> list[str]:
 
 
 class EvidenceBundleBuilderTests(TestCase):
-    """The builder produces a deterministic gzipped-tar with the right members."""
+    """The builder emits only the fixed permanent evidence members."""
 
     def test_bundle_contains_manifest_json_matching_artifact_bytes(self):
         """``manifest.json`` in the tarball matches the stored manifest's bytes."""
@@ -116,18 +99,13 @@ class EvidenceBundleBuilderTests(TestCase):
             artifact.manifest_path.close()
         assert manifest_bytes == stored
 
-    def test_bundle_always_contains_readme(self):
-        """``README.txt`` is always present in the bundle."""
+    def test_community_bundle_contains_only_manifest(self):
+        """Community archives stay self-evident and contain no unsigned prose."""
         _, run = _setup_run_with_owner_access()
         stamp_evidence_manifest(run)
 
         bundle = EvidenceBundleBuilder.build(run)
-        readme = _read_tar_member(bundle, "README.txt")
-        assert readme is not None
-        # Spot-check a couple of structural anchors.
-        readme_text = readme.decode("utf-8")
-        assert "Validibot Evidence Bundle" in readme_text
-        assert "manifest.json" in readme_text
+        assert _list_tar_members(bundle) == ["manifest.json"]
 
     def test_bundle_omits_credential_jwt_in_community_only_deployment(self):
         """Without validibot_pro installed, no ``credential.jwt`` member."""
@@ -141,18 +119,9 @@ class EvidenceBundleBuilderTests(TestCase):
         bundle = EvidenceBundleBuilder.build(run)
         members = _list_tar_members(bundle)
         assert "credential.jwt" not in members
-        # Check the README mentions the absence so operators
-        # opening the tarball understand why.
-        readme = _read_tar_member(bundle, "README.txt").decode("utf-8")
-        assert "credential.jwt is not present" in readme
 
     def test_bundle_is_deterministic(self):
-        """Building twice produces byte-identical output.
-
-        Member metadata is normalised (mode 0o644, mtime 0, no
-        uid/gid) so a future "bundle hash" story can rely on the
-        same bytes coming out.
-        """
+        """Normalized archive metadata avoids leaking host-specific values."""
         _, run = _setup_run_with_owner_access()
         stamp_evidence_manifest(run)
 
@@ -232,11 +201,10 @@ class EvidenceBundleDownloadViewTests(TestCase):
         assert response["Content-Type"] == "application/gzip"
         # Body parses as a valid gzipped tarball.
         members = _list_tar_members(response.content)
-        assert "manifest.json" in members
-        assert "README.txt" in members
+        assert members == ["manifest.json"]
 
-    def test_expired_output_bundle_returns_404_before_physical_purge(self):
-        """Finite policy expiry must gate bundles independently of cleanup."""
+    def test_expired_output_bundle_remains_available(self):
+        """Payload expiry does not hide the permanent evidence receipt."""
         user, run = _setup_run_with_owner_access()
         stamp_evidence_manifest(run)
         run.output_retention_policy = OutputRetention.STORE_1_DAY
@@ -250,7 +218,8 @@ class EvidenceBundleDownloadViewTests(TestCase):
             reverse("validations:evidence_bundle_download", args=[run.id]),
         )
 
-        assert response.status_code == HTTPStatus.NOT_FOUND
+        assert response.status_code == HTTPStatus.OK
+        assert _list_tar_members(response.content) == ["manifest.json"]
 
     def test_response_carries_hash_and_schema_version_headers(self):
         """Mirrors the manifest endpoint's CLI-friendly headers."""

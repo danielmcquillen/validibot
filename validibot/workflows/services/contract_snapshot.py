@@ -1,9 +1,9 @@
-"""The single community projection of a workflow's *validation contract*.
+"""Internal workflow-contract projection used by versioning and credentials.
 
-ADR-2026-06-18 (implementation note). This module is the one place that answers
-"what, semantically, is this workflow?" for hashing and evidence. It exists so
-the community evidence manifest and the Pro signed credential can derive from a
-**single** projection rather than two parallel preimages that drift.
+ADR-2026-06-18 (implementation note). This module answers "what, semantically,
+is this workflow?" for internal workflow hashing and the Pro signed credential.
+The permanent evidence manifest deliberately does not carry this full contract
+or its hash; it has a smaller workflow slug/version/validator-step receipt.
 
 Two layers, deliberately named separately (see the ADR's "keep the two layers
 distinct" caution):
@@ -14,13 +14,8 @@ distinct" caution):
   This is the only input to the hash.
 * :func:`compute_workflow_definition_hash` — ``sha256`` over RFC 8785 / JCS
   canonical JSON for that preimage.
-* :func:`build_workflow_contract_snapshot` — the broader **evidence object**: a
-  ``validibot_shared.evidence.WorkflowContractSnapshot`` carrying the launch
-  contract PLUS the constants, signal-mapping definitions, and the definition
-  hash. Both the community evidence manifest (``validations/services/evidence.py``)
-  and the Pro signed credential derive from these functions, so they cannot
-  drift — a constant value change moves ``compute_workflow_definition_hash`` and
-  therefore both the manifest record and the signed credential.
+* :func:`build_workflow_contract_snapshot` — the broader internal object used
+  by versioning tests and credential hashing.
 
 Design rules encoded here (each is an ADR decision):
 
@@ -37,10 +32,8 @@ Design rules encoded here (each is an ADR decision):
 * **Constants store exact values.** A ``NUMBER`` constant's decimal string
   (``"0.40"``) is hashed verbatim, preserving attested precision.
 
-Canonicalization: this module hashes with the shared RFC 8785 / JCS helper in
-``validibot-shared``. Pro re-exports that helper for compatibility, but the
-community projection owns the workflow-definition hash so the evidence manifest
-and signed credential cannot drift.
+Canonicalization uses the shared RFC 8785 / JCS helper in `validibot-shared`.
+The community projection owns the workflow-definition hash used by Pro.
 """
 
 from __future__ import annotations

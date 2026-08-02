@@ -492,9 +492,9 @@ class WorkflowForm(forms.ModelForm):
             ),
             "output_retention": _(
                 "Controls how long validation outputs (results, artifacts, "
-                "findings, step values, and evidence files) are kept after "
-                "the run completes. The privacy-safe default queues deletion "
-                "immediately."
+                "findings, and step values) are kept after the run completes. "
+                "The default queues deletion immediately; the permanent "
+                "evidence receipt remains."
             ),
         }
 
@@ -920,7 +920,10 @@ class WorkflowForm(forms.ModelForm):
                     _("Submission settings"),
                     _(
                         "Define which file types the workflow accepts and how "
-                        "submission metadata should behave."
+                        "long payload data remains available. Validibot keeps a "
+                        "permanent evidence receipt with hashes and run "
+                        "provenance, but not the submitted contents or output "
+                        "files themselves."
                     ),
                 ),
                 Field(

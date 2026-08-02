@@ -1,38 +1,39 @@
 # Evidence Bundles
 
-An evidence bundle is a portable receipt for a completed validation run. It
-proves the run outcome, the workflow steps and validator versions involved, and
-the canonical identities of the submitted input and output envelope. It does
-not contain input or output bytes.
+An evidence bundle is the smallest portable record of a completed validation
+run. It contains no submitted content or generated output files.
 
-The implementation lives in:
+The proof has one relationship:
 
-- `validibot/validations/services/evidence.py` — builds and persists the receipt;
-- `validibot/validations/services/evidence_bundle.py` — builds the tarball;
-- `validibot/validations/views/evidence.py` — serves manifest and bundle routes;
-- `validibot-shared/validibot_shared/evidence/manifest.py` — shared v2 model.
+```text
+credential.jwt -- manifestHash --> manifest.json
+```
 
-## Current bundle format
+The credential's signature authenticates its `manifestHash` claim. Re-hashing
+`manifest.json` proves whether the supplied receipt is the exact receipt named
+by that credential.
 
-Bundles are deterministic `.tar.gz` files built on demand:
+## Bundle contents
+
+The downloaded archive contains exactly:
 
 ```text
 evidence-<run-id>.tar.gz
 ├── manifest.json
-├── README.txt
 └── credential.jwt      # only when Pro issued a credential
 ```
 
-`manifest.json` is copied byte-for-byte from the stored evidence artifact.
-`README.txt` provides orientation. `credential.jwt` is the complete compact-JWS
-credential and uses the same filename as the standalone credential download.
-It contains the `manifestHash` claim that binds the credential to
-`manifest.json`.
+There is no README, descriptor, raw payload directory, or separate signature
+file. The fixed filenames are the format. `credential.jwt` is the same compact
+JWS available from the standalone credential download.
+
+A Community archive contains only `manifest.json`. It is an audit record but
+not cryptographic proof. A Pro archive becomes verifiable when it also contains
+`credential.jwt`.
 
 ## Permanent manifest
 
-The manifest is a small, permanently retained audit receipt. Its exact top
-level is:
+The v2 manifest has this shape:
 
 ```json
 {
@@ -46,10 +47,10 @@ level is:
     "steps": [
       {
         "key": "validate_input",
-        "status": "SUCCEEDED",
-        "validator": "json-schema",
+        "status": "PASSED",
+        "validator": "energyplus",
         "validator_version": "3",
-        "backend_image_digest": "registry.example/json-schema@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        "backend_image_digest": "registry.example/energyplus@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     ]
   },
@@ -58,92 +59,77 @@ level is:
 }
 ```
 
-The workflow projection contains the ordered validator steps and their
-statuses. `backend_image_digest` is optional because capture is best effort;
-when present, it distinguishes rebuilt backend images that share a validator
-version. This is the only execution-environment identity retained in the
-receipt.
+`backend_image_digest` is optional because not every validator execution has a
+container image. When present, it distinguishes different executable builds
+that share the same validator version.
 
-The receipt deliberately does not contain:
+The receipt deliberately excludes raw payloads, filenames, storage locations,
+retention settings, accepted-file policy, embedded input schemas, full workflow
+configuration, lineage, provider execution identifiers, executed-input
+snapshots, and per-artifact graphs.
 
-- raw input or output bytes;
-- `allowed_file_types`, input schemas, retention settings, billing/access
-  configuration, or other workflow policy;
-- filenames, labels, descriptions, or other free-form author metadata;
-- provider resource names, provider execution IDs, service-account identities,
-  or operational telemetry;
-- workflow-definition hashes, lineage graphs, per-file digests, executed-input
-  digests, preprocessing relationships, sizes, or storage versions.
+The execution attempt still captures detailed input evidence before provider
+execution. Input retention may later redact that operational snapshot. It is
+not projected into the permanent portable receipt.
 
-The receipt attests the canonical submission and declared workflow. For a
-generate-then-execute workflow, the bytes submitted and the bytes that cross
-the execution boundary can differ; the current minimal receipt accepts that
-distinction.
+## Finalization and binding
+
+For a successful credential-bearing run, finalization is ordered:
+
+1. build the run summary;
+2. stamp the output digest;
+3. build, canonicalize, store, and hash `manifest.json`;
+4. issue `credential.jwt` with the stored manifest hash; and
+5. emit `validation_run_finalized`, which schedules payload retention.
+
+Credential issuance refuses a missing or failed manifest. There is no legacy
+mode that issues an unbound credential. If a blocking issuance failure changes
+the run result, the summary, output digest, and manifest are rebuilt before the
+finalized signal is sent.
 
 ## Retention boundary
 
-Input and output retention controls payload bytes only. It does not select
-manifest fields and it does not delete the permanent receipt. The top-level
-`input_sha256` and `output_envelope_sha256` values remain in the receipt after
-the corresponding bytes are purged. An explicit account or tenant erasure
-requirement may still remove the receipt.
+Input and output retention controls payload bytes. The evidence manifest is a
+permanent audit receipt for the life of its owning run or tenant record, subject
+to a future explicit erasure policy.
 
-There is no separate evidence-retention policy, workflow setting, redaction
-pass, or evidence-specific purge command. The output sweep must leave the
-stored manifest intact; `PURGED` is reserved for explicit evidence erasure or
-legacy rows whose receipt was already deleted.
+Output purge removes detailed findings, artifacts, envelopes, step values, and
+other payload-derived output state. It leaves `manifest.json` and the evidence
+index row available. The receipt keeps the input/output digests as records about
+the deleted payloads; documentation must not describe those hashes as anonymous.
 
-## Download endpoints
+There is no evidence-retention dropdown, evidence deadline, evidence purge
+sweep, retention-specific manifest shape, or `PURGED` manifest state.
+
+## Download and verification
+
+The existing authenticated run routes are:
 
 ```text
 GET /validations/<run-uuid>/evidence/manifest/
 GET /validations/<run-uuid>/evidence/bundle/
 ```
 
-Both endpoints use `ValidationRunAccessMixin`. The manifest endpoint returns
-`manifest.json`; the bundle endpoint builds the deterministic tarball. Both
-include the stored manifest SHA-256 and schema URL in response headers.
+They use the same organization-scoped access rules as the run detail page and
+remain available after ordinary payload expiry.
 
-The manifest remains available after payload purge. A run without a generated
-manifest, a failed generation, or an explicitly erased receipt returns the
-corresponding unavailable response.
+To verify a signed bundle:
 
-## Verification
+1. extract `manifest.json` and `credential.jwt`;
+2. verify the compact JWS with the issuing instance's registered public key;
+3. compute SHA-256 over the exact `manifest.json` bytes; and
+4. compare it with `credentialSubject.validationRun.manifestHash`.
 
-For a signed bundle:
+Both checks must pass. Validibot verifies only credentials issued by the local
+instance and does not fetch arbitrary remote JWKS documents.
 
-1. Extract `manifest.json` and `credential.jwt`.
-2. Recompute `SHA-256(manifest.json)`.
-3. Parse and verify the JWS in `credential.jwt` against the issuer JWKS.
-4. Compare the recomputed digest with
-   `credentialSubject.validationRun.manifestHash`.
-5. Reject the bundle if the digests differ.
+## Code map
 
-Community deployments still produce `manifest.json` and `README.txt`, but do
-not produce `credential.jwt` and therefore cannot provide signed verification.
-
-## Generation and storage
-
-`EvidenceManifestBuilder` performs three operations:
-
-- `build(run)` returns a schema-validated `EvidenceManifest`;
-- `serialise(manifest)` produces canonical JSON bytes using sorted keys,
-  compact separators, and ASCII escaping;
-- `persist(run, manifest)` stores those exact bytes and hashes them for the
-  `RunEvidenceArtifact` index row.
-
-`stamp_evidence_manifest(run)` is best effort. A generation failure records
-`availability=FAILED` without changing the validation outcome. Both synchronous
-orchestration and asynchronous callback finalization stamp the receipt before
-emitting `validation_run_finalized`, because that signal schedules retention.
-
-Manifest bytes live in configured application storage at a path such as:
-
-```text
-evidence/<org-id>/<run-id>/manifest.json
-```
-
-The database index stores the schema URL, manifest hash, storage path, and
-availability. Legacy retention metadata may remain on the index row for
-compatibility, but it is not part of the manifest and does not control its
-shape.
+- `validibot/validations/services/evidence.py` builds and stores the receipt.
+- `validibot/validations/services/evidence_bundle.py` creates the minimal archive.
+- `validibot/validations/views/evidence.py` serves authenticated downloads.
+- `validibot/validations/services/retention.py` purges payloads while preserving
+  the receipt.
+- `validibot-shared/validibot_shared/evidence/manifest.py` defines the v2 model.
+- `validibot-pro/credentials/issuance.py` enforces the binding prerequisite.
+- `validibot-pro/credentials/verify.py` verifies the signature and binding.

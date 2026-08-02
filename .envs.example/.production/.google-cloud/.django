@@ -340,6 +340,9 @@ DJANGO_ADMIN_REQUIRE_MFA=True
 #   staging: credential-signing-staging
 #   dev:     credential-signing-dev
 GCP_KMS_SIGNING_KEY="projects/your-project/locations/region/keyRings/your-app-name-keys/cryptoKeys/credential-signing"
+# Required with GCP_KMS_SIGNING_KEY. Pin one version explicitly; register its
+# public key before switching this value during rotation.
+GCP_KMS_SIGNING_KEY_VERSION=1
 # Optional explicit issuer URL for credential payloads. Leave empty to reuse
 # SITE_URL.
 CREDENTIAL_ISSUER_URL=https://validibot.example.com

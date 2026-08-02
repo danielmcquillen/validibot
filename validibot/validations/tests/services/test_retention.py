@@ -226,4 +226,5 @@ class TestTerminalRetentionScheduling:
 
         assert all(not isinstance(response, Exception) for _, response in responses)
         assert run.output_expires_at == ended_at
+        assert run.evidence_artifact.manifest_path
         assert PurgeRetry.objects.filter(submission=run.submission).exists()

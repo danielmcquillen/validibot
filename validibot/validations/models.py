@@ -4474,17 +4474,9 @@ class CallbackReceipt(models.Model):
 
 
 class RunEvidenceArtifactAvailability(models.TextChoices):
-    """Lifecycle states for an evidence-manifest artifact.
-
-    ADR-2026-04-27 Phase 4 Session A. Tracks whether the manifest's
-    bytes are currently retrievable from storage. The state is
-    decoupled from "was the manifest ever generated?" because runs
-    can have manifests that get purged later (retention sweeps,
-    storage backend rotations).
-    """
+    """Generation states for the permanent evidence manifest."""
 
     GENERATED = "GENERATED", _("Manifest generated and bytes available")
-    PURGED = "PURGED", _("Manifest bytes purged; only hash remains")
     FAILED = "FAILED", _("Manifest generation failed; row records the gap")
 
 
@@ -4508,20 +4500,16 @@ class RunEvidenceArtifact(TimeStampedModel):
     DB index — manifest bytes live in storage, ``manifest_hash``
     pins them.
 
-    Session B will use this row to record retention-class state and
-    Session C will use ``cached_bundle_path`` to point at exported
-    tarballs (the manifest plus optional inputs / outputs / signed
-    credential).
+    The row indexes one permanent receipt. Bundles are built on demand and
+    payload-retention policy is intentionally not copied onto this record.
 
     Why one-to-one with ``ValidationRun``
     -------------------------------------
 
-    A run has one canonical manifest. Re-running the manifest builder
-    (e.g. after a backend bug fix that changed the redaction policy)
-    produces a *different* manifest with a different hash; that's a
-    new artifact for a new audit row, not an update to this one. We
-    do NOT track manifest history here — re-emission is a Phase 4
-    Session B / C concern.
+    A run has one canonical manifest. Finalization may stamp it again after a
+    blocking credential failure changes the run outcome, but the same row is
+    updated before the run is exposed as final. There is no manifest history
+    or compatibility-version registry.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -4559,31 +4547,8 @@ class RunEvidenceArtifact(TimeStampedModel):
         default="",
         help_text=_(
             "SHA-256 of the manifest's canonical-JSON bytes. Empty "
-            "when availability is FAILED. Future signed credentials "
-            "(Phase 4 Session C) cite this hash, so a re-fetch + "
-            "re-hash detects tampering."
-        ),
-    )
-
-    cached_bundle_path = models.CharField(
-        max_length=500,
-        blank=True,
-        default="",
-        help_text=_(
-            "Phase 4 Session C: path to a cached export-bundle tarball "
-            "(manifest + inputs + outputs + signature). Empty until "
-            "the operator triggers an export."
-        ),
-    )
-
-    retention_class = models.CharField(
-        max_length=32,
-        blank=True,
-        default="",
-        help_text=_(
-            "Workflow.input_retention at the time the manifest was "
-            "generated. Mirrored here so retention-sweep code can "
-            "filter without joining to Workflow."
+            "when availability is FAILED. Signed credentials cite this "
+            "hash, so a re-fetch + re-hash detects tampering."
         ),
     )
 
@@ -4592,8 +4557,8 @@ class RunEvidenceArtifact(TimeStampedModel):
         choices=RunEvidenceArtifactAvailability,
         default=RunEvidenceArtifactAvailability.GENERATED,
         help_text=_(
-            "Lifecycle state: GENERATED (bytes in storage), PURGED "
-            "(only hash remains), or FAILED (generation aborted)."
+            "Generation state: GENERATED (bytes in storage) or FAILED "
+            "(generation aborted)."
         ),
     )
 

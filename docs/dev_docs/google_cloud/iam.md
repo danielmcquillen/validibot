@@ -44,6 +44,7 @@ This ensures:
 | `roles/cloudtasks.viewer` | Project | View queue status |
 | `roles/storage.objectAdmin` | Stage bucket | Read/write storage objects |
 | `roles/cloudkms.viewer` | KMS key | View signing key metadata |
+| `roles/cloudkms.publicKeyViewer` | KMS key | Register a version's public verification key |
 | `roles/cloudkms.signerVerifier` | KMS key | Sign validation credentials |
 | `roles/iam.serviceAccountTokenCreator` | Self | Create OIDC tokens for Cloud Tasks |
 | `roles/iam.serviceAccountUser` | Self | Act as the service account |

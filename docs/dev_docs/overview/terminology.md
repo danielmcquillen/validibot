@@ -83,6 +83,9 @@ Do **not** introduce "engine" as a new architecture term. Older docs and tests s
 | **Contract invariant** | The submitted artifact is accepted by the workflow and all executable steps that will process it. Enforced by `LaunchContract`. |
 | **Isolation invariant** | The validator receives only the run-scoped inputs and writable output location needed for that run. Enforced by `RunWorkspaceBuilder` plus envelope URI rewriting in the Docker dispatch path. |
 | **Evidence invariant** | The run records enough immutable metadata to explain what happened later. Enforced by `EvidenceManifestBuilder` and `RunEvidenceArtifact`. |
+| **Evidence manifest** | The permanent minimal `manifest.json` receipt for one run. It contains run/workflow/validator identity and payload digests, but no payload bytes. |
+| **Signed credential** | The compact JWS `credential.jwt`. Its signature authenticates the required `manifestHash` claim. |
+| **Evidence bundle** | A transport archive containing `manifest.json` and, when Pro issued one, `credential.jwt`. The archive itself adds no trust claim. |
 | **Trusted source** | The launch channel the run actually came through (`LAUNCH_PAGE`, `API`, `CLI`, `MCP`, `X402_AGENT`, `SCHEDULE`). Derived from the path, never from a client header like `X-Validibot-Source`. |
 | **Validator backend trust tier** | First-party (current Phase 1 hardening: UID 1000, cap_drop ALL, network disabled, ro input mount, rw output mount, tmpfs `/tmp`) vs. user-added (tier 1 + egress allowlist, tighter resource caps, gVisor/Kata when available, cosign-signed image required, pre-flight scan). The `Validator.trust_tier` field selects the runner profile. |
 

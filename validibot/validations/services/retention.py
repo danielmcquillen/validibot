@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -123,12 +122,12 @@ def schedule_submission_retention(submission) -> None:
 def purge_run_outputs(run: ValidationRun) -> ValidationRun:
     """Delete and redact every detailed output for one terminal run.
 
-    The durable remainder is deliberately small: run identity, tenant and
-    workflow links, terminal status/category/timing, aggregate counts, step
-    status/count summaries, provider execution identity, and purge timestamps.
-    Payload-bearing findings, artifacts, evidence bytes, step values, detailed
-    errors, envelope locations/digests, and callback result locations are
-    removed.
+    The durable remainder includes the permanent evidence manifest plus run
+    identity, tenant and workflow links, terminal status/category/timing,
+    aggregate counts, step status/count summaries, provider execution identity,
+    and purge timestamps. Payload-bearing findings, artifacts, step values,
+    detailed errors, envelope locations/digests, and callback result locations
+    are removed.
 
     External deletion failures propagate. The enclosing transaction therefore
     never stamps ``output_purged_at`` while required bytes may remain.
@@ -138,7 +137,6 @@ def purge_run_outputs(run: ValidationRun) -> ValidationRun:
     from validibot.validations.models import Artifact
     from validibot.validations.models import CallbackReceipt
     from validibot.validations.models import ExecutionAttempt
-    from validibot.validations.models import RunEvidenceArtifactAvailability
     from validibot.validations.models import ValidationFinding
     from validibot.validations.models import ValidationRun
     from validibot.validations.models import ValidationRunSummary
@@ -168,21 +166,11 @@ def purge_run_outputs(run: ValidationRun) -> ValidationRun:
                 )
                 raise
 
-    # Evidence manifests and cached bundles are validation outputs too. Keep
-    # their row/hash as minimal audit proof, but remove all downloadable bytes.
-    try:
-        evidence = locked_run.evidence_artifact
-    except Exception:
-        evidence = None
-    if evidence is not None:
-        if evidence.manifest_path:
-            evidence.manifest_path.delete(save=False)
-        if evidence.cached_bundle_path:
-            default_storage.delete(evidence.cached_bundle_path)
-
     # The execution bundle contains input/output envelopes, copied submission
-    # bytes, manifests, and validator-produced files. It is a required part of
-    # both input and output deletion truth.
+    # bytes, execution-time manifests, and validator-produced files. It is a
+    # required part of both input and output deletion truth. The permanent
+    # evidence receipt uses a separate ``evidence/`` storage prefix and is not
+    # deleted here.
     _delete_run_files(locked_run)
 
     findings_count = locked_run.findings.count()
@@ -204,21 +192,6 @@ def purge_run_outputs(run: ValidationRun) -> ValidationRun:
     )
     CallbackReceipt.objects.filter(validation_run=locked_run).update(result_uri="")
     ValidationRunSummary.objects.filter(run=locked_run).update(extras={})
-
-    if evidence is not None:
-        evidence.manifest_path = ""
-        evidence.cached_bundle_path = ""
-        evidence.availability = RunEvidenceArtifactAvailability.PURGED
-        evidence.generation_error = ""
-        evidence.save(
-            update_fields=[
-                "manifest_path",
-                "cached_bundle_path",
-                "availability",
-                "generation_error",
-                "modified",
-            ],
-        )
 
     locked_run.error = ""
     locked_run.output_hash = ""

@@ -270,22 +270,10 @@ _service-account stage:
 # disk — you could accidentally deploy unreleased or broken code. The check
 # covers the community repo plus Pro and Cloud (when included). Set
 # GCP_ALLOW_DIRTY=1 to bypass in emergencies.
-build: _require-gcp-config
+[private]
+_build-preflight: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
-
-    # ── Dirty-repo guard ────────────────────────────────────────────────
-    # Docker images are tagged with the HEAD commit SHA. If the working
-    # tree has uncommitted changes, the image contents won't match what
-    # that SHA represents in git — making rollbacks unreliable and
-    # debugging impossible ("but that commit doesn't have that code…").
-    #
-    # We check every repo that contributes code to the image:
-    #   1. This repo (community — the Docker build context)
-    #   2. validibot-pro and validibot-cloud (when GCP_BUILD_VALIDIBOT_CLOUD=1)
-    #
-    # In emergencies, set GCP_ALLOW_DIRTY=1 to skip this check.
-    # ────────────────────────────────────────────────────────────────────
     if [ "${GCP_ALLOW_DIRTY:-0}" != "1" ]; then
         DIRTY_REPOS=()
 
@@ -321,6 +309,12 @@ build: _require-gcp-config
         echo "Warning: GCP_ALLOW_DIRTY=1 — skipping dirty-repo check."
         echo "The image may contain uncommitted changes not tracked by git."
     fi
+
+# Docker images are tagged with the HEAD commit SHA, so the preflight must
+# prove every contributing repository is clean before a build can begin.
+build: _require-gcp-config _build-preflight
+    #!/usr/bin/env bash
+    set -euo pipefail
 
     # Resolve the image tag once. Daily deploys use the parse-time
     # ``{{git_sha}}`` constant (whatever HEAD was when ``just`` parsed
@@ -6313,12 +6307,21 @@ init-stage-maintenance stage: _require-gcp-config
 deploy-maintenance stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    # Reject local release-readiness failures before confirmation or any
+    # production-state mutation. ``build`` repeats this guard so direct builds
+    # remain equally safe.
+    just gcp _build-preflight
     if [ "{{stage}}" = "prod" ] && [ "${GCP_YES:-0}" != "1" ]; then
         echo "WARNING: This will replace the staged PRODUCTION revision while keeping it offline."
         read -r -p "Type 'prod' to confirm: " REPLY
         if [ "$REPLY" != "prod" ]; then echo "Cancelled."; exit 1; fi
     fi
     just gcp _maintenance-assert-offline {{stage}}
+    # Build and push while the existing isolated runtime is unchanged. A local
+    # build or registry failure therefore cannot trigger a maintenance-state
+    # reconciliation or alter the staged revision.
+    just gcp build
+    just gcp push
     cleanup() {
         local status=$?
         trap - EXIT INT TERM
@@ -6332,8 +6335,6 @@ deploy-maintenance stage: _require-gcp-config
     }
     trap cleanup EXIT INT TERM
     GCP_YES=1 just gcp mode-maintenance {{stage}}
-    just gcp build
-    just gcp push
     just gcp _migrate {{stage}}
     GCP_DEPLOY_MAINTENANCE=1 just gcp _deploy-web {{stage}}
     GCP_DEPLOY_MAINTENANCE=1 just gcp _deploy-worker {{stage}}

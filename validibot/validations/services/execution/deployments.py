@@ -403,6 +403,83 @@ def _latest_verified_deployment(
     )
 
 
+def _resolve_backend_release_pair_from_deployments(
+    deployments: list[ValidatorExecutionDeployment],
+    *,
+    validator: Validator,
+    backend_slug: str,
+    backend_release_identity: str,
+    require_accepted: bool,
+) -> VerifiedDeploymentPair:
+    """Resolve one release pair while preserving immutable revision history."""
+    candidates = [
+        deployment
+        for deployment in deployments
+        if deployment.readiness_state == ExecutionDeploymentReadiness.READY
+        and deployment.backend_slug == backend_slug
+        and deployment.backend_release_identity == backend_release_identity
+    ]
+    services = [
+        deployment
+        for deployment in candidates
+        if deployment.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_SERVICE
+    ]
+    jobs = [
+        deployment
+        for deployment in candidates
+        if deployment.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_JOB
+    ]
+    if not services or not jobs:
+        raise ExecutionDeploymentResolutionError(
+            f"Validator {validator.pk} requires a Service and Job row for "
+            f"{backend_slug} {backend_release_identity}."
+        )
+    if require_accepted:
+        services = [deployment for deployment in services if deployment.accepted_at]
+        jobs = [deployment for deployment in jobs if deployment.accepted_at]
+        if not services or not jobs:
+            raise ExecutionDeploymentResolutionError(
+                f"Validator {validator.pk} pair has not completed private acceptance."
+            )
+    return verify_execution_deployment_pair(
+        service=_latest_verified_deployment(services),
+        job=_latest_verified_deployment(jobs),
+    )
+
+
+def resolve_backend_release_pair(
+    *,
+    validator: Validator,
+    backend_slug: str,
+    backend_release_identity: str,
+    require_accepted: bool = False,
+) -> VerifiedDeploymentPair:
+    """Resolve and verify one backend release pair without changing its route.
+
+    Provider reconciliation may retain several immutable Service revisions for
+    the same backend release. The current candidate is the revision observed
+    most recently by the provider importer; accepted recovery ignores newer
+    revisions that have not completed private acceptance.
+    """
+    from validibot.validations.models import ValidatorExecutionDeployment
+
+    deployments = list(
+        ValidatorExecutionDeployment.objects.select_related("validator").filter(
+            validator=validator,
+            backend_slug=backend_slug,
+            backend_release_identity=backend_release_identity,
+            readiness_state=ExecutionDeploymentReadiness.READY,
+        )
+    )
+    return _resolve_backend_release_pair_from_deployments(
+        deployments,
+        validator=validator,
+        backend_slug=backend_slug,
+        backend_release_identity=backend_release_identity,
+        require_accepted=require_accepted,
+    )
+
+
 def ensure_execution_deployment_can_retire(
     deployment: ValidatorExecutionDeployment,
 ) -> None:
@@ -1183,46 +1260,16 @@ def activate_backend_release(
 
     pairs: list[VerifiedDeploymentPair] = []
     for validator in validators:
-        candidates = [
-            deployment
-            for deployment in by_validator[validator.pk]
-            if deployment.backend_slug == backend_slug
-            and deployment.backend_release_identity == backend_release_identity
-        ]
-        services = [
-            item
-            for item in candidates
-            if item.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_SERVICE
-        ]
-        jobs = [
-            item
-            for item in candidates
-            if item.deployment_kind == ExecutionDeploymentKind.CLOUD_RUN_JOB
-        ]
-        if not services or not jobs:
-            raise ExecutionDeploymentResolutionError(
-                f"Validator {validator.pk} requires a Service and Job "
-                f"row for {backend_slug} {backend_release_identity}."
-            )
-        eligible_services = services
-        eligible_jobs = jobs
-        if require_accepted:
-            eligible_services = [item for item in services if item.accepted_at]
-            eligible_jobs = [item for item in jobs if item.accepted_at]
-            if not eligible_services or not eligible_jobs:
-                raise ExecutionDeploymentResolutionError(
-                    f"Validator {validator.pk} pair has not completed private "
-                    "acceptance."
-                )
         # A failed provider reconciliation can leave an older immutable Cloud
         # Run revision in deployment history. Acceptance-only routing selects
         # the revision just observed by the importer; production routing
         # selects the latest such revision that completed private acceptance.
-        service = _latest_verified_deployment(eligible_services)
-        job = _latest_verified_deployment(eligible_jobs)
-        pair = verify_execution_deployment_pair(
-            service=service,
-            job=job,
+        pair = _resolve_backend_release_pair_from_deployments(
+            by_validator[validator.pk],
+            validator=validator,
+            backend_slug=backend_slug,
+            backend_release_identity=backend_release_identity,
+            require_accepted=require_accepted,
         )
         pairs.append(pair)
 

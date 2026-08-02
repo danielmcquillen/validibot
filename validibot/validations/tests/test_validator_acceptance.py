@@ -37,6 +37,9 @@ from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import Validator
+from validibot.validations.services.execution.deployments import (
+    ExecutionDeploymentResolutionError,
+)
 
 EXPECTED_SINGLE_SAMPLE_P95 = 3.0
 EXPECTED_TWENTY_SAMPLE_P50 = 10.0
@@ -214,14 +217,8 @@ def test_route_preflight_accepts_only_requested_service_and_ready_job():
         deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB,
         readiness_state=ExecutionDeploymentReadiness.READY,
     )
-    routes = MagicMock()
-    candidates = MagicMock()
-    candidates.get.side_effect = lambda *, deployment_kind: {
-        ExecutionDeploymentKind.CLOUD_RUN_SERVICE: service,
-        ExecutionDeploymentKind.CLOUD_RUN_JOB: job,
-    }[deployment_kind]
-    routes.filter.return_value = candidates
     config = SimpleNamespace(slug="shacl", version="1")
+    pair = SimpleNamespace(service=service, job=job)
 
     with (
         patch("validibot.validations.acceptance.get_config", return_value=config),
@@ -230,42 +227,26 @@ def test_route_preflight_accepts_only_requested_service_and_ready_job():
             return_value=validator,
         ),
         patch(
-            "validibot.validations.acceptance.ValidatorExecutionDeployment.objects",
-            routes,
-        ),
+            "validibot.validations.acceptance.resolve_backend_release_pair",
+            return_value=pair,
+        ) as resolve_pair,
     ):
         resolved = runner._accepted_routes(BACKENDS[2], "1.2.3")
 
     assert resolved == (validator, service, job)
+    resolve_pair.assert_called_once_with(
+        validator=validator,
+        backend_slug="shacl",
+        backend_release_identity="1.2.3",
+    )
 
 
-def test_route_preflight_rejects_a_different_backend_release():
-    """A healthy but stale Service must never be accepted for a newer release."""
+def test_route_preflight_propagates_release_pair_resolution_failure():
+    """A stale or incomplete release pair must fail before canaries can start."""
     runner = ValidatorAcceptanceRunner(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
     )
-    service = SimpleNamespace(
-        routing_role=ExecutionDeploymentRoutingRole.PRIMARY,
-        deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_SERVICE,
-        readiness_state=ExecutionDeploymentReadiness.READY,
-        emergency_blocked=False,
-        last_verification_succeeded=True,
-        backend_release_identity="1.2.2",
-        backend_image_digest="sha256:" + "a" * 64,
-    )
-    job = SimpleNamespace(
-        routing_role=ExecutionDeploymentRoutingRole.LONG_RUNNING,
-        deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB,
-        readiness_state=ExecutionDeploymentReadiness.READY,
-    )
-    routes = MagicMock()
-    candidates = MagicMock()
-    candidates.get.side_effect = lambda *, deployment_kind: {
-        ExecutionDeploymentKind.CLOUD_RUN_SERVICE: service,
-        ExecutionDeploymentKind.CLOUD_RUN_JOB: job,
-    }[deployment_kind]
-    routes.filter.return_value = candidates
 
     with (
         patch(
@@ -277,12 +258,72 @@ def test_route_preflight_rejects_a_different_backend_release():
             return_value=SimpleNamespace(pk="validator-1"),
         ),
         patch(
-            "validibot.validations.acceptance.ValidatorExecutionDeployment.objects",
-            routes,
+            "validibot.validations.acceptance.resolve_backend_release_pair",
+            side_effect=ExecutionDeploymentResolutionError(
+                "No verified pair exists for shacl 1.2.3."
+            ),
         ),
-        pytest.raises(ValueError, match=r"release is 1\.2\.2"),
+        pytest.raises(ExecutionDeploymentResolutionError, match=r"1\.2\.3"),
     ):
         runner._accepted_routes(BACKENDS[2], "1.2.3")
+
+
+@pytest.mark.django_db
+def test_acceptance_recording_reuses_the_preflight_pair_resolution():
+    """Durable acceptance must attach to the exact candidate route just exercised.
+
+    Reusing route resolution prevents the final write from reintroducing an
+    assumption that immutable release history contains exactly one Service row.
+    """
+    runner = ValidatorAcceptanceRunner(
+        backend=ACCEPTANCE_BACKEND,
+        release_tag=ACCEPTANCE_RELEASE_TAG,
+        routing_mode="job-only",
+        record_acceptance=True,
+    )
+    validator = SimpleNamespace(pk="validator-1")
+    scenario = SimpleNamespace(
+        workflow=SimpleNamespace(
+            steps=SimpleNamespace(
+                get=MagicMock(return_value=SimpleNamespace(validator=validator))
+            )
+        )
+    )
+    service = SimpleNamespace(pk="service-2", validator_id=validator.pk)
+    job = SimpleNamespace(pk="job-1", validator_id=validator.pk)
+    accepted = SimpleNamespace(service=service, job=job)
+    report = AcceptanceReport(
+        backend=ACCEPTANCE_BACKEND,
+        release_tag=ACCEPTANCE_RELEASE_TAG,
+        attempts_per_backend=1,
+    )
+
+    with (
+        patch.object(
+            runner,
+            "_accepted_routes",
+            return_value=(validator, service, job),
+        ) as resolve_route,
+        patch(
+            "validibot.validations.services.execution.deployments."
+            "mark_execution_deployment_pair_accepted",
+            return_value=accepted,
+        ) as mark_accepted,
+    ):
+        runner._record_pair_acceptance(report, (scenario,))
+
+    resolve_route.assert_called_once_with(
+        BACKENDS[2],
+        "1.2.3",
+        validator=validator,
+    )
+    mark_accepted.assert_called_once_with(service=service, job=job)
+    assert report.checks[-1].status == "passed"
+    assert report.checks[-1].details["deployments"][0] == {
+        "validator_id": "validator-1",
+        "service_deployment_id": "service-2",
+        "job_deployment_id": "job-1",
+    }
 
 
 def test_latency_gate_uses_only_attempts_from_the_exact_launched_burst():

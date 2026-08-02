@@ -23,6 +23,9 @@ from ops.gcp import validator_release_control as release_control
 from validibot.audit.constants import AuditAction
 from validibot.audit.models import AuditLogEntry
 from validibot.core.constants import DeploymentTarget
+from validibot.validations.acceptance import BACKENDS_BY_KEY
+from validibot.validations.acceptance import AcceptanceReport
+from validibot.validations.acceptance import ValidatorAcceptanceRunner
 from validibot.validations.constants import ExecutionDeploymentDeactivationCause
 from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentReadiness
@@ -276,6 +279,7 @@ def _save_ready(deployment, *, role):
 
 def _release_pair(*, validator, backend: str, version: str, suffix: str = "1"):
     """Persist one fully verified inactive release-specific provider pair."""
+    provider_backend = backend.replace("_", "-")
     common = {
         "backend_slug": backend,
         "backend_release_identity": version,
@@ -284,12 +288,12 @@ def _release_pair(*, validator, backend: str, version: str, suffix: str = "1"):
     }
     service = _service_deployment(
         validator=validator,
-        revision=f"{backend}-service-{version}-{suffix}",
+        revision=f"{provider_backend}-service-{version}-{suffix}",
         **common,
     )
     job = _job_deployment(
         validator=validator,
-        revision=f"{backend}-job-{version}-{suffix}",
+        revision=f"{provider_backend}-job-{version}-{suffix}",
         **common,
     )
     for deployment in (service, job):
@@ -1138,6 +1142,109 @@ def test_backend_activation_selects_the_most_recently_verified_service_revision(
     assert old_service.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
     assert replacement.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
     assert job.routing_role == ExecutionDeploymentRoutingRole.LONG_RUNNING
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "backend_slug",
+    ["energyplus", "fmu", "shacl", "schematron", "portfolio_manager"],
+)
+def test_acceptance_certifies_current_service_revision_with_retained_history(
+    backend_slug,
+):
+    """Rehearse candidate acceptance while old Service revisions remain.
+
+    Provider reconciliation deliberately retains immutable deployment history.
+    For every managed backend, this follows the production route sequence from
+    normal preflight through Job-only acceptance recording and proves the exact
+    current pair is certified without touching the historical Service row.
+    """
+    validator = ValidatorFactory(
+        slug=f"v-{backend_slug[0]}-{len(backend_slug)}",
+        execution_backend_slug=backend_slug,
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    old_service, job = _release_pair(
+        validator=validator,
+        backend=backend_slug,
+        version="0.15.4",
+        suffix="old",
+    )
+    current_service = _service_deployment(
+        validator=validator,
+        revision=f"{backend_slug.replace('_', '-')}-service-0.15.4-current",
+        backend_slug=backend_slug,
+        backend_release_identity="0.15.4",
+        source_release_tag=f"{backend_slug}-v0.15.4",
+        release_record_sha256=RELEASE_RECORD_SHA256,
+    )
+    set_deployment_config_digests(current_service)
+    current_service = _save_ready(
+        current_service,
+        role=ExecutionDeploymentRoutingRole.INACTIVE,
+    )
+    ValidatorExecutionDeployment.objects.filter(pk=current_service.pk).update(
+        last_verified_at=timezone.now() + timedelta(minutes=1),
+    )
+
+    activate_backend_release(
+        backend_slug=backend_slug,
+        backend_release_identity="0.15.4",
+        mode=ExecutionRoutingMode.NORMAL,
+        require_accepted=False,
+    )
+    normal_runner = ValidatorAcceptanceRunner(
+        backend=backend_slug,
+        release_tag=f"{backend_slug}-v0.15.4",
+        run_storage_probe=False,
+    )
+
+    _, selected_service, selected_job = normal_runner._accepted_routes(
+        BACKENDS_BY_KEY[backend_slug],
+        "0.15.4",
+        validator=validator,
+    )
+
+    assert selected_service.pk == current_service.pk
+    assert selected_job.pk == job.pk
+
+    activate_backend_release(
+        backend_slug=backend_slug,
+        backend_release_identity="0.15.4",
+        mode=ExecutionRoutingMode.JOB_ONLY,
+        require_accepted=False,
+    )
+    job_runner = ValidatorAcceptanceRunner(
+        backend=backend_slug,
+        release_tag=f"{backend_slug}-v0.15.4",
+        routing_mode=ExecutionRoutingMode.JOB_ONLY,
+        record_acceptance=True,
+        run_storage_probe=False,
+    )
+    scenario = SimpleNamespace(
+        workflow=SimpleNamespace(
+            steps=SimpleNamespace(
+                get=lambda: SimpleNamespace(validator=validator),
+            )
+        )
+    )
+    report = AcceptanceReport(
+        backend=backend_slug,
+        release_tag=f"{backend_slug}-v0.15.4",
+        attempts_per_backend=1,
+    )
+    job_runner._record_pair_acceptance(report, (scenario,))
+
+    old_service.refresh_from_db()
+    current_service.refresh_from_db()
+    job.refresh_from_db()
+    assert old_service.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+    assert current_service.routing_role == ExecutionDeploymentRoutingRole.INACTIVE
+    assert job.routing_role == ExecutionDeploymentRoutingRole.PRIMARY
+    assert old_service.accepted_at is None
+    assert current_service.accepted_at is not None
+    assert job.accepted_at == current_service.accepted_at
+    assert report.checks[-1].status == "passed"
 
 
 @pytest.mark.django_db

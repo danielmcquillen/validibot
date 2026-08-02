@@ -4536,9 +4536,7 @@ class RunEvidenceArtifact(TimeStampedModel):
     schema_version = models.CharField(
         max_length=64,
         help_text=_(
-            "The validibot.evidence.vN schema string the manifest was "
-            "produced under. Verifiers parse the manifest's "
-            "schema_version field at read time, but storing it here "
+            "The published $schema URL for the manifest. Storing it here "
             "lets the auditor query for runs on stale schemas without "
             "fetching the bytes."
         ),

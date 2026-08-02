@@ -43,6 +43,8 @@ def _deployment(
     deactivated_at: str | None = None,
     cause: str = "",
     attempts: int = 0,
+    accepted: bool = True,
+    last_verified_at: str = "2026-01-01T00:00:00+00:00",
 ) -> dict[str, object]:
     """Return one safe database projection used by status and cleanup."""
     return {
@@ -52,12 +54,13 @@ def _deployment(
         "version": version,
         "kind": kind,
         "routing_role": role,
-        "accepted_at": "2026-01-01T00:00:00+00:00",
+        "accepted_at": "2026-01-01T00:00:00+00:00" if accepted else None,
         "deactivated_at": deactivated_at,
         "deactivation_cause": cause,
         "readiness": "READY",
         "blocked": False,
         "last_verification_succeeded": True,
+        "last_verified_at": last_verified_at,
         "retired_at": None,
         "provider_deleted_at": None,
         "unfinished_attempts": attempts,
@@ -95,17 +98,23 @@ def test_inventory_builds_all_five_bounded_release_specific_pairs():
         for intent in intents
         for kind in ("service", "job")
     }
+    energyplus = control._intent_by_slug(intents, "energyplus")
+    portfolio_manager = control._intent_by_slug(intents, "portfolio_manager")
 
     assert len(intents) == EXPECTED_BACKEND_COUNT
     assert len(names) == EXPECTED_PROVIDER_RESOURCE_COUNT
-    assert "vb-vs-energyplus-v0-15-1" in names
-    assert "vb-vj-portfolio-manager-v0-16-1" in names
+    assert f"vb-vs-energyplus-v{energyplus.release_version.replace('.', '-')}" in names
+    assert (
+        "vb-vj-portfolio-manager-v"
+        f"{portfolio_manager.release_version.replace('.', '-')}" in names
+    )
     assert all(len(name) <= control.MAX_PROVIDER_NAME_LENGTH for name in names)
 
 
 def test_development_names_are_mutable_but_staging_keeps_release_identity():
     """Only development omits the version; staging remains release-specific."""
     intent = control._intent_by_slug(control.load_inventory(INVENTORY), "shacl")
+    staging_version = intent.release_version.replace(".", "-")
 
     assert (
         control.provider_resource_name(intent, kind="service", stage="dev")
@@ -113,7 +122,7 @@ def test_development_names_are_mutable_but_staging_keeps_release_identity():
     )
     assert (
         control.provider_resource_name(intent, kind="job", stage="staging")
-        == "vb-vj-shacl-v0-15-1-stg"
+        == f"vb-vj-shacl-v{staging_version}-stg"
     )
 
 
@@ -227,6 +236,119 @@ def test_empty_provider_and_image_inventories_fail_closed():
     assert row["release_health"]["0.18.0"]["all_verified"] is True
     assert row["recommended_action"].startswith("blocked:")
     assert "active provider resources are missing" in row["blockers"]
+
+
+def test_status_requests_acceptance_for_an_unaccepted_current_release():
+    """An installed current version is not healthy until its pair is accepted."""
+    intent = control.BackendIntent(
+        "energyplus",
+        "energyplus",
+        "0.18.0",
+        "validibot-validator-backend-energyplus",
+    )
+    deployments = [
+        _deployment(
+            backend="energyplus",
+            version="0.18.0",
+            kind="CLOUD_RUN_SERVICE",
+            role="PRIMARY",
+            accepted=False,
+        ),
+        _deployment(
+            backend="energyplus",
+            version="0.18.0",
+            kind="CLOUD_RUN_JOB",
+            role="LONG_RUNNING",
+            accepted=False,
+        ),
+    ]
+
+    status = control.calculate_status((intent,), _database(deployments))
+
+    assert status["backends"][0]["recommended_action"] == (
+        "run private acceptance for active release"
+    )
+
+
+def test_status_keeps_an_inactive_service_revision_as_history():
+    """A retained older Service revision must not make its active pair ambiguous."""
+    intent = control.BackendIntent(
+        "energyplus",
+        "energyplus",
+        "0.18.0",
+        "validibot-validator-backend-energyplus",
+    )
+    active_service = _deployment(
+        backend="energyplus",
+        version="0.18.0",
+        kind="CLOUD_RUN_SERVICE",
+        role="PRIMARY",
+    )
+    historical_service = _deployment(
+        backend="energyplus",
+        version="0.18.0",
+        kind="CLOUD_RUN_SERVICE",
+        role="INACTIVE",
+        accepted=False,
+        last_verified_at="2025-12-31T00:00:00+00:00",
+    )
+    historical_service["deployment_id"] = "energyplus-service-history"
+    job = _deployment(
+        backend="energyplus",
+        version="0.18.0",
+        kind="CLOUD_RUN_JOB",
+        role="LONG_RUNNING",
+    )
+
+    status = control.calculate_status(
+        (intent,),
+        _database([active_service, historical_service, job]),
+    )
+    health = status["backends"][0]["release_health"]["0.18.0"]
+
+    assert health["missing_pair_validator_ids"] == []
+    assert health["all_accepted"] is True
+    assert status["backends"][0]["recommended_action"] == "none"
+
+
+def test_status_reconciles_an_unrouted_service_revision():
+    """A newly imported revision must complete acceptance before traffic moves."""
+    intent = control.BackendIntent(
+        "energyplus",
+        "energyplus",
+        "0.18.0",
+        "validibot-validator-backend-energyplus",
+    )
+    active_service = _deployment(
+        backend="energyplus",
+        version="0.18.0",
+        kind="CLOUD_RUN_SERVICE",
+        role="PRIMARY",
+    )
+    replacement_service = _deployment(
+        backend="energyplus",
+        version="0.18.0",
+        kind="CLOUD_RUN_SERVICE",
+        role="INACTIVE",
+        accepted=False,
+        last_verified_at="2026-01-02T00:00:00+00:00",
+    )
+    replacement_service["deployment_id"] = "energyplus-service-replacement"
+    job = _deployment(
+        backend="energyplus",
+        version="0.18.0",
+        kind="CLOUD_RUN_JOB",
+        role="LONG_RUNNING",
+    )
+
+    status = control.calculate_status(
+        (intent,),
+        _database([active_service, replacement_service, job]),
+    )
+
+    assert status["backends"][0]["recommended_action"] == (
+        "reconcile active release deployment pair"
+    )
 
 
 def test_status_rejects_a_retained_record_outside_the_strict_public_schema():
@@ -476,6 +598,17 @@ def test_cleanup_plan_protects_active_rollback_and_unfinished_releases():
                 ),
             ]
         )
+    historical_service = _deployment(
+        backend="energyplus",
+        version="0.15.0",
+        kind="CLOUD_RUN_SERVICE",
+        role="INACTIVE",
+        deactivated_at=inactive_at,
+        accepted=False,
+        last_verified_at="2025-12-31T00:00:00+00:00",
+    )
+    historical_service["deployment_id"] = "energyplus-0.15.0-service-history"
+    deployments.append(historical_service)
     database = _database(deployments)
     status = {
         "schema_version": control.STATUS_SCHEMA_VERSION,

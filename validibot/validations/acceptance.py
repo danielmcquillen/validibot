@@ -43,7 +43,6 @@ from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import BindingSourceScope
 from validibot.validations.constants import ExecutionAttemptState
 from validibot.validations.constants import ExecutionDeploymentKind
-from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ExecutionRoutingMode
 from validibot.validations.constants import ResourceFileType
@@ -61,6 +60,9 @@ from validibot.validations.models import ValidatorExecutionDeployment
 from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.services.cloud_run.gcs_capability_probe import (
     probe_attempt_gcs_runtime_capability,
+)
+from validibot.validations.services.execution.deployments import (
+    resolve_backend_release_pair,
 )
 from validibot.validations.services.fmu import build_introspection_metadata
 from validibot.validations.services.fmu import introspect_fmu
@@ -782,7 +784,7 @@ class ValidatorAcceptanceRunner:
         return report
 
     def _check_deployments(self, report: AcceptanceReport) -> bool:
-        """Require current primary Services and retained long-running Jobs."""
+        """Require the candidate pair to have the requested routing mode."""
         try:
             validators = _compatible_validators(self.spec)
             routes = [
@@ -808,15 +810,15 @@ class ValidatorAcceptanceRunner:
                         "validator_id": str(validator.pk),
                         "slug": validator.slug,
                         "version": validator.version,
-                        "service_deployment_id": str(primary.pk),
-                        "service_revision": primary.deployment_revision,
-                        "service_image_digest": primary.backend_image_digest,
-                        "service_minimum_instances": primary.minimum_instances,
-                        "service_maximum_instances": primary.maximum_instances,
-                        "job_deployment_id": str(compatibility.pk),
-                        "job_revision": compatibility.deployment_revision,
+                        "service_deployment_id": str(service.pk),
+                        "service_revision": service.deployment_revision,
+                        "service_image_digest": service.backend_image_digest,
+                        "service_minimum_instances": service.minimum_instances,
+                        "service_maximum_instances": service.maximum_instances,
+                        "job_deployment_id": str(job.pk),
+                        "job_revision": job.deployment_revision,
                     }
-                    for validator, primary, compatibility in routes
+                    for validator, service, job in routes
                 ],
             )
         except Exception as exc:
@@ -838,33 +840,23 @@ class ValidatorAcceptanceRunner:
         from validibot.validations.services.execution.deployments import (
             mark_execution_deployment_pair_accepted,
         )
-        from validibot.validations.services.execution.deployments import (
-            verify_execution_deployment_pair,
-        )
 
         accepted_ids: list[dict[str, str]] = []
         try:
             pairs = []
             for scenario in scenarios:
                 validator = scenario.workflow.steps.get().validator
-                deployments = ValidatorExecutionDeployment.objects.filter(
+                _, service, job = self._accepted_routes(
+                    self.spec,
+                    self.release_version,
                     validator=validator,
-                    backend_slug=self.backend,
-                    backend_release_identity=self.release_version,
-                    readiness_state=ExecutionDeploymentReadiness.READY,
                 )
-                service = deployments.get(
-                    deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_SERVICE
-                )
-                job = deployments.get(
-                    deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB
-                )
-                pairs.append(verify_execution_deployment_pair(service=service, job=job))
+                pairs.append((service, job))
             with transaction.atomic():
-                for pair in pairs:
+                for service, job in pairs:
                     accepted = mark_execution_deployment_pair_accepted(
-                        service=pair.service,
-                        job=pair.job,
+                        service=service,
+                        job=job,
                     )
                     accepted_ids.append(
                         {
@@ -905,46 +897,26 @@ class ValidatorAcceptanceRunner:
                 version=config.version,
                 is_system=True,
             )
-        candidates = ValidatorExecutionDeployment.objects.filter(
+        pair = resolve_backend_release_pair(
             validator=validator,
             backend_slug=spec.key,
             backend_release_identity=expected_release,
-            readiness_state=ExecutionDeploymentReadiness.READY,
         )
-        primary = candidates.get(
-            deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_SERVICE
-        )
-        compatibility = candidates.get(
-            deployment_kind=ExecutionDeploymentKind.CLOUD_RUN_JOB
-        )
-        if primary.readiness_state != ExecutionDeploymentReadiness.READY:
-            raise ValueError("primary Service route is not ready")
-        if primary.emergency_blocked:
-            raise ValueError("primary Service route is emergency blocked")
-        if not primary.last_verification_succeeded:
-            raise ValueError("primary Service verification has not passed")
-        if primary.backend_release_identity != expected_release:
-            raise ValueError(
-                "primary Service release is "
-                f"{primary.backend_release_identity or '<missing>'}"
-            )
-        if not primary.backend_image_digest.startswith("sha256:"):
-            raise ValueError("primary Service image is not digest-pinned")
-        if compatibility.readiness_state != ExecutionDeploymentReadiness.READY:
-            raise ValueError("long-running Job route is not ready")
+        service = pair.service
+        job = pair.job
         if self.routing_mode == ExecutionRoutingMode.NORMAL and (
-            primary.routing_role != ExecutionDeploymentRoutingRole.PRIMARY
-            or compatibility.routing_role != ExecutionDeploymentRoutingRole.LONG_RUNNING
+            service.routing_role != ExecutionDeploymentRoutingRole.PRIMARY
+            or job.routing_role != ExecutionDeploymentRoutingRole.LONG_RUNNING
         ):
             raise ValueError(
                 "normal mode requires Service PRIMARY and Job LONG_RUNNING"
             )
         if self.routing_mode == ExecutionRoutingMode.JOB_ONLY and (
-            primary.routing_role != ExecutionDeploymentRoutingRole.INACTIVE
-            or compatibility.routing_role != ExecutionDeploymentRoutingRole.PRIMARY
+            service.routing_role != ExecutionDeploymentRoutingRole.INACTIVE
+            or job.routing_role != ExecutionDeploymentRoutingRole.PRIMARY
         ):
             raise ValueError("job-only mode requires Service INACTIVE and Job PRIMARY")
-        return validator, primary, compatibility
+        return validator, service, job
 
     def _check_storage(self, report: AcceptanceReport) -> None:
         """Require IAM denial proof and exercise the real downscoped token."""

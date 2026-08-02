@@ -23,10 +23,9 @@ This suite exercises the four moving parts of digest capture:
    digest from the validator's ``stats`` bag onto the typed
    ``ValidationStepRun.validator_backend_image_digest`` column so it
    survives independently of the JSON output blob.
-4. The evidence manifest builder threads the per-step digest into
-   each ``StepValidatorRecord``, looking up the
-   ``ValidationStepRun`` by ``workflow_step_id`` so simple-validator
-   steps (which leave the column empty) emit ``None`` for the field.
+4. The permanent evidence manifest maps the captured backend image digest to
+   the corresponding workflow step, while leaving provider execution IDs and
+   executed-input lineage out of the receipt.
 
 What's deliberately not covered here
 ====================================
@@ -186,21 +185,14 @@ class TestResolveContainerImageDigest:
         assert digest == "registry-a.example/validator@sha256:" + "1" * 64
 
 
-# ── Manifest builder propagation ────────────────────────────────────────
+# ── Manifest builder boundary ──────────────────────────────────────────
 
 
-class TestManifestIncludesBackendImageDigest:
-    """The evidence manifest exposes the per-step backend image digest."""
+class TestManifestBackendIdentity:
+    """The permanent receipt keeps the one useful execution identity."""
 
-    def test_populates_record_when_step_run_has_digest(self):
-        """Captured digest appears on the corresponding StepValidatorRecord.
-
-        Confirms the join between ``WorkflowStep`` and
-        ``ValidationStepRun`` happens correctly: the builder walks
-        ``workflow.steps`` for record identity, then looks up the
-        run-time digest from ``run.step_runs.all()`` keyed by
-        ``workflow_step_id``.
-        """
+    def test_backend_image_digest_is_included_on_the_workflow_step(self):
+        """A verifier can distinguish rebuilt images sharing one validator version."""
         from validibot.validations.models import ValidationStepRun
 
         workflow = WorkflowFactory(
@@ -213,31 +205,23 @@ class TestManifestIncludesBackendImageDigest:
             status=ValidationRunStatus.SUCCEEDED,
             ended_at=datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC),
         )
-        captured_digest = "registry.example/backend@sha256:" + "f" * 64
         ValidationStepRun.objects.create(
             validation_run=run,
             workflow_step=step,
             step_order=step.order,
             status=StepStatus.PASSED,
-            validator_backend_image_digest=captured_digest,
+            validator_backend_image_digest="registry.example/backend@sha256:"
+            + "f" * 64,
         )
 
         manifest = EvidenceManifestBuilder.build(run)
-        assert len(manifest.steps) == 1
-        record = manifest.steps[0]
-        assert record.validator_backend_image_digest == captured_digest
 
-    def test_record_is_none_when_no_digest_captured(self):
-        """Simple-validator (or unbacked) steps emit ``None`` for the field.
+        assert manifest.workflow.steps[0].backend_image_digest == (
+            "registry.example/backend@sha256:" + "f" * 64
+        )
 
-        Steps without a backend container (simple validators that
-        run inline in the Django process, or steps captured before
-        digest capture shipped) leave
-        ``ValidationStepRun.validator_backend_image_digest`` empty.
-        The manifest must surface that absence as ``None`` so
-        downstream verifiers know the gap is structural, not data
-        loss.
-        """
+    def test_missing_backend_image_digest_remains_optional(self):
+        """A capture failure must not prevent the minimal receipt from being built."""
         from validibot.validations.models import ValidationStepRun
 
         workflow = WorkflowFactory(
@@ -250,7 +234,6 @@ class TestManifestIncludesBackendImageDigest:
             status=ValidationRunStatus.SUCCEEDED,
             ended_at=datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC),
         )
-        # Step run with the column at its default empty string.
         ValidationStepRun.objects.create(
             validation_run=run,
             workflow_step=step,
@@ -259,31 +242,8 @@ class TestManifestIncludesBackendImageDigest:
         )
 
         manifest = EvidenceManifestBuilder.build(run)
-        assert len(manifest.steps) == 1
-        assert manifest.steps[0].validator_backend_image_digest is None
 
-    def test_record_is_none_when_no_step_run_exists(self):
-        """No step run row → no digest to attach.
-
-        Defensive case: the manifest builder is called for a run
-        whose step rows haven't been materialised yet (or were
-        manually deleted). The builder must not crash; it emits a
-        record with ``validator_backend_image_digest=None``.
-        """
-        workflow = WorkflowFactory(
-            allowed_file_types=[SubmissionFileType.JSON],
-            input_retention=SubmissionRetention.STORE_30_DAYS,
-        )
-        WorkflowStepFactory(workflow=workflow)
-        run = ValidationRunFactory(
-            workflow=workflow,
-            status=ValidationRunStatus.SUCCEEDED,
-            ended_at=datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC),
-        )
-
-        manifest = EvidenceManifestBuilder.build(run)
-        assert len(manifest.steps) == 1
-        assert manifest.steps[0].validator_backend_image_digest is None
+        assert manifest.workflow.steps[0].backend_image_digest is None
 
 
 # ── _finalize_step_run digest persistence ───────────────────────────────

@@ -45,6 +45,8 @@ and signed credential cannot drift.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -52,12 +54,53 @@ from validibot_shared.canonicalization import canonicalize_dict
 from validibot_shared.canonicalization import sha256_hex_for_dict
 
 if TYPE_CHECKING:
-    from validibot_shared.evidence import WorkflowContractSnapshot
-
     from validibot.validations.models import Ruleset
     from validibot.validations.models import RulesetAssertion
     from validibot.workflows.models import Workflow
     from validibot.workflows.models import WorkflowStep
+
+
+@dataclass(frozen=True)
+class ContractConstant:
+    """Internal workflow-definition projection; not a manifest field."""
+
+    name: str
+    data_type: str = ""
+    value: Any = None
+
+
+@dataclass(frozen=True)
+class ContractSignalMapping:
+    """Internal signal-mapping definition used by workflow hashing."""
+
+    name: str
+    source_path: str = ""
+    on_missing: str = ""
+    default_value: Any = None
+    data_type: str = ""
+
+
+@dataclass(frozen=True)
+class WorkflowContractSnapshot:
+    """Internal workflow projection retained for versioning tests and tools.
+
+    This is not the permanent evidence manifest. The manifest deliberately
+    keeps only the smaller workflow slug/version/step projection.
+    """
+
+    allowed_file_types: list[str] = dataclass_field(default_factory=list)
+    input_retention: str = ""
+    output_retention: str = ""
+    agent_billing_mode: str = ""
+    agent_price_cents: int | None = None
+    agent_max_launches_per_hour: int | None = None
+    agent_public_discovery: bool = False
+    agent_access_enabled: bool = False
+    constants: list[ContractConstant] = dataclass_field(default_factory=list)
+    signal_mappings: list[ContractSignalMapping] = dataclass_field(
+        default_factory=list,
+    )
+    workflow_definition_hash: str = ""
 
 
 def build_workflow_definition_contract(workflow: Workflow) -> dict[str, Any]:
@@ -95,10 +138,6 @@ def build_workflow_contract_snapshot(workflow: Workflow) -> WorkflowContractSnap
     credential both derive from here, so a constant value change moves the hash
     in both — no drift.
     """
-    from validibot_shared.evidence import ContractConstant
-    from validibot_shared.evidence import ContractSignalMapping
-    from validibot_shared.evidence import WorkflowContractSnapshot
-
     definition = build_workflow_definition_contract(workflow)
     return WorkflowContractSnapshot(
         allowed_file_types=list(workflow.allowed_file_types or []),

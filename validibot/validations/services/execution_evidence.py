@@ -13,8 +13,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
 
-from validibot_shared.evidence import ManifestExecutionInput
-from validibot_shared.evidence import ManifestInputRelationship
+from validibot_shared.evidence.execution import ManifestExecutionInput
+from validibot_shared.evidence.execution import ManifestInputRelationship
 
 if TYPE_CHECKING:
     from validibot_shared.validations.envelopes import ValidationInputEnvelope

@@ -5,6 +5,24 @@ build-backend = "hatchling.build"
 [tool.hatch.metadata]
 allow-direct-references = true
 
+# Source releases must never include local virtual environments or frontend
+# dependency trees. Hatch does not use .gitignore as the complete source
+# archive boundary, and the local .venv contains absolute interpreter links
+# that make the archive invalid on another machine.
+[tool.hatch.build]
+exclude = [
+  "/.venv",
+  "/.uv-cache",
+  "/.uv_cache",
+  "/.pytest_cache",
+  "/.ruff_cache",
+  "/.mypy_cache",
+  "/node_modules",
+  "/mcp/.venv",
+  "/mcp/.pytest_cache",
+  "/mcp/.ruff_cache",
+]
+
 # ==== Project metadata ====
 
 [project]

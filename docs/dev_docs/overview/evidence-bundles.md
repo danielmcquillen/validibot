@@ -147,9 +147,3 @@ The database index stores the schema URL, manifest hash, storage path, and
 availability. Legacy retention metadata may remain on the index row for
 compatibility, but it is not part of the manifest and does not control its
 shape.
-
-## Related decisions
-
-- [Evidence Bundle and Signed Credential — Binding, Format, and Access](../../../validibot-project/docs/adr/2026-07-31-evidence-bundle-and-credential-binding.md)
-- [Evidence Manifest — Permanent, Minimal Audit Receipt](../../../validibot-project/docs/adr/2026-07-31-evidence-retention.md)
-- [Publishing the Evidence and Credential Schemas](../../../validibot-project/docs/adr/2026-07-31-evidence-schema-publication.md)

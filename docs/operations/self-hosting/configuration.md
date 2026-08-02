@@ -93,6 +93,8 @@ Empty for community deployments.
 | Setting | Purpose |
 |---|---|
 | `SIGNING_KEY_PATH` | Path to the local ES256 signing key used for signed credentials. Pro only. |
+| `GCP_KMS_SIGNING_KEY` | Full Google Cloud KMS key resource for GCP-hosted Pro installations. |
+| `GCP_KMS_SIGNING_KEY_VERSION` | Explicit active KMS version. Required with `GCP_KMS_SIGNING_KEY`; rotate it only after registering the candidate public key. |
 | `JWKS_PUBLIC_PATH` | Path to the public JWKS. Pro only. Served at `/.well-known/jwks.json` for credentials issued by this instance. |
 | `IDP_OIDC_MCP_RESOURCE_AUDIENCE` | MCP OAuth audience claim. Defaults to `{VALIDIBOT_MCP_BASE_URL}/mcp`. |
 | `VALIDIBOT_MCP_BASE_URL` | Base URL for the MCP server. Defaults to `http://localhost:8001` for self-hosted. |

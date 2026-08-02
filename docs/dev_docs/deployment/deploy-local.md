@@ -204,6 +204,15 @@ just local build
 just local up
 ```
 
+After migrations have run, register the key's public half once. Registration
+stores no private material and is idempotent:
+
+```bash
+python manage.py register_signing_key \
+  --local-private-key .envs/.local/keys/credential-signing.pem
+python manage.py signing_key_status
+```
+
 ## Verify the install
 
 Run these checks after the stack starts:

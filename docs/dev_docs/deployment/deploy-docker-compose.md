@@ -194,9 +194,18 @@ CREDENTIAL_ISSUER_URL=https://validibot.example.com
 The production compose file mounts `.envs/.production/.self-hosted/keys`
 into the web and worker containers at `/run/validibot-keys`.
 
-If you rotate the key later, existing credentials remain valid only as long as
-their verifying public key is still exposed through the instance JWKS. Plan key
-rotation deliberately.
+After deployment and migrations, register the key's public half:
+
+```bash
+just self-hosted manage \
+  "register_signing_key --local-private-key /run/validibot-keys/credential-signing.pem"
+just self-hosted manage "signing_key_status"
+```
+
+Registration stores only the public JWK. If you rotate later, register the new
+PEM first, confirm its `kid` appears in `/.well-known/jwks.json`, then change
+`SIGNING_KEY_PATH` and redeploy. Old public JWKs remain published so existing
+credentials continue to verify.
 
 ## Verify the deployment
 

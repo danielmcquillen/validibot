@@ -3217,13 +3217,22 @@ init-stage stage: _require-gcp-config
             --project={{gcp_project}}
         echo "   Created signing key $KMS_KEY (ec-sign-p256-sha256 / ES256)"
     fi
-    # Grant the runtime SA viewer + signerVerifier on the key (fail loud).
+    # Grant the runtime SA metadata, public-key-read, and signing access on the
+    # key (fail loud). Public-key read is needed by register_signing_key; the
+    # application never exports private key material from KMS.
     gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
         --location={{gcp_region}} \
         --keyring="$KMS_KEYRING" \
         --project={{gcp_project}} \
         --member="serviceAccount:$SA_EMAIL" \
         --role=roles/cloudkms.viewer \
+        --quiet >/dev/null
+    gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
+        --location={{gcp_region}} \
+        --keyring="$KMS_KEYRING" \
+        --project={{gcp_project}} \
+        --member="serviceAccount:$SA_EMAIL" \
+        --role=roles/cloudkms.publicKeyViewer \
         --quiet >/dev/null
     gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
         --location={{gcp_region}} \
@@ -3261,7 +3270,7 @@ init-stage stage: _require-gcp-config
     echo "  Cloud Tasks queue: $QUEUE_NAME"
     echo "  GCS bucket: $STORAGE_BUCKET (public/ and private/ prefixes)"
     echo "  KMS signing key: $KMS_KEY (keyring $KMS_KEYRING; ES256)"
-    echo "  KMS permissions: cloudkms.viewer, cloudkms.signerVerifier"
+    echo "  KMS permissions: cloudkms.viewer, cloudkms.publicKeyViewer, cloudkms.signerVerifier"
     echo "  Secret: $SECRET_NAME"
     echo ""
     if [ "{{stage}}" = "prod" ]; then
@@ -3276,6 +3285,8 @@ init-stage stage: _require-gcp-config
     echo "                          - POSTGRES_PASSWORD and DATABASE_URL (use password shown above)"
     echo "                          - DJANGO_SECRET_KEY (generate a new one)"
     echo "                          - DJANGO_ALLOWED_HOSTS (add Cloud Run URL after first deploy)"
+    echo "                          - GCP_KMS_SIGNING_KEY (the full key resource above)"
+    echo "                          - GCP_KMS_SIGNING_KEY_VERSION (the explicit active version)"
     echo "  2. Upload secrets:      just gcp secrets {{stage}}"
     echo "  3. Deploy services:     just gcp deploy-all {{stage}}  (migrates and initializes automatically)"
     echo "  4. Deploy validators:   just gcp validator-deploy-all {{stage}} vX.Y.Z  (optional)"

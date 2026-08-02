@@ -633,8 +633,8 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         help_text=_(
             "How long to keep validation outputs (results, artifacts, findings) "
             "after validation reaches a terminal state. DO_NOT_STORE queues "
-            "detailed output deletion immediately while preserving a minimal "
-            "run status and aggregate audit record."
+            "detailed output deletion immediately while preserving the minimal "
+            "permanent evidence receipt and aggregate run record."
         ),
     )
 

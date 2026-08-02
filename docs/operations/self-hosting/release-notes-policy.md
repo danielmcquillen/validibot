@@ -69,7 +69,7 @@ If validator images are unchanged, the section says **"No validator image change
 
 Anything that doesn't auto-apply via `just self-hosted upgrade`. Examples:
 
-- *Add a new env var to `.envs/.production/.self-hosted/.django`:* `EVIDENCE_BUNDLE_RETENTION_DAYS` — defaults to `90`, override if you need shorter or longer evidence retention.
+- *Add a new env var to `.envs/.production/.self-hosted/.django`:* `SIGNING_KEY_PATH` — point it at the mounted Pro credential-signing key, then register its public key before issuing credentials.
 - *Re-run `sync_validators`* once after the upgrade to populate `semantic_digest` for legacy validator rows.
 - *Update reverse proxy:* if you're not using bundled Caddy, adjust your nginx/Traefik config for the new `/.well-known/jwks.json` route (Pro only).
 

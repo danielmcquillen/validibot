@@ -23,8 +23,9 @@
     <div class="card-body">
       <p class="small text-muted mb-2">
         {% blocktrans trimmed %}
-          A canonical record of the rules and inputs this run was operating under.
-          Download it for archival, external verification, or audit.
+          A permanent receipt with run, workflow, validator, and payload-hash
+          information, but no submitted contents or output files. A bundle is
+          cryptographic proof only when it includes a signed credential.
         {% endblocktrans %}
       </p>
       <dl class="row small mb-3">
@@ -41,14 +42,6 @@
             title="{{ evidence_artifact.manifest_hash }}">
           {{ evidence_artifact.manifest_hash|slice:":16" }}…
         </dd>
-        {% if evidence_artifact.retention_class %}
-          <dt class="col-5 col-lg-4">
-            {% trans "Retention" %}
-          </dt>
-          <dd class="col-7 col-lg-8">
-            <span class="font-monospace small">{{ evidence_artifact.retention_class }}</span>
-          </dd>
-        {% endif %}
       </dl>
       <div class="d-flex gap-2 flex-wrap">
         <a href="{% url 'validations:evidence_manifest_download' pk=run.id %}"
@@ -57,7 +50,7 @@
         </a>
         <a href="{% url 'validations:evidence_bundle_download' pk=run.id %}"
            class="btn btn-sm btn-outline-primary"
-           title="{% trans 'Tarball with manifest, signature (if signed), and README' %}">
+           title="{% trans 'Archive with manifest and signed credential when one was issued' %}">
           <i class="bi-file-earmark-zip me-1"></i>{% trans "Download bundle (.tar.gz)" %}
         </a>
       </div>

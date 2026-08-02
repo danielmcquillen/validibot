@@ -84,9 +84,7 @@ def _resolve_submission_retention(workflow: Workflow) -> str:
     ``retention_policy`` column. The purge job acts on
     ``submission.retention_policy``, not on the workflow's policy,
     so without this snapshot a workflow configured to retain inputs
-    would still have its submissions queued for purge — and the
-    evidence manifest (which records the workflow's retention
-    class) would silently diverge from actual storage behaviour.
+    would still have its submissions queued for purge.
 
     This helper is the single source of truth for that mapping.
     Every Submission constructor in launch helpers must pass
@@ -360,8 +358,7 @@ def handle_raw_body_mode(
         # Snapshot workflow.input_retention onto
         # submission.retention_policy so the purge job (which acts
         # on the submission's policy) honours what the workflow
-        # promised. Without this, the evidence manifest's retention
-        # claim diverges silently from actual storage behaviour.
+        # promised.
         retention_policy=_resolve_submission_retention(workflow),
     )
     submission.set_content(

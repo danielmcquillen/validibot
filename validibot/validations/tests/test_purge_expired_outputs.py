@@ -158,15 +158,17 @@ class TestCompleteOutputPurge:
                 error_count=1,
                 extras={"exemplar": "customer secret"},
             )
+            manifest_bytes = b'{"receipt": "permanent"}'
             evidence = RunEvidenceArtifact(
                 run=run,
-                schema_version="validibot.evidence.v1",
+                schema_version=(
+                    "https://validibot.com/schemas/evidence-manifest-v2.json"
+                ),
                 manifest_hash="a" * 64,
-                retention_class=OutputRetention.DO_NOT_STORE,
             )
             evidence.manifest_path.save(
                 "manifest.json",
-                ContentFile(b'{"secret": true}'),
+                ContentFile(manifest_bytes),
                 save=True,
             )
 
@@ -197,9 +199,11 @@ class TestCompleteOutputPurge:
         assert receipt.result_uri == ""
         assert summary.extras == {}
         assert summary.total_findings == 1
-        assert evidence.availability == RunEvidenceArtifactAvailability.PURGED
-        assert not evidence.manifest_path
+        assert evidence.availability == RunEvidenceArtifactAvailability.GENERATED
+        assert evidence.manifest_path
         assert evidence.manifest_hash == "a" * 64
+        with evidence.manifest_path.open("rb") as manifest_file:
+            assert manifest_file.read() == manifest_bytes
         delete_run_files.assert_called_once()
 
     @patch(

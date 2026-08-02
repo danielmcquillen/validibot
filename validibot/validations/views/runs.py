@@ -235,18 +235,15 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
             output for outputs in step_outputs.values() for output in outputs
         ]
 
-        # Phase 4 Session C/1: surface the evidence manifest, when
-        # one exists, so the run-detail template can offer a download.
-        # Only GENERATED artifacts are downloadable; FAILED rows
-        # produce no download button (the auditor's
-        # MANIFEST_GENERATION_FAILED finding is where operators see
-        # those).
+        # The evidence receipt remains downloadable after payload retention
+        # hides or deletes ordinary outputs. Only a missing/failed manifest
+        # removes the evidence actions from the run detail page.
         evidence_artifact = None
         try:
             artifact = run.evidence_artifact
         except Exception:
             artifact = None
-        if artifact is not None and outputs_viewable:
+        if artifact is not None:
             from validibot.validations.models import RunEvidenceArtifactAvailability
 
             if artifact.availability == RunEvidenceArtifactAvailability.GENERATED:

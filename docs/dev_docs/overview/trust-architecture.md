@@ -110,7 +110,11 @@ The run records enough immutable metadata to explain what happened later.
 
 **Where it's enforced:** **`EvidenceManifestBuilder`** at `validibot/validations/services/evidence.py`, with results persisted in the `RunEvidenceArtifact` model.
 
-The manifest schema is `validibot.evidence.v1`, defined in `validibot-shared` (the package external verifiers can depend on without pulling in the full Django stack). See [Evidence Bundles](evidence-bundles.md) for the full reference.
+The permanent manifest uses the minimal v2 schema at
+`https://validibot.com/schemas/evidence-manifest-v2.json`, with the model
+defined in `validibot-shared`. A signed credential binds its exact bytes through
+the required `manifestHash` claim. See [Evidence Bundles](evidence-bundles.md)
+for the full reference.
 
 ## The validator vs. validator backend distinction
 

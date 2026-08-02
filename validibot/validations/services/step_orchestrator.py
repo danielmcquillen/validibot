@@ -474,6 +474,16 @@ class StepOrchestrator:
             validation_run=validation_run,
             step_metrics=step_metrics,
         )
+        safe_stamp_output_hash(validation_run)
+
+        # The signed credential binds to the exact canonical manifest bytes,
+        # so the manifest must exist before deferred credential issuance. A
+        # generation failure leaves the validation result intact but the Pro
+        # issuance service refuses to create an unbound credential.
+        from validibot.validations.services.evidence import stamp_evidence_manifest
+
+        stamp_evidence_manifest(validation_run)
+
         if validation_run.status == ValidationRunStatus.SUCCEEDED:
             if self._finalize_deferred_signed_credentials(
                 validation_run=validation_run,
@@ -482,16 +492,8 @@ class StepOrchestrator:
                     validation_run=validation_run,
                     step_metrics=step_metrics,
                 )
-        safe_stamp_output_hash(validation_run)
-
-        # ADR-2026-04-27 Phase 4 Session A: stamp the evidence manifest.
-        # Best-effort — a manifest-generation failure does not fail
-        # the run. The auditor surfaces gaps as MANIFEST_MISSING.
-        # Same call lives in the async callback path
-        # (validation_callback._finalise_run_for_status).
-        from validibot.validations.services.evidence import stamp_evidence_manifest
-
-        stamp_evidence_manifest(validation_run)
+                safe_stamp_output_hash(validation_run)
+                stamp_evidence_manifest(validation_run)
 
         # Emit only after all detailed outputs/evidence are finalized. The
         # retention receiver makes the run immediately eligible for deletion,

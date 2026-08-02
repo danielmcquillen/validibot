@@ -124,21 +124,17 @@ class EvidenceManifestBuilder:
 
         manifest_bytes = EvidenceManifestBuilder.serialise(manifest)
         manifest_hash = sha256_hexdigest(manifest_bytes)
-        retention_class = str(run.workflow.input_retention or "")
-
         artifact, _ = RunEvidenceArtifact.objects.get_or_create(
             run=run,
             defaults={
                 "schema_version": manifest.schema_url,
                 "manifest_hash": manifest_hash,
-                "retention_class": retention_class,
                 "availability": RunEvidenceArtifactAvailability.GENERATED,
             },
         )
 
         artifact.schema_version = manifest.schema_url
         artifact.manifest_hash = manifest_hash
-        artifact.retention_class = retention_class
         artifact.availability = RunEvidenceArtifactAvailability.GENERATED
         artifact.generation_error = ""
         artifact.manifest_path.save(

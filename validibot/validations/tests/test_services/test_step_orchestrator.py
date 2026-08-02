@@ -6,6 +6,7 @@ of action results by _record_step_result.
 
 from __future__ import annotations
 
+import json
 import sys
 from collections import Counter
 from types import ModuleType
@@ -248,7 +249,16 @@ class TestDeferredSignedCredentialIssuance:
             )
 
         issued = SimpleNamespace(id=uuid4())
-        fake_issue_credential = Mock(return_value=issued)
+
+        def fake_issue(step_run):
+            """Assert the permanent manifest exists before Pro is invoked."""
+
+            artifact = step_run.validation_run.evidence_artifact
+            assert artifact.manifest_path
+            assert artifact.manifest_hash
+            return issued
+
+        fake_issue_credential = Mock(side_effect=fake_issue)
         fake_issuance_module = ModuleType("validibot_pro.credentials.issuance")
         fake_issuance_module.issue_credential = fake_issue_credential
         fake_issuance_module.CredentialIssuanceError = RuntimeError
@@ -291,8 +301,30 @@ class TestDeferredSignedCredentialIssuance:
         assert step_run.output["credential_issuance"] == "issued"
         assert step_run.output["credential_id"] == str(issued.id)
 
-    def test_advisory_credential_failure_adds_warning_but_run_succeeds(self):
-        """Advisory credential failures should warn without failing the run."""
+    @pytest.mark.parametrize(
+        ("failure_mode", "expected_status", "expected_severity"),
+        [
+            pytest.param(
+                ActionFailureMode.ADVISORY,
+                ValidationRunStatus.SUCCEEDED,
+                Severity.WARNING,
+                id="advisory",
+            ),
+            pytest.param(
+                ActionFailureMode.BLOCKING,
+                ValidationRunStatus.FAILED,
+                Severity.ERROR,
+                id="blocking",
+            ),
+        ],
+    )
+    def test_credential_failure_is_reflected_in_the_final_manifest(
+        self,
+        failure_mode,
+        expected_status,
+        expected_severity,
+    ):
+        """The permanent receipt must record the final post-issuance outcome."""
         orchestrator = StepOrchestrator()
         run = ValidationRunFactory(status=ValidationRunStatus.PENDING)
         validator = ValidatorFactory()
@@ -312,7 +344,7 @@ class TestDeferredSignedCredentialIssuance:
             definition=credential_definition,
             slug="credential-action-advisory",
             name="Credential action",
-            failure_mode=ActionFailureMode.ADVISORY,
+            failure_mode=failure_mode,
         )
         credential_step = WorkflowStepFactory(
             workflow=run.workflow,
@@ -377,10 +409,14 @@ class TestDeferredSignedCredentialIssuance:
             workflow_step=credential_step,
         )
         finding = ValidationFinding.objects.get(validation_step_run=step_run)
+        artifact = run.evidence_artifact
+        with artifact.manifest_path.open("rb") as manifest_file:
+            manifest = json.load(manifest_file)
 
-        assert result.status == ValidationRunStatus.SUCCEEDED
-        assert run.status == ValidationRunStatus.SUCCEEDED
+        assert result.status == expected_status
+        assert run.status == expected_status
         assert step_run.status == StepStatus.FAILED
         assert step_run.output["credential_issuance"] == "failed"
-        assert finding.severity == Severity.WARNING
+        assert finding.severity == expected_severity
         assert finding.code == "credential_issuance_failed"
+        assert manifest["status"] == expected_status

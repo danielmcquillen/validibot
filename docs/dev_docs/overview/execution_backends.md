@@ -101,6 +101,32 @@ Services; long-running attempts use retained Cloud Run Jobs.
 - Author-selectable — workflow steps express workload intent without exposing
   GCP resource names; an attempt never changes routes after provider contact
 
+### Release identity and retention
+
+Cloud Run validator resources are release-specific rather than mutable stable
+names. A backend release creates one private Service and one private Job from
+the same digest; the application database activates their `PRIMARY` and
+`LONG_RUNNING` route roles. The selected deployment is copied to the
+`ExecutionAttempt` before provider contact, so a later release or route change
+cannot redirect an existing attempt.
+
+The current empty hosted installation uses
+`VALIDATOR_PROVIDER_RETENTION_MODE=latest-only`: after acceptance, only the
+latest active pair remains deployed and superseded provider resources are
+removed before live capacity is restored. Historical database rows, evidence,
+and attempt records remain intact. A live installation must use
+`drain-and-retain` instead, preserving the previous accepted pair through the
+normal seven-day drain for rollback and unfinished attempts.
+
+The release-specific architecture supports concurrent existence of the active
+pair, one rollback/drain pair, and providers needed by attempts already pinned
+to an older deployment. It does not yet define arbitrary simultaneous routing
+of multiple backend versions by tenant, workflow, or semantic Validator. If
+that becomes a product requirement, the project ADR must first define version
+selection, route ownership, acceptance, quotas, image retention, and attempt
+reconciliation. See the sibling `validibot-project` repository's
+`docs/operations/validator-backend-gcp-architecture.md` for the hosted policy.
+
 ## Two-Layer Architecture
 
 The execution system uses a two-layer architecture:

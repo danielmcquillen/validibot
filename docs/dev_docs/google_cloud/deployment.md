@@ -230,6 +230,14 @@ creates release-specific Service and Job resources, imports the database
 pairs, and runs normal plus Job-only acceptance before changing EnergyPlus
 routing.
 
+The release-specific Service/Job pair is the provider identity. The database
+route selects the active pair, and each execution attempt snapshots the exact
+deployment before contacting GCP. See the private project documentation for
+the full source-to-GCP flow and the rationale for keeping application logic,
+backend images, deployment records, and hosted operator policy in their
+respective repositories:
+`validibot-project/docs/operations/validator-backend-gcp-architecture.md`.
+
 The stage must already be in maintenance mode. Attempt-scoped token delivery
 and ambient-IAM denial are fixed GCP contracts; there are no storage rollout
 flags to configure. Image strictness remains configurable, and the production
@@ -244,9 +252,55 @@ but never re-grants ambient storage access.
 Development may use the backend repo's local build/push recipes; production
 intentionally refuses that unsigned path.
 
-If you have legacy jobs from the older `validibot-validator-<slug>`
-naming convention, you can safely delete them once you've confirmed
-no `gcloud run jobs execute` calls reference them.
+Production mirroring copies the verified GHCR digest into GAR with Docker
+Buildx; it does not rebuild the backend. Check the operator machine before
+starting setup or an update:
+
+```bash
+docker info
+```
+
+If Docker is unavailable, the release command now fails immediately before
+changing a provider resource. If a multi-step setup or update is interrupted,
+verify the stage is `LIVE` or `MAINTENANCE`; use
+`VALIDATOR_PROVIDER_RETENTION_MODE=drain-and-retain` for recovery and do not
+manually delete validator providers. To restore an isolated stage without
+deleting providers:
+
+```bash
+VALIDATOR_PROVIDER_RETENTION_MODE=drain-and-retain GCP_YES=1 \
+    just gcp mode-live prod
+```
+
+### Provider retention policy
+
+The hosted installation currently has no users or validation data, so its
+operator wrapper sets `VALIDATOR_PROVIDER_RETENTION_MODE=latest-only`. After a
+release is accepted and active, `validator-setup`, `validator-update`, and
+`mode-live` reconcile the stage before queues and schedulers resume. The
+reconciliation requires maintenance mode, a normal active route for every
+managed backend, no unfinished attempts, and canonical release-specific
+provider names. It then removes superseded Services and Jobs, including legacy
+names such as `validibot-validator-service-<backend>-v<version>`, while
+retaining historical database rows and evidence.
+
+```bash
+# Explicit recovery/reconciliation command; run only while in maintenance.
+just gcp mode-maintenance prod
+just gcp validator-latest-only prod
+```
+
+The manual command requires an explicit confirmation phrase and fails closed
+if the latest offered release is not active, an attempt is unfinished, or the
+database route does not match the canonical provider pair. Cloud Run
+`min=0` remains a scale-to-zero setting; it does not disable the active route.
+
+Before serving users or durable validation data, set
+`VALIDATOR_PROVIDER_RETENTION_MODE=drain-and-retain`. That mode keeps the
+previous accepted pair for rollback and pinned unfinished attempts, then uses
+the normal seven-day drain and `validator-cleanup` lifecycle. Do not manually
+delete legacy providers: use the reconciliation command so provider deletion
+is recorded and active or in-flight routes are protected.
 
 ### Step 7: Set Up Scheduled Jobs
 

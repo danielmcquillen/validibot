@@ -67,6 +67,39 @@ def _energyplus_output_artifact(
     )
 
 
+def _energyplus_output_value(
+    *,
+    slug: str,
+    label: str,
+    data_type: str,
+    description: str,
+    order: int,
+    category: str,
+    units: str | None = None,
+    on_missing: str = "null",
+) -> CatalogEntrySpec:
+    """Declare a backend-produced review/evidence value."""
+
+    metadata = {"category": category}
+    if units:
+        metadata["units"] = units
+    return CatalogEntrySpec(
+        entry_type=CatalogEntryType.IO_DEFINITION,
+        run_stage=CatalogRunStage.OUTPUT,
+        slug=slug,
+        label=label,
+        data_type=data_type,
+        description=description,
+        binding_config={"source": "output", "key": slug},
+        metadata=metadata,
+        is_required=on_missing == "error",
+        on_missing=on_missing,
+        order=order,
+        source_kind=StepIOSourceKind.INTERNAL,
+        is_path_editable=False,
+    )
+
+
 config = ValidatorConfig(
     slug="energyplus-idf-validator",
     name="EnergyPlus\u2122 Validator",
@@ -82,7 +115,7 @@ config = ValidatorConfig(
         "validibot_shared.energyplus.envelopes.EnergyPlusOutputEnvelope"
     ),
     image_name="validibot-validator-backend-energyplus",
-    # Version bump to revision 3 per ADR-2026-05-22 Phase 2 parser facts
+    # Revision 3 began with ADR-2026-05-22 Phase 2 parser facts
     # expansion: nine additional step inputs (building_name,
     # terrain, solar_distribution, timestep_per_hour, surface_count,
     # window_count, construction_count, run_period_count, has_hvac)
@@ -97,14 +130,13 @@ config = ValidatorConfig(
     #   facts are step inputs, never step outputs.
     # - Renamed the simulation-derived floor-area output from
     #   ``floor_area_m2`` to ``simulated_conditioned_area_m2`` for
-    #   provenance clarity (lands with the validibot-shared 0.8.0
-    #   release that ships the renamed Pydantic field).
+    #   provenance clarity.
     #
     # v2: ADR-2026-07-06 declares the concrete EnergyPlus output files uploaded
     # by the backend as first-class output artifact ports. This is semantic
     # catalog-contract drift, so it must create a new validator version instead
     # of mutating v1.
-    version=2,
+    version=3,
     order=10,
     has_processor=True,
     processor_name="EnergyPlus\u2122 Simulation",
@@ -189,8 +221,8 @@ config = ValidatorConfig(
                 "resource_type": ResourceFileType.ENERGYPLUS_WEATHER,
             },
             metadata={"accepted_extensions": ["epw"]},
-            is_required=True,
-            on_missing="error",
+            is_required=False,
+            on_missing="null",
             order=2,
             source_kind=StepIOSourceKind.PAYLOAD_PATH,
             is_path_editable=False,
@@ -211,7 +243,7 @@ config = ValidatorConfig(
             envelope_channel=EnvelopeChannel.RESOURCE_FILES,
             resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
             role="weather",
-            min_items=1,
+            min_items=0,
             max_items=1,
         ),
         # ==================================================================
@@ -530,6 +562,152 @@ config = ValidatorConfig(
             is_path_editable=False,
         ),
         # ==================================================================
+        # STEP OUTPUTS - Execution, IDD, issue, and artifact evidence
+        # ==================================================================
+        _energyplus_output_value(
+            slug="energyplus_binary_version",
+            label="EnergyPlus Binary Version",
+            data_type=CatalogValueType.STRING,
+            description="Numeric version reported by the exact EnergyPlus binary.",
+            order=60,
+            category="Execution Evidence",
+        ),
+        _energyplus_output_value(
+            slug="energyplus_binary_build",
+            label="EnergyPlus Binary Build",
+            data_type=CatalogValueType.STRING,
+            description="Build identifier reported by the EnergyPlus binary.",
+            order=61,
+            category="Execution Evidence",
+        ),
+        _energyplus_output_value(
+            slug="idd_version",
+            label="IDD Version",
+            data_type=CatalogValueType.STRING,
+            description=(
+                "Version parsed from the explicit Energy+.idd used for the run."
+            ),
+            order=62,
+            category="Execution Evidence",
+        ),
+        _energyplus_output_value(
+            slug="idd_build",
+            label="IDD Build",
+            data_type=CatalogValueType.STRING,
+            description="Build identifier parsed from the explicit Energy+.idd.",
+            order=63,
+            category="Execution Evidence",
+        ),
+        _energyplus_output_value(
+            slug="idd_path",
+            label="IDD Path",
+            data_type=CatalogValueType.STRING,
+            description="Runtime path of the exact IDD passed to EnergyPlus.",
+            order=64,
+            category="Execution Evidence",
+        ),
+        _energyplus_output_value(
+            slug="version_match",
+            label="Model/Binary/IDD Version Match",
+            data_type=CatalogValueType.BOOLEAN,
+            description=(
+                "True when model, binary, and IDD major/minor versions match; "
+                "null when complete evidence is unavailable."
+            ),
+            order=65,
+            category="Execution Evidence",
+        ),
+        _energyplus_output_value(
+            slug="completed_successfully",
+            label="Completed Successfully",
+            data_type=CatalogValueType.BOOLEAN,
+            description=(
+                "True only for return code zero with no EnergyPlus fatal marker."
+            ),
+            order=66,
+            category="Execution Evidence",
+            on_missing="error",
+        ),
+        _energyplus_output_value(
+            slug="energyplus_returncode",
+            label="EnergyPlus Return Code",
+            data_type=CatalogValueType.NUMBER,
+            description="Raw EnergyPlus process return code.",
+            order=67,
+            category="Execution Evidence",
+            on_missing="error",
+        ),
+        _energyplus_output_value(
+            slug="execution_seconds",
+            label="Execution Time (seconds)",
+            data_type=CatalogValueType.NUMBER,
+            description="Elapsed backend execution time in seconds.",
+            order=68,
+            category="Execution Evidence",
+            units="seconds",
+            on_missing="error",
+        ),
+        *[
+            _energyplus_output_value(
+                slug=slug,
+                label=label,
+                data_type=CatalogValueType.NUMBER,
+                description=description,
+                order=order,
+                category="Issue Summary",
+                units="count",
+                on_missing="error",
+            )
+            for slug, label, description, order in (
+                ("warning_count", "Warning Count", "EnergyPlus warning markers.", 70),
+                (
+                    "severe_count",
+                    "Severe Error Count",
+                    "EnergyPlus severe markers.",
+                    71,
+                ),
+                ("fatal_count", "Fatal Error Count", "EnergyPlus fatal markers.", 72),
+                (
+                    "review_issue_count",
+                    "Classified Review Issue Count",
+                    "Reviewer-taxonomy and selected profile findings.",
+                    73,
+                ),
+            )
+        ],
+        *[
+            _energyplus_output_value(
+                slug=slug,
+                label=label,
+                data_type=CatalogValueType.BOOLEAN,
+                description=description,
+                order=order,
+                category="Artifact Availability",
+                on_missing="error",
+            )
+            for slug, label, description, order in (
+                (
+                    "has_sql_output",
+                    "Has SQL Output",
+                    "Whether eplusout.sql exists.",
+                    80,
+                ),
+                ("has_err_output", "Has Error Log", "Whether eplusout.err exists.", 81),
+                (
+                    "has_csv_output",
+                    "Has CSV Output",
+                    "Whether eplusout.csv exists.",
+                    82,
+                ),
+                (
+                    "has_eso_output",
+                    "Has ESO Output",
+                    "Whether eplusout.eso exists.",
+                    83,
+                ),
+            )
+        ],
+        # ==================================================================
         # STEP OUTPUTS - Energy Consumption
         # ==================================================================
         CatalogEntrySpec(
@@ -588,6 +766,23 @@ config = ValidatorConfig(
             source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.IO_DEFINITION,
+            run_stage=CatalogRunStage.OUTPUT,
+            slug="site_other_fuels_kwh",
+            label="Other Site Fuels (kWh)",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "All other GJ-valued site fuels combined, including fuel oil, "
+                "propane, coal, gasoline/diesel, and EnergyPlus other fuels."
+            ),
+            binding_config={"source": "metric", "key": "site_other_fuels_kwh"},
+            metadata={"units": "kWh"},
+            is_required=False,
+            order=104,
+            source_kind=StepIOSourceKind.INTERNAL,
+            is_path_editable=False,
+        ),
         # ==================================================================
         # STEP OUTPUTS - Energy Use Intensity
         # ==================================================================
@@ -595,9 +790,15 @@ config = ValidatorConfig(
             entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.OUTPUT,
             slug="site_eui_kwh_m2",
-            label="Site EUI (kWh/m\u00b2)",
+            label="Modeled Site EUI (kWh/m\u00b2)",
             data_type=CatalogValueType.NUMBER,
-            description="Site Energy Use Intensity (total energy / floor area).",
+            description=(
+                "Modeled site energy use intensity: electricity, natural gas, "
+                "district energy, and other applicable site fuels divided by "
+                "simulated conditioned area. This is not measured or "
+                "weather-normalized "
+                "CBPS WNEUI/EUIt."
+            ),
             binding_config={"source": "metric", "key": "site_eui_kwh_m2"},
             metadata={"units": "kWh/m\u00b2"},
             is_required=False,
@@ -749,8 +950,7 @@ config = ValidatorConfig(
         # The simulation-derived conditioned area is named
         # ``simulated_conditioned_area_m2`` (not ``floor_area_m2``) to
         # disambiguate the value from any design floor area an author
-        # might supply as input. Matches the validibot-shared 0.8.0
-        # field rename.
+        # might supply as input.
         # ==================================================================
         CatalogEntrySpec(
             entry_type=CatalogEntryType.IO_DEFINITION,
@@ -858,14 +1058,16 @@ config = ValidatorConfig(
             label="Total Site Energy (kWh)",
             data_type=CatalogValueType.NUMBER,
             description=(
-                "Total site energy consumption (electricity + gas + district)."
+                "Total site energy consumption across electricity, natural "
+                "gas, district energy, and other applicable site fuels."
             ),
             binding_config={
                 "expr": (
                     "(site_electricity_kwh ?? 0) + "
                     "(site_natural_gas_kwh ?? 0) + "
                     "(site_district_cooling_kwh ?? 0) + "
-                    "(site_district_heating_kwh ?? 0)"
+                    "(site_district_heating_kwh ?? 0) + "
+                    "(site_other_fuels_kwh ?? 0)"
                 ),
             },
             metadata={"units": "kWh"},

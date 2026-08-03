@@ -648,6 +648,21 @@ class TestEnvelopeStructure:
         envelope = _build_envelope(timestep_per_hour=12)
         assert envelope.inputs.timestep_per_hour == 12  # noqa: PLR2004
 
+    def test_review_readiness_settings_are_forwarded(self):
+        """Checks, run mode, and profile must reach the strict backend contract."""
+        envelope = _build_envelope(
+            idf_checks=["duplicate-names", "schedule-coverage"],
+            run_simulation=False,
+            review_profile="leed_review",
+        )
+
+        assert envelope.inputs.idf_checks == [
+            "duplicate-names",
+            "schedule-coverage",
+        ]
+        assert envelope.inputs.run_simulation is False
+        assert envelope.inputs.review_profile == "leed_review"
+
 
 # ==============================================================================
 # Callback ID — idempotency support for async backends
@@ -773,6 +788,39 @@ class TestEnergyPlusFilePortMaterialization:
         assert envelope.resource_files[0].type == ResourceFileType.ENERGYPLUS_WEATHER
         assert envelope.resource_files[0].uri.endswith("/weather.epw")
         assert envelope.inputs.timestep_per_hour == 6  # noqa: PLR2004
+
+    def test_preflight_file_ports_do_not_require_or_materialize_weather(self):
+        """Conversion-only direct validation must work without an EPW binding."""
+        run, step, primary_port, _weather_port, _weather_resource = (
+            _build_energyplus_file_port_run()
+        )
+        step.config = {
+            "run_simulation": False,
+            "idf_checks": ["duplicate-names"],
+            "review_profile": "standard",
+            "timestep_per_hour": 4,
+        }
+        step.save(update_fields=["config"])
+        StepInputBindingFactory(
+            workflow_step=step,
+            io_definition=primary_port,
+            source_scope=BindingSourceScope.SUBMISSION_FILE,
+            source_data_path="primary_file_uri",
+        )
+
+        envelope = _build_test_input_envelope(
+            run,
+            callback_url="http://localhost/callback/",
+            callback_id=None,
+            execution_bundle_uri="file:///validibot/output",
+            input_file_uris={
+                "primary_file_uri": "file:///validibot/input/model.idf",
+            },
+        )
+
+        assert envelope.resource_files == []
+        assert envelope.inputs.run_simulation is False
+        assert envelope.inputs.idf_checks == ["duplicate-names"]
 
     def test_upstream_model_artifact_materializes_as_primary_input_file(self):
         """An upstream ArtifactRef can satisfy the primary model file port.

@@ -1,136 +1,141 @@
 # EnergyPlus Validator
 
-The EnergyPlus Validator runs building energy simulations using the EnergyPlus
-engine and extracts performance metrics as step output values for assertion
-evaluation.
+The EnergyPlus Validator checks IDF or epJSON building models and can run a
+full EnergyPlus simulation. It exposes parsed model facts under `i.*` and
+simulation results and review evidence under `o.*` for CEL assertions.
 
-This is a container-based (advanced) validator. It dispatches your submission to an isolated EnergyPlus container, runs the simulation, and collects the output metrics. You can then write CEL assertions against those metrics to check compliance with energy codes, design targets, or performance requirements.
+It reports a **modeled site EUI**. This is not measured or weather-normalized
+CBPS WNEUI/EUIt and should not be presented as a compliance value calculated
+from utility bills.
 
----
+## Full simulation and preflight
 
-## What it does
+With **Run EnergyPlus simulation** enabled, the validator requires an EPW
+weather file, runs the annual simulation, extracts SQL-backed metrics, and
+retains the standard EnergyPlus artifacts.
 
-1. **Accepts** IDF or epJSON building energy model files
-2. **Optionally resolves** template parameters (if using parametric submissions)
-3. **Runs** the EnergyPlus simulation in an isolated container
-4. **Extracts** energy consumption, comfort, and building metrics from the simulation output
-5. **Exposes** all metrics as step outputs for CEL assertion evaluation
+With that option disabled, it runs conversion-only preflight without requiring
+weather. Preflight still reports model, binary, and IDD version evidence and
+runs any selected Validibot checks, but SQL-backed simulation metrics are
+`null`.
 
----
+The selected timesteps per hour are applied to a private working copy. The
+submitted IDF or epJSON file is never modified.
 
-## Step inputs
+## Model facts (`i.*`)
 
-These are values you provide with your submission (as metadata). They're used for comparison assertions against simulation output.
+Parsed model facts are available before container dispatch, so they can be used
+in input-stage assertions:
 
-| Input | Type | Description |
-|--------|------|-------------|
-| `expected_floor_area_m2` | Number | Your expected floor area, for comparison with simulated value |
-| `target_eui_kwh_m2` | Number | Target Energy Use Intensity for code compliance |
-| `max_unmet_hours` | Number | Maximum allowable unmet heating/cooling hours |
+| Step input | Description |
+| --- | --- |
+| `i.idf_version` | Version declared by the IDF or epJSON model |
+| `i.zone_count` | Number of zones |
+| `i.north_axis_deg` | Building north-axis rotation |
+| `i.building_name` | Building object name |
+| `i.terrain` | Terrain setting |
+| `i.solar_distribution` | Solar distribution setting |
+| `i.timestep_per_hour` | Timestep declared by the model |
+| `i.run_period_count` | Number of run periods |
+| `i.surface_count` | Number of building surfaces |
+| `i.window_count` | Number of window/fenestration objects |
+| `i.construction_count` | Number of Construction objects |
+| `i.has_hvac` | Whether the model declares a recognized HVAC object |
 
----
+Project expectations do not belong in this validator catalog. Put targets such
+as maximum EUI or unmet hours in workflow signals (`s.*`) or submission data,
+then compare them with EnergyPlus outputs in assertions.
 
-## Step outputs
+## Review and execution evidence (`o.*`)
 
-These are extracted from the EnergyPlus simulation results. Use them in CEL assertions to check performance.
+The validator reports:
 
-### Energy consumption
+- `o.energyplus_binary_version`, `o.energyplus_binary_build`
+- `o.idd_version`, `o.idd_build`, `o.idd_path`
+- `o.version_match`
+- `o.completed_successfully`, `o.energyplus_returncode`,
+  `o.execution_seconds`
+- `o.warning_count`, `o.severe_count`, `o.fatal_count`,
+  `o.review_issue_count`
+- `o.has_sql_output`, `o.has_err_output`, `o.has_csv_output`,
+  `o.has_eso_output`
 
-| Output | Type | Description |
-|--------|------|-------------|
-| `site_electricity_kwh` | Number | Total site electricity consumption |
-| `site_natural_gas_kwh` | Number | Total site natural gas consumption |
-| `site_district_cooling_kwh` | Number | Total district cooling consumption |
-| `site_district_heating_kwh` | Number | Total district heating consumption |
+Individual EnergyPlus messages are also preserved. Common version, reference,
+schedule, sizing, weather, comfort, output, deprecation, and convergence
+problems receive stable review codes and tags. Hiding EnergyPlus warnings only
+changes their presentation; it does not change these counts or the run
+evidence.
 
-### Energy intensity
+## Simulation metrics (`o.*`)
 
-| Output | Type | Description |
-|--------|------|-------------|
-| `site_eui_kwh_m2` | Number | Site energy use intensity (total energy per floor area) |
+Energy consumption outputs include electricity, natural gas, district cooling,
+district heating, and `o.site_other_fuels_kwh`. The latter combines any other
+GJ-valued site fuels, such as propane, fuel oil, coal, or diesel.
 
-### End-use breakdown
+`o.site_eui_kwh_m2` is calculated as:
 
-| Output | Type | Description |
-|--------|------|-------------|
-| `heating_energy_kwh` | Number | Total heating energy |
-| `cooling_energy_kwh` | Number | Total cooling energy |
-| `interior_lighting_kwh` | Number | Interior lighting energy |
-| `fans_energy_kwh` | Number | Fan energy consumption |
-| `pumps_energy_kwh` | Number | Pump energy consumption |
-| `water_systems_kwh` | Number | Water systems energy |
-
-### Comfort and performance
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `unmet_heating_hours` | Number | Hours where heating setpoint was not met |
-| `unmet_cooling_hours` | Number | Hours where cooling setpoint was not met |
-| `peak_electric_demand_w` | Number | Peak electrical demand in watts |
-
-### Building characteristics
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `floor_area_m2` | Number | Total conditioned floor area from the model |
-| `zone_count` | Number | Number of thermal zones in the model |
-
-### Window and envelope
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `window_heat_gain_kwh` | Number | Heat gain through windows |
-| `window_heat_loss_kwh` | Number | Heat loss through windows |
-| `window_transmitted_solar_kwh` | Number | Solar energy transmitted through windows |
-
-### Derived values
-
-These are computed from other step values:
-
-| Value | Type | Computed from |
-|--------|------|---------------|
-| `total_unmet_hours` | Number | `unmet_heating_hours + unmet_cooling_hours` |
-| `total_site_energy_kwh` | Number | Sum of all energy-source outputs |
-
----
-
-## Example assertions
-
-```
-// EUI must be below the ASHRAE 90.1 target
-site_eui_kwh_m2 <= target_eui_kwh_m2
-
-// Total unmet hours must be within acceptable range
-total_unmet_hours <= max_unmet_hours
-
-// Floor area should match the expected value (within 1%)
-floor_area_m2 >= expected_floor_area_m2 * 0.99
-  && floor_area_m2 <= expected_floor_area_m2 * 1.01
-
-// Peak demand must be below utility limit
-peak_electric_demand_w < 500000.0
+```text
+(electricity + natural gas + district cooling + district heating + other fuels)
+÷ simulated conditioned area
 ```
 
----
+Other outputs include the heating, cooling, lighting, fan, pump, and water
+system end uses; unmet heating and cooling hours; peak electric demand;
+`o.simulated_conditioned_area_m2`; and optional window heat gain, heat loss,
+and transmitted solar metrics.
 
-## File types
+When EnergyPlus does not produce a declared value, the output is `null` rather
+than disappearing. For example, window metrics remain `null` unless the model
+requests their `Output:Variable` data.
 
-The EnergyPlus Validator accepts IDF (Input Data File) and epJSON files.
+The derived outputs are:
 
-EnergyPlus also needs an EPW weather file. Workflow authors can configure the
-weather file as a workflow resource, or they can set the Weather File source to
-Submitted file so the launch page asks for an EPW alongside the model upload.
+- `o.total_unmet_hours`
+- `o.total_site_energy_kwh`
 
----
+## Review checks and profiles
 
-## Template support
+The optional Validibot checks are:
 
-The validator supports parametric submissions using JSON templates. You submit a template with placeholder parameters, and the validator resolves them before running the simulation. This is useful for parametric studies where you want to sweep through different building configurations.
+- duplicate object names;
+- HVAC sizing configuration; and
+- seven-day schedule coverage.
 
----
+The `standard` profile reports missing or mismatched review evidence as
+warnings. The opt-in `leed_review` profile promotes required evidence problems
+to errors and requires EUI and unmet-hours outputs. It uses the same EnergyPlus
+engine and does not claim that a model is LEED compliant.
 
-## Tips
+A useful LEED-readiness baseline is:
 
-- **Check unmet hours** as a sanity check. High unmet hours mean the HVAC system couldn't maintain setpoints, which usually indicates an undersized system or a modeling error.
-- **Compare floor area** against your expected value. A mismatch often means the model geometry was modified without updating the metadata.
-- **Use derived values** like `total_site_energy_kwh` for overall compliance checks rather than summing individual outputs in your CEL expression.
+```cel
+o.completed_successfully
+  && o.version_match == true
+  && o.fatal_count == 0
+  && o.severe_count == 0
+  && o.has_sql_output
+  && o.site_eui_kwh_m2 != null
+  && o.unmet_heating_hours != null
+  && o.unmet_cooling_hours != null
+```
+
+Keep project and rating-system thresholds in workflow assertions. For example:
+
+```cel
+o.site_eui_kwh_m2 != null
+  && s.target_modeled_site_eui_kwh_m2 != null
+  && o.site_eui_kwh_m2 <= s.target_modeled_site_eui_kwh_m2
+```
+
+## Files and artifacts
+
+Full simulation accepts one IDF or epJSON model and one EPW weather file.
+Weather can be a workflow resource, a submitted file, or a compatible upstream
+artifact. Conversion-only preflight needs only the model.
+
+When produced, SQL, ERR, CSV, and ESO files are exposed as output artifacts for
+deeper review. The normalized private model copy is also retained with the run
+bundle for debugging.
+
+Template mode resolves submitted parameter values into a private concrete IDF
+before dispatch and currently always runs a full simulation.

@@ -2899,6 +2899,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
     weather_file = forms.ChoiceField(
         label=_("Workflow resource"),
         choices=[],
+        required=False,
         help_text=_(
             "Weather file (EPW) used for EnergyPlus simulations. "
             "This determines the climate data for the simulation."
@@ -2913,6 +2914,32 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             "Include EnergyPlus simulation warnings in the results shown to "
             "submitters. Uncheck to show only errors. Warnings can be noisy "
             "for submitters who don't need to debug the model."
+        ),
+    )
+
+    review_profile = forms.ChoiceField(
+        label=_("Review profile"),
+        required=False,
+        choices=(
+            ("standard", _("Standard EnergyPlus review")),
+            ("leed_review", _("LEED review readiness")),
+        ),
+        initial="standard",
+        help_text=_(
+            "Selects required evidence and issue severity. It does not change "
+            "the EnergyPlus simulation engine or calculate a LEED compliance EUI."
+        ),
+    )
+
+    timestep_per_hour = forms.IntegerField(
+        label=_("Timesteps per hour"),
+        required=False,
+        min_value=1,
+        max_value=60,
+        initial=4,
+        help_text=_(
+            "Applied to a private working copy of the model; the submitted file "
+            "is never modified."
         ),
     )
 
@@ -2991,6 +3018,8 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                     "weather_file": weather_file_id,
                     "idf_checks": config.get("idf_checks", []),
                     "run_simulation": config.get("run_simulation", False),
+                    "timestep_per_hour": config.get("timestep_per_hour", 4),
+                    "review_profile": config.get("review_profile", "standard"),
                     "case_sensitive": config.get("case_sensitive", True),
                     # Cosmetic (display bucket) — ADR-2026-06-18.
                     "show_energyplus_warnings": (step.display_settings or {}).get(
@@ -3038,6 +3067,8 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             "show_success_messages",
             "execution_profile",
             "validation_mode",
+            "review_profile",
+            "timestep_per_hour",
         ]
         if self.file_port_bindings_enabled:
             layout_items.extend(
@@ -3263,7 +3294,15 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 
     def clean(self):
         cleaned = super().clean()
+        run_simulation = cleaned.get(
+            "validation_mode"
+        ) == self.VALIDATION_MODE_TEMPLATE or cleaned.get("run_simulation", False)
         if not self.file_port_bindings_enabled:
+            if run_simulation and not cleaned.get("weather_file"):
+                self.add_error(
+                    "weather_file",
+                    _("Choose a weather file for a full EnergyPlus simulation."),
+                )
             return cleaned
 
         for contract_key, port in self.file_input_ports.items():
@@ -3284,6 +3323,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             if (
                 contract_key == "weather_file"
                 and source == BindingSourceScope.WORKFLOW_RESOURCE
+                and run_simulation
                 and not cleaned.get("weather_file")
             ):
                 self.add_error(
@@ -3295,6 +3335,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             if (
                 source == BindingSourceScope.UPSTREAM_ARTIFACT
                 and upstream_field in self.fields
+                and (contract_key != "weather_file" or run_simulation)
                 and not cleaned.get(upstream_field)
             ):
                 self.add_error(

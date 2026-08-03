@@ -225,10 +225,8 @@ class EnergyPlusStepConfig(ContainerExecutionStepConfig):
     live in :class:`EnergyPlusDisplaySettings`. Resource files (weather EPWs,
     model templates) are stored relationally via ``WorkflowStepResource``.
 
-    NOTE: Several run settings (``idf_checks``, ``run_simulation``,
-    ``timestep_per_hour``) are stored and validated here but not yet forwarded to
-    the validator container — a pre-existing gap tracked separately, not a
-    regression from this split.
+    All simulation settings are forwarded through the strict shared envelope to
+    the backend. Template mode forces a full simulation at form-save time.
     """
 
     validation_mode: str = ""
@@ -236,21 +234,17 @@ class EnergyPlusStepConfig(ContainerExecutionStepConfig):
 
     idf_checks: list[str] = Field(default_factory=list)
     """Author-selected IDF compliance checks to run before simulation.
-
-    .. warning:: Not yet forwarded to the container. Stored for future use.
     """
 
     run_simulation: bool = False
     """Whether to run the full simulation or just IDF syntax checks.
-
-    .. warning:: Not yet forwarded to the container. Stored for future use.
     """
 
-    timestep_per_hour: int = 4
-    """Number of simulation timesteps per hour (1-60).
+    timestep_per_hour: int = Field(default=4, ge=1, le=60)
+    """Number of simulation timesteps per hour applied to a private model copy."""
 
-    .. note:: Reaches the input envelope but the runner currently ignores it.
-    """
+    review_profile: Literal["standard", "leed_review"] = "standard"
+    """Evidence/severity profile layered over the same EnergyPlus engine."""
 
     case_sensitive: bool = True
     """Whether template-variable matching is case-sensitive.

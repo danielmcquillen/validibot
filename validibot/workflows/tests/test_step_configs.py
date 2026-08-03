@@ -53,6 +53,8 @@ class TestEnergyPlusStepConfigSemanticFields:
         assert config.case_sensitive is True
         assert config.validation_mode == ""
         assert config.idf_checks == []
+        assert config.review_profile == "standard"
+        assert config.timestep_per_hour == 4  # noqa: PLR2004
 
     def test_existing_simulation_fields_still_work(self):
         """Simulation fields are unchanged by the split — a regression guard.
@@ -64,11 +66,13 @@ class TestEnergyPlusStepConfigSemanticFields:
             idf_checks=["duplicate-names"],
             run_simulation=True,
             timestep_per_hour=6,
+            review_profile="leed_review",
         )
 
         assert config.idf_checks == ["duplicate-names"]
         assert config.run_simulation is True
         assert config.timestep_per_hour == 6  # noqa: PLR2004
+        assert config.review_profile == "leed_review"
 
     def test_backward_compat_no_template_fields(self):
         """A pre-template config dict must parse without errors.

@@ -945,6 +945,8 @@ def build_energyplus_config(
 
     config: dict[str, Any] = {
         "validation_mode": validation_mode,
+        "review_profile": form.cleaned_data.get("review_profile", "standard"),
+        "timestep_per_hour": form.cleaned_data.get("timestep_per_hour", 4),
         "show_energyplus_warnings": form.cleaned_data.get(
             "show_energyplus_warnings",
             True,

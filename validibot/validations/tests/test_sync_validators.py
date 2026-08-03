@@ -115,7 +115,16 @@ class SyncValidatorsCommandTests(TestCase):
 
         # Check for specific output values
         expected_outputs = [
+            "energyplus_binary_version",
+            "idd_version",
+            "version_match",
+            "completed_successfully",
+            "warning_count",
+            "fatal_count",
+            "review_issue_count",
+            "has_sql_output",
             "site_electricity_kwh",
+            "site_other_fuels_kwh",
             "site_eui_kwh_m2",
             "unmet_heating_hours",
             "simulated_conditioned_area_m2",
@@ -274,7 +283,8 @@ class SyncValidatorsCommandTests(TestCase):
             weather_file.default_source_strategy,
             DefaultSourceStrategy.SUBMITTED_FILE_THEN_DEFAULT_RESOURCE,
         )
-        self.assertEqual(weather_file.min_items, 1)
+        # Weather is conditional: required only when run_simulation=true.
+        self.assertEqual(weather_file.min_items, 0)
         self.assertEqual(weather_file.max_items, 1)
         self.assertFalse(weather_file.is_collection)
         self.assertEqual(
@@ -399,14 +409,14 @@ class SyncValidatorsCommandTests(TestCase):
           run_period_count, has_hvac)
 
         The catalogue versions were later reset to a clean v1 baseline. The
-        artifact-port output slice then bumped the active contract to v2. The
-        seed row must match that advertised version to exercise the update path
-        rather than the create-new-row path.
+        artifact-port output slice then bumped the active contract to v2, and
+        review-readiness evidence/metrics made the active contract v3. The seed
+        row must match that advertised version to exercise the update path.
         """
         # Create a validator with different name but matching (slug, version).
         Validator.objects.create(
             slug="energyplus-idf-validator",
-            version=2,
+            version=3,
             name="Old Name",
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,

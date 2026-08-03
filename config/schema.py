@@ -16,9 +16,34 @@ can actually call. The MCP helper surface is documented for integrators in
 
 from __future__ import annotations
 
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
+from drf_spectacular.plumbing import build_bearer_security_scheme_object
+
 # Path prefixes that are internal/service-to-service and must not appear in
 # the public OpenAPI schema.
 INTERNAL_PATH_PREFIXES = ("/api/v1/mcp/",)
+
+
+class BearerAuthenticationScheme(OpenApiAuthenticationExtension):
+    """Describe Validibot API keys as standard HTTP Bearer credentials.
+
+    ``BearerAuthentication`` is intentionally custom because it accepts both
+    hashed ``vbk_...`` API keys and legacy DRF tokens.  drf-spectacular cannot
+    infer an OpenAPI security scheme from a custom authenticator, so without
+    this extension the generated schema silently omits bearer authentication
+    even though the API accepts it at runtime.
+    """
+
+    target_class = "validibot.core.api.authentication.BearerAuthentication"
+    name = "bearerAuth"
+
+    def get_security_definition(self, auto_schema):
+        """Return the OpenAPI security-scheme object for Authorization."""
+
+        return build_bearer_security_scheme_object(
+            header_name="Authorization",
+            token_prefix=self.target.keyword.decode(),
+        )
 
 
 def exclude_internal_paths(endpoints, **kwargs):

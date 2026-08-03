@@ -76,6 +76,9 @@ def build_energyplus_input_envelope(
     step_run_id: str,
     expected_output_uri: str,
     timestep_per_hour: int = 4,
+    idf_checks: list[str] | None = None,
+    run_simulation: bool = True,
+    review_profile: str = "standard",
     skip_callback: bool = False,
     input_files: list[InputFileItem] | None = None,
     callback_nonce: str | None = None,
@@ -112,11 +115,10 @@ def build_energyplus_input_envelope(
         callback_nonce_commitment: Public commitment included in canonical
             input-envelope hashing.
         execution_bundle_uri: Directory URI for this run's files
-        timestep_per_hour: EnergyPlus timesteps (default: 4).
-            NOTE: This value reaches the container envelope but the runner
-            does not yet use it to configure the EnergyPlus CLI.  See
-            ``idf_checks`` and ``run_simulation`` in EnergyPlusStepConfig
-            for other settings that are stored but not yet forwarded.
+        timestep_per_hour: Timesteps applied to the backend's private model copy.
+        idf_checks: Validibot review checks to run before EnergyPlus.
+        run_simulation: Run the full simulation; false selects preflight mode.
+        review_profile: Evidence/severity profile (``standard`` or ``leed_review``).
         skip_callback: If True, container won't POST callback after completion
 
     Returns:
@@ -175,6 +177,9 @@ def build_energyplus_input_envelope(
     # Build EnergyPlus-specific inputs
     energyplus_inputs = EnergyPlusInputs(
         timestep_per_hour=timestep_per_hour,
+        idf_checks=idf_checks or [],
+        run_simulation=run_simulation,
+        review_profile=review_profile,
     )
 
     # Build execution context
@@ -402,6 +407,14 @@ def _resolve_energyplus_file_port_items(
     input_files: list[InputFileItem] = []
     resource_files: list[ResourceFileItem] = []
     for contract_key in ("primary_model", "weather_file"):
+        if contract_key == "weather_file" and not step_config.get(
+            "run_simulation",
+            True,
+        ):
+            # Conversion-only preflight neither requires nor consumes weather.
+            # Skipping the optional port also avoids materializing a stale/default
+            # EPW that has no bearing on the result.
+            continue
         port = ports.get(contract_key)
         if port is None:
             continue
@@ -1430,6 +1443,12 @@ def build_input_envelope(
     }
 
     if validator.validation_type == ValidationType.ENERGYPLUS:
+        timestep_per_hour = step_config.get("timestep_per_hour", 4)
+        idf_checks = list(step_config.get("idf_checks", []))
+        # Missing legacy keys retain the historical behavior (full simulation).
+        # Newly saved direct-mode forms write an explicit false for preflight.
+        run_simulation = bool(step_config.get("run_simulation", True))
+        review_profile = step_config.get("review_profile", "standard")
         resolved_file_ports = _resolve_energyplus_file_port_items(
             run=run,
             step=step,
@@ -1442,14 +1461,13 @@ def build_input_envelope(
             if not any(item.port_key == "primary_model" for item in input_files):
                 msg = f"Step {step.id} has no primary_model file port resolved"
                 raise ValueError(msg)
-            if not any(
+            if run_simulation and not any(
                 item.port_key == "weather_file"
                 for item in [*input_files, *resource_files]
             ):
                 msg = f"Step {step.id} has no weather_file port resolved"
                 raise ValueError(msg)
 
-            timestep_per_hour = step_config.get("timestep_per_hour", 4)
             return build_energyplus_input_envelope(
                 run_id=str(run.id),
                 validator=validator,
@@ -1470,6 +1488,9 @@ def build_input_envelope(
                 step_run_id=step_run_id,
                 expected_output_uri=expected_output_uri,
                 timestep_per_hour=timestep_per_hour,
+                idf_checks=idf_checks,
+                run_simulation=run_simulation,
+                review_profile=review_profile,
                 skip_callback=skip_callback,
             )
 
@@ -1492,23 +1513,16 @@ def build_input_envelope(
             resource_uri_overrides=resource_uri_overrides,
         )
 
-        # Validate that we have a weather file for EnergyPlus
+        # Full simulations require weather. Conversion-only preflight does not.
         has_weather = any(
             rf.type == ResourceFileType.ENERGYPLUS_WEATHER for rf in resource_files
         )
-        if not has_weather:
+        if run_simulation and not has_weather:
             msg = (
                 f"Step {step.id} has no weather file configured"
                 " (no WEATHER_FILE step resource)"
             )
             raise ValueError(msg)
-
-        # Get EnergyPlus-specific settings from step config.
-        # TODO: Also forward ``idf_checks`` and ``run_simulation`` to the
-        #       container once the envelope schema and runner support them.
-        #       Currently only ``timestep_per_hour`` reaches the envelope
-        #       (and even that is ignored by the runner).
-        timestep_per_hour = step_config.get("timestep_per_hour", 4)
 
         return build_energyplus_input_envelope(
             run_id=str(run.id),
@@ -1529,6 +1543,9 @@ def build_input_envelope(
             step_run_id=step_run_id,
             expected_output_uri=expected_output_uri,
             timestep_per_hour=timestep_per_hour,
+            idf_checks=idf_checks,
+            run_simulation=run_simulation,
+            review_profile=review_profile,
             skip_callback=skip_callback,
         )
     if validator.validation_type == ValidationType.FMU:

@@ -7,11 +7,13 @@ dispatch, and the canonical resolved inputs are durably recorded first.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
 from django.db import DatabaseError
+from validibot_shared.energyplus.models import EnergyPlusSimulationMetrics
 
 from validibot.actions.protocols import RunContext
 from validibot.submissions.tests.factories import SubmissionFactory
@@ -508,6 +510,56 @@ class TestInputStageAssertionGating:
             "self.run_context.step.validator, not pick an arbitrary "
             "row."
         )
+
+    def test_output_extraction_preserves_null_metrics_and_review_evidence(self):
+        """Declared unavailable metrics and execution facts must remain in o.*."""
+        from validibot.validations.constants import StepIODirection
+        from validibot.validations.models import StepIODefinition
+        from validibot.validations.tests.factories import ValidationRunFactory
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+        for key in (
+            "site_eui_kwh_m2",
+            "peak_electric_demand_w",
+            "completed_successfully",
+            "warning_count",
+            "has_sql_output",
+        ):
+            StepIODefinition.objects.create(
+                validator=validator,
+                contract_key=key,
+                native_name=key,
+                direction=StepIODirection.OUTPUT,
+                data_type="number",
+                label=key,
+            )
+        step = WorkflowStepFactory(validator=validator)
+        run = ValidationRunFactory(workflow=step.workflow)
+        engine = EnergyPlusValidator(config={})
+        engine.run_context = RunContext(
+            validation_run=run,
+            step=step,
+            upstream_steps={},
+        )
+        output_envelope = SimpleNamespace(
+            outputs=SimpleNamespace(
+                metrics=EnergyPlusSimulationMetrics(site_eui_kwh_m2=82.5),
+                completed_successfully=True,
+                warning_count=3,
+                has_sql_output=True,
+            ),
+        )
+
+        extracted = engine.extract_output_values(output_envelope)
+
+        assert extracted == {
+            "site_eui_kwh_m2": 82.5,
+            "peak_electric_demand_w": None,
+            "completed_successfully": True,
+            "warning_count": 3,
+            "has_sql_output": True,
+        }
 
     def test_promoted_input_not_visible_in_producing_step(self):
         """Why this matters: enforces ADR-2026-05-22b's downstream-only rule.

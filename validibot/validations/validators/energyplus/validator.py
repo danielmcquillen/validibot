@@ -218,9 +218,9 @@ class EnergyPlusValidator(AdvancedValidator):
 
         Returns:
             Dict of metrics keyed by field name (matching catalog slugs), with
-            None values filtered out AND filtered to keys the catalog
-            declares as OUTPUT-direction definitions. Returns None if
-            extraction fails.
+            unavailable declared values preserved as ``None`` and filtered to
+            keys the catalog declares as OUTPUT-direction definitions. Returns
+            None only if the envelope cannot be read.
         """
         try:
             outputs = getattr(output_envelope, "outputs", None)
@@ -231,16 +231,39 @@ class EnergyPlusValidator(AdvancedValidator):
             if not metrics:
                 return None
 
-            # Pydantic model_dump converts to dict; filter None values
+            # Pydantic model_dump converts to dict. Preserve None values: the
+            # EnergyPlus catalog is an honest fixed contract, and assertions
+            # need to distinguish "declared but unavailable" from an unknown key.
             if hasattr(metrics, "model_dump"):
                 raw_metrics = metrics.model_dump(mode="json")
             elif isinstance(metrics, dict):
-                raw_metrics = metrics
+                raw_metrics = dict(metrics)
             else:
                 return None
 
-            non_null = {k: v for k, v in raw_metrics.items() if v is not None}
-            return self._filter_to_catalog_outputs(non_null)
+            evidence_keys = (
+                "energyplus_binary_version",
+                "energyplus_binary_build",
+                "idd_version",
+                "idd_build",
+                "idd_path",
+                "version_match",
+                "completed_successfully",
+                "energyplus_returncode",
+                "execution_seconds",
+                "warning_count",
+                "severe_count",
+                "fatal_count",
+                "review_issue_count",
+                "has_sql_output",
+                "has_err_output",
+                "has_csv_output",
+                "has_eso_output",
+            )
+            raw_metrics.update(
+                {key: getattr(outputs, key, None) for key in evidence_keys},
+            )
+            return self._filter_to_catalog_outputs(raw_metrics)
         except (AttributeError, TypeError, ValueError) as exc:
             logger.warning(
                 "Could not extract step output values from EnergyPlus envelope: %s",

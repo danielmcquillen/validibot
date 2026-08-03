@@ -698,6 +698,13 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
     "SCHEMA_PATH_PREFIX": "/api/",
+    # Workflow definitions call this field ``output_retention`` while run
+    # snapshots call it ``output_retention_policy``. Both use the same
+    # TextChoices contract, so give the shared values one stable component
+    # name instead of letting drf-spectacular generate two aliases.
+    "ENUM_NAME_OVERRIDES": {
+        "OutputRetentionEnum": "validibot.submissions.constants.OutputRetention",
+    },
     # Keep service-to-service routes (the /api/v1/mcp/* helper surface) out
     # of the user-facing reference — they reject user API keys by design.
     # See config/schema.py for the rationale.

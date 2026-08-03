@@ -60,7 +60,12 @@ Run `just` to see all available commands.
 
 ## Setting Up a New Environment
 
-The `gcp-init-stage` command works for all stages (dev, staging, prod). The command is idempotent - it checks for existing resources and only creates what's missing, making it safe to re-run.
+The `just gcp init-stage` command works for all stages (dev, staging, prod). The
+command is idempotent: it checks for existing resources and only creates what
+is missing, making it safe to re-run. There is no single command that performs
+the complete first-time installation; infrastructure, generated secret
+configuration, application deployment, and managed validator setup are
+separate checkpoints.
 
 **Current production resources:**
 
@@ -209,7 +214,8 @@ Before writing schema changes, the migration job runs the read-only
 `check_migration_history` preflight. It refuses a database that records one of
 the deliberately removed pre-2026-07-16 migration tails instead of attempting
 duplicate operations over that older schema. No separate first-install command
-is required.
+is required for migrations or application data. Managed Cloud Run validator
+backends are a separate release boundary and still require Step 6.
 
 For recovery, `just gcp migrate <stage>` reruns migration preparation and
 `just gcp setup-data <stage>` explicitly refreshes every initialized data
@@ -218,17 +224,23 @@ concern using the currently deployed image.
 ### Step 6: Deploy Validators
 
 ```bash
-# Production: inspect and update one independent backend release.
-just gcp validator-status prod
-just gcp validator-update prod energyplus
+# Daemonless crane is preferred; Docker Buildx is the fallback.
+crane version  # or: docker info
+
+# A fresh stage has no active managed backend routes. Inspect it, then install
+# and activate every latest offered backend release.
+just gcp validator-status <stage>
+just gcp validator-setup <stage>
 ```
 
-The command reads the offered EnergyPlus version from
-`validibot-validator-backends/backends.toml`, verifies its backend-specific tag
+Setup reads every offered backend version from
+`validibot-validator-backends/backends.toml`, verifies each backend-specific tag
 and release JSON, copies the exact GHCR digest into GAR without rebuilding,
 creates release-specific Service and Job resources, imports the database
-pairs, and runs normal plus Job-only acceptance before changing EnergyPlus
-routing.
+pairs, and runs normal plus Job-only acceptance before activating all backend
+routes together. A stage-specific reusable management Job performs each
+backend's import and both acceptance phases in one execution. For later
+releases, use `just gcp validator-update <stage> [backend]` instead of setup.
 
 The release-specific Service/Job pair is the provider identity. The database
 route selects the active pair, and each execution attempt snapshots the exact
@@ -238,31 +250,51 @@ backend images, deployment records, and hosted operator policy in their
 respective repositories:
 `validibot-project/docs/operations/validator-backend-gcp-architecture.md`.
 
-The stage must already be in maintenance mode. Attempt-scoped token delivery
-and ambient-IAM denial are fixed GCP contracts; there are no storage rollout
-flags to configure. Image strictness remains configurable, and the production
-environment selects `VALIDATOR_BACKEND_IMAGE_POLICY=digest`. The acceptance
-command verifies the signed release, removes any historical validator storage
-binding, proves effective IAM denial, activates the candidate internally, runs
-the four real canaries and 20-attempt bursts, retains one private JSON report,
-exercises rollback to capability-aware Jobs, reactivates the accepted Services,
-and restores full maintenance mode. If any check fails, it restores Job routing
-but never re-grants ambient storage access.
+Setup and update move a complete `LIVE` stage into maintenance and restore its
+initial mode after the operation. Their lower-level acceptance step requires
+maintenance. Attempt-scoped token delivery and ambient-IAM denial are fixed GCP
+contracts; there are no storage rollout flags to configure. Image strictness
+remains configurable, and the production environment selects
+`VALIDATOR_BACKEND_IMAGE_POLICY=digest`. Acceptance verifies the signed
+release, removes any historical validator storage binding, proves effective
+IAM denial, activates the candidate internally, runs every compatible semantic
+canary with three concurrent attempts in both Service and Job mode, retains
+private JSON reports, exercises capability-aware Job routing, parks the
+accepted candidate until final activation, and restores full maintenance mode.
+The release smoke records individual timings and min/median/max summaries; it
+does not claim p50/p95 performance evidence. If any check fails, it restores
+the prior accepted route but never re-grants ambient storage access.
+
+Use `just gcp validator-latency-report prod 168 20` separately when at least 20
+real executions exist for an immutable backend, execution kind, and revision.
+That operational report—not routine release acceptance—is the percentile
+measurement surface.
+
+Maintenance pauses rather than deletes Cloud Tasks. Before a candidate is
+deployed or routed, setup and update require both the application queue and the
+validator-provider queue to be empty, and require every managed execution
+attempt in the database to be terminal. If work remains, the command changes
+no provider route and restores the lifecycle mode that was active on entry, so
+the preserved work continues against the existing accepted release. This gate
+is required because private acceptance temporarily resumes the shared queues.
+If attempt-scoped storage authority cannot be prepared before Cloud Tasks is
+called, the claimed attempt is failed immediately; it is not left
+`DISPATCHING` until the acceptance timeout.
 
 Development may use the backend repo's local build/push recipes; production
 intentionally refuses that unsigned path.
 
-Production mirroring copies the verified GHCR digest into GAR with Docker
-Buildx; it does not rebuild the backend. Check the operator machine before
-starting setup or an update:
+Production mirroring prefers daemonless `crane` and falls back to Docker
+Buildx; it never rebuilds the backend and skips a copy when GAR already has the
+verified digest. Check the operator machine before starting setup or an update:
 
 ```bash
-docker info
+crane version  # or: docker info
 ```
 
-If Docker is unavailable, the release command now fails immediately before
-changing a provider resource. If a multi-step setup or update is interrupted,
-verify the stage is `LIVE` or `MAINTENANCE`; use
+If neither registry client is available, the release command fails immediately
+before changing a provider resource. If a multi-step setup or update is
+interrupted, verify the stage is `LIVE` or `MAINTENANCE`; use
 `VALIDATOR_PROVIDER_RETENTION_MODE=drain-and-retain` for recovery and do not
 manually delete validator providers. To restore an isolated stage without
 deleting providers:
@@ -302,14 +334,11 @@ the normal seven-day drain and `validator-cleanup` lifecycle. Do not manually
 delete legacy providers: use the reconciliation command so provider deletion
 is recorded and active or in-flight routes are protected.
 
-### Step 7: Set Up Scheduled Jobs
+### Step 7: Verify Deployment
 
-```bash
-# Create Cloud Scheduler jobs for cleanup tasks
-just gcp scheduler-setup <stage>
-```
-
-### Step 8: Verify Deployment
+`just gcp deploy-all <stage>` already synchronizes the managed Cloud Scheduler
+jobs. `just gcp scheduler-setup <stage>` remains available as an explicit
+recovery command; it is not another first-install step.
 
 ```bash
 # Check status and get service URL

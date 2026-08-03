@@ -19,6 +19,14 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_GCP_RECIPES = REPO_ROOT / "just" / "gcp" / "mod.just"
+CERTIFICATION_COMMAND = (
+    REPO_ROOT
+    / "validibot"
+    / "validations"
+    / "management"
+    / "commands"
+    / "certify_validator_backend_release.py"
+)
 ROUTINE_RECIPE_HEADERS = (
     "validator-setup stage",
     "validator-status stage",
@@ -26,8 +34,8 @@ ROUTINE_RECIPE_HEADERS = (
     'validator-rollback stage backend operation="release"',
     "validator-cleanup stage",
 )
-EXPECTED_OUTGOING_PROVIDER_REVERIFY_COUNT = 2
 EXPECTED_STATUS_SELECTION_CALL_COUNT = 3
+EXPECTED_NORMAL_ROUTE_REFERENCES = 3
 
 
 def _recipe(text: str, name: str, next_marker: str) -> str:
@@ -176,15 +184,24 @@ def test_setup_and_multi_update_activate_selected_backends_as_one_group():
         'validator-update stage backend=""',
         "# Roll back one backend",
     )
+    acceptance = _recipe(
+        text,
+        'validator-acceptance name stage release_tag attempts="3" '
+        'final_mode="normal" outgoing_version=""',
+        "# Historical all-backend acceptance",
+    )
+    certifier = CERTIFICATION_COMMAND.read_text(encoding="utf-8")
 
     for recipe in (setup, update):
         assert "activate_validator_backend_release_group" in recipe
         assert "--release=${" in recipe
         assert "_validator-status-json" in recipe
         assert "activation-check" in recipe
-        assert "validator-deployments-sync" in recipe
-        assert "validator-services-register" in recipe
+        assert "validator-acceptance" in recipe
         assert 'management-cmd {{stage}} "$GROUP_COMMAND"' in recipe
+    assert "certify_validator_backend_release" in acceptance
+    assert '"sync_gcp_validator_deployments"' in certifier
+    assert '"sync_gcp_validator_services"' in certifier
 
 
 def test_validator_mutations_restore_the_mode_that_was_active_on_entry():
@@ -228,27 +245,19 @@ def test_update_reverifies_and_round_trips_the_outgoing_release():
         'validator-update stage backend=""',
         "# Roll back one backend",
     )
+    certifier = CERTIFICATION_COMMAND.read_text(encoding="utf-8")
 
     assert 'old_source_tag="${selected_backend}-v${old_version}"' in update
     assert 'validator-release-verify "$selected_backend"' in update
+    assert '3 inactive "$old_version"' in update
+    assert "Reverifying and round-tripping the outgoing rollback pair" in certifier
+    assert 'job_name=options["outgoing_job_name"]' in certifier
+    assert 'service_name=options["outgoing_service_name"]' in certifier
+    assert 'release_version=options["outgoing_version"]' in certifier
     assert (
-        update.count(
-            'validator-deployments-sync "$selected_backend" {{stage}} \\\n'
-            '                "$old_version"'
-        )
-        == EXPECTED_OUTGOING_PROVIDER_REVERIFY_COUNT
+        certifier.count("ExecutionRoutingMode.NORMAL")
+        >= EXPECTED_NORMAL_ROUTE_REFERENCES
     )
-    rollback = (
-        'validator-backend-route "$selected_backend" {{stage}} \\\n'
-        '                "$old_version" normal OPERATOR_DEACTIVATION'
-    )
-    restore_candidate = (
-        'validator-backend-route "$selected_backend" {{stage}} \\\n'
-        '                "$version" normal OPERATOR_DEACTIVATION'
-    )
-    assert rollback in update
-    assert restore_candidate in update
-    assert update.index(rollback) < update.index(restore_candidate)
 
 
 def test_update_migrates_missing_legacy_release_evidence_after_confirmation():
@@ -303,7 +312,8 @@ def test_management_command_failure_prints_the_django_execution_log():
         "# DESTRUCTIVE: completely reset",
     )
 
-    assert "if ! EXECUTION=$(gcloud run jobs execute" in command
+    assert 'if ! gcloud run jobs execute "$JOB_NAME"' in command
+    assert '>"$EXECUTION_FILE"' in command
     assert "gcloud run jobs executions list" in command
     assert "gcloud beta run jobs executions logs read" in command
 

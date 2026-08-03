@@ -375,6 +375,77 @@ def test_ambiguous_provider_task_create_moves_attempt_to_unknown(monkeypatch):
     GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT=INVOKER,
     GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS=1800,
 )
+def test_capability_failure_before_provider_contact_is_terminal(monkeypatch):
+    """A local preflight failure must fail immediately instead of timing out."""
+    attempt, _deployment = _attempt()
+    transitions = []
+    create_task = MagicMock()
+    monkeypatch.setattr(
+        "validibot.validations.services.execution.gcp_service_dispatch."
+        "get_active_execution_attempt",
+        lambda _step_run: attempt,
+    )
+
+    def _transition(_attempt_id, target, **_kwargs):
+        transitions.append(target)
+        attempt.state = target
+        return attempt, True
+
+    monkeypatch.setattr(
+        "validibot.validations.services.execution.gcp_service_dispatch."
+        "transition_execution_attempt",
+        _transition,
+    )
+    monkeypatch.setattr(
+        "validibot.validations.services.execution.gcp_service_dispatch."
+        "issue_attempt_gcs_runtime_capability",
+        MagicMock(side_effect=RuntimeError("temporary token failure")),
+    )
+    monkeypatch.setattr(
+        "validibot.validations.services.execution.gcp_service_dispatch."
+        "create_http_task",
+        create_task,
+    )
+    monkeypatch.setattr(
+        "validibot.validations.services.execution.gcp_service_dispatch."
+        "build_input_evidence_snapshot",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        "validibot.validations.services.execution.gcp_service_dispatch."
+        "sha256_hex_for_model",
+        lambda _envelope: "c" * 64,
+    )
+    envelope = SimpleNamespace(
+        context=SimpleNamespace(
+            expected_output_uri="gs://bucket/runs/attempt/output.json"
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="temporary token failure"):
+        dispatch_cloud_run_service_validation(
+            step_run=SimpleNamespace(pk="step-1"),
+            job_name=SERVICE_NAME,
+            input_envelope_uri="gs://bucket/runs/attempt/input.json",
+            execution_bundle_uri="gs://bucket/runs/attempt",
+            envelope=envelope,
+            submission=object(),
+            step=object(),
+            expected_image_digest=DIGEST,
+        )
+
+    assert transitions == [
+        ExecutionAttemptState.DISPATCHING,
+        ExecutionAttemptState.FAILED,
+    ]
+    create_task.assert_not_called()
+
+
+@override_settings(
+    GCP_VALIDATOR_TASK_QUEUE_NAME=QUEUE_NAME,
+    GCP_VALIDATOR_TASK_INVOKER_SERVICE_ACCOUNT=INVOKER,
+    GCP_VALIDATOR_TASK_DISPATCH_DEADLINE_SECONDS=1800,
+)
 def test_unknown_redelivery_recovers_only_the_same_deterministic_task(monkeypatch):
     """Ambiguous acceptance may rebind its task ID but never mint another task."""
     attempt, _deployment = _attempt(state=ExecutionAttemptState.UNKNOWN)

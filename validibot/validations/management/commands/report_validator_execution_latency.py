@@ -60,7 +60,7 @@ class _ReportRow(TypedDict):
     deployment_revision: str
     attempt_count: int
     terminal_count: int
-    acceptance_ready: bool
+    percentile_ready: bool
     stages: dict[str, _StageSummary]
 
 
@@ -125,7 +125,7 @@ class Command(BaseCommand):
             "--minimum-samples",
             type=int,
             default=20,
-            help="Sample count required for an acceptance-ready group (default: 20).",
+            help="Sample count required for a percentile-ready group (default: 20).",
         )
         parser.add_argument(
             "--json",
@@ -179,7 +179,7 @@ class Command(BaseCommand):
                 stage_name: _stage_summary(stage_values)
                 for stage_name, stage_values in values["stages"].items()
             }
-            acceptance_samples = stage_summaries["provider_start"]["count"]
+            percentile_samples = stage_summaries["provider_start"]["count"]
             rows.append(
                 {
                     "validator": validator,
@@ -187,7 +187,7 @@ class Command(BaseCommand):
                     "deployment_revision": revision,
                     "attempt_count": values["attempt_count"],
                     "terminal_count": values["terminal_count"],
-                    "acceptance_ready": acceptance_samples >= minimum_samples,
+                    "percentile_ready": percentile_samples >= minimum_samples,
                     "stages": stage_summaries,
                 }
             )
@@ -206,7 +206,7 @@ class Command(BaseCommand):
             return
         for row in rows:
             provider_start = row["stages"]["provider_start"]
-            readiness = "ready" if row["acceptance_ready"] else "needs samples"
+            readiness = "ready" if row["percentile_ready"] else "needs samples"
             self.stdout.write(
                 f"{row['validator']} {row['deployment_kind']} "
                 f"{row['deployment_revision']}: attempts={row['attempt_count']}, "

@@ -27,11 +27,11 @@ from django.utils import timezone
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.acceptance import BACKENDS
+from validibot.validations.acceptance import ROUTINE_ACCEPTANCE_ATTEMPTS
 from validibot.validations.acceptance import AcceptanceFixtureBuilder
 from validibot.validations.acceptance import AcceptanceReport
 from validibot.validations.acceptance import AcceptanceScenario
 from validibot.validations.acceptance import ValidatorAcceptanceRunner
-from validibot.validations.acceptance import _percentile
 from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
@@ -41,14 +41,15 @@ from validibot.validations.services.execution.deployments import (
     ExecutionDeploymentResolutionError,
 )
 
-EXPECTED_SINGLE_SAMPLE_P95 = 3.0
-EXPECTED_TWENTY_SAMPLE_P50 = 10.0
-EXPECTED_TWENTY_SAMPLE_P95 = 19.0
-EXPECTED_SCALE_TO_ZERO_START_P95 = 30.0
+EXPECTED_START_TIMING_SUMMARY = {
+    "minimum": 2.0,
+    "median": 3.0,
+    "maximum": 4.0,
+}
+EXPECTED_SCALE_TO_ZERO_START_MEDIAN = 30.0
 EXPECTED_ENERGYPLUS_U_FACTOR = 2.0
 EXPECTED_FMU_INPUT = 42.0
 EXPECTED_PORTFOLIO_MANAGER_PROPERTY_ID = "9876543"
-REPRESENTATIVE_SAMPLE_SIZE = 20
 COMPATIBLE_SEMANTIC_VALIDATOR_COUNT = 2
 SHA256_HEX_LENGTH = 64
 ACCEPTANCE_BACKEND = "shacl"
@@ -61,7 +62,7 @@ def test_report_is_machine_readable_and_fails_closed():
     report = AcceptanceReport(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
-        attempts_per_backend=20,
+        attempts_per_backend=ROUTINE_ACCEPTANCE_ATTEMPTS,
     )
     report.add("VA-OK", "passed", "A prerequisite passed.")
     report.add("VA-NO", "failed", "A canary failed.", error="bounded")
@@ -79,17 +80,14 @@ def test_report_is_machine_readable_and_fails_closed():
     json.dumps(document)
 
 
-def test_nearest_rank_percentile_is_deterministic_for_small_and_full_bursts():
-    """Stable percentile math keeps repeated reports directly comparable."""
-    assert _percentile([3.0], 95) == EXPECTED_SINGLE_SAMPLE_P95
-    assert (
-        _percentile([float(value) for value in range(1, 21)], 50)
-        == EXPECTED_TWENTY_SAMPLE_P50
+def test_runner_defaults_to_small_concurrent_release_smoke():
+    """Routine certification must test concurrency without becoming load testing."""
+    runner = ValidatorAcceptanceRunner(
+        backend=ACCEPTANCE_BACKEND,
+        release_tag=ACCEPTANCE_RELEASE_TAG,
     )
-    assert (
-        _percentile([float(value) for value in range(1, 21)], 95)
-        == EXPECTED_TWENTY_SAMPLE_P95
-    )
+
+    assert runner.attempts_per_backend == ROUTINE_ACCEPTANCE_ATTEMPTS
 
 
 @pytest.mark.parametrize("release_tag", ["1.2.3", "latest", "v1.2"])
@@ -155,7 +153,7 @@ def test_storage_gate_requires_operator_iam_proof():
     report = AcceptanceReport(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
-        attempts_per_backend=20,
+        attempts_per_backend=ROUTINE_ACCEPTANCE_ATTEMPTS,
     )
 
     with patch(
@@ -182,7 +180,7 @@ def test_operator_iam_proof_allows_storage_acceptance():
     report = AcceptanceReport(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
-        attempts_per_backend=20,
+        attempts_per_backend=ROUTINE_ACCEPTANCE_ATTEMPTS,
     )
     provider_result = SimpleNamespace(passed=True, checks=[])
 
@@ -331,7 +329,7 @@ def test_latency_gate_uses_only_attempts_from_the_exact_launched_burst():
     runner = ValidatorAcceptanceRunner(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
-        attempts_per_backend=2,
+        attempts_per_backend=ROUTINE_ACCEPTANCE_ATTEMPTS,
     )
     scenario = AcceptanceScenario(
         backend=BACKENDS[2],
@@ -361,6 +359,15 @@ def test_latency_gate_uses_only_attempts_from_the_exact_launched_burst():
             provider_started_at=accepted_at + timedelta(seconds=3),
             callback_received_at=accepted_at + timedelta(seconds=6),
         ),
+        SimpleNamespace(
+            deployment=SimpleNamespace(
+                deployment_revision="service-r7",
+                minimum_instances=0,
+            ),
+            provider_accepted_at=accepted_at,
+            provider_started_at=accepted_at + timedelta(seconds=4),
+            callback_received_at=accepted_at + timedelta(seconds=8),
+        ),
     ]
     querysets = []
     for attempt in attempts:
@@ -372,11 +379,12 @@ def test_latency_gate_uses_only_attempts_from_the_exact_launched_burst():
     report = AcceptanceReport(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
-        attempts_per_backend=2,
+        attempts_per_backend=ROUTINE_ACCEPTANCE_ATTEMPTS,
     )
     launched = [
         (1, SimpleNamespace(pk="run-1")),
         (2, SimpleNamespace(pk="run-2")),
+        (3, SimpleNamespace(pk="run-3")),
     ]
 
     with patch(
@@ -387,9 +395,32 @@ def test_latency_gate_uses_only_attempts_from_the_exact_launched_burst():
 
     check = report.checks[-1]
     assert check.status == "passed"
-    assert check.details["provider_start_p95_seconds"] == EXPECTED_SINGLE_SAMPLE_P95
+    assert (
+        check.details["provider_start_summary_seconds"] == EXPECTED_START_TIMING_SUMMARY
+    )
+    assert check.details["timing_samples"] == [
+        {
+            "sequence": 1,
+            "validation_run_id": "run-1",
+            "provider_start_seconds": 2.0,
+            "provider_total_seconds": 5.0,
+        },
+        {
+            "sequence": 2,
+            "validation_run_id": "run-2",
+            "provider_start_seconds": 3.0,
+            "provider_total_seconds": 6.0,
+        },
+        {
+            "sequence": 3,
+            "validation_run_id": "run-3",
+            "provider_start_seconds": 4.0,
+            "provider_total_seconds": 8.0,
+        },
+    ]
     assert check.details["deployment_revisions"] == ["service-r7"]
-    assert check.details["representative_sample"] is False
+    assert "provider_start_p95_seconds" not in check.details
+    assert "representative_sample" not in check.details
 
 
 def test_scale_to_zero_startup_latency_is_observed_without_universal_threshold():
@@ -397,7 +428,7 @@ def test_scale_to_zero_startup_latency_is_observed_without_universal_threshold()
     runner = ValidatorAcceptanceRunner(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
-        attempts_per_backend=2,
+        attempts_per_backend=ROUTINE_ACCEPTANCE_ATTEMPTS,
     )
     scenario = AcceptanceScenario(
         backend=BACKENDS[2],
@@ -427,6 +458,15 @@ def test_scale_to_zero_startup_latency_is_observed_without_universal_threshold()
             provider_started_at=accepted_at + timedelta(seconds=30),
             callback_received_at=accepted_at + timedelta(seconds=35),
         ),
+        SimpleNamespace(
+            deployment=SimpleNamespace(
+                deployment_revision="service-r7",
+                minimum_instances=0,
+            ),
+            provider_accepted_at=accepted_at,
+            provider_started_at=accepted_at + timedelta(seconds=45),
+            callback_received_at=accepted_at + timedelta(seconds=50),
+        ),
     ]
     querysets = []
     for attempt in attempts:
@@ -438,11 +478,12 @@ def test_scale_to_zero_startup_latency_is_observed_without_universal_threshold()
     report = AcceptanceReport(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
-        attempts_per_backend=2,
+        attempts_per_backend=ROUTINE_ACCEPTANCE_ATTEMPTS,
     )
     launched = [
         (1, SimpleNamespace(pk="run-1")),
         (2, SimpleNamespace(pk="run-2")),
+        (3, SimpleNamespace(pk="run-3")),
     ]
 
     with patch(
@@ -454,11 +495,13 @@ def test_scale_to_zero_startup_latency_is_observed_without_universal_threshold()
     check = report.checks[-1]
     assert check.status == "passed"
     assert check.details["latency_policy"] == (
-        "observed_no_universal_startup_threshold"
+        "release_smoke_observation_no_percentiles_or_threshold"
     )
     assert (
-        check.details["provider_start_p95_seconds"] == EXPECTED_SCALE_TO_ZERO_START_P95
+        check.details["provider_start_summary_seconds"]["median"]
+        == EXPECTED_SCALE_TO_ZERO_START_MEDIAN
     )
+    assert "provider_start_p95_seconds" not in check.details
     assert "provider_start_target_seconds" not in check.details
     assert (
         check.details["provider_start_measurement"]
@@ -753,7 +796,7 @@ def test_management_command_persists_and_prints_one_json_result():
     report = AcceptanceReport(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
-        attempts_per_backend=20,
+        attempts_per_backend=ROUTINE_ACCEPTANCE_ATTEMPTS,
     )
     report.add("VA-ALL", "passed", "All checks passed.")
     report.finish()
@@ -781,7 +824,11 @@ def test_management_command_persists_and_prints_one_json_result():
 
     document = json.loads(output.getvalue())
     assert document["passed"] is True
-    assert document["attempts_per_backend"] == REPRESENTATIVE_SAMPLE_SIZE
+    assert document["attempts_per_backend"] == ROUTINE_ACCEPTANCE_ATTEMPTS
+    assert (
+        runner_class.call_args.kwargs["attempts_per_backend"]
+        == ROUTINE_ACCEPTANCE_ATTEMPTS
+    )
     assert document["evidence"]["uri"] == "gs://private/report.json"
 
 
@@ -790,7 +837,7 @@ def test_management_command_fails_when_private_evidence_is_not_configured():
     report = AcceptanceReport(
         backend=ACCEPTANCE_BACKEND,
         release_tag=ACCEPTANCE_RELEASE_TAG,
-        attempts_per_backend=20,
+        attempts_per_backend=ROUTINE_ACCEPTANCE_ATTEMPTS,
     )
     report.add("VA-ALL", "passed", "All checks passed.")
     report.finish()
@@ -827,22 +874,16 @@ def test_gcp_recipe_accepts_one_backend_in_both_execution_shapes():
     assert "_maintenance-assert-offline" in acceptance_recipe
     assert "cleanup_acceptance()" in acceptance_recipe
     assert "just gcp _enforce-maintenance" in acceptance_recipe
-    assert 'validator-deployments-sync "{{name}}"' in acceptance_recipe
-    assert 'validator-services-register "{{name}}"' in acceptance_recipe
-    assert '"$VERSION" normal' in acceptance_recipe
-    assert '"$VERSION" job-only' in acceptance_recipe
-    assert "allow-unaccepted" in acceptance_recipe
+    assert "certify_validator_backend_release" in acceptance_recipe
+    assert acceptance_recipe.count("just gcp management-cmd") == 1
+    assert "--job-name=$JOB_NAME" in acceptance_recipe
+    assert "--service-name=$SERVICE_NAME" in acceptance_recipe
     assert "--backend={{name}}" in acceptance_recipe
-    assert "--routing-mode=normal" in acceptance_recipe
-    assert "--routing-mode=job-only" in acceptance_recipe
-    assert "--record-acceptance" in acceptance_recipe
     assert "gcloud tasks queues resume" in acceptance_recipe
     assert "gcloud tasks queues pause" in acceptance_recipe
-    assert "--require-persisted-report" in acceptance_recipe
-    assert "--ambient-isolation-verified" in acceptance_recipe
-    assert "production acceptance requires exactly 20" in acceptance_recipe
+    assert "production acceptance requires exactly 3" in acceptance_recipe
     assert "scale-to-zero" in acceptance_recipe
-    assert "CANDIDATE_ROUTED=0" in acceptance_recipe
+    assert "CANDIDATE_TOUCHED=0" in acceptance_recipe
     assert "ACCEPTANCE_FAILURE allow-unaccepted" in acceptance_recipe
     assert "Parking {{name}} $VERSION as inactive" in acceptance_recipe
     assert "maintenance-off" not in acceptance_recipe

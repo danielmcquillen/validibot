@@ -128,18 +128,36 @@ Most first-time GCP setups follow this order:
 source .envs/.production/.google-cloud/.just
 
 just gcp init-stage dev
+# Edit .envs/.dev/.google-cloud/.django using the values from init-stage.
 just gcp secrets dev
 just gcp deploy-all dev
+crane version  # preferred; otherwise ensure `docker info` succeeds
+just gcp validator-status dev
 just gcp validator-setup dev
 ```
 
 `just gcp deploy-all` runs migrations and the guarded, complete application
 initializer before any new service revision receives traffic. The initializer
 owns site/default data, validators and Step I/O, help content, and bundled
-validator resources. There are no separate migration, setup-data, help-sync,
-weather-seed, or scheduler commands in the first-time flow. You can still run
-`just gcp migrate dev` or `just gcp setup-data dev` explicitly for recovery.
-Every managed migration path first runs `python manage.py
+validator resources. It does **not** install the independently released Cloud
+Run validator backends: `validator-setup` verifies, deploys, accepts, and
+activates those Service/Job pairs after the application is ready. There is no
+single command that performs the entire first-time sequence today.
+
+Validator setup and later updates use shared Cloud Tasks queues for private
+acceptance. They enter maintenance, pause both queues, and continue only when
+the queues are empty and every managed execution attempt is terminal. Queued
+tasks are preserved and the previous lifecycle mode is restored if this idle
+check fails. Each stage reuses one zero-idle management Job, and each backend's
+Service and Job acceptance phases run in one remote execution rather than a
+series of temporary Jobs. Each phase uses three concurrent attempts per
+compatible semantic Validator. Larger percentile samples come from the
+separate latency report over accumulated executions, not from every release.
+
+There are no separate migration, setup-data, help-sync, weather-seed, or
+scheduler commands in the first-time flow. You can still run `just gcp migrate
+dev` or `just gcp setup-data dev` explicitly for recovery. Every managed
+migration path first runs `python manage.py
 check_migration_history`. A pre-reset migration-history refusal is a hard stop:
 back up the database and rebuild it through the documented cutover path rather
 than forcing `migrate` over an incompatible schema.

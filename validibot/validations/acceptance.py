@@ -22,6 +22,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import median
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -93,7 +94,7 @@ RELEASE_TAG_PATTERN = re.compile(
     r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$"
 )
 MAX_ATTEMPTS_PER_BACKEND = 20
-REPRESENTATIVE_SAMPLE_SIZE = 20
+ROUTINE_ACCEPTANCE_ATTEMPTS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -680,7 +681,7 @@ class ValidatorAcceptanceRunner:
         *,
         backend: str,
         release_tag: str,
-        attempts_per_backend: int = 1,
+        attempts_per_backend: int = ROUTINE_ACCEPTANCE_ATTEMPTS,
         timeout_seconds: int = 1200,
         poll_interval_seconds: float = 2.0,
         run_storage_probe: bool = True,
@@ -1001,21 +1002,29 @@ class ValidatorAcceptanceRunner:
         scenario: AcceptanceScenario,
         launched,
     ) -> None:
-        """Measure one immutable burst without an arbitrary startup threshold.
+        """Retain timing observations for one immutable release smoke burst.
 
         Correctness, complete timing evidence, and immutable revision identity
         remain release gates. Provider-start and provider-total latency are
-        retained as observations, but neither is compared with a universal
-        startup target. The measured provider-start interval can include
-        provider queueing, Cloud Run provisioning, container startup, and
-        backend setup, so it is not a portable cold-start SLO.
+        retained as individual observations, but a three-attempt release smoke
+        does not claim statistically meaningful percentiles or compare timings
+        with a universal startup target. The measured provider-start interval
+        can include provider queueing, Cloud Run provisioning, container
+        startup, and backend setup, so it is not a portable cold-start SLO.
         """
         provider_start_samples = []
         provider_total_samples = []
+        timing_samples = []
         revisions = set()
         minimum_instances = set()
         service_minimum_instances = set()
-        for _sequence, run in launched:
+        for sequence, run in launched:
+            timing_sample: dict[str, int | str | float | None] = {
+                "sequence": sequence,
+                "validation_run_id": str(run.pk),
+                "provider_start_seconds": None,
+                "provider_total_seconds": None,
+            }
             attempt = (
                 ExecutionAttempt.objects.filter(step_run__validation_run=run)
                 .select_related("deployment")
@@ -1023,6 +1032,7 @@ class ValidatorAcceptanceRunner:
                 .last()
             )
             if attempt is None or attempt.deployment is None:
+                timing_samples.append(timing_sample)
                 continue
             revisions.add(attempt.deployment.deployment_revision)
             observed_minimum = attempt.deployment.minimum_instances
@@ -1037,32 +1047,37 @@ class ValidatorAcceptanceRunner:
                 and attempt.provider_started_at
                 and attempt.provider_started_at >= attempt.provider_accepted_at
             ):
-                provider_start_samples.append(
+                provider_start_seconds = round(
                     (
                         attempt.provider_started_at - attempt.provider_accepted_at
-                    ).total_seconds()
+                    ).total_seconds(),
+                    3,
                 )
+                provider_start_samples.append(provider_start_seconds)
+                timing_sample["provider_start_seconds"] = provider_start_seconds
             if (
                 attempt.provider_accepted_at
                 and attempt.callback_received_at
                 and attempt.callback_received_at >= attempt.provider_accepted_at
             ):
-                provider_total_samples.append(
+                provider_total_seconds = round(
                     (
                         attempt.callback_received_at - attempt.provider_accepted_at
-                    ).total_seconds()
+                    ).total_seconds(),
+                    3,
                 )
+                provider_total_samples.append(provider_total_seconds)
+                timing_sample["provider_total_seconds"] = provider_total_seconds
+            timing_samples.append(timing_sample)
 
         details = {
             "samples": len(provider_start_samples),
             "required_samples": self.attempts_per_backend,
-            "representative_sample": (
-                self.attempts_per_backend >= REPRESENTATIVE_SAMPLE_SIZE
-            ),
+            "timing_samples": timing_samples,
             "deployment_revisions": sorted(revisions),
             "minimum_instances": sorted(minimum_instances),
             "service_minimum_instances": sorted(service_minimum_instances),
-            "latency_policy": "observed_no_universal_startup_threshold",
+            "latency_policy": ("release_smoke_observation_no_percentiles_or_threshold"),
             "provider_start_measurement": (
                 "provider_accepted_at_to_provider_started_at"
             ),
@@ -1080,16 +1095,14 @@ class ValidatorAcceptanceRunner:
         elif service_minimum_instances and service_minimum_instances != {0}:
             failure = "validator Service minimum instances must remain zero"
         else:
-            start_p50 = _percentile(provider_start_samples, 50)
-            start_p95 = _percentile(provider_start_samples, 95)
-            total_p50 = _percentile(provider_total_samples, 50)
-            total_p95 = _percentile(provider_total_samples, 95)
             details.update(
                 {
-                    "provider_start_p50_seconds": start_p50,
-                    "provider_start_p95_seconds": start_p95,
-                    "provider_total_p50_seconds": total_p50,
-                    "provider_total_p95_seconds": total_p95,
+                    "provider_start_summary_seconds": _timing_summary(
+                        provider_start_samples
+                    ),
+                    "provider_total_summary_seconds": _timing_summary(
+                        provider_total_samples
+                    ),
                 }
             )
         check_id = _scenario_check_id(scenario, "LATENCY")
@@ -1097,7 +1110,10 @@ class ValidatorAcceptanceRunner:
             report.add(
                 check_id,
                 "failed",
-                "The exact acceptance burst did not produce valid latency evidence.",
+                (
+                    "The exact acceptance burst did not produce complete "
+                    "timing observations."
+                ),
                 error=failure,
                 **details,
             )
@@ -1106,9 +1122,9 @@ class ValidatorAcceptanceRunner:
                 check_id,
                 "passed",
                 (
-                    "The exact acceptance burst produced complete latency "
-                    "evidence; startup timing is observed, not compared with "
-                    "a universal threshold."
+                    "The exact acceptance burst produced complete timing "
+                    "observations; this release smoke does not claim "
+                    "performance percentiles or use a universal threshold."
                 ),
                 **details,
             )
@@ -1328,11 +1344,13 @@ def _scenario_check_id(scenario: AcceptanceScenario, suffix: str) -> str:
     return f"VA-{scenario.backend.key.upper()}{semantic}-{suffix}"
 
 
-def _percentile(values: list[float], percentile: int) -> float:
-    """Return a deterministic nearest-rank percentile rounded for evidence."""
-    ordered = sorted(values)
-    rank = max(1, (percentile * len(ordered) + 99) // 100)
-    return round(ordered[rank - 1], 3)
+def _timing_summary(values: list[float]) -> dict[str, float]:
+    """Summarize a small smoke burst without presenting it as a percentile."""
+    return {
+        "minimum": min(values),
+        "median": round(median(values), 3),
+        "maximum": max(values),
+    }
 
 
 def _iso(value) -> str | None:

@@ -154,6 +154,20 @@ backend's signed release, creates the release-specific Service and Job, imports
 one pair per compatible semantic Validator, and runs normal plus Job-only
 acceptance before it changes only EnergyPlus routes.
 
+The operator path retains one stage-specific Cloud Run management Job at zero
+idle compute. One execution imports the exact pair, runs the required Service
+burst, switches the private route, runs the required Job burst, records
+acceptance, and leaves the candidate in its requested final mode. Each burst
+uses three concurrent attempts per compatible semantic Validator. This proves
+basic fan-out without turning routine release certification into a load test.
+
+Setup and update run acceptance through the shared application and provider
+Cloud Tasks queues. Before changing a candidate route, the operator command
+enters maintenance and requires both queues to be empty and all managed
+execution attempts to be terminal. Paused tasks are preserved, not canceled;
+if the idle check fails, the prior lifecycle mode and accepted routes are
+restored before those tasks resume.
+
 Validator GCS capabilities are unconditional and stage IAM must already deny
 the runtime identity ambient object access. A successful command leaves
 Services primary but keeps the whole application offline. A failure restores
@@ -186,8 +200,8 @@ registries contain byte-identical release images.
    one, Startup CPU Boost, service-level min/max capacity, and the shared HTTP
    parent entrypoint
 4. **Reconciles IAM permissions**:
-   - Adds custom `validibot_job_runner` role to the main SA so the web/worker service can trigger the job with env overrides
-   - Grants `roles/run.invoker` on the worker to the validator runtime SA
+   - Reconciles the main SA's custom `validibot_job_runner` role once per setup/update
+   - Reconciles `roles/run.invoker` on the worker once per setup/update
    - Removes every validator Service invoker except the dedicated provider-task identity
 5. Leaves application routing unchanged. `validator-acceptance` performs
    registration and activation only after observing the exact ready revision,
@@ -278,10 +292,12 @@ offline; mixed capability-aware and legacy images are not supported:
 
    This command requires Policy
    Troubleshooter denial, probes allowed and forbidden downscoped-token
-   operations, runs every compatible EnergyPlus semantic canary and its
-   20-attempt burst, then repeats through Job-only routing and retains private
-   JSON. Failure restores the previous accepted pair but never restores ambient
-   storage access.
+   operations, runs every compatible EnergyPlus semantic canary with three
+   concurrent attempts, then repeats through Job-only routing and retains
+   private JSON. The report keeps individual timing observations and
+   min/median/max summaries, but no release-smoke percentile claim. Failure
+   restores the previous accepted pair but never restores ambient storage
+   access.
 
 ### Deploy-time environment variables
 

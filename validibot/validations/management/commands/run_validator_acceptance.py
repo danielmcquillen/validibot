@@ -13,6 +13,7 @@ import json
 from django.core.management.base import BaseCommand
 from django.core.management.base import CommandError
 
+from validibot.validations.acceptance import ROUTINE_ACCEPTANCE_ATTEMPTS
 from validibot.validations.acceptance import ValidatorAcceptanceRunner
 from validibot.validations.acceptance import persist_acceptance_report
 
@@ -40,8 +41,11 @@ class Command(BaseCommand):
         parser.add_argument(
             "--attempts",
             type=int,
-            default=20,
-            help="Concurrent canaries per backend (default: 20).",
+            default=ROUTINE_ACCEPTANCE_ATTEMPTS,
+            help=(
+                "Concurrent release-smoke canaries per compatible semantic "
+                f"Validator (default: {ROUTINE_ACCEPTANCE_ATTEMPTS})."
+            ),
         )
         parser.add_argument(
             "--timeout-seconds",

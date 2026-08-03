@@ -301,11 +301,38 @@ def dispatch_cloud_run_service_validation(
     task_name = (
         f"projects/{project_id}/locations/{region}/queues/{queue_name}/tasks/{task_id}"
     )
-    capability = issue_attempt_gcs_runtime_capability(
-        execution_bundle_uri=execution_bundle_uri,
-        project_id=project_id,
-        refresh_url=build_validation_storage_capability_refresh_url(),
-    )
+    try:
+        capability = issue_attempt_gcs_runtime_capability(
+            execution_bundle_uri=execution_bundle_uri,
+            project_id=project_id,
+            refresh_url=build_validation_storage_capability_refresh_url(),
+        )
+    except Exception:
+        # No Cloud Task request has been made yet. A freshly claimed attempt is
+        # therefore definitively failed, not ambiguous. Leaving it in
+        # DISPATCHING makes acceptance wait until its full timeout even though
+        # the provider could never have seen it. Preserve UNKNOWN redeliveries,
+        # which may represent an earlier ambiguous provider handoff.
+        if attempt.state == ExecutionAttemptState.DISPATCHING:
+            transition_execution_attempt(
+                attempt.pk,
+                ExecutionAttemptState.FAILED,
+                last_error_code="runtime_capability_preparation_failed",
+                last_error=(
+                    "Runtime storage capability preparation failed before "
+                    "provider contact."
+                ),
+            )
+        logger.warning(
+            "Validator runtime capability preparation failed before provider contact",
+            extra={
+                "attempt_id": str(attempt.pk),
+                "deployment_id": str(deployment.pk),
+                "provider_resource_name": snapshot.provider_resource_name,
+            },
+            exc_info=True,
+        )
+        raise
     payload = {
         "schema_version": 1,
         "attempt_id": str(attempt.pk),

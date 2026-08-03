@@ -1061,8 +1061,8 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "--min-instances" not in validator_guard
         assert "metadata.labels.validator" in block
         assert "VALIDIBOT_MCP_ENABLED=false" in block
-        assert 'queues pause "$QUEUE_NAME"' in block
-        assert 'queues pause "$PROVIDER_QUEUE_NAME"' in block
+        assert 'pause_queue "$QUEUE_NAME" 1' in block
+        assert 'pause_queue "$PROVIDER_QUEUE_NAME" 0' in block
         assert "--activation-policy NEVER" not in block
         assert "database state unchanged" in block
         assert "MAINTENANCE_ERRORS" in block
@@ -1247,6 +1247,42 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             "just gcp _enforce-maintenance {{stage}}",
         )
 
+    def test_mode_live_resumes_existing_runtime_without_redeploying_it(self):
+        """Leaving maintenance must change lifecycle state, not app definitions.
+
+        Scheduler definitions and the worker revision were already reconciled
+        by deployment. Rewriting them during every validator transaction adds
+        control-plane latency and creates unrelated revisions without making
+        the transition safer.
+        """
+        block = self._block_between(
+            "mode-live stage:",
+            "# Report the reconciled lifecycle mode.",
+        )
+
+        assert "scheduler-setup" not in block
+        assert 'services update "$WORKER_SERVICE"' not in block
+        assert 'scheduler_state=$(gcloud scheduler jobs describe "$job"' in block
+        assert 'resume_queue "$QUEUE_NAME"' in block
+        assert "Latest-only validator reconciliation already completed" in block
+
+    def test_management_commands_reuse_one_stage_job(self):
+        """Remote Django commands must not create and delete a Job per call."""
+        block = self._block_between(
+            "management-cmd stage command:",
+            "# DESTRUCTIVE: completely reset a deployed environment.",
+        )
+
+        assert '${APP_NAME}-management"' in block
+        assert '${APP_NAME}-management-{{stage}}"' in block
+        assert "gcloud run jobs describe" in block
+        assert "gcloud run jobs update" in block
+        assert "gcloud run jobs create" in block
+        assert "run_encoded_management_command" in block
+        assert "VALIDIBOT_MANAGEMENT_COMMAND_B64" in block
+        assert "gcloud run jobs executions cancel" in block
+        assert "gcloud run jobs delete" not in block
+
     def test_mcp_maintenance_deploy_is_disabled_until_stage_reopens(self):
         """An offline MCP revision must not require the offline Django API.
 
@@ -1327,6 +1363,98 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert "docker buildx imagetools create" in block
         assert '"${GHCR_IMAGE}@${GHCR_DIGEST}"' in block
         assert "docker build " not in block
+
+    def test_validator_mutations_require_a_registry_client_before_lifecycle_work(self):
+        """A missing local registry client must not alter the remote stage.
+
+        Initial setup and routine updates both mirror signed GHCR bytes into
+        GAR. They therefore prefer daemonless ``crane`` and fall back to a
+        running Docker daemon before reading lifecycle state or entering
+        maintenance. The lower-level mirror keeps the same guard.
+        """
+        preflight = self._block_between(
+            "_validator-release-require-registry-client:",
+            "_validator-release-mirror-image name release_tag:",
+        )
+        setup = self._block_between(
+            "validator-setup stage:",
+            "# Reconcile one backend",
+        )
+        update = self._block_between(
+            'validator-update stage backend="":',
+            "# Roll back one backend",
+        )
+        mirror = self._block_between(
+            "_validator-release-mirror-image name release_tag:",
+            "# Mirror all signed release images",
+        )
+
+        assert "command -v crane" in preflight
+        assert "command -v docker" in preflight
+        assert "docker info" in preflight
+        for recipe in (setup, update):
+            assert "_validator-release-require-registry-client" in recipe
+            assert recipe.index("_validator-release-require-registry-client") < (
+                recipe.index("_mode-current")
+            )
+        assert "_validator-release-require-registry-client" in mirror
+
+    def test_validator_mutations_require_an_idle_stage_before_route_changes(self):
+        """Private canaries must never share queues with real validation work.
+
+        Setup and update isolate the stage, then require both paused queues to
+        be empty and every managed execution attempt to be terminal. The check
+        must precede provider deployment, evidence migration, acceptance, and
+        route mutation so the existing lifecycle-restoration traps can return
+        queued work to the original release unchanged.
+        """
+        preflight = self._block_between(
+            "_validator-release-require-idle stage:",
+            "# Routine read-only status command",
+        )
+        setup = self._block_between(
+            "validator-setup stage:",
+            "# Reconcile one backend",
+        )
+        update = self._block_between(
+            'validator-update stage backend="":',
+            "# Roll back one backend",
+        )
+
+        assert "_maintenance-assert-offline" in preflight
+        assert preflight.count("gcloud tasks list") == 1
+        assert 'inspect_queue "$QUEUE_NAME" main' in preflight
+        assert 'inspect_queue "$PROVIDER_QUEUE_NAME" provider' in preflight
+        assert "_validator-state-export" in preflight
+        assert "unfinished_attempts" in preflight
+        assert "Queued tasks were preserved" in preflight
+        for recipe, first_mutation in (
+            (setup, "validator-deploy"),
+            (update, "MIGRATED_LEGACY_RECORD=0"),
+        ):
+            maintenance = recipe.index("mode-maintenance")
+            idle = recipe.index("_validator-release-require-idle")
+            assert maintenance < idle < recipe.index(first_mutation, idle)
+
+    def test_validator_setup_reconciles_shared_iam_once(self):
+        """Five backend releases must not rewrite identical IAM bindings."""
+        setup = self._block_between(
+            "validator-setup stage:",
+            "# Reconcile one backend",
+        )
+        deploy = self._block_between(
+            "validator-deploy name stage release_tag:",
+            "# Stage every backend",
+        )
+        job = self._block_between(
+            'validator-job-deploy name stage release_tag="":',
+            "# Deploy all managed validator Jobs",
+        )
+
+        assert setup.count("_validator-runtime-iam-reconcile") == 1
+        assert "VALIDATOR_RUNTIME_IAM_READY=1" in setup
+        assert "VALIDATOR_RUNTIME_IAM_READY=1" in deploy
+        assert "run jobs add-iam-policy-binding" not in job
 
     def test_operator_job_updates_converge_identity_and_database_binding(self):
         """Re-running an operator recipe must converge old Cloud Run Jobs.

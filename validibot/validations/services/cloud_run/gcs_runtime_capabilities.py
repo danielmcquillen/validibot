@@ -13,6 +13,8 @@ runtime therefore has no legitimate reason to address another prefix.
 
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from dataclasses import field
 from datetime import UTC
@@ -32,7 +34,14 @@ if TYPE_CHECKING:
 
 
 _CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+# The initial token must survive provider-queue delay and loading the immutable
+# input envelope. Only after that envelope is parsed does the validator have
+# the callback-bound proof needed to use the authenticated refresh endpoint.
 _MIN_REMAINING_LIFETIME_SECONDS = 300
+_SOURCE_TOKEN_ROLLOVER_WAIT_SECONDS = 330
+_SOURCE_TOKEN_ROLLOVER_POLL_SECONDS = 10
+
+logger = logging.getLogger(__name__)
 
 
 class GCSRuntimeCapabilityError(RuntimeError):
@@ -127,19 +136,33 @@ def issue_attempt_gcs_runtime_capability(
     request = Request()
     # Force a fresh source token so the derived credential starts with almost
     # the full bounded lifetime instead of inheriting a nearly-expired ADC token.
-    source_credentials.refresh(request)
-    credentials = downscoped.Credentials(
-        source_credentials=source_credentials,
-        credential_access_boundary=boundary,
-    )
-    credentials.refresh(request)
+    deadline = time.monotonic() + _SOURCE_TOKEN_ROLLOVER_WAIT_SECONDS
+    waiting_for_rollover = False
+    while True:
+        source_credentials.refresh(request)
+        credentials = downscoped.Credentials(
+            source_credentials=source_credentials,
+            credential_access_boundary=boundary,
+        )
+        credentials.refresh(request)
 
-    token = str(credentials.token or "")
-    expires_at = _aware_utc(credentials.expiry)
-    remaining = (expires_at - datetime.now(UTC)).total_seconds()
-    if not token or remaining < _MIN_REMAINING_LIFETIME_SECONDS:
-        raise GCSRuntimeCapabilityError(
-            "GCS downscoped token is missing or too close to expiry"
+        token = str(credentials.token or "")
+        expires_at = _aware_utc(credentials.expiry)
+        remaining = (expires_at - datetime.now(UTC)).total_seconds()
+        if token and remaining >= _MIN_REMAINING_LIFETIME_SECONDS:
+            break
+        if not token or remaining <= 0 or time.monotonic() >= deadline:
+            raise GCSRuntimeCapabilityError(
+                "GCS downscoped token is missing or too close to expiry"
+            )
+        if not waiting_for_rollover:
+            logger.info("Waiting for the GCP source token to roll over before dispatch")
+            waiting_for_rollover = True
+        time.sleep(
+            min(
+                _SOURCE_TOKEN_ROLLOVER_POLL_SECONDS,
+                max(1, remaining),
+            )
         )
 
     return AttemptGCSRuntimeCapability(

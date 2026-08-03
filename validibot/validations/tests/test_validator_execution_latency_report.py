@@ -3,7 +3,8 @@
 The rollout ADR requires p50/p95 measurements split by backend deployment and
 provider stage. These tests prove the command never blends Job and Service
 revisions, does not invent samples from missing timestamps, and exposes a
-machine-readable acceptance signal only after the requested sample count.
+machine-readable percentile-readiness signal only after the requested sample
+count.
 """
 
 import json
@@ -67,7 +68,7 @@ def test_report_keeps_provider_shapes_and_revisions_separate():
         "p50_seconds": 9.0,
         "p95_seconds": 9.0,
     }
-    assert groups[("cloud_run_service", "service-v2")]["acceptance_ready"] is True
+    assert groups[("cloud_run_service", "service-v2")]["percentile_ready"] is True
 
 
 def test_report_omits_missing_timestamp_pairs_from_percentiles():
@@ -90,7 +91,7 @@ def test_report_omits_missing_timestamp_pairs_from_percentiles():
 
     row = json.loads(output.getvalue())["groups"][0]
     assert row["attempt_count"] == 1
-    assert row["acceptance_ready"] is False
+    assert row["percentile_ready"] is False
     assert row["stages"]["provider_start"] == {
         "count": 0,
         "p50_seconds": None,

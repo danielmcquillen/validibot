@@ -54,6 +54,16 @@ def test_secret_retention_helper_is_fail_closed_and_never_reads_payloads() -> No
     assert "gcloud secrets versions access" not in helper
 
 
+def test_secret_retention_helper_accepts_recipe_argument_style() -> None:
+    """Upload recipes use ``--option=value`` and the helper must parse it."""
+    helper = (REPO_ROOT / "ops/gcp/prune-secret-versions.sh").read_text(
+        encoding="utf-8",
+    )
+
+    for option in ("project", "secret", "new-version", "keep", "mode"):
+        assert f"--{option}=*)" in helper
+
+
 def test_artifact_cleanup_policy_cannot_match_validator_backends() -> None:
     """Generic age/count cleanup must remain limited to the Django app."""
     policy = json.loads(

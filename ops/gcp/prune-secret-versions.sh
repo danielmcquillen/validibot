@@ -29,25 +29,45 @@ EOF
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --project=*)
+            PROJECT_ID="${1#*=}"
+            shift
+            ;;
         --project)
             [ "$#" -ge 2 ] || die "--project requires a value"
             PROJECT_ID="$2"
             shift 2
+            ;;
+        --secret=*)
+            SECRET_NAME="${1#*=}"
+            shift
             ;;
         --secret)
             [ "$#" -ge 2 ] || die "--secret requires a value"
             SECRET_NAME="$2"
             shift 2
             ;;
+        --new-version=*)
+            NEW_VERSION="${1#*=}"
+            shift
+            ;;
         --new-version)
             [ "$#" -ge 2 ] || die "--new-version requires a value"
             NEW_VERSION="$2"
             shift 2
             ;;
+        --keep=*)
+            KEEP_VERSIONS="${1#*=}"
+            shift
+            ;;
         --keep)
             [ "$#" -ge 2 ] || die "--keep requires a value"
             KEEP_VERSIONS="$2"
             shift 2
+            ;;
+        --mode=*)
+            MODE="${1#*=}"
+            shift
             ;;
         --mode)
             [ "$#" -ge 2 ] || die "--mode requires a value"

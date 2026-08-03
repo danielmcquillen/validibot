@@ -538,6 +538,7 @@ _confirm-deploy stage:
         echo "Aborted."
         exit 1
     fi
+    printf 'Starting production deployment...\n'
 
 [arg('stage', pattern='dev|staging|prod')]
 deploy stage: _require-gcp-config (_confirm-deploy stage) (_mode-require-live stage) build push (_maybe-migrate stage) (_deploy-web stage)

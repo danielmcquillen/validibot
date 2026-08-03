@@ -727,6 +727,19 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             "_deploy-worker"
         )
 
+    def test_prod_deploy_confirmation_acknowledges_start_immediately(self):
+        """Confirmation must not leave the operator staring at a silent terminal."""
+        confirmation = self._block_between(
+            "_confirm-deploy stage:",
+            "deploy stage: _require-gcp-config",
+        )
+
+        read_index = confirmation.index("read -r CONFIRM")
+        acknowledgement_index = confirmation.index("Starting production deployment...")
+
+        assert read_index < acknowledgement_index
+        assert "printf 'Starting production deployment...\\n'" in confirmation
+
     def test_validator_job_deploy_resolves_and_uses_gar_digest(self):
         """Production validator Jobs must execute immutable image bytes.
 

@@ -4634,6 +4634,21 @@ _validator-retain-release-record name stage release_tag: _require-gcp-config
 validator-status stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    LIFECYCLE_STATUS=$(just gcp mode-status {{stage}})
+    MODE=$(awk '/^[[:space:]]*Overall:/ {print $2; exit}' <<< "$LIFECYCLE_STATUS")
+    if [ "$MODE" = "PARKED" ]; then
+        printf '%s\n' "$LIFECYCLE_STATUS"
+        echo "Validator release detail is unavailable while Cloud SQL is stopped."
+        echo "This is expected in PARKED mode; a stopped database is not a validator release error."
+        echo "To inspect ACTIVE and ROLLBACK versions, first run:"
+        echo "  just gcp mode-maintenance {{stage}}"
+        exit 0
+    fi
+    if [ "$MODE" != "LIVE" ] && [ "$MODE" != "MAINTENANCE" ]; then
+        printf '%s\n' "$LIFECYCLE_STATUS" >&2
+        echo "Error: {{stage}} is PARTIALLY_TRANSITIONED; reconcile its lifecycle before inspecting validator releases." >&2
+        exit 1
+    fi
     STATUS_JSON=$(mktemp)
     trap 'rm -f "$STATUS_JSON"' EXIT
     just gcp _validator-status-json {{stage}} "$STATUS_JSON"

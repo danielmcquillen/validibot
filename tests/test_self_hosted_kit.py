@@ -1170,15 +1170,19 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
         assert block.count("GCP_DEPLOY_MAINTENANCE=1") == maintenance_safe_child_steps
         assert "trap - EXIT INT TERM" in block
 
-    def test_validator_database_commands_fail_fast_and_setup_enters_maintenance(self):
-        """Validator reconciliation must not depend on accidental SQL starts.
+    def test_validator_status_handles_parked_before_database_reconciliation(self):
+        """Routine status must distinguish intentional parking from failure.
 
-        Read operations reject a stopped or transitioning database with a
-        concrete diagnostic. First-time setup checks an existing installation
-        before changing a LIVE or MAINTENANCE stage; a PARKED stage needs an
-        isolated database start before that same read-only check can run.
+        The public command reports PARKED successfully without starting Cloud
+        SQL. Its internal detailed reader remains strict because mutations and
+        ACTIVE/ROLLBACK inspection genuinely require the database. First-time
+        setup may enter MAINTENANCE temporarily and restores the prior mode.
         """
-        status_block = self._block_between(
+        public_status_block = self._block_between(
+            "validator-status stage:",
+            "# Install all five independently versioned backends",
+        )
+        detailed_status_block = self._block_between(
             "_validator-status-json stage output:",
             "# Retain the exact accepted release record",
         )
@@ -1187,7 +1191,16 @@ class GcpOperatorRecipeInvariantTests(SimpleTestCase):
             "# Reconcile one backend",
         )
 
-        assert "_maintenance-require-database" in status_block
+        assert "LIFECYCLE_STATUS=$(just gcp mode-status {{stage}})" in (
+            public_status_block
+        )
+        assert 'if [ "$MODE" = "PARKED" ]' in public_status_block
+        assert "expected in PARKED mode" in public_status_block
+        assert public_status_block.index('if [ "$MODE" = "PARKED" ]') < (
+            public_status_block.index("_validator-status-json")
+        )
+        assert "exit 0" in public_status_block
+        assert "_maintenance-require-database" in detailed_status_block
         assert "Type the GCP project ID to continue" in setup_block
         assert "ensure_uninstalled" in setup_block
         assert setup_block.index(

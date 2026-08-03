@@ -73,6 +73,11 @@ gcp_region := env_var_or_default("GCP_REGION", "us-central1")
 # Set GCP_APP_NAME in .envs/.production/.google-cloud/.just or your environment.
 app_name := env_var_or_default("GCP_APP_NAME", "validibot")
 
+# Provider retention policy. The current hosted installation is empty, so its
+# project wrapper uses ``latest-only``. A live installation with users or data
+# must set ``drain-and-retain`` before its first release update.
+validator_provider_retention_mode := env_var_or_default("VALIDATOR_PROVIDER_RETENTION_MODE", "latest-only")
+
 # Docker image path in Artifact Registry
 # Format: {region}-docker.pkg.dev/{project}/{repository}/{image}
 gcp_image := gcp_region + "-docker.pkg.dev/" + gcp_project + "/" + app_name + "/" + app_name + "-web"
@@ -3930,6 +3935,11 @@ _validator-release-mirror-image name release_tag:
     fi
     VERSION="${BASH_REMATCH[1]}"
     IMAGE_TAG="v${VERSION}"
+    if ! docker info >/dev/null 2>&1; then
+        echo "Error: Docker daemon is required for the production GHCR-to-GAR mirror." >&2
+        echo "Start Docker Desktop (or another Docker daemon) and retry; no GCP resources were changed." >&2
+        exit 1
+    fi
     VALIDATOR_VERIFY_GAR=0 \
         just gcp _validator-release-verify-image "{{name}}" "$SOURCE_TAG"
     GHCR_IMAGE="ghcr.io/mcquilleninteractive/validibot-validator-backend-${IMAGE_SLUG}"
@@ -4608,6 +4618,10 @@ _validator-status-json stage output: _require-gcp-config
 validator-latest-only stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    case "{{validator_provider_retention_mode}}" in
+        latest-only|drain-and-retain) ;;
+        *) echo "Error: VALIDATOR_PROVIDER_RETENTION_MODE must be latest-only or drain-and-retain." >&2; exit 1 ;;
+    esac
     APP_NAME="{{app_name}}"
     WORK_DIR=$(mktemp -d)
     trap 'rm -rf "$WORK_DIR"' EXIT
@@ -4826,6 +4840,10 @@ validator-status stage: _require-gcp-config
 validator-setup stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    case "{{validator_provider_retention_mode}}" in
+        latest-only|drain-and-retain) ;;
+        *) echo "Error: VALIDATOR_PROVIDER_RETENTION_MODE must be latest-only or drain-and-retain." >&2; exit 1 ;;
+    esac
     STATUS_JSON=$(mktemp)
     INITIAL_MODE=$(just gcp _mode-current {{stage}})
     case "$INITIAL_MODE" in
@@ -4903,8 +4921,12 @@ validator-setup stage: _require-gcp-config
         just gcp validator-services-register "$backend" {{stage}} "$VERSION"
     done
     just gcp management-cmd {{stage}} "$GROUP_COMMAND"
-    VALIDATOR_LATEST_ONLY_AUTOMATIC=1 \
-        just gcp validator-latest-only {{stage}}
+    if [ "{{validator_provider_retention_mode}}" = "latest-only" ]; then
+        VALIDATOR_LATEST_ONLY_AUTOMATIC=1 \
+            just gcp validator-latest-only {{stage}}
+    else
+        echo "Provider retention policy is drain-and-retain; retaining superseded pairs for rollback and drain."
+    fi
     just gcp _mode-restore {{stage}} "$INITIAL_MODE"
     MODE_CHANGED=0
     trap - EXIT INT TERM
@@ -4917,6 +4939,10 @@ validator-setup stage: _require-gcp-config
 validator-update stage backend="": _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    case "{{validator_provider_retention_mode}}" in
+        latest-only|drain-and-retain) ;;
+        *) echo "Error: VALIDATOR_PROVIDER_RETENTION_MODE must be latest-only or drain-and-retain." >&2; exit 1 ;;
+    esac
     WORK_DIR=$(mktemp -d)
     INITIAL_MODE=$(just gcp _mode-current {{stage}})
     case "$INITIAL_MODE" in
@@ -5184,8 +5210,12 @@ validator-update stage backend="": _require-gcp-config
     done
     echo "Activating all accepted backend pairs together in normal mode."
     just gcp management-cmd {{stage}} "$GROUP_COMMAND"
-    VALIDATOR_LATEST_ONLY_AUTOMATIC=1 \
-        just gcp validator-latest-only {{stage}}
+    if [ "{{validator_provider_retention_mode}}" = "latest-only" ]; then
+        VALIDATOR_LATEST_ONLY_AUTOMATIC=1 \
+            just gcp validator-latest-only {{stage}}
+    else
+        echo "Provider retention policy is drain-and-retain; retaining superseded pairs for rollback and drain."
+    fi
     echo "All selected validator backends are active; restoring {{stage}} to $INITIAL_MODE."
     just gcp _mode-restore {{stage}} "$INITIAL_MODE"
     MODE_CHANGED=0
@@ -6568,6 +6598,10 @@ maintenance-management-cmd stage command: _require-gcp-config
 mode-live stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    case "{{validator_provider_retention_mode}}" in
+        latest-only|drain-and-retain) ;;
+        *) echo "Error: VALIDATOR_PROVIDER_RETENTION_MODE must be latest-only or drain-and-retain." >&2; exit 1 ;;
+    esac
     APP_NAME="{{app_name}}"
     CURRENT_MODE=$(just gcp _mode-current {{stage}})
     if [ "$CURRENT_MODE" = "LIVE" ]; then
@@ -6631,8 +6665,12 @@ mode-live stage: _require-gcp-config
     # release is the canonical route and remove superseded validator providers.
     # This is intentionally a no-user bootstrap policy; reconciliation still
     # refuses active routes, blockers, or unfinished attempts.
-    VALIDATOR_LATEST_ONLY_AUTOMATIC=1 \
-        just gcp validator-latest-only {{stage}}
+    if [ "{{validator_provider_retention_mode}}" = "latest-only" ]; then
+        VALIDATOR_LATEST_ONLY_AUTOMATIC=1 \
+            just gcp validator-latest-only {{stage}}
+    else
+        echo "Provider retention policy is drain-and-retain; retaining superseded pairs for rollback and drain."
+    fi
     if gcloud compute network-endpoint-groups describe "$WEB_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then WEB_INGRESS="internal-and-cloud-load-balancing"; else WEB_INGRESS="all"; fi
     if gcloud compute network-endpoint-groups describe "$MCP_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then MCP_INGRESS="internal-and-cloud-load-balancing"; else MCP_INGRESS="all"; fi
 

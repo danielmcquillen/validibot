@@ -25,6 +25,14 @@ class Command(BaseCommand):
             help="Exact semantic backend release version to retire.",
         )
         parser.add_argument("--reason", required=True)
+        parser.add_argument(
+            "--immediate",
+            action="store_true",
+            help=(
+                "Allow the no-user bootstrap cleanup to retire immediately "
+                "after all attempts are proven terminal."
+            ),
+        )
 
     def handle(self, *args, **options):
         """Apply final retirement facts to every compatible semantic row."""
@@ -33,6 +41,8 @@ class Command(BaseCommand):
                 backend_slug=options["backend"],
                 backend_release_identity=options["release_version"],
                 reason=options["reason"],
+                allow_immediate=options["immediate"],
+                drain_days=0 if options["immediate"] else 7,
             )
         except (ExecutionDeploymentResolutionError, ValueError) as exc:
             raise CommandError(str(exc)) from exc

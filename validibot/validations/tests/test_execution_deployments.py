@@ -1581,3 +1581,45 @@ def test_retirement_waits_for_drain_and_keeps_rows_and_attempts():
         == EXPECTED_SHARED_DEPLOYMENT_COUNT
     )
     assert type(attempt).objects.filter(pk=attempt.pk).exists()
+
+
+@pytest.mark.django_db
+def test_latest_only_bootstrap_can_retire_a_terminal_pair_immediately():
+    """The explicit empty-installation path may skip time, not safety checks."""
+    validator = ValidatorFactory(
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    service, job = _release_pair(
+        validator=validator,
+        backend="energyplus",
+        version="0.14.0",
+        suffix="lo",
+    )
+    accepted = mark_execution_deployment_pair_accepted(service=service, job=job)
+    now = timezone.now()
+    ValidatorExecutionDeployment.objects.filter(
+        pk__in=[accepted.service.pk, accepted.job.pk],
+    ).update(
+        deactivated_at=now,
+        deactivation_cause=(
+            ExecutionDeploymentDeactivationCause.SUPERSEDED_BY_ACCEPTED_RELEASE
+        ),
+    )
+    service.refresh_from_db()
+    job.refresh_from_db()
+    record_execution_deployment_provider_deleted(service)
+    record_execution_deployment_provider_deleted(job)
+
+    retired = retire_backend_release_deployments(
+        backend_slug="energyplus",
+        backend_release_identity="0.14.0",
+        reason="Empty-installation latest-only reconciliation.",
+        drain_days=0,
+        allow_immediate=True,
+    )
+
+    assert len(retired) == EXPECTED_SHARED_DEPLOYMENT_COUNT
+    assert all(
+        item.readiness_state == ExecutionDeploymentReadiness.RETIRED for item in retired
+    )

@@ -45,7 +45,9 @@ def test_retirement_parser_accepts_release_version_without_shadowing_django():
             "0.15.4",
             "--reason",
             "Verified drain completed.",
+            "--immediate",
         ]
     )
 
     assert options.release_version == "0.15.4"
+    assert options.immediate is True

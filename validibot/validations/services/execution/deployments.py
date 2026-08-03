@@ -512,12 +512,21 @@ def ensure_backend_release_can_retire(
     *,
     now=None,
     drain_days: int = DEFAULT_PROVIDER_DRAIN_DAYS,
+    allow_immediate: bool = False,
 ) -> None:
-    """Require a complete accepted release to be inactive and fully drained."""
+    """Require a complete accepted release to be inactive and fully drained.
+
+    The normal production lifecycle keeps a seven-day drain period. The
+    explicit ``allow_immediate`` escape hatch is reserved for a no-user
+    bootstrap reconciliation that has already proved there are no
+    nonterminal attempts; it is never implied by ``drain_days=0`` alone.
+    """
     from validibot.validations.constants import EXECUTION_ATTEMPT_TERMINAL_STATES
     from validibot.validations.models import ExecutionAttempt
 
-    if drain_days < DEFAULT_PROVIDER_DRAIN_DAYS:
+    if drain_days < 0:
+        raise ValueError("Provider drain period cannot be negative.")
+    if drain_days < DEFAULT_PROVIDER_DRAIN_DAYS and not allow_immediate:
         raise ValueError(
             f"Routine drain period cannot be below {DEFAULT_PROVIDER_DRAIN_DAYS} days."
         )
@@ -607,8 +616,14 @@ def retire_backend_release_deployments(
     backend_release_identity: str,
     reason: str,
     drain_days: int = DEFAULT_PROVIDER_DRAIN_DAYS,
+    allow_immediate: bool = False,
 ) -> tuple[ValidatorExecutionDeployment, ...]:
-    """Retire every semantic deployment row after both provider members vanish."""
+    """Retire every semantic deployment row after both provider members vanish.
+
+    ``allow_immediate`` is intentionally explicit because deleting a provider
+    pair without its normal drain period is appropriate only for a confirmed
+    empty installation reset.
+    """
     from validibot.validations.models import ValidatorExecutionDeployment
 
     normalized_reason = reason.strip()
@@ -625,6 +640,7 @@ def retire_backend_release_deployments(
     )
     ensure_backend_release_can_retire(
         deployments,
+        allow_immediate=allow_immediate,
         drain_days=drain_days,
     )
     missing_deletion = [

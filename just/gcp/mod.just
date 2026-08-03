@@ -4598,6 +4598,161 @@ _validator-status-json stage output: _require-gcp-config
         --gar-json "$WORK_DIR/gar.json" \
         --release-records-json "$WORK_DIR/records.json" >"{{output}}"
 
+# Reconcile a stage to one canonical, latest release-specific provider pair
+# per backend. This is the bootstrap policy for the current empty installation:
+# after the latest pair is active and all attempts are terminal, superseded
+# Services and Jobs are deleted immediately, including legacy stable names.
+# Database deployment rows remain as historical evidence and are marked
+# RETIRED when they identify a complete old pair.
+[arg('stage', pattern='dev|staging|prod')]
+validator-latest-only stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    WORK_DIR=$(mktemp -d)
+    trap 'rm -rf "$WORK_DIR"' EXIT
+
+    MODE=$(just gcp _mode-current {{stage}})
+    if [ "$MODE" != "MAINTENANCE" ]; then
+        echo "Error: latest-only reconciliation requires MAINTENANCE; current mode is $MODE." >&2
+        exit 1
+    fi
+    just gcp _maintenance-require-database {{stage}}
+    just gcp _validator-status-json {{stage}} "$WORK_DIR/status.json"
+    if jq -e 'all(.backends[]; .active_version == null)' "$WORK_DIR/status.json" >/dev/null; then
+        echo "No active validator releases are installed; nothing to reconcile."
+        exit 0
+    fi
+    if jq -e 'any(.backends[]; .active_version == null)' "$WORK_DIR/status.json" >/dev/null; then
+        echo "Error: latest-only reconciliation requires every managed backend to have an active release." >&2
+        jq -r '.backends[] | select(.active_version == null) | "  \(.backend): no active release"' "$WORK_DIR/status.json" >&2
+        exit 1
+    fi
+    if ! jq -e 'all(.backends[]; .active_version == .file_version and .routing_mode == "normal" and (.blockers | length == 0) and ((.unfinished_attempts // 0) == 0))' "$WORK_DIR/status.json" >/dev/null; then
+        echo "Error: every backend must already be on its latest offered release with no blockers or unfinished attempts." >&2
+        jq -r '.backends[] | select(.active_version != .file_version or .routing_mode != "normal" or (.blockers | length > 0) or ((.unfinished_attempts // 0) != 0)) | "  \(.backend): offered=\(.file_version) active=\(.active_version // \"—\") mode=\(.routing_mode) blockers=\(.blockers | join(\"; \")) unfinished=\(.unfinished_attempts // 0)"' "$WORK_DIR/status.json" >&2
+        exit 1
+    fi
+
+    just gcp _validator-state-export {{stage}} "$WORK_DIR/database.json"
+    : >"$WORK_DIR/expected-services"
+    : >"$WORK_DIR/expected-jobs"
+    while IFS=$'\t' read -r backend version; do
+        service_name=$(python3 ops/gcp/validator_release_control.py name \
+            --backend "$backend" --version "$version" --kind service --stage "{{stage}}")
+        job_name=$(python3 ops/gcp/validator_release_control.py name \
+            --backend "$backend" --version "$version" --kind job --stage "{{stage}}")
+        printf '%s\n' "$service_name" >>"$WORK_DIR/expected-services"
+        printf '%s\n' "$job_name" >>"$WORK_DIR/expected-jobs"
+        for expected_name in "$service_name" "$job_name"; do
+            if ! jq -e --arg backend "$backend" --arg version "$version" --arg expected "$expected_name" '
+                any(.deployments[]; .backend == $backend and .version == $version and
+                    ((.routing_role == "PRIMARY" or .routing_role == "LONG_RUNNING") and
+                     ((.provider_resource_name | split("/") | last) == $expected)))
+            ' "$WORK_DIR/database.json" >/dev/null; then
+                echo "Error: active $backend $version route is not the canonical release-specific provider $expected_name." >&2
+                echo "Deploy and activate the latest release before starting the stage." >&2
+                exit 1
+            fi
+        done
+    done < <(jq -r '.backends[] | [.backend, .file_version] | @tsv' "$WORK_DIR/status.json")
+
+    is_managed_validator_resource() {
+        case "$1" in
+            vb-vs-*|vb-vj-*|${APP_NAME}-validator-service-*|${APP_NAME}-validator-backend-*)
+                return 0
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    }
+    inventory_for_deletion() {
+        local kind="$1"
+        local expected_file="$2"
+        local name
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            is_managed_validator_resource "$name" || continue
+            grep -Fqx "$name" "$expected_file" && continue
+            printf '%s\n' "$name"
+        done < <(gcloud run "$kind" list \
+            --region={{gcp_region}} --project={{gcp_project}} \
+            --filter="metadata.labels.stage:{{stage}} AND metadata.labels.validator:*" \
+            --format='value(metadata.name)')
+    }
+    inventory_for_deletion services "$WORK_DIR/expected-services" >"$WORK_DIR/delete-services"
+    inventory_for_deletion jobs "$WORK_DIR/expected-jobs" >"$WORK_DIR/delete-jobs"
+
+    echo "Latest-only validator provider plan for {{stage}}:"
+    if [ -s "$WORK_DIR/delete-services" ]; then
+        sed 's/^/  DELETE Service /' "$WORK_DIR/delete-services"
+    fi
+    if [ -s "$WORK_DIR/delete-jobs" ]; then
+        sed 's/^/  DELETE Job     /' "$WORK_DIR/delete-jobs"
+    fi
+    if [ ! -s "$WORK_DIR/delete-services" ] && [ ! -s "$WORK_DIR/delete-jobs" ]; then
+        echo "  No superseded managed validator providers found."
+        exit 0
+    fi
+    if [ "${VALIDATOR_LATEST_ONLY_AUTOMATIC:-0}" != "1" ]; then
+        read -r -p "Type DELETE SUPERSEDED VALIDATOR PROVIDERS to continue: " REPLY
+        if [ "$REPLY" != "DELETE SUPERSEDED VALIDATOR PROVIDERS" ]; then
+            echo "Cancelled."
+            exit 1
+        fi
+    fi
+
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        echo "Deleting superseded Service $name..."
+        gcloud run services update "$name" \
+            --region={{gcp_region}} --project={{gcp_project}} --min=0 --quiet
+        gcloud run services delete "$name" \
+            --region={{gcp_region}} --project={{gcp_project}} --quiet
+    done <"$WORK_DIR/delete-services"
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        echo "Deleting superseded Job $name..."
+        gcloud run jobs delete "$name" \
+            --region={{gcp_region}} --project={{gcp_project}} --quiet
+    done <"$WORK_DIR/delete-jobs"
+    inventory_for_deletion services "$WORK_DIR/expected-services" >"$WORK_DIR/remaining-services"
+    inventory_for_deletion jobs "$WORK_DIR/expected-jobs" >"$WORK_DIR/remaining-jobs"
+    if [ -s "$WORK_DIR/remaining-services" ] || [ -s "$WORK_DIR/remaining-jobs" ]; then
+        echo "Error: superseded validator providers remain after deletion; refusing to retire database rows." >&2
+        [ ! -s "$WORK_DIR/remaining-services" ] || sed 's/^/  Service still present: /' "$WORK_DIR/remaining-services" >&2
+        [ ! -s "$WORK_DIR/remaining-jobs" ] || sed 's/^/  Job still present: /' "$WORK_DIR/remaining-jobs" >&2
+        exit 1
+    fi
+
+    # Mark every deleted inactive provider row as absent, including resources
+    # already missing from Cloud Run. Legacy provider names may have no row;
+    # those are intentionally just removed from the provider inventory.
+    while IFS=$'\t' read -r backend version resource role deleted_at; do
+        [ -n "$resource" ] || continue
+        [ "$role" = "INACTIVE" ] || continue
+        [ -n "$deleted_at" ] && continue
+        basename="${resource##*/}"
+        grep -Fqx "$basename" "$WORK_DIR/expected-services" && continue
+        grep -Fqx "$basename" "$WORK_DIR/expected-jobs" && continue
+        just gcp management-cmd {{stage}} \
+            "record_validator_provider_deletion --resource=$resource"
+    done < <(jq -r '.deployments[] | [.backend, .version, .provider_resource_name, .routing_role, (.provider_deleted_at // "")] | @tsv' "$WORK_DIR/database.json")
+
+    # Complete the immediate retirement checkpoint for old release pairs. The
+    # management command still refuses active routes, incomplete pairs, and
+    # nonterminal attempts; only the seven-day clock is bypassed here.
+    jq -r '.deployments[] | select(.routing_role == "INACTIVE" and .retired_at == null) | [.backend, .version] | @tsv' "$WORK_DIR/database.json" \
+        | sort -u \
+        | while IFS=$'\t' read -r backend version; do
+            active_version=$(jq -r --arg backend "$backend" '.backends[] | select(.backend == $backend) | .active_version' "$WORK_DIR/status.json")
+            [ "$version" != "$active_version" ] || continue
+            just gcp management-cmd {{stage}} \
+                "retire_validator_backend_release --backend=$backend --release-version=$version --reason='Latest-only no-user reconciliation.' --immediate"
+        done
+    echo "Latest-only validator reconciliation completed for {{stage}}."
+
 # Retain the exact accepted release record in the private validation bucket.
 [private]
 [arg('stage', pattern='dev|staging|prod')]
@@ -4748,6 +4903,8 @@ validator-setup stage: _require-gcp-config
         just gcp validator-services-register "$backend" {{stage}} "$VERSION"
     done
     just gcp management-cmd {{stage}} "$GROUP_COMMAND"
+    VALIDATOR_LATEST_ONLY_AUTOMATIC=1 \
+        just gcp validator-latest-only {{stage}}
     just gcp _mode-restore {{stage}} "$INITIAL_MODE"
     MODE_CHANGED=0
     trap - EXIT INT TERM
@@ -5027,6 +5184,8 @@ validator-update stage backend="": _require-gcp-config
     done
     echo "Activating all accepted backend pairs together in normal mode."
     just gcp management-cmd {{stage}} "$GROUP_COMMAND"
+    VALIDATOR_LATEST_ONLY_AUTOMATIC=1 \
+        just gcp validator-latest-only {{stage}}
     echo "All selected validator backends are active; restoring {{stage}} to $INITIAL_MODE."
     just gcp _mode-restore {{stage}} "$INITIAL_MODE"
     MODE_CHANGED=0
@@ -6468,6 +6627,12 @@ mode-live stage: _require-gcp-config
     MCP_ENABLED="${VALIDIBOT_MCP_ENABLED:-true}"
 
     just gcp _maintenance-start-database {{stage}}
+    # Before queues or schedulers can resume, prove the latest offered
+    # release is the canonical route and remove superseded validator providers.
+    # This is intentionally a no-user bootstrap policy; reconciliation still
+    # refuses active routes, blockers, or unfinished attempts.
+    VALIDATOR_LATEST_ONLY_AUTOMATIC=1 \
+        just gcp validator-latest-only {{stage}}
     if gcloud compute network-endpoint-groups describe "$WEB_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then WEB_INGRESS="internal-and-cloud-load-balancing"; else WEB_INGRESS="all"; fi
     if gcloud compute network-endpoint-groups describe "$MCP_NEG" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null; then MCP_INGRESS="internal-and-cloud-load-balancing"; else MCP_INGRESS="all"; fi
 

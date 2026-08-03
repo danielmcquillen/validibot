@@ -541,6 +541,60 @@ class TestStepArtifactRegistration:
         assert artifact.metadata["source"] == "declared_output_port"
         assert refs == [build_step_artifact_refs(step_run)["eplusout_sql"]]
 
+    def test_declared_json_output_uses_port_domain_format(self):
+        """Portfolio Manager JSON should retain its declared domain identity."""
+
+        run = ValidationRunFactory()
+        step = WorkflowStepFactory(workflow=run.workflow, name="Benchmark Property")
+        StepIODefinitionFactory(
+            validator=step.validator,
+            direction=StepIODirection.OUTPUT,
+            contract_key="property_results",
+            native_name="property_results",
+            data_type=CatalogValueType.ARTIFACT_REF,
+            io_medium=StepIOMedium.ARTIFACT,
+            artifact_kind=ArtifactKind.DATASET,
+            media_type="application/json",
+            data_format="portfolio_manager_property_results_v1",
+            accepted_data_formats=["portfolio_manager_property_results_v1"],
+            accepted_media_types=["application/json"],
+            envelope_channel=EnvelopeChannel.OUTPUT_ARTIFACTS,
+            role="portfolio-manager-property-results",
+            metadata={"accepted_extensions": ["json"]},
+            min_items=0,
+            max_items=1,
+        )
+        step_run = ValidationStepRunFactory(
+            validation_run=run,
+            workflow_step=step,
+            step_order=step.order,
+            status=StepStatus.PASSED,
+        )
+
+        refs = register_output_artifacts(
+            step_run=step_run,
+            output_envelope=SimpleNamespace(
+                artifacts=[
+                    _validation_artifact(
+                        name="portfolio-manager-property-results.json",
+                        type="portfolio-manager-property-results",
+                        mime_type="application/json",
+                        uri=(
+                            "gs://validibot/runs/run-1/outputs/"
+                            "portfolio-manager-property-results.json"
+                        ),
+                        size_bytes=123,
+                    ),
+                ],
+                raw_outputs=None,
+            ),
+        )
+
+        artifact = Artifact.objects.get(step_run=step_run)
+        assert artifact.contract_key == "property_results"
+        assert artifact.data_format == "portfolio_manager_property_results_v1"
+        assert refs[0]["data_format"] == "portfolio_manager_property_results_v1"
+
     def test_declared_output_port_rejects_wrong_artifact_extension(self):
         """Declared output ports should fail before indexing incompatible files."""
 

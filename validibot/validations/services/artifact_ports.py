@@ -201,11 +201,11 @@ def validate_output_artifact(
 
     validate_file_uri(port=port, uri=uri or name)
     _validate_role(port=port, observed_role=role, source_description=source)
-    _validate_data_format(
-        port=port,
-        observed_data_format=_data_format_from_known_uri(uri or name),
-        source_description=source,
-    )
+    # ValidationArtifact carries an exact role and MIME type, but no domain
+    # data-format field. The caller has already matched that role to this
+    # declared output port and records the port's data_format on the resulting
+    # ArtifactRef. A generic carrier suffix such as .json cannot independently
+    # prove a domain format and must not be guessed as EnergyPlus epJSON.
     _validate_media_type(
         port=port,
         observed_media_type=media_type or _media_type_from_known_uri(uri or name),

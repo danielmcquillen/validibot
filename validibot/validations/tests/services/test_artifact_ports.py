@@ -186,6 +186,24 @@ def _schematron_svrl_report_port(**overrides) -> ArtifactPort:
     return ArtifactPort(**values)
 
 
+def _portfolio_manager_property_results_port(**overrides) -> ArtifactPort:
+    """Return the carrier-neutral Portfolio Manager results output port."""
+
+    values = {
+        "contract_key": "property_results",
+        "role": "portfolio-manager-property-results",
+        "data_format": "portfolio_manager_property_results_v1",
+        "media_type": "application/json",
+        "accepted_data_formats": ["portfolio_manager_property_results_v1"],
+        "accepted_media_types": ["application/json"],
+        "metadata": {"accepted_extensions": ["json"]},
+        "min_items": 0,
+        "max_items": 1,
+    }
+    values.update(overrides)
+    return ArtifactPort(**values)
+
+
 class TestArtifactPortContractValidation:
     """Coverage for the reusable artifact-port validation service."""
 
@@ -346,6 +364,22 @@ class TestArtifactPortContractValidation:
                 type="svrl-report",
                 mime_type=SupportedMimeType.APPLICATION_XML.value,
                 uri="gs://validibot/runs/run-1/outputs/report.svrl",
+            ),
+        )
+
+    def test_output_artifact_uses_declared_role_for_domain_json_contract(self):
+        """Generic JSON carriers must not be mistaken for EnergyPlus epJSON."""
+
+        artifact_ports.validate_output_artifact(
+            port=_portfolio_manager_property_results_port(),
+            artifact=SimpleNamespace(
+                name="portfolio-manager-property-results.json",
+                type="portfolio-manager-property-results",
+                mime_type="application/json",
+                uri=(
+                    "gs://validibot/runs/run-1/outputs/"
+                    "portfolio-manager-property-results.json"
+                ),
             ),
         )
 

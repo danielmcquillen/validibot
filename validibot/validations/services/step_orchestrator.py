@@ -391,9 +391,11 @@ class StepOrchestrator:
                 step_metrics=step_metrics,
             )
             safe_stamp_output_hash(validation_run)
-            from validibot.validations.signals import validation_run_finalized
+            from validibot.validations.services.run_admission import (
+                emit_validation_run_finalized,
+            )
 
-            validation_run_finalized.send_robust(
+            emit_validation_run_finalized(
                 sender=self.__class__,
                 validation_run=validation_run,
             )
@@ -429,9 +431,11 @@ class StepOrchestrator:
                 actor=actor,
                 extra_data=extra_payload,
             )
-            from validibot.validations.signals import validation_run_finalized
+            from validibot.validations.services.run_admission import (
+                emit_validation_run_finalized,
+            )
 
-            validation_run_finalized.send_robust(
+            emit_validation_run_finalized(
                 sender=self.__class__,
                 validation_run=validation_run,
             )
@@ -498,9 +502,11 @@ class StepOrchestrator:
         # Emit only after all detailed outputs/evidence are finalized. The
         # retention receiver makes the run immediately eligible for deletion,
         # so emitting earlier would race the purge worker.
-        from validibot.validations.signals import validation_run_finalized
+        from validibot.validations.services.run_admission import (
+            emit_validation_run_finalized,
+        )
 
-        validation_run_finalized.send_robust(
+        emit_validation_run_finalized(
             sender=self.__class__,
             validation_run=validation_run,
         )

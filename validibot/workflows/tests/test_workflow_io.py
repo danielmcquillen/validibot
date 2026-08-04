@@ -38,6 +38,7 @@ from validibot.validations.tests.factories import StepInputBindingFactory
 from validibot.validations.tests.factories import StepIODefinitionFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.base.step_serializer import WorkflowImportError
+from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.services.io.exporter import export_definition
 from validibot.workflows.services.io.importer import import_definition
 from validibot.workflows.services.io.importer import import_from_upload
@@ -161,6 +162,52 @@ def test_export_then_import_rebuilds_the_workflow_in_a_new_org():
     assert len(assertions) == 4  # noqa: PLR2004
     assert [a.rhs["expr"] for a in assertions] == [rule[0] for rule in _ROW_RULES]
     assert all(a.options.get("tabular_stage") == "row" for a in assertions)
+
+
+def test_mutable_editing_policy_survives_export_import():
+    """Portable workflows must preserve an author's explicit Mutable choice."""
+    src_org, src_user = _org_and_user()
+    workflow = WorkflowFactory(
+        org=src_org,
+        user=src_user,
+        history_policy=WorkflowHistoryPolicy.MUTABLE,
+    )
+
+    definition, files = export_definition(workflow)
+    dst_org, dst_user = _org_and_user()
+    result = import_definition(definition, files=files, org=dst_org, user=dst_user)
+
+    assert definition["workflow"]["history_policy"] == WorkflowHistoryPolicy.MUTABLE
+    assert result.workflow.history_policy == WorkflowHistoryPolicy.MUTABLE
+
+
+def test_missing_editing_policy_imports_as_versioned():
+    """Older archives cannot silently downgrade a workflow to Mutable editing."""
+    src_org, src_user = _org_and_user()
+    definition, files = export_definition(
+        WorkflowFactory(org=src_org, user=src_user),
+    )
+    definition["workflow"].pop("history_policy")
+
+    dst_org, dst_user = _org_and_user()
+    result = import_definition(definition, files=files, org=dst_org, user=dst_user)
+
+    assert result.workflow.history_policy == WorkflowHistoryPolicy.VERSIONED
+
+
+def test_invalid_editing_policy_is_rejected_as_an_import_error():
+    """A crafted archive must fail cleanly instead of weakening edit guarantees."""
+    src_org, src_user = _org_and_user()
+    definition, files = export_definition(
+        WorkflowFactory(org=src_org, user=src_user),
+    )
+    definition["workflow"]["history_policy"] = "anything-goes"
+
+    dst_org, dst_user = _org_and_user()
+    with pytest.raises(WorkflowImportError) as ctx:
+        import_definition(definition, files=files, org=dst_org, user=dst_user)
+
+    assert ctx.value.code == "vaf.invalid_history_policy"
 
 
 def test_both_step_config_buckets_survive_export_import():

@@ -93,7 +93,10 @@ Do **not** introduce "engine" as a new architecture term. Older docs and tests s
 
 | Term | Meaning |
 |---|---|
-| **Locked workflow** | A workflow where `requires_new_version_for_contract_edits()` returns true: has runs, has submissions, is_locked is true, has issued credentials, or `x402_enabled=True`. Contract edits are blocked until a new version is created. |
+| **Editing policy** | The author-facing setting backed by `Workflow.history_policy`. **Versioned** preserves an inspectable definition by requiring a new workflow version after history/lock boundaries. **Mutable** permits in-place semantic edits between runs but does not claim that old runs match the current definition. |
+| **Fixed editing policy** | An Editing policy that can no longer change on the current workflow row because that row has a validation run or is explicitly locked. This applies in both directions and is separate from whether Mutable semantic edits may resume after active runs release. |
+| **Definition user** | A validation run admitted against a workflow whose `definition_released_at` is still null. It may still read the live definition during execution or finalization, even if its public status is terminal. |
+| **Locked workflow** | A Versioned workflow where `requires_new_version_for_contract_edits()` returns true because it has runs or `is_locked=True`. Semantic contract edits require a new version. Mutable workflows opt out of this historical immutability rule but still obey the active definition-use fence. |
 | **Contract field** | A field whose value affects what a future validation means. Listed in `CONTRACT_FIELDS`. Cannot be edited in place once the workflow is locked. |
 | **Semantic digest** | SHA-256 of the canonicalised JSON of a `Validator`'s behavior-defining fields. Stored on `Validator.semantic_digest`. `sync_validators` raises if the digest changes under the same `(slug, integer version)` (drift detection). |
 | **Content hash** | SHA-256 of a resource file's bytes, stored on `ValidatorResourceFile.content_hash` and `WorkflowStepResource.content_hash`. Drift detection: `save()` raises if the hash differs and the row is referenced by a locked workflow. |

@@ -26,8 +26,9 @@ class Command(BaseCommand):
     """Provide database input without reading the sibling backend repository."""
 
     help = (
-        "Emit the published Validator rows, deployments, unfinished attempts, "
-        "and release-routing audit facts used by the local operator script."
+        "Emit current Validator rows, current and historical deployments, "
+        "unfinished attempts, and release-routing audit facts used by the local "
+        "operator script."
     )
 
     def add_arguments(self, parser):
@@ -50,10 +51,8 @@ class Command(BaseCommand):
             .exclude(execution_backend_slug="")
             .order_by("execution_backend_slug", "slug", "version", "pk")
         )
-        deployments = list(
-            ValidatorExecutionDeployment.objects.filter(
-                validator_id__in=[validator.pk for validator in validators]
-            )
+        deployment_history = list(
+            ValidatorExecutionDeployment.objects.exclude(backend_slug="")
             .select_related("validator")
             .order_by(
                 "backend_slug",
@@ -63,19 +62,29 @@ class Command(BaseCommand):
                 "created",
             )
         )
+        current_validator_ids = {validator.pk for validator in validators}
+        deployments = [
+            deployment
+            for deployment in deployment_history
+            if deployment.validator_id in current_validator_ids
+        ]
         unfinished_counts = {
             str(row["deployment_id"]): row["count"]
             for row in (
                 ExecutionAttempt.objects.filter(
-                    deployment_id__in=[deployment.pk for deployment in deployments]
+                    deployment_id__in=[
+                        deployment.pk for deployment in deployment_history
+                    ]
                 )
                 .exclude(state__in=EXECUTION_ATTEMPT_TERMINAL_STATES)
                 .values("deployment_id")
                 .annotate(count=Count("pk"))
             )
         }
-        deployment_rows = [
-            {
+
+        def deployment_row(deployment):
+            """Serialize one current or historical managed deployment row."""
+            return {
                 "deployment_id": str(deployment.pk),
                 "validator_id": str(deployment.validator_id),
                 "backend": deployment.backend_slug,
@@ -110,8 +119,9 @@ class Command(BaseCommand):
                     0,
                 ),
             }
-            for deployment in deployments
-        ]
+
+        deployment_rows = [deployment_row(item) for item in deployments]
+        deployment_history_rows = [deployment_row(item) for item in deployment_history]
         validator_rows = []
         for validator in validators:
             routes = [
@@ -182,6 +192,7 @@ class Command(BaseCommand):
             "schema_version": "validibot.validator-release-state.v1",
             "validators": validator_rows,
             "deployments": deployment_rows,
+            "deployment_history": deployment_history_rows,
             "routing_events": [
                 {
                     "occurred_at": _time(event["occurred_at"]),

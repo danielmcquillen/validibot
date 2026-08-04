@@ -524,57 +524,66 @@ class WorkflowForm(forms.ModelForm):
             "Optional image shown on the workflow info page.",
         )
         history_field = self.fields["history_policy"]
-        history_field.label = _("History policy")
+        history_field.label = _("Editing policy")
         history_field.required = False
+        history_field.choices = (
+            (WorkflowHistoryPolicy.VERSIONED, _("Versioned")),
+            (WorkflowHistoryPolicy.MUTABLE, _("Mutable")),
+        )
         history_field.widget.attrs.update({"class": "form-select"})
         history_field.initial = (
             self.instance.history_policy
             if self.instance and self.instance.pk
             else WorkflowHistoryPolicy.VERSIONED
         )
+        editing_policy_describedby = [
+            "id_history_policy_helptext",
+            "id_history_policy-details",
+        ]
 
-        # Surface the lock state in the UI instead of letting the user
-        # edit a field that the server will reject on submit. Disabling
-        # the field also makes Django's form layer ignore any submitted
-        # value, so the existing server-side check in
-        # ``_clean_history_policy_lock`` remains a defence-in-depth
-        # guard rather than the sole gate.
+        # Surface the fixed state without weakening stale-form detection. An
+        # unbound form can use Django's disabled field handling. A bound form
+        # only renders the widget disabled: the server still reads a crafted or
+        # stale submitted value and can report the attempted transition.
         history_is_locked = (
             self.instance
             and self.instance.pk
             and self.enforce_history_lock
             and (self.instance.is_locked or self.instance.has_runs())
         )
+        self.editing_policy_is_fixed = bool(history_is_locked)
         is_superuser = bool(
             self.user and getattr(self.user, "is_superuser", False),
         )
         if history_is_locked and not is_superuser:
-            history_field.disabled = True
+            if self.is_bound:
+                history_field.widget.attrs["disabled"] = True
+            else:
+                history_field.disabled = True
             if self.instance.is_locked:
                 lock_reason = _(
-                    "This workflow is locked, so its history policy is "
-                    "fixed. To change it, create a new workflow version."
+                    "This workflow is locked, so its editing policy is fixed "
+                    "for this version. Create a new workflow version to use "
+                    "a different policy."
                 )
             else:
                 lock_reason = _(
-                    "This workflow already has validation runs, so its "
-                    "history policy is fixed to keep past runs tied to "
-                    "the definition that produced them. To change it, "
-                    "create a new workflow version."
+                    "This workflow has validation runs, so its editing policy "
+                    "is fixed for this version. Create a new workflow version "
+                    "to use a different policy."
                 )
-            history_field.help_text = lock_reason
+            history_field.editing_policy_fixed_reason = lock_reason
+            editing_policy_describedby.append("id_history_policy-fixed-reason")
         else:
-            history_field.help_text = _(
-                "Choose how this workflow treats edits after validation "
-                "runs exist. Versioned history is recommended: semantic "
-                "edits create a new workflow version so old runs remain "
-                "tied to the definition that produced them. Mutable "
-                "history allows in-place edits for faster iteration, "
-                "but historical run results may not be reproducible "
-                "against the current workflow definition. After runs "
-                "exist, change history policy by creating a new "
-                "workflow version."
-            )
+            history_field.editing_policy_fixed_reason = ""
+        history_field.widget.attrs["aria-describedby"] = " ".join(
+            editing_policy_describedby,
+        )
+        history_field.help_text = _(
+            "Versioned is recommended. Choose Mutable explicitly only for "
+            "experiments where in-place editing matters more than reproducible "
+            "workflow history."
+        )
         self.fields["version"].widget.attrs.update(
             {
                 "class": "form-control",
@@ -1029,7 +1038,10 @@ class WorkflowForm(forms.ModelForm):
                         css_class="col-12 col-md-4 col-xl-3",
                     ),
                     Column(
-                        Field("history_policy"),
+                        Field(
+                            "history_policy",
+                            template="workflows/fields/editing_policy.html",
+                        ),
                         css_class="col-12 col-md-5 col-xl-4",
                     ),
                     css_class="g-3",
@@ -1224,29 +1236,56 @@ class WorkflowForm(forms.ModelForm):
         # ``cleaned_data`` into it yet.
         self._superuser_overrode_contract_lock = False
         self._superuser_overridden_fields: set[str] = set()
-        proposed_history_policy = (
-            cleaned.get("history_policy")
-            or getattr(self.instance, "history_policy", None)
-            or WorkflowHistoryPolicy.VERSIONED
-        )
+        submitted_history_policy = None
+        if self.is_bound:
+            submitted_history_policy = self.data.get(
+                self.add_prefix("history_policy"),
+            )
+        if (
+            self.instance
+            and self.instance.pk
+            and self.editing_policy_is_fixed
+            and not submitted_history_policy
+        ):
+            proposed_history_policy = self.instance.history_policy
+        else:
+            proposed_history_policy = (
+                submitted_history_policy
+                or cleaned.get("history_policy")
+                or getattr(self.instance, "history_policy", None)
+                or WorkflowHistoryPolicy.VERSIONED
+            )
         cleaned["history_policy"] = proposed_history_policy
         if self.instance and self.instance.pk and self.enforce_history_lock:
             current_history_policy = self.instance.history_policy
-            if current_history_policy != proposed_history_policy and (
-                self.instance.is_locked or self.instance.has_runs()
+            is_superuser = bool(
+                self.user and getattr(self.user, "is_superuser", False),
+            )
+            if (
+                current_history_policy != proposed_history_policy
+                and (self.instance.is_locked or self.instance.has_runs())
+                and not is_superuser
             ):
                 self.requires_new_version_for_save = True
                 self.add_error(
                     "history_policy",
                     ValidationError(
                         _(
-                            "This workflow already has validation history or "
-                            "is locked. Create a new workflow version to "
-                            "change its history policy.",
+                            "This workflow gained validation history or was "
+                            "locked while you were editing. Its editing policy "
+                            "is now fixed for this version. Create a new "
+                            "workflow version to use a different policy.",
                         ),
-                        code="history_policy_locked",
+                        code="editing_policy_fixed",
                     ),
                 )
+            elif (
+                current_history_policy != proposed_history_policy
+                and is_superuser
+                and (self.instance.is_locked or self.instance.has_runs())
+            ):
+                self._superuser_overridden_fields.add("history_policy")
+                self._superuser_overrode_contract_lock = True
 
         if (
             self.instance
@@ -1266,8 +1305,8 @@ class WorkflowForm(forms.ModelForm):
                 # narrower "unsafely changed" set rather than the raw
                 # "changed" set — safe widenings don't need an audit
                 # entry because they don't carry integrity risk.
-                self._superuser_overridden_fields = (
-                    self.instance.unsafely_changed_contract_fields(cleaned)
+                self._superuser_overridden_fields.update(
+                    self.instance.unsafely_changed_contract_fields(cleaned),
                 )
                 self._superuser_overrode_contract_lock = bool(
                     self._superuser_overridden_fields,

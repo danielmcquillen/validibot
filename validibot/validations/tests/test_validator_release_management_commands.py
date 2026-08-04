@@ -52,11 +52,13 @@ def test_retirement_parser_accepts_release_version_without_shadowing_django():
             "--reason",
             "Verified drain completed.",
             "--immediate",
+            "--allow-unaccepted-candidate",
         ]
     )
 
     assert options.release_version == "0.15.4"
     assert options.immediate is True
+    assert options.allow_unaccepted_candidate is True
 
 
 def test_certification_runs_both_acceptance_shapes_in_one_command():

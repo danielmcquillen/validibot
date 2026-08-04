@@ -32,6 +32,7 @@ from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ExecutionProviderType
 from validibot.validations.constants import ExecutionRoutingMode
+from validibot.validations.constants import ValidatorAvailabilityState
 from validibot.validations.constants import ValidatorExecutionProfile
 from validibot.validations.models import ValidatorExecutionDeployment
 from validibot.validations.services.execution.deployment_identity import (
@@ -1366,6 +1367,42 @@ def test_release_rollback_exports_its_own_version_and_reason_to_status():
 
 
 @pytest.mark.django_db
+def test_exported_release_state_separates_historical_managed_deployments():
+    """Latest-only retries need history without offering obsolete rollbacks.
+
+    A semantic Validator whose runtime config disappeared is not a current
+    routing target, but its provider rows still require deletion checkpoints
+    and retirement. The export therefore keeps status-facing ``deployments``
+    current-only while exposing every managed row through
+    ``deployment_history`` for cleanup.
+    """
+    historical_validator = ValidatorFactory(
+        slug="ep-history",
+        execution_backend_slug="energyplus",
+        execution_runtime_contract="validibot-execution-v1",
+        availability_state=ValidatorAvailabilityState.MISSING_CONFIG,
+    )
+    historical_pair = _release_pair(
+        validator=historical_validator,
+        backend="energyplus",
+        version="0.14.0",
+        suffix="h",
+    )
+
+    output = StringIO()
+    call_command("export_validator_release_state", stdout=output)
+    database = json.loads(output.getvalue())
+
+    historical_ids = {str(item.pk) for item in historical_pair}
+    assert not historical_ids & {
+        row["deployment_id"] for row in database["deployments"]
+    }
+    assert historical_ids <= {
+        row["deployment_id"] for row in database["deployment_history"]
+    }
+
+
+@pytest.mark.django_db
 def test_backend_activation_validates_every_pair_before_writing_routes():
     """One bad semantic Validator pair must leave the whole backend inactive."""
     first_validator = ValidatorFactory(
@@ -1581,6 +1618,86 @@ def test_retirement_waits_for_drain_and_keeps_rows_and_attempts():
         == EXPECTED_SHARED_DEPLOYMENT_COUNT
     )
     assert type(attempt).objects.filter(pk=attempt.pk).exists()
+
+
+@pytest.mark.django_db
+def test_latest_only_bootstrap_can_retire_wholly_unaccepted_candidate():
+    """Failed private acceptance must not strand deleted candidate providers.
+
+    The no-user latest-only path may retire a complete candidate pair that
+    never passed acceptance, but only after both rows are inactive, every
+    attempt is terminal, and provider absence has been checkpointed.
+    """
+    validator = ValidatorFactory(
+        slug="pm-failed",
+        execution_backend_slug="portfolio_manager",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    service, job = _release_pair(
+        validator=validator,
+        backend="portfolio_manager",
+        version="0.16.4",
+        suffix="f",
+    )
+    deactivated_at = timezone.now()
+    ValidatorExecutionDeployment.objects.filter(pk__in=[service.pk, job.pk]).update(
+        deactivated_at=deactivated_at,
+        deactivation_cause=ExecutionDeploymentDeactivationCause.ACCEPTANCE_FAILURE,
+    )
+    record_execution_deployment_provider_deleted(service)
+    record_execution_deployment_provider_deleted(job)
+
+    retired = retire_backend_release_deployments(
+        backend_slug="portfolio_manager",
+        backend_release_identity="0.16.4",
+        reason="Empty-installation failed-candidate reconciliation.",
+        drain_days=0,
+        allow_immediate=True,
+        allow_unaccepted_candidate=True,
+    )
+
+    assert len(retired) == EXPECTED_SHARED_DEPLOYMENT_COUNT
+    assert all(item.accepted_at is None for item in retired)
+    assert all(
+        item.readiness_state == ExecutionDeploymentReadiness.RETIRED for item in retired
+    )
+
+
+@pytest.mark.django_db
+def test_latest_only_rejects_partially_accepted_candidate_pair():
+    """One-sided acceptance evidence must remain a fail-closed cleanup blocker."""
+    validator = ValidatorFactory(
+        slug="pm-partial",
+        execution_backend_slug="portfolio_manager",
+        execution_runtime_contract="validibot-execution-v1",
+    )
+    service, job = _release_pair(
+        validator=validator,
+        backend="portfolio_manager",
+        version="0.16.4",
+        suffix="p",
+    )
+    now = timezone.now()
+    ValidatorExecutionDeployment.objects.filter(pk=service.pk).update(accepted_at=now)
+    ValidatorExecutionDeployment.objects.filter(pk__in=[service.pk, job.pk]).update(
+        deactivated_at=now,
+        deactivation_cause=ExecutionDeploymentDeactivationCause.ACCEPTANCE_FAILURE,
+    )
+    record_execution_deployment_provider_deleted(service)
+    record_execution_deployment_provider_deleted(job)
+
+    with pytest.raises(
+        ExecutionDeploymentResolutionError,
+        match="partially accepted provider pair",
+    ):
+        retire_backend_release_deployments(
+            backend_slug="portfolio_manager",
+            backend_release_identity="0.16.4",
+            reason="Must not erase inconsistent acceptance evidence.",
+            drain_days=0,
+            allow_immediate=True,
+            allow_unaccepted_candidate=True,
+        )
 
 
 @pytest.mark.django_db

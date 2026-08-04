@@ -33,14 +33,16 @@ enforce three properties:
    rulesets, assertions, and uploaded files cannot silently mutate
    under a versioned locked/run-having workflow.
 
-`Workflow.history_policy` controls whether a workflow uses this
+**Editing policy** is the author-facing label for
+`Workflow.history_policy`, which controls whether a workflow uses this
 versioned-history behavior or mutable-history behavior:
 
 - `versioned` (default): unsafe semantic edits are blocked after runs;
   clone the workflow and edit the new version.
-- `mutable`: semantic edits may happen in place after runs; old runs are
+- `mutable`: semantic edits may happen in place between runs; old runs are
   records of outcomes, not reproducible evidence against the current
-  workflow definition.
+  workflow definition. Until execution snapshots exist, semantic saves are
+  temporarily rejected while a run is using the live definition.
 
 History policy can change freely before runs exist. Once a workflow has
 runs or is locked, changing history policy itself requires a new workflow
@@ -49,10 +51,15 @@ overstate what old mutable-history runs can prove, and `versioned ->
 mutable` would let future edits rewrite the definition older
 versioned-history runs point at.
 
-Existing workflows from before the `history_policy` field are backfilled
-to `versioned`. This is the conservative upgrade path: it preserves the
-strongest future edit gate instead of silently treating historical runs as
-mutable draft data.
+New workflows, older portable definitions that omit `history_policy`, and
+test factories default to `versioned`. Mutable is accepted only when the
+author or imported definition chooses it explicitly. Invalid imported values
+are rejected with `vaf.invalid_history_policy`.
+
+The initial hosted rollout of `ValidationRun.definition_released_at` uses the
+clean application-data reset approved for this currently empty installation;
+migration `0037` therefore has no heuristic backfill. A populated deployment
+must use a reviewed data migration and worker-drain strategy instead.
 
 Workflow versions are family-local identifiers. The database enforces
 `uq_workflow_org_slug_version`, so one organization cannot have two rows
@@ -67,8 +74,8 @@ ordering; do not sort display strings lexicographically.
 
 | Concern | Field of truth | Where the gate is enforced |
 |---|---|---|
-| Workflow history mode | `Workflow.history_policy` | `WorkflowForm.clean()` blocks policy changes in either direction when runs exist or the row is locked |
-| Workflow contract fields | `Workflow.allowed_file_types`, `input_retention`, `output_retention` | `WorkflowForm.clean()` rejects unsafe edits via `Workflow.unsafely_changed_contract_fields()` when `history_policy=versioned` |
+| Editing policy | `Workflow.history_policy` | `editing_policy.validate_editing_policy_transition()` and the transactional settings save block policy changes in either direction when runs exist or the row is locked |
+| Workflow contract fields | `Workflow.allowed_file_types`, `input_retention`, `output_retention`, `input_schema` | `editing_policy.guard_workflow_definition_mutation()` serializes semantic saves; Versioned rows use the historical immutability gate and Mutable rows reject while an unreleased run exists |
 | Validator semantic config | `Validator.semantic_digest` (SHA-256) | `sync_validators` raises `CommandError` on mismatch under the same `(slug, version)`; `--allow-drift` for dev override |
 | Validator class identity | `Validator.slug` + integer `Validator.version` (unique constraint `uq_validator_slug_version`) | `sync_validators` keys by `(slug, version)`; bumping `version` creates a new row |
 | Ruleset rules | `Ruleset.rules_text`, `rules_file`, `metadata`, `ruleset_type` | `Ruleset.clean()` rejects mutation when `is_used_by_locked_workflow()` is true |
@@ -78,11 +85,41 @@ ordering; do not sort display strings lexicographically.
 | Catalog file content | `ValidatorResourceFile.content_hash` (SHA-256) | `ValidatorResourceFile.save()` raises if hash differs and the row is referenced by a versioned locked/run-having workflow |
 | Step-owned file content | `WorkflowStepResource.content_hash` (SHA-256) | `WorkflowStepResource.save()` raises if hash differs and the step's workflow is versioned and locked/run-having |
 
-The unifying pattern is **"`is_used_by_locked_workflow()` + diff
-detection in `clean()` or `save()`"**. For versioned workflows, both
-`Workflow.has_runs()` and `Workflow.is_locked` count as "in use". Mutable
-workflows opt out of this immutability gate and must be labelled as
-non-reproducible history in user-facing surfaces.
+The unifying active-use boundary is
+`validibot.workflows.services.editing_policy.guard_workflow_definition_mutation()`.
+Normal model and service mutation seams identify the affected workflow rows,
+lock them in primary-key order, and apply one semantic/cosmetic decision.
+Existing Versioned form/model gates continue to enforce historical
+immutability. Mutable workflows opt out of that historical gate but are blocked
+while an exact-workflow run has `definition_released_at IS NULL`. An audited
+Versioned superuser repair explicitly joins the same active-use fence. Multi-row
+saves hold one transaction, so a rejected mixed edit cannot persist a cosmetic
+subset.
+
+## Run admission and release lifecycle
+
+Every production creator calls
+`validibot.validations.services.run_admission.admit_validation_run()`.
+Admission locks the workflow row first and the submission row second, validates
+that both belong to the same organization, and creates a pending run with
+`definition_released_at=NULL`. Dispatch happens only after that transaction
+commits. The shared Cloud x402 adapter delegates to the same primitive.
+
+Semantic mutation locks the same workflow row and checks the partial-indexed
+unreleased-run predicate in its transaction. If mutation commits first, the
+next run uses the new definition. If admission commits first, the mutation
+returns `workflow_definition_in_use` and persists nothing.
+
+Completion paths call `emit_validation_run_finalized()`. Robust finalization
+receivers run while the marker remains null; the helper then releases it in an
+idempotent `finally` boundary. Normal completion, callback and dispatch
+failure, cancellation, timeout, and stuck-run cleanup use this helper. A
+terminal `status` does not release definition use by itself.
+
+This fence intentionally may require a quiet save window on a busy Mutable
+workflow. Deactivate the workflow to stop admissions, wait for current runs to
+release, save, and reactivate. Immutable per-run execution snapshots are the
+planned improvement that can eventually permit concurrent Mutable edits.
 
 ## Clone Boundary
 
@@ -274,11 +311,14 @@ launch contract:
 1. Add it to `Workflow` model.
 2. Add it to `validibot.workflows.services.versioning.CONTRACT_FIELDS`.
 3. Make sure `WorkflowVersioningService.clone()` copies it.
-4. Add a test in `test_versioning.py` that checks the new field is
-   copied verbatim.
+4. Add the field to the semantic workflow field set in
+   `workflows.services.editing_policy` unless it is demonstrably cosmetic.
+5. Add tests that prove cloning preserves it and that both Versioned history
+   and the Mutable definition-use fence protect it.
 
-The contract gate (`WorkflowForm.clean()`) automatically picks up the
-new field because it iterates `CONTRACT_FIELDS`. No form change needed.
+The settings form compares `CONTRACT_FIELDS`; child-row and non-form mutation
+paths must call the shared guard explicitly. Do not assume a form-only check
+protects services, HTMX endpoints, or model writes.
 
 ## Adding a new immutable validator field
 
@@ -381,6 +421,25 @@ Versioned history remains the recommended mode for credential-bearing
 workflows because it gives operators a normal workflow row to inspect,
 but the credential does not rely on the row staying mutable-state-identical
 forever.
+
+## Regression-test map
+
+- `workflows/tests/services/test_editing_policy.py` covers transitions,
+  semantic/cosmetic classification, model/service bypass attempts, active-run
+  states, idempotent release behavior, and user-facing pluralization.
+- `workflows/tests/services/test_editing_policy_concurrency.py` uses separate
+  PostgreSQL connections to prove both possible admission/mutation lock orders.
+- `validations/tests/services/test_run_admission.py` covers tenant validation,
+  admission markers, robust finalization callbacks, and idempotent release.
+- `workflows/tests/test_workflow_integration.py` covers the accessible select,
+  fixed-state reason, retryable settings error, cosmetic saves, and successful
+  retry after release.
+- `workflows/tests/test_workflow_io.py` covers explicit Mutable round-trip,
+  omitted-field Versioned default, and invalid-value rejection.
+- `static/src/ts/features/richTooltips.test.ts` covers idempotent initial and
+  HTMX lifecycle behavior for the information affordance.
+- `validibot-cloud/validibot_cloud/agents/tests/test_run_creation.py` proves
+  hosted x402 admission participates in the same fence.
 
 ## See also
 

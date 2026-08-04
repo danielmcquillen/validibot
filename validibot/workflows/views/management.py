@@ -893,11 +893,90 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
         return breadcrumbs
 
     def form_valid(self, form):
+        from validibot.workflows.services.editing_policy import EditingPolicyFixedError
+        from validibot.workflows.services.editing_policy import (
+            WorkflowDefinitionInUseError,
+        )
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            validate_editing_policy_transition,
+        )
+        from validibot.workflows.services.editing_policy import (
+            workflow_form_has_semantic_changes,
+        )
+
         try:
-            response = super().form_valid(form)
+            with transaction.atomic():
+                locked_workflow = Workflow.objects.select_for_update().get(
+                    pk=self.object.pk,
+                )
+                persisted_policy = locked_workflow.history_policy
+                persisted_definition = {
+                    field_name: getattr(locked_workflow, field_name, None)
+                    for field_name in (
+                        "allowed_file_types",
+                        "input_retention",
+                        "input_schema",
+                        "input_schema_source_mode",
+                        "input_schema_source_text",
+                        "output_retention",
+                    )
+                }
+                form_kwargs = self.get_form_kwargs()
+                form_kwargs["instance"] = locked_workflow
+                locked_form = self.get_form_class()(**form_kwargs)
+                if not locked_form.is_valid():
+                    self.object = locked_workflow
+                    return self.form_invalid(locked_form)
+
+                proposed_policy = locked_form.cleaned_data["history_policy"]
+                # ModelForm validation has copied proposed values onto the
+                # instance. Restore the persisted policy while the domain
+                # transition service evaluates the historical boundary.
+                locked_workflow.history_policy = persisted_policy
+                try:
+                    validate_editing_policy_transition(
+                        workflow=locked_workflow,
+                        proposed_policy=proposed_policy,
+                        actor=self.request.user,
+                    )
+                except EditingPolicyFixedError as exc:
+                    locked_form.add_error(
+                        "history_policy",
+                        ValidationError(exc.message, code=exc.code),
+                    )
+                    self.object = locked_workflow
+                    return self.form_invalid(locked_form)
+                locked_workflow.history_policy = proposed_policy
+
+                semantic_change = workflow_form_has_semantic_changes(
+                    workflow=None,
+                    cleaned_data=locked_form.cleaned_data,
+                    current_values=persisted_definition,
+                )
+                form = locked_form
+                try:
+                    with guard_workflow_definition_mutation(
+                        locked_workflow.pk,
+                        semantic_change=semantic_change,
+                        include_versioned_definition_users=bool(
+                            locked_form._superuser_overrode_contract_lock,
+                        ),
+                    ):
+                        self.object = locked_form.save()
+                except WorkflowDefinitionInUseError as exc:
+                    locked_form.add_error(
+                        None,
+                        ValidationError(exc.message, code=exc.code),
+                    )
+                    self.object = locked_workflow
+                    return self.form_invalid(locked_form)
         except ValidationError as exc:
             form.add_error(None, exc)
             return self.form_invalid(form)
+        response = HttpResponseRedirect(self.get_success_url())
         messages.success(self.request, _("Workflow updated."))
         return response
 

@@ -38,7 +38,7 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 
 @pytest.mark.django_db
 def test_launch_commits_run_before_enqueue(monkeypatch):
-    """A launch must persist its run row before task dispatch."""
+    """A launch must persist an unreleased definition user before dispatch."""
     org = OrganizationFactory()
     user = UserFactory()
     grant_role(user, org, RoleCode.EXECUTOR)
@@ -54,6 +54,19 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
     factory = APIRequestFactory()
     request = factory.post("/api/v1/workflows/start/")
     request.user = user
+    observed_release_markers: list[object] = []
+
+    def observe_enqueued_run(*, validation_run_id, user_id):
+        """Record the durable fence at the exact worker-dispatch boundary."""
+
+        del user_id
+        admitted_run = ValidationRun.objects.get(pk=validation_run_id)
+        observed_release_markers.append(admitted_run.definition_released_at)
+
+    monkeypatch.setattr(
+        "validibot.core.tasks.enqueue_validation_run",
+        observe_enqueued_run,
+    )
 
     service = ValidationRunService()
     response = service.launch(
@@ -68,7 +81,49 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
     validation_run = response.validation_run
     validation_run.refresh_from_db()
     assert validation_run.pk
+    assert observed_release_markers == [None]
+    assert validation_run.definition_released_at is None
     assert response.status in {status.HTTP_202_ACCEPTED, status.HTTP_201_CREATED}
+
+
+@pytest.mark.django_db
+def test_launch_enqueue_failure_releases_definition_use(monkeypatch):
+    """A run that never reaches a worker must not strand Mutable editing."""
+
+    org = OrganizationFactory()
+    user = UserFactory()
+    grant_role(user, org, RoleCode.EXECUTOR)
+    workflow = WorkflowFactory(org=org, user=user, is_active=True)
+    WorkflowStepFactory(workflow=workflow)
+    submission = SubmissionFactory(
+        org=org,
+        project=workflow.project,
+        user=user,
+        workflow=workflow,
+    )
+    request = APIRequestFactory().post("/api/v1/workflows/start/")
+    request.user = user
+
+    def fail_enqueue(**kwargs):
+        """Represent an unavailable execution queue after admission commits."""
+
+        del kwargs
+        raise RuntimeError("queue unavailable")
+
+    monkeypatch.setattr("validibot.core.tasks.enqueue_validation_run", fail_enqueue)
+
+    response = ValidationRunService().launch(
+        request=request,
+        org=org,
+        workflow=workflow,
+        submission=submission,
+        user_id=user.id,
+    )
+
+    run = response.validation_run
+    run.refresh_from_db()
+    assert run.status == ValidationRunStatus.FAILED
+    assert run.definition_released_at is not None
 
 
 @pytest.mark.django_db
@@ -154,6 +209,7 @@ def test_execute_fails_gracefully_when_validator_missing():
 
     validation_run.refresh_from_db()
     assert validation_run.status == ValidationRunStatus.FAILED
+    assert validation_run.definition_released_at is not None
     # Step failure is now graceful - results in "steps failed" message
     assert "failed" in validation_run.error.lower()
     # The specific validator error is recorded in the findings

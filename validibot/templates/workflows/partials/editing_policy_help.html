@@ -1,0 +1,15 @@
+{% load i18n %}
+
+<div class="text-start">
+  <p class="mb-2">
+    <strong>{% trans "Versioned" %}</strong>
+    {% trans "is recommended when historical confidence matters. You can edit freely until the workflow has validation runs or is locked. After that, semantic changes require a new workflow version, keeping previous runs tied to the definition that produced them." %}
+  </p>
+  <p class="mb-2">
+    <strong>{% trans "Mutable" %}</strong>
+    {% trans "is useful for experiments and private drafts. It allows semantic changes in place after completed runs, but older results may no longer match the current workflow definition. While a run is using the definition, semantic saves are temporarily rejected; retry after it finishes." %}
+  </p>
+  <p class="mb-0">
+    {% trans "You can change this choice while the workflow has no runs and is not locked. After that, the editing policy is fixed for this workflow version." %}
+  </p>
+</div>

@@ -1,0 +1,66 @@
+{% load crispy_forms_field i18n %}
+
+{% if field.is_hidden %}
+  {{ field }}
+{% else %}
+  <div id="div_{{ field.auto_id }}"
+       class="mb-3
+              {% if wrapper_class %}
+                {{ wrapper_class }}
+              {% endif %}
+              {% if field.css_classes %}
+                {{ field.css_classes }}
+              {% endif %}">
+    {% if field.label and form_show_labels %}
+      <div class="d-flex align-items-center gap-1 mb-2">
+        <label {% if field.id_for_label %}
+                 for="{{ field.id_for_label }}"
+               {% endif %}
+               class="form-label mb-0
+                      {% if label_class %}
+                        {{ label_class }}
+                      {% endif %}
+                      {% if field.field.required %}
+                        requiredField
+                      {% endif %}">
+          {{ field.label }}
+          {% if field.field.required %}
+            <span class="asteriskField">*</span>
+          {% endif %}
+        </label>
+        <span class="help-tooltip">
+          <button type="button"
+                  class="btn btn-link btn-sm text-muted p-0 border-0 lh-1"
+                  data-bs-toggle="tooltip"
+                  data-bs-html="true"
+                  data-bs-trigger="hover focus click"
+                  data-bs-custom-class="editing-policy-tooltip"
+                  aria-label="{% trans 'About editing policies' %}"
+                  aria-describedby="{{ field.auto_id }}-details">
+            <i class="bi bi-info-circle" aria-hidden="true"></i>
+          </button>
+          <template class="rich-tooltip-content">
+            {% include "workflows/partials/editing_policy_help.html" %}
+          </template>
+        </span>
+      </div>
+    {% endif %}
+
+    {% if field.errors %}
+      {% crispy_field field 'class' 'form-select is-invalid' %}
+    {% else %}
+      {% crispy_field field 'class' 'form-select' %}
+    {% endif %}
+    {% include "bootstrap5/layout/help_text_and_errors.html" %}
+
+    <div id="{{ field.auto_id }}-details" class="visually-hidden">
+      {% include "workflows/partials/editing_policy_help.html" %}
+    </div>
+    {% if field.field.editing_policy_fixed_reason %}
+      <div id="{{ field.auto_id }}-fixed-reason"
+           class="form-text text-warning-emphasis">
+        {{ field.field.editing_policy_fixed_reason }}
+      </div>
+    {% endif %}
+  </div>
+{% endif %}

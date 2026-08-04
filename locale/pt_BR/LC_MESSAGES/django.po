@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Validibot\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-23 01:40+0000\n"
+"POT-Creation-Date: 2026-08-04 00:19+0000\n"
 "PO-Revision-Date: 2026-05-21 22:55+0000\n"
 "Last-Translator: Validibot Team <daniel@mcquilleninteractive.com>\n"
 "Language-Team: Portuguese (Brazil) <pt_BR@li.org>\n"
@@ -142,6 +142,36 @@ msgstr ""
 msgid "Validator Removed"
 msgstr ""
 
+msgid "Validator Deployment Activated"
+msgstr ""
+
+msgid "Validator Deployment Deactivated"
+msgstr ""
+
+msgid "Validator Deployment Registered"
+msgstr ""
+
+msgid "Validator Deployment Verified"
+msgstr ""
+
+msgid "Validator Deployment Capacity Updated"
+msgstr ""
+
+msgid "Validator Deployment Blocked"
+msgstr ""
+
+msgid "Validator Deployment Unblocked"
+msgstr ""
+
+msgid "Validator Deployment Retired"
+msgstr ""
+
+msgid "Organization Updated"
+msgstr ""
+
+msgid "Organization Deleted"
+msgstr ""
+
 msgid "Member Invited"
 msgstr ""
 
@@ -186,6 +216,26 @@ msgstr ""
 
 msgid "Session Revoked"
 msgstr ""
+
+#, fuzzy
+#| msgid "Email Addresses"
+msgid "Email Address Added"
+msgstr "Endereços de e-mail"
+
+#, fuzzy
+#| msgid "Email Addresses"
+msgid "Email Address Changed"
+msgstr "Endereços de e-mail"
+
+#, fuzzy
+#| msgid "Email Addresses"
+msgid "Email Address Verified"
+msgstr "Endereços de e-mail"
+
+#, fuzzy
+#| msgid "Email Addresses"
+msgid "Email Address Removed"
+msgstr "Endereços de e-mail"
 
 msgid "Admin Object Changed"
 msgstr ""
@@ -369,18 +419,6 @@ msgstr ""
 msgid "Audit log"
 msgstr ""
 
-#, python-format
-msgid ""
-"\n"
-"              Append-only record of configuration changes, security\n"
-"              events, and admin actions for %(org_name)s. See\n"
-"              <a href=\"https://docs.validibot.com/self-hosted-editions/"
-"audit-log/\" class=\"text-decoration-underline\" rel=\"noopener\">the audit "
-"log documentation</a>\n"
-"              for the full taxonomy and retention policy.\n"
-"            "
-msgstr ""
-
 msgid "Audit log filters"
 msgstr ""
 
@@ -425,6 +463,12 @@ msgid "Next"
 msgstr ""
 
 msgid "No audit log entries recorded yet."
+msgstr ""
+
+msgid "Invalid bearer header."
+msgstr ""
+
+msgid "Invalid API key."
 msgstr ""
 
 msgid "No renderers configured."
@@ -473,6 +517,9 @@ msgid "Signed Credentials"
 msgstr ""
 
 msgid "MCP Server"
+msgstr ""
+
+msgid "x402 Agent Payments"
 msgstr ""
 
 msgid "Multiple Organizations"
@@ -531,10 +578,22 @@ msgid ""
 "redeemed during a disable window."
 msgstr ""
 
+msgid "Stable key identifier published in credential JOSE headers."
+msgstr ""
+
+msgid "Public JSON Web Key used for verification."
+msgstr ""
+
+msgid "Optional provider reference, such as a Google Cloud KMS key version."
+msgstr ""
+
 msgid "Processing"
 msgstr ""
 
 msgid "Completed"
+msgstr ""
+
+msgid "Rejected"
 msgstr ""
 
 msgid "User Settings"
@@ -613,6 +672,14 @@ msgstr ""
 msgid "GitHub Check Suite Completed"
 msgstr ""
 
+msgid "User Registered"
+msgstr ""
+
+#, fuzzy
+#| msgid "User Email"
+msgid "User Email Verified"
+msgstr "E-mail do usuário"
+
 msgid "User Logged In"
 msgstr ""
 
@@ -670,6 +737,10 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
+#, python-format
+msgid "Invitation to '%(who)s' to join %(org)s was accepted."
+msgstr ""
+
 msgid "Member added."
 msgstr ""
 
@@ -677,6 +748,24 @@ msgid "Invitation sent."
 msgstr ""
 
 msgid "Invitation canceled."
+msgstr ""
+
+#, python-format
+msgid "This invitation is no longer valid (status: %(status)s)."
+msgstr ""
+
+#, python-format
+msgid "Please sign up or log in to accept your invitation to join %(org)s."
+msgstr ""
+
+msgid "This invitation was sent to a different user."
+msgstr ""
+
+msgid "This invitation is not addressed to your account."
+msgstr ""
+
+#, python-format
+msgid "You're now a member of %(org)s."
 msgstr ""
 
 msgid "Members"
@@ -733,7 +822,7 @@ msgid "Your guest access to %(org)s has been removed."
 msgstr ""
 
 #, python-format
-msgid "Revoked access to %(count)d workflow(s) for %(email)s."
+msgid "Revoked %(count)d guest access grant(s) for %(email)s."
 msgstr ""
 
 msgid "Member invite"
@@ -873,6 +962,9 @@ msgstr ""
 msgid "Store permanently"
 msgstr ""
 
+msgid "Do not retain (purge after validation)"
+msgstr ""
+
 msgid "Store for 90 days"
 msgstr ""
 
@@ -910,6 +1002,12 @@ msgid "THERM THMX"
 msgstr ""
 
 msgid "THERM THMZ (Archive)"
+msgstr ""
+
+msgid "CSV (tabular)"
+msgstr ""
+
+msgid "ENERGY STAR® Portfolio Manager® Report"
 msgstr ""
 
 msgid "Binary/archived file not allowed for this content type."
@@ -957,6 +1055,21 @@ msgstr ""
 msgid "Provide exactly one of content or input_file."
 msgstr ""
 
+msgid "Workflow step whose artifact port consumes this file."
+msgstr ""
+
+msgid "Artifact input port this submitted file satisfies."
+msgstr ""
+
+msgid "Submitted file for a workflow artifact input port."
+msgstr ""
+
+msgid "When this port file was purged for retention."
+msgstr ""
+
+msgid "Workflow step must belong to the submission workflow."
+msgstr ""
+
 msgid "Submission that failed to purge."
 msgstr ""
 
@@ -975,7 +1088,7 @@ msgstr ""
 msgid "Error message from the last failed attempt."
 msgstr ""
 
-msgid "Server Error"
+msgid "Forbidden"
 msgstr ""
 
 msgid ""
@@ -984,13 +1097,16 @@ msgid ""
 "  "
 msgstr ""
 
-msgid ""
-"\n"
-"         ERROR 403. Forbidden.\n"
-"      "
+msgid "ERROR 403. Forbidden."
 msgstr ""
 
-msgid "Validibot robot dealing with a big issue."
+msgid "Validibot robot standing beside a no-entry door."
+msgstr ""
+
+msgid "Access forbidden."
+msgstr ""
+
+msgid "Sorry, you're not allowed to access this page."
 msgstr ""
 
 msgid "Page Not Found"
@@ -1002,6 +1118,9 @@ msgstr ""
 msgid "Validibot robot holding a map while searching for a missing page."
 msgstr ""
 
+msgid "Server Error"
+msgstr ""
+
 msgid ""
 "\n"
 "    An unexpected error occurred on the server. Please try refreshing the "
@@ -1011,6 +1130,9 @@ msgid ""
 msgstr ""
 
 msgid "ERROR 500. Something went wrong."
+msgstr ""
+
+msgid "Validibot robot dealing with a big issue."
 msgstr ""
 
 msgid "Email Addresses"
@@ -1234,6 +1356,18 @@ msgid "Close"
 msgstr ""
 
 msgid "We found a few issues. Please update the highlighted fields below."
+msgstr ""
+
+msgid "Discard changes?"
+msgstr ""
+
+msgid "You have unsaved changes. If you leave now, they will be lost."
+msgstr ""
+
+msgid "Keep editing"
+msgstr ""
+
+msgid "Discard changes"
 msgstr ""
 
 msgid "Terms of Service"
@@ -1504,10 +1638,16 @@ msgstr ""
 msgid "Use"
 msgstr ""
 
-msgid "for payload (raw submission data) and"
+msgid "for payload (raw submission data),"
 msgstr ""
 
-msgid "for signals (author-defined named values)."
+msgid "for signals (author-defined named values), and"
+msgstr ""
+
+msgid "for submission metadata and server facts (e.g."
+msgstr ""
+
+msgid ")."
 msgstr ""
 
 msgid "XML tip:"
@@ -1560,7 +1700,7 @@ msgstr ""
 msgid ""
 "\n"
 "        <strong>About guests:</strong> Guests are existing Validibot users "
-"who can access specific workflows you've shared with them.\n"
+"who can access selected workflows or every workflow in this organization.\n"
 "        They are not members of your organization.\n"
 "        (<a href=\"%(members_url)s\">Members</a>, on the other hand, have "
 "full access based on their assigned roles.)\n"
@@ -1568,6 +1708,9 @@ msgid ""
 msgstr ""
 
 msgid "Current Guests"
+msgstr ""
+
+msgid "All workflows"
 msgstr ""
 
 msgid "workflow"
@@ -1583,9 +1726,6 @@ msgid "No guests currently have access to workflows in this organization."
 msgstr ""
 
 msgid "Pending Invitations"
-msgstr ""
-
-msgid "All workflows"
 msgstr ""
 
 msgid "selected workflow"
@@ -1807,6 +1947,51 @@ msgstr ""
 msgid "No users found for \"%(query)s\". You can invite by email instead."
 msgstr ""
 
+#, fuzzy
+#| msgid "Confirm deletion"
+msgid "Confirm invitation"
+msgstr "Confirmar exclusão"
+
+#, python-format
+msgid ""
+"\n"
+"                    Avatar for %(name)s\n"
+"                  "
+msgstr ""
+
+#, python-format
+msgid ""
+"\n"
+"        Are you sure you want to make this user a member of \"%(org)s\" with "
+"the\n"
+"        following permissions?\n"
+"      "
+msgstr ""
+
+#, python-format
+msgid ""
+"\n"
+"          An invitation will be sent to <strong>%(email)s</strong>.\n"
+"      "
+msgstr ""
+
+#, python-format
+msgid ""
+"\n"
+"        Are you sure you want to invite %(email)s to become a member of "
+"\"%(org)s\"\n"
+"        with the following permissions? If they don't already have a "
+"Validibot\n"
+"        account, they'll receive an email with a link to sign up and join.\n"
+"      "
+msgstr ""
+
+msgid "No permissions selected."
+msgstr ""
+
+msgid "Invite"
+msgstr ""
+
 #, python-format
 msgid ""
 "\n"
@@ -1819,6 +2004,9 @@ msgid "User or email"
 msgstr ""
 
 msgid "Type a username or email"
+msgstr ""
+
+msgid "Continue"
 msgstr ""
 
 msgid "Organization members"
@@ -2075,9 +2263,6 @@ msgstr ""
 msgid "Your API Key"
 msgstr ""
 
-msgid "Manage the credentials you use to call the Validibot API."
-msgstr ""
-
 msgid ""
 "This action cannot be undone. All associated memberships and projects will "
 "be removed."
@@ -2150,10 +2335,10 @@ msgstr ""
 msgid "Edit member roles"
 msgstr ""
 
-msgid "Personal"
-msgstr "Pessoal"
-
 msgid "Use this key to authenticate API requests with the application API."
+msgstr ""
+
+msgid "Copy this key now. For security, it will not be shown again."
 msgstr ""
 
 msgid "API key"
@@ -2165,12 +2350,27 @@ msgstr ""
 msgid "Copy"
 msgstr ""
 
+msgid ""
+"Only part of your key is shown here, for your reference. Validibot will only "
+"show you the whole key when you first create it. Please create a new key if "
+"you need a full one."
+msgstr ""
+
+msgid "No active API key"
+msgstr ""
+
+msgid "Never"
+msgstr ""
+
 msgid "Generate new key"
 msgstr ""
 
+msgid "Generate key"
+msgstr ""
+
 msgid ""
-"Generating a new key immediately invalidates the previous key. Update any "
-"clients that use the API."
+"Generating a new key immediately invalidates previous Validibot API keys. "
+"Update any clients that use the API."
 msgstr ""
 
 msgid "Profile"
@@ -2268,7 +2468,7 @@ msgstr ""
 #, python-format
 msgid ""
 "\n"
-"              Public profile information for %(username)s.\n"
+"              Profile information for your teammate %(username)s.\n"
 "            "
 msgstr ""
 
@@ -2293,19 +2493,70 @@ msgstr ""
 msgid "Update"
 msgstr ""
 
+#, python-format
+msgid "%(filename)s · Artifact · Validibot"
+msgstr ""
+
+msgid "Generated File"
+msgstr ""
+
+#, fuzzy
+#| msgid "Back to run detail"
+msgid "Back to run"
+msgstr "Voltar aos detalhes da execução"
+
+msgid "Label"
+msgstr ""
+
+msgid "Producer step"
+msgstr ""
+
+msgid "Not specified"
+msgstr ""
+
+msgid "Type"
+msgstr ""
+
+msgid "Size"
+msgstr ""
+
+msgid "SHA-256"
+msgstr ""
+
+msgid "Not captured"
+msgstr ""
+
+msgid "Media type"
+msgstr ""
+
+msgid "Data format"
+msgstr ""
+
+msgid "Retention class"
+msgstr ""
+
+msgid "Download File"
+msgstr ""
+
+msgid "Direct download is not available for this artifact yet."
+msgstr ""
+
+msgid "Run"
+msgstr ""
+
+msgid "Workflow"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
 msgid "Validation runs you've submitted on shared workflows"
 msgstr ""
 
 msgid "All organizations"
 msgstr ""
 
-msgid "Status"
-msgstr ""
-
 msgid "All statuses"
-msgstr ""
-
-msgid "Workflow"
 msgstr ""
 
 msgid "Sort"
@@ -2390,9 +2641,6 @@ msgstr ""
 msgid "Pick the validator type that matches the backing engine or integration."
 msgstr ""
 
-msgid "Type"
-msgstr ""
-
 msgid "Create FMU Validator"
 msgstr ""
 
@@ -2426,7 +2674,7 @@ msgstr ""
 msgid "Inputs and Outputs"
 msgstr ""
 
-msgid "No signals registered yet."
+msgid "No step inputs or outputs registered yet."
 msgstr ""
 
 msgid "Edit which step outputs are shown to users"
@@ -2435,10 +2683,10 @@ msgstr ""
 msgid "Filter:"
 msgstr ""
 
-msgid "Filter by signal name"
+msgid "Filter by contract key"
 msgstr ""
 
-msgid "Signal Name"
+msgid "Contract Key"
 msgstr ""
 
 msgid "Direction"
@@ -2465,8 +2713,8 @@ msgstr ""
 msgid "No entries."
 msgstr ""
 
-msgid "Signal name"
-msgstr "Nome do sinal"
+msgid "Contract key"
+msgstr ""
 
 msgid "Native Name"
 msgstr ""
@@ -2489,13 +2737,13 @@ msgstr ""
 msgid "Edit default assertion"
 msgstr ""
 
-msgid "Add signal"
-msgstr "Adicionar sinal"
-
-msgid "Save signal"
+msgid "Add step input or output"
 msgstr ""
 
-msgid "Edit signal"
+msgid "Save input/output"
+msgstr ""
+
+msgid "Edit input/output"
 msgstr ""
 
 msgid "Create validator"
@@ -2510,13 +2758,10 @@ msgstr ""
 msgid "No validator types are available yet."
 msgstr ""
 
-msgid "Label"
-msgstr ""
-
 msgid "Data Type"
 msgstr ""
 
-msgid "Signal Details"
+msgid "Input/Output Details"
 msgstr ""
 
 msgid "Order"
@@ -2525,8 +2770,10 @@ msgstr ""
 msgid "Assertion"
 msgstr ""
 
-msgid "Signal"
-msgstr "Sinal"
+#, fuzzy
+#| msgid "User Inputs"
+msgid "Step Input/Output"
+msgstr "Entradas do usuário"
 
 msgid "Default assertion actions"
 msgstr ""
@@ -2592,40 +2839,61 @@ msgstr ""
 msgid "View all"
 msgstr ""
 
+msgid "Add input or output"
+msgstr ""
+
 msgid "Native name"
 msgstr ""
 
 msgid "Input"
 msgstr ""
 
-msgid "Signal actions"
-msgstr ""
+#, fuzzy
+#| msgid "User Inputs"
+msgid "Step input actions"
+msgstr "Entradas do usuário"
 
 #, python-format
-msgid "Delete signal '%(name)s'?"
+msgid "Delete step input '%(name)s'?"
 msgstr ""
 
 msgid "Output"
 msgstr ""
 
-msgid ""
-"Signals are defined after an FMU is uploaded into this validator within a "
-"validation workflow."
+#, fuzzy
+#| msgid "User Inputs"
+msgid "Step output actions"
+msgstr "Entradas do usuário"
+
+#, python-format
+msgid "Delete step output '%(name)s'?"
 msgstr ""
 
 msgid ""
-"Output signals (parse_ok, shacl_violation_count, namespace detection, etc.) "
+"Step inputs and outputs are defined after an FMU is uploaded into this "
+"validator within a validation workflow."
+msgstr ""
+
+msgid ""
+"Step outputs (parse_ok, shacl_violation_count, namespace detection, etc.) "
 "are emitted automatically when this validator runs. Gate on them with CEL "
 "assertions in the step config; there is nothing to configure here."
 msgstr ""
 
-msgid "This system validator does not declare author-editable signals."
+msgid ""
+"This system validator does not declare author-editable step inputs or "
+"outputs."
 msgstr ""
 
-msgid "No signals have been added yet."
+msgid "No step inputs or outputs have been added yet."
 msgstr ""
 
 msgid "Edit Validator Settings"
+msgstr ""
+
+msgid ""
+"You are viewing an older validator version. It is read-only; the default "
+"library route opens the latest version."
 msgstr ""
 
 msgid "FMU Probe Status"
@@ -2637,8 +2905,8 @@ msgstr ""
 msgid "Refresh Status"
 msgstr ""
 
-msgid "Signals"
-msgstr "Sinais"
+msgid "Inputs & Outputs"
+msgstr ""
 
 msgid "Default Assertions"
 msgstr ""
@@ -2649,21 +2917,33 @@ msgstr ""
 msgid "Back to Validator Library"
 msgstr ""
 
-msgid "Add Signal"
-msgstr "Adicionar sinal"
+msgid "Add Step Input or Output"
+msgstr ""
 
 #, python-format
-msgid "Signals for \"%(name)s\""
+msgid "Inputs and outputs for \"%(name)s\""
 msgstr ""
 
-msgid "All Signals"
+msgid "All Inputs & Outputs"
 msgstr ""
 
-msgid "No signals have been defined for this validator."
+msgid "No step inputs or outputs have been defined for this validator."
 msgstr ""
 
 #, python-format
 msgid "Back to \"%(name)s\""
+msgstr ""
+
+#, fuzzy
+#| msgid "Recent Validations"
+msgid "Validator Versions"
+msgstr "Validações recentes"
+
+#, python-format
+msgid "Versions for %(name)s"
+msgstr ""
+
+msgid "Latest"
 msgstr ""
 
 msgid "Delete Validation"
@@ -2754,10 +3034,39 @@ msgid ""
 "historical inspection."
 msgstr ""
 
-msgid "Run"
+msgid "No validation runs yet for this workflow."
 msgstr ""
 
-msgid "No validation runs yet for this workflow."
+msgid "About editing policies"
+msgstr ""
+
+#, fuzzy
+#| msgid "Resend invitation"
+msgid "Accept guest invitation"
+msgstr "Reenviar convite"
+
+#, fuzzy
+#| msgid "Resend invitation"
+msgid "Guest invitation"
+msgstr "Reenviar convite"
+
+#, python-format
+msgid ""
+"<strong>%(inviter)s</strong> invited you to be a guest of "
+"<strong>%(org_name)s</strong>."
+msgstr ""
+
+msgid ""
+"Accepting grants your account guest access to this organization's shared "
+"workflows."
+msgstr ""
+
+#, fuzzy
+#| msgid "Resend invitation"
+msgid "Accept invitation"
+msgstr "Reenviar convite"
+
+msgid "Not now"
 msgstr ""
 
 msgid "Workflows you've been invited to use"
@@ -2772,6 +3081,74 @@ msgstr ""
 msgid ""
 "No shared workflows yet. You'll see workflows here once you've been invited "
 "to use them."
+msgstr ""
+
+msgid "Drag & drop a .vaf or .json file"
+msgstr ""
+
+msgid "or click to browse"
+msgstr ""
+
+msgid "Browse files"
+msgstr ""
+
+msgid "Importing workflow"
+msgstr ""
+
+msgid "Importing…"
+msgstr ""
+
+msgid "Import workflow"
+msgstr ""
+
+msgid "The workflow couldn't be imported"
+msgstr ""
+
+msgid "Try again"
+msgstr ""
+
+msgid "Back to workflow list"
+msgstr ""
+
+#, python-format
+msgid "Workflow <strong>%(name)s</strong> was imported."
+msgstr ""
+
+msgid "Open the workflow to review its steps before you launch it."
+msgstr ""
+
+#, fuzzy
+#| msgid "User Inputs"
+msgid "Steps"
+msgstr "Entradas do usuário"
+
+msgid "Assertions"
+msgstr ""
+
+#, fuzzy
+#| msgid "Signals"
+msgid "Signal mappings"
+msgstr "Sinais"
+
+#, python-format
+msgid "1 thing needs your attention"
+msgid_plural "%(counter)s things need your attention"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "Go to workflow"
+msgstr ""
+
+msgid "Import Workflow"
+msgstr ""
+
+msgid "Back to workflows"
+msgstr ""
+
+msgid ""
+"Upload a Validibot archive (<code>.vaf</code>) or a workflow definition "
+"(<code>.json</code>). The workflow is imported into your current "
+"organization as a new copy."
 msgstr ""
 
 msgid "Run in progress"
@@ -2855,11 +3232,10 @@ msgstr ""
 msgid "Drag & drop a file"
 msgstr ""
 
-msgid "or click to browse"
-msgstr ""
-
-msgid "Browse files"
-msgstr ""
+#, fuzzy
+#| msgid "Add file"
+msgid "Additional files"
+msgstr "Adicionar arquivo"
 
 msgid "Constraints"
 msgstr ""
@@ -2922,6 +3298,41 @@ msgstr ""
 msgid "Status for workflow:"
 msgstr ""
 
+msgid "We found a few issues:"
+msgstr ""
+
+msgid "Saving assertion…"
+msgstr ""
+
+msgid "Dataset assertions"
+msgstr ""
+
+msgid "Add dataset assertion"
+msgstr ""
+
+msgid "Run once against dataset metadata such as row count and column names."
+msgstr ""
+
+msgid "Row assertions"
+msgstr ""
+
+msgid "Add row assertion"
+msgstr ""
+
+msgid "Run against each row and aggregate failures into bounded findings."
+msgstr ""
+
+msgid "Column assertions"
+msgstr ""
+
+msgid "Add column assertion"
+msgstr ""
+
+msgid ""
+"Run once against typed aggregates such as null ratio, distinct count, range, "
+"and sum."
+msgstr ""
+
 msgid "Input assertions"
 msgstr ""
 
@@ -2937,6 +3348,11 @@ msgstr ""
 msgid "No output assertions yet."
 msgstr ""
 
+msgid ""
+"Graph and expression checks run in separate passes — ordering applies within "
+"each type."
+msgstr ""
+
 msgid "This validator does not support assertions."
 msgstr ""
 
@@ -2946,10 +3362,13 @@ msgstr ""
 msgid "No assertions defined yet."
 msgstr ""
 
-msgid "SPARQL ASK"
+msgid "ASK"
 msgstr ""
 
 msgid "(no description)"
+msgstr ""
+
+msgid "Notes"
 msgstr ""
 
 msgid "Assertion actions"
@@ -3012,6 +3431,69 @@ msgstr ""
 msgid "Show schema"
 msgstr ""
 
+msgid ""
+"Upload a delimited text file (CSV). Each row is one record, and its columns "
+"must match the definitions below."
+msgstr ""
+
+msgid "Delimiter"
+msgstr ""
+
+msgid "Encoding"
+msgstr ""
+
+#, fuzzy
+#| msgid "Leave empty = required"
+msgid "Header row required"
+msgstr "Deixe vazio = obrigatório"
+
+msgid "No header row"
+msgstr ""
+
+msgid "columns"
+msgstr ""
+
+msgid "required"
+msgstr "obrigatório"
+
+msgid "Column"
+msgstr ""
+
+#, fuzzy
+#| msgid "required"
+msgid "Requirement"
+msgstr "obrigatório"
+
+#, fuzzy
+#| msgid "Allowed values"
+msgid "Allowed values & rules"
+msgstr "Valores permitidos"
+
+msgid "Primary key — uniquely identifies each row"
+msgstr ""
+
+msgid "Key"
+msgstr ""
+
+#, python-format
+msgid "Required if %(field)s present"
+msgstr ""
+
+msgid "Unique"
+msgstr ""
+
+msgid "One of:"
+msgstr ""
+
+msgid "Must match:"
+msgstr ""
+
+#, python-format
+msgid ""
+"Each row is uniquely identified by %(keys)s. Those values must be present "
+"and must not repeat."
+msgstr ""
+
 msgid "Step details"
 msgstr ""
 
@@ -3030,7 +3512,36 @@ msgstr "Validar o IDF do EnergyPlus enviado"
 msgid "Step Key"
 msgstr ""
 
-msgid "Notes"
+msgid "No assertions in this stage yet."
+msgstr ""
+
+#, fuzzy
+#| msgid "Account Settings"
+msgid "Edit settings"
+msgstr "Configurações da conta"
+
+msgid "Reader"
+msgstr ""
+
+msgid "CSV"
+msgstr ""
+
+msgid "Auto-detect"
+msgstr ""
+
+msgid "Header row"
+msgstr ""
+
+msgid "Yes"
+msgstr ""
+
+msgid "No"
+msgstr ""
+
+msgid "Columns"
+msgstr ""
+
+msgid "Required columns"
 msgstr ""
 
 msgid "Unarchive workflow"
@@ -3056,10 +3567,15 @@ msgstr ""
 msgid "Launch"
 msgstr ""
 
-msgid "Executor access required to run this workflow"
+msgid "This workflow is archived and cannot be launched"
 msgstr ""
 
-msgid "This workflow is archived and cannot be launched"
+#, fuzzy
+#| msgid "This workflow is currently inactive."
+msgid "This workflow is inactive. Activate it to launch."
+msgstr "Este fluxo de trabalho está inativo no momento."
+
+msgid "Executor access required to run this workflow"
 msgstr ""
 
 msgid "Edit workflow"
@@ -3107,6 +3623,26 @@ msgstr ""
 msgid "Workflow versions"
 msgstr ""
 
+msgid "Constant"
+msgstr ""
+
+msgid "Value"
+msgstr ""
+
+msgid "Delete this constant?"
+msgstr ""
+
+msgid "No constants have been defined yet."
+msgstr ""
+
+msgid ""
+"Constants are fixed values you name once and reference as c.name in "
+"assertions — e.g. an agreed price or an allowed-currency list."
+msgstr ""
+
+msgid "Create the first constant"
+msgstr ""
+
 msgid "Step Outputs to Display"
 msgstr ""
 
@@ -3118,74 +3654,37 @@ msgstr ""
 msgid "No step outputs available for this step."
 msgstr ""
 
-msgid ""
-"Some required step inputs have no source path. Map each required input to a "
-"payload path or signal before running the workflow."
-msgstr ""
+#, fuzzy
+#| msgid "Version"
+msgid "Versioned"
+msgstr "Versão"
 
 msgid ""
-"The contract key for this step input. Reference it in CEL assertions as i."
-"<name>."
+"is recommended when historical confidence matters. You can edit freely until "
+"the workflow has validation runs or is locked. After that, semantic changes "
+"require a new workflow version, keeping previous runs tied to the definition "
+"that produced them."
 msgstr ""
 
-msgid "Source Path"
-msgstr ""
-
-msgid ""
-"A payload path (e.g., building.floor_area) or signal reference (e.g., "
-"s.floor_area) that provides the value for this step input. May be empty for "
-"parser-extracted inputs (validator populates the value automatically)."
-msgstr ""
-
-msgid "Copy to Signal"
+msgid "Mutable"
 msgstr ""
 
 msgid ""
-"Promote this step input to a workflow-wide signal so later steps can "
-"reference it as s.<name>."
-msgstr ""
-
-msgid "Internal — data source managed by the validator"
-msgstr ""
-
-msgid "Provided by validator"
-msgstr ""
-
-msgid "Not mapped"
-msgstr ""
-
-msgid "Remove signal"
-msgstr ""
-
-msgid "Copy to signal"
-msgstr ""
-
-msgid "Auto-link to workflow signal"
-msgstr ""
-
-msgid "Edit step input"
-msgstr ""
-
-msgid "Edit variable"
-msgstr "Editar variável"
-
-msgid ""
-"No step inputs. This validator either doesn't have a process that parses the "
-"payload (schema-only validators like JSON Schema), or its process emits "
-"outputs only (SHACL, THERM). Write your assertions against p.* (payload) and "
-"s.* (workflow signals)."
-msgstr ""
-
-msgid "Adds output values to the final output response shown to users."
+"is useful for experiments and private drafts. It allows semantic changes in "
+"place after completed runs, but older results may no longer match the "
+"current workflow definition. While a run is using the definition, semantic "
+"saves are temporarily rejected; retry after it finishes."
 msgstr ""
 
 msgid ""
-"Copy the output value to a signal so it is easily referenced in later steps."
+"You can change this choice while the workflow has no runs and is not locked. "
+"After that, the editing policy is fixed for this workflow version."
 msgstr ""
 
-msgid ""
-"No step outputs. This validator doesn't emit named output values — its "
-"results emerge as findings rather than values you can assert against."
+msgid "Resize columns"
+msgstr ""
+
+msgid "Drag to resize"
 msgstr ""
 
 msgid "Paste Sample Data"
@@ -3212,6 +3711,9 @@ msgstr ""
 msgid "Select all"
 msgstr ""
 
+msgid "Signal Name"
+msgstr ""
+
 msgid "Data Path"
 msgstr ""
 
@@ -3230,36 +3732,10 @@ msgstr ""
 msgid "No input requirements defined."
 msgstr ""
 
-msgid "Edit Validator Input"
-msgstr ""
+msgid "Signal"
+msgstr "Sinal"
 
-msgid ""
-"This signal is defined by the validator library. Label, description, and "
-"unit are read-only."
-msgstr ""
-
-msgid "Definition"
-msgstr ""
-
-msgid "The unique identifier used in CEL assertions and the validation engine."
-msgstr ""
-
-msgid "Contract Key"
-msgstr ""
-
-msgid ""
-"The original variable name in the simulation model (e.g., FMU variable "
-"name). May differ from the contract key."
-msgstr ""
-
-msgid ""
-"How this signal obtains its value: from a path in the submission data "
-"(Payload Path) or via an internal extraction mechanism (Internal)."
-msgstr ""
-
-msgid ""
-"This signal's data source is managed by the validator. The source path "
-"cannot be changed."
+msgid "Source Path"
 msgstr ""
 
 msgid "On Missing"
@@ -3291,6 +3767,93 @@ msgstr ""
 msgid "Create the first signal"
 msgstr ""
 
+msgid ""
+"Some required step inputs have no source path. Map each required input to a "
+"payload path or signal before running the workflow."
+msgstr ""
+
+msgid ""
+"The contract key for this step input. Reference it in CEL assertions as i."
+"<name>."
+msgstr ""
+
+msgid ""
+"A payload path (e.g., building.floor_area) or signal reference (e.g., "
+"s.floor_area) that provides the value for this step input. May be empty for "
+"parser-extracted inputs (validator populates the value automatically)."
+msgstr ""
+
+msgid "Copy to Signal"
+msgstr ""
+
+msgid ""
+"Promote this step input to a workflow-wide signal so later steps can "
+"reference it as s.<name>."
+msgstr ""
+
+msgid "Internal — data source managed by the validator"
+msgstr ""
+
+msgid "Provided by validator"
+msgstr ""
+
+msgid "Not mapped"
+msgstr ""
+
+msgid "Remove signal"
+msgstr ""
+
+msgid "Signal name"
+msgstr "Nome do sinal"
+
+msgid "Copy to signal"
+msgstr ""
+
+msgid "Auto-link to workflow signal"
+msgstr ""
+
+msgid "Edit step input"
+msgstr ""
+
+msgid "Edit variable"
+msgstr "Editar variável"
+
+msgid ""
+"No step inputs. This validator either doesn't have a process that parses the "
+"payload (schema-only validators like JSON Schema), or its process emits "
+"outputs only (SHACL, THERM). Write your assertions against p.* (payload) and "
+"s.* (workflow signals)."
+msgstr ""
+
+msgid "Edit Validator Input"
+msgstr ""
+
+msgid ""
+"This step input is defined by the validator library. Label, description, and "
+"unit are read-only."
+msgstr ""
+
+msgid "Definition"
+msgstr ""
+
+msgid "The unique identifier used in CEL assertions and the validation engine."
+msgstr ""
+
+msgid ""
+"The original variable name in the simulation model (e.g., FMU variable "
+"name). May differ from the contract key."
+msgstr ""
+
+msgid ""
+"How this step input obtains its value: from a path in the submission data "
+"(Payload Path) or via an internal extraction mechanism (Internal)."
+msgstr ""
+
+msgid ""
+"This step input's data source is managed by the validator. The source path "
+"cannot be changed."
+msgstr ""
+
 msgid "Shown in results"
 msgstr ""
 
@@ -3304,6 +3867,164 @@ msgid "Hidden from results"
 msgstr ""
 
 msgid "No step outputs registered yet."
+msgstr ""
+
+msgid "Adds output values to the final output response shown to users."
+msgstr ""
+
+msgid ""
+"Copy the output value to a signal so it is easily referenced in later steps."
+msgstr ""
+
+msgid "No step outputs. This validator doesn't emit named output values."
+msgstr ""
+
+msgid "Add column"
+msgstr ""
+
+msgid "Column Name"
+msgstr ""
+
+msgid "Primary-key columns are always required."
+msgstr ""
+
+msgid "Column actions"
+msgstr ""
+
+msgid "Move column up"
+msgstr ""
+
+msgid "Move column down"
+msgstr ""
+
+#, fuzzy
+#| msgid "Remove"
+msgid "Remove column"
+msgstr "Remover"
+
+#, fuzzy
+#| msgid "Back to run detail"
+msgid "Column details"
+msgstr "Voltar aos detalhes da execução"
+
+msgid "Import Table Schema"
+msgstr ""
+
+msgid "Paste a Frictionless Table Schema descriptor, or upload one as JSON."
+msgstr ""
+
+msgid "Descriptor JSON"
+msgstr ""
+
+msgid "Or upload descriptor JSON"
+msgstr ""
+
+msgid "Your current columns are kept until you apply the proposal."
+msgstr ""
+
+msgid "Import schema"
+msgstr ""
+
+msgid "Review imported schema"
+msgstr ""
+
+msgid "Apply"
+msgstr ""
+
+msgid "Infer columns from a sample"
+msgstr ""
+
+msgid "Validibot reads the header and proposes a type for each column."
+msgstr ""
+
+msgid "Delimited text sample"
+msgstr ""
+
+msgid ""
+"Comma, tab, semicolon, and pipe delimiters are supported. The filename "
+"extension does not matter. Your current columns are kept until you apply the "
+"proposal."
+msgstr ""
+
+msgid "Infer columns"
+msgstr ""
+
+msgid "Review inferred schema"
+msgstr ""
+
+#, python-format
+msgid ""
+"This proposal contains %(count)s column. Your current columns remain "
+"unchanged until you apply it."
+msgid_plural ""
+"This proposal contains %(count)s columns. Your current columns remain "
+"unchanged until you apply it."
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "Compatibility report"
+msgstr ""
+
+msgid ""
+"Validibot adopts the Frictionless Table Schema vocabulary but does not "
+"enforce every keyword. Each item below is something in this schema the "
+"editor cannot act on — it is kept in your saved schema for portability, but "
+"it will not affect how files are validated."
+msgstr ""
+
+msgid "Every feature in this schema is fully supported."
+msgstr ""
+
+msgid "Comma"
+msgstr ""
+
+msgid "Tab"
+msgstr ""
+
+msgid "Semicolon"
+msgstr ""
+
+msgid "Pipe"
+msgstr ""
+
+msgid ""
+"Define expected columns, their data types, and the shape each value must "
+"have."
+msgstr ""
+
+msgid "column"
+msgstr ""
+
+msgid "A schema needs at least one column."
+msgstr ""
+
+msgid ""
+"Column order must match headerless files. Headered files use the names above."
+msgstr ""
+
+msgid "Updating schema…"
+msgstr ""
+
+msgid ""
+"Name this check so workflow authors and submitters understand its purpose."
+msgstr ""
+
+msgid "File format"
+msgstr ""
+
+msgid "CSV · UTF-8"
+msgstr ""
+
+msgid ""
+"CSV is the current reader. UTF-8 is used consistently for reproducible "
+"validation."
+msgstr ""
+
+msgid "Publishing and author notes"
+msgstr ""
+
+msgid ""
+"Control what submitters see and preserve context for future workflow authors."
 msgstr ""
 
 msgid "Human-readable label shown to submitters."
@@ -3339,38 +4060,16 @@ msgstr "Valores permitidos"
 msgid "Enter one allowed value per line. Values are case-sensitive."
 msgstr ""
 
-msgid "required"
-msgstr "obrigatório"
-
 msgid "optional"
 msgstr "opcional"
 
 msgid "Template Variables"
 msgstr ""
 
-msgid "Configure each variable's type, constraints, and default values."
-msgstr ""
-
-#, fuzzy
-#| msgid "User Inputs"
-msgid "Step Inputs"
-msgstr "Entradas do usuário"
-
 msgid "Step Outputs"
 msgstr ""
 
-msgid "Available Data"
-msgstr ""
-
-msgid "Edit Signals"
-msgstr ""
-
-msgid "Upstream Step Outputs"
-msgstr ""
-
-msgid ""
-"No signals defined. Configure signals on the workflow's Signals page, or use "
-"p.key to reference raw submission data directly."
+msgid "Configure each variable's type, constraints, and default values."
 msgstr ""
 
 msgid "Delete Workflow"
@@ -3382,6 +4081,37 @@ msgid ""
 "                Are you sure you want to delete the workflow \"%(name)s\"? "
 "This action cannot be undone.\n"
 "              "
+msgstr ""
+
+#, fuzzy
+#| msgid "User Inputs"
+msgid "Step Inputs"
+msgstr "Entradas do usuário"
+
+msgid "Available Data"
+msgstr ""
+
+msgid "Edit Constants"
+msgstr ""
+
+msgid "Edit Signals"
+msgstr ""
+
+msgid "Signals"
+msgstr "Sinais"
+
+msgid "Constants"
+msgstr ""
+
+msgid "Upstream Step Outputs"
+msgstr ""
+
+msgid "Generated Files From Earlier Steps"
+msgstr ""
+
+msgid ""
+"No signals or constants defined. Configure them on the workflow's Signals "
+"and Constants pages, or use p.key to reference raw submission data directly."
 msgstr ""
 
 msgid "Guest Access"
@@ -3468,16 +4198,7 @@ msgstr ""
 msgid "JSON Schema validation"
 msgstr ""
 
-msgid "XML Schema"
-msgstr ""
-
 msgid "Simulation"
-msgstr ""
-
-msgid "Yes"
-msgstr ""
-
-msgid "No"
 msgstr ""
 
 msgid "EUI"
@@ -3528,9 +4249,6 @@ msgstr ""
 msgid "Nothing available here yet."
 msgstr ""
 
-msgid "Continue"
-msgstr ""
-
 msgid "Version history"
 msgstr ""
 
@@ -3549,8 +4267,10 @@ msgstr[1] ""
 msgid "Runs"
 msgstr ""
 
-msgid "Policy"
-msgstr ""
+#, fuzzy
+#| msgid "Edit profile"
+msgid "Editing policy"
+msgstr "Editar perfil"
 
 msgid "Modified"
 msgstr ""
@@ -3568,24 +4288,70 @@ msgid ""
 "Semantic edits on a versioned/locked workflow require creating a new version."
 msgstr ""
 
+msgid "Access"
+msgstr ""
+
+msgid "Who can run this?"
+msgstr ""
+
 msgid "Visibility"
+msgstr ""
+
+msgid ""
+"Choose who, by Validibot identity, may run this workflow for free. Options "
+"are limited by your organization's ceiling."
 msgstr ""
 
 msgid "Current"
 msgstr ""
 
-msgid "Only org members and invited guests can launch this workflow."
+msgid "Only you and people you invite can run this workflow."
 msgstr ""
 
-msgid "Public"
+msgid "Any member of your organization can run this workflow."
+msgstr ""
+
+msgid "Any logged-in Validibot user can run this workflow."
 msgstr ""
 
 msgid ""
-"Any logged-in user can launch this workflow. Usage is billed to your "
-"organization."
+"The info page is automatically made public when the workflow is visible to "
+"all Validibot users."
 msgstr ""
 
-msgid "The info page is automatically made public when the workflow is public."
+msgid "Agent access"
+msgstr ""
+
+msgid ""
+"These channels are independent of the visibility setting above and of each "
+"other."
+msgstr ""
+
+msgid "Allow authenticated agents via MCP"
+msgstr ""
+
+msgid ""
+"Authenticated AI agents may run this workflow on behalf of a user who "
+"already has identity access above. Billed to that user's plan quota."
+msgstr ""
+
+#, fuzzy
+#| msgid "This user is already a member of the organization."
+msgid "MCP access is disabled for this organization."
+msgstr "Este usuário já é membro da organização."
+
+msgid "Publish for paid anonymous access (x402)"
+msgstr ""
+
+#, fuzzy
+#| msgid "This user is already a member of the organization."
+msgid "x402 access is disabled for this organization."
+msgstr "Este usuário já é membro da organização."
+
+msgid ""
+"Enabling this makes the workflow callable by ANYONE on the internet who pays "
+"the per-call price (anonymous x402), regardless of the visibility setting "
+"above."
 msgstr ""
 
 msgid "Workflow access"
@@ -3660,6 +4426,9 @@ msgstr ""
 msgid "This workflow accepts structured JSON input with the following fields."
 msgstr ""
 
+msgid "This workflow checks submissions against these fixed, named values."
+msgstr ""
+
 msgid "All Workflows"
 msgstr ""
 
@@ -3687,6 +4456,9 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
+msgid "Public"
+msgstr ""
+
 msgid "Member access"
 msgstr ""
 
@@ -3712,6 +4484,33 @@ msgstr ""
 msgid "No workflows are available yet."
 msgstr ""
 
+msgid "Report layout"
+msgstr ""
+
+msgid "Stacked layout"
+msgstr ""
+
+msgid "Two-column layout"
+msgstr ""
+
+msgid "Generated Files"
+msgstr ""
+
+msgid "File"
+msgstr ""
+
+msgid "Producer"
+msgstr ""
+
+msgid "Role / Type"
+msgstr ""
+
+msgid "View artifact details"
+msgstr ""
+
+msgid "Download artifact"
+msgstr ""
+
 msgid "Signed Credential"
 msgstr ""
 
@@ -3734,23 +4533,18 @@ msgid "Evidence Manifest"
 msgstr ""
 
 msgid ""
-"A canonical record of the rules and inputs this run was operating under. "
-"Download it for archival, external verification, or audit."
+"A permanent receipt with run, workflow, validator, and payload-hash "
+"information, but no submitted contents or output files. A bundle is "
+"cryptographic proof only when it includes a signed credential."
 msgstr ""
 
 msgid "Schema"
 msgstr ""
 
-msgid "SHA-256"
-msgstr ""
-
-msgid "Retention"
-msgstr ""
-
 msgid "Download manifest.json"
 msgstr ""
 
-msgid "Tarball with manifest, signature (if signed), and README"
+msgid "Archive with manifest and signed credential when one was issued"
 msgstr ""
 
 msgid "Download bundle (.tar.gz)"
@@ -3765,13 +4559,13 @@ msgstr ""
 msgid "Validibot reports no errors. Validation successful. "
 msgstr ""
 
+msgid "Detailed outputs are no longer retained for this run."
+msgstr ""
+
 msgid "Workflow Outputs"
 msgstr "Saídas do fluxo de trabalho"
 
 msgid "Metric"
-msgstr ""
-
-msgid "Value"
 msgstr ""
 
 msgid "Outputs by Step"
@@ -3783,19 +4577,13 @@ msgstr ""
 msgid "Path"
 msgstr ""
 
+msgid "subjects"
+msgstr ""
+
 msgid "No errors, warnings, or info for this step."
 msgstr ""
 
 msgid "Run Summary"
-msgstr ""
-
-msgid "View JSON"
-msgstr "Ver JSON"
-
-msgid "Submission name"
-msgstr ""
-
-msgid "Short description"
 msgstr ""
 
 msgid "Errors"
@@ -3810,6 +4598,12 @@ msgstr ""
 msgid "Total findings"
 msgstr ""
 
+msgid "Submission name"
+msgstr ""
+
+msgid "Short description"
+msgstr ""
+
 msgid "Submitter"
 msgstr "Autor do envio"
 
@@ -3819,11 +4613,13 @@ msgstr ""
 msgid "Running…"
 msgstr ""
 
-msgid "Not captured"
-msgstr ""
-
 msgid "Output hash"
 msgstr ""
+
+#, fuzzy
+#| msgid "View JSON"
+msgid "View report as JSON"
+msgstr "Ver JSON"
 
 msgid "User Inputs"
 msgstr "Entradas do usuário"
@@ -3844,10 +4640,38 @@ msgstr ""
 msgid "Data hash"
 msgstr ""
 
-msgid "Size"
+msgid "Submitted data"
 msgstr ""
 
-msgid "Submitted data"
+#, python-format
+msgid "Add tabular step · %(name)s · Validibot"
+msgstr ""
+
+#, python-format
+msgid "Tabular settings · Step %(step_id)s · %(name)s · Validibot"
+msgstr ""
+
+msgid "Back to workflow step"
+msgstr ""
+
+msgid "Tabular settings"
+msgstr ""
+
+msgid "Infer Schema"
+msgstr ""
+
+msgid "Import Schema"
+msgstr ""
+
+msgid "Download schema"
+msgstr ""
+
+#, fuzzy
+#| msgid "Account Settings"
+msgid "Settings"
+msgstr "Configurações da conta"
+
+msgid "Create step"
 msgstr ""
 
 msgid "Break-glass Tombstone Workflow"
@@ -3888,6 +4712,12 @@ msgid "Workflow UUID"
 msgstr ""
 
 msgid "Tombstone workflow"
+msgstr ""
+
+msgid "Back to Workflow"
+msgstr ""
+
+msgid "Add Constant"
 msgstr ""
 
 msgid "This workflow has been tombstoned and is now a historical record."
@@ -3997,13 +4827,28 @@ msgid ""
 "stay attached to the current version."
 msgstr ""
 
+msgid "Input requirements preview"
+msgstr ""
+
 msgid "Create workflow"
 msgstr ""
 
 msgid "Create version and apply"
 msgstr ""
 
-msgid "Input requirements preview"
+#, fuzzy
+#| msgid "Workflow Outputs"
+msgid "Workflow invitation"
+msgstr "Saídas do fluxo de trabalho"
+
+#, python-format
+msgid ""
+"<strong>%(inviter)s</strong> invited you to access the workflow "
+"<strong>%(workflow_name)s</strong>."
+msgstr ""
+
+msgid ""
+"Accepting grants your account permission to run validations on this workflow."
 msgstr ""
 
 msgid "Workflow JSON"
@@ -4028,6 +4873,9 @@ msgid "Hide archived workflows"
 msgstr ""
 
 msgid "Show archived workflows"
+msgstr ""
+
+msgid "Import a workflow from a .vaf or .json file"
 msgstr ""
 
 msgid "No workflows yet"
@@ -4060,19 +4908,34 @@ msgstr ""
 msgid "Sharing"
 msgstr ""
 
-msgid "Back to Workflow"
-msgstr ""
-
-msgid "This workflow is public"
+msgid "Visible to all Validibot users"
 msgstr ""
 
 msgid ""
-"Any authenticated user can launch this workflow. Guest access management is "
-"not needed for public workflows."
+"Any logged-in user can launch this workflow, so guest access management is "
+"not needed."
 msgstr ""
 
 msgid "About Sharing"
 msgstr ""
+
+msgid "Only you and people you invite can launch this workflow."
+msgstr ""
+
+msgid "Your organization"
+msgstr ""
+
+msgid "Any member of your organization can launch this workflow."
+msgstr ""
+
+msgid "All Validibot users"
+msgstr ""
+
+msgid "Any logged-in Validibot user can launch this workflow."
+msgstr ""
+
+msgid "Add Signal"
+msgstr "Adicionar sinal"
 
 msgid "Signal Mappings"
 msgstr ""
@@ -4088,6 +4951,12 @@ msgid "Step Assertions"
 msgstr ""
 
 msgid "Design the assertions for this step"
+msgstr ""
+
+msgid "Which kind of assertion?"
+msgstr ""
+
+msgid "Choose when the rule has enough context to run."
 msgstr ""
 
 msgid "Loading"
@@ -4110,16 +4979,16 @@ msgid ""
 "can be configured."
 msgstr ""
 
-msgid "Back to workflow step"
-msgstr ""
-
 msgid "Previous step"
 msgstr ""
 
 msgid "Next step"
 msgstr ""
 
-msgid "Create step"
+msgid "Default EUIt (kBtu/ft²/year)"
+msgstr ""
+
+msgid "EUIt (kBtu/ft²/year)"
 msgstr ""
 
 msgid "Page View"
@@ -4165,6 +5034,11 @@ msgid ""
 "created but the invite was not redeemed."
 msgstr ""
 
+msgid ""
+"Your account was created, but this workflow invitation is addressed to a "
+"different email address, so it was not redeemed."
+msgstr ""
+
 #, python-format
 msgid ""
 "Welcome! You now have access to the workflow '%(name)s'. You can run "
@@ -4174,8 +5048,25 @@ msgstr ""
 msgid "The guest invite is no longer valid."
 msgstr ""
 
+msgid ""
+"Your account was created, but this guest invitation is addressed to a "
+"different email address, so it was not redeemed."
+msgstr ""
+
 #, python-format
 msgid "Welcome! You now have guest access to %(org)s."
+msgstr ""
+
+msgid "The invitation is no longer valid."
+msgstr ""
+
+msgid ""
+"Your account was created, but this invitation is addressed to a different "
+"email address, so it was not redeemed."
+msgstr ""
+
+#, python-format
+msgid "Welcome! You're now a member of %(org)s."
 msgstr ""
 
 msgid "Personal info"
@@ -4244,6 +5135,9 @@ msgid "Send guest invites for this organization"
 msgstr ""
 
 msgid "Basic Users"
+msgstr ""
+
+msgid "A user with that username already exists."
 msgstr ""
 
 msgid ""
@@ -4347,12 +5241,17 @@ msgstr ""
 msgid "You must agree to the Terms of Service and Privacy Policy."
 msgstr ""
 
-msgid "Company"
-msgstr ""
-
 msgid ""
 "Please use a non-disposable email address. If this is your real email, "
 "contact support."
+msgstr ""
+
+msgid ""
+"Django admin requires multi-factor authentication. Set up an authenticator "
+"before returning to admin."
+msgstr ""
+
+msgid "Confirm your multi-factor authentication before entering Django admin."
 msgstr ""
 
 msgid "Default Project"
@@ -4374,6 +5273,28 @@ msgid ""
 "for non-trial orgs."
 msgstr ""
 
+msgid ""
+"Maximum visibility any workflow in this organization may have. Workflows may "
+"be set no wider than this ceiling."
+msgstr ""
+
+msgid ""
+"Whether workflows in this organization may be exposed to authenticated AI "
+"agents via MCP. Off by default; an admin opts in."
+msgstr ""
+
+msgid ""
+"Whether workflows in this organization may be published for paid anonymous "
+"access via x402. Off by default — enabling it permits a workflow to be made "
+"callable by anyone on the internet who pays."
+msgstr ""
+
+msgid ""
+"When off (the default), only admins and superusers can change a workflow's "
+"access settings. When on, workflow authors may also adjust the per-workflow "
+"access controls — never the org-level ceilings above."
+msgstr ""
+
 msgid "This organization name is reserved."
 msgstr ""
 
@@ -4384,6 +5305,9 @@ msgid "Square image works best across the app."
 msgstr ""
 
 msgid "Job title"
+msgstr ""
+
+msgid "Company"
 msgstr ""
 
 msgid "Location"
@@ -4414,13 +5338,19 @@ msgid ""
 "available on every paid tier."
 msgstr ""
 
+#, python-format
+msgid ""
+"You have a pending invitation to join %(orgs)s. Open your notifications to "
+"accept it."
+msgstr ""
+
 msgid "Profile updated successfully"
 msgstr ""
 
 msgid "Overview"
 msgstr ""
 
-msgid "Generated a new API key."
+msgid "Generated a new API key. Copy it now."
 msgstr ""
 
 #, python-format
@@ -4490,9 +5420,6 @@ msgid "String comparison failed."
 msgstr ""
 
 msgid "Regular expression is missing."
-msgstr ""
-
-msgid "Regex evaluation timed out (possible ReDoS pattern)."
 msgstr ""
 
 #, python-format
@@ -4607,39 +5534,143 @@ msgstr ""
 
 #, python-format
 msgid ""
-"CEL references undefined name '%(identifier)s'. Ensure a matching validator "
-"signal exists."
+"CEL references undefined name '%(identifier)s'. Ensure a matching step input "
+"or output exists."
 msgstr ""
 
 msgid "Returns true when the value is not null/empty."
 msgstr ""
 
-msgid "Returns true when the numeric value is an integer."
-msgstr ""
-
-msgid "Calculates the q-quantile for the numeric list."
-msgstr ""
-
-msgid "Average of a list of numbers (ignores nulls)."
-msgstr ""
-
-msgid "Sum of a list of numbers."
-msgstr ""
-
-msgid "Maximum value in a list of numbers."
-msgstr ""
-
-msgid "Minimum value in a list of numbers."
-msgstr ""
-
-msgid "Absolute value of a number."
-msgstr ""
-
-msgid "Round the numeric value to a number of decimal places."
+msgid ""
+"Returns true when the value is an integral number (2 and 2.0 are integral; "
+"2.5, booleans, NaN, and non-numbers are not)."
 msgstr ""
 
 msgid ""
-"Calculates the duration (in sample count) where predicate(series[i]) is true."
+"The q-th percentile (q in 0–100) of a numeric list by linear interpolation; "
+"ignores nulls. Null for an empty list or an out-of-range q. Returns a double."
+msgstr ""
+
+msgid ""
+"Arithmetic mean of a numeric list (ignores nulls); null for an empty list. "
+"Returns a double."
+msgstr ""
+
+msgid ""
+"Sum of a numeric list (ignores nulls); 0 for an empty list. Returns a double."
+msgstr ""
+
+msgid ""
+"Largest value in a numeric list (ignores nulls); null for an empty list. "
+"Returns a double."
+msgstr ""
+
+msgid ""
+"Smallest value in a numeric list (ignores nulls); null for an empty list. "
+"Returns a double."
+msgstr ""
+
+msgid ""
+"Absolute value of a number (preserves int vs. double); null for a non-number."
+msgstr ""
+
+msgid ""
+"Round a number to a number of decimal places (digits defaults to 0) using "
+"round-half-to-even. Returns a double."
+msgstr ""
+
+msgid ""
+"CEL built-in: parse a duration string such as \"3600s\" or \"1h30m\" into a "
+"duration value. (Provided by CEL itself, not a Validibot helper, so it is "
+"not bound in cel_helpers.)"
+msgstr ""
+
+msgid "Returns true when the string is a valid ISO 8601 date or datetime."
+msgstr ""
+
+msgid ""
+"Parses an ISO 8601 string into a timestamp (null if unparseable); for string-"
+"typed columns."
+msgstr ""
+
+msgid "Returns true when the value is a finite number (not NaN or infinity)."
+msgstr ""
+
+msgid ""
+"The run's pinned evaluation time (run.started_at); deterministic for the "
+"run, never the wall clock."
+msgstr ""
+
+msgid "Google Cloud Platform"
+msgstr ""
+
+msgid "Cloud Run Job"
+msgstr ""
+
+msgid "Cloud Run Service"
+msgstr ""
+
+msgid "Draft"
+msgstr ""
+
+#, fuzzy
+#| msgid "Verified"
+msgid "Verifying"
+msgstr "Verificado"
+
+msgid "Ready"
+msgstr ""
+
+#, fuzzy
+#| msgid "Re-send Verification"
+msgid "Verification failed"
+msgstr "Reenviar verificação"
+
+#, fuzzy
+#| msgid "required"
+msgid "Retired"
+msgstr "obrigatório"
+
+msgid "Long-running compatibility"
+msgstr ""
+
+msgid "Superseded by an accepted release"
+msgstr ""
+
+msgid "Release rolled back from"
+msgstr ""
+
+msgid "Acceptance failure"
+msgstr ""
+
+msgid "Execution-shape rollback"
+msgstr ""
+
+msgid "Operator deactivation"
+msgstr ""
+
+msgid "Fast response"
+msgstr ""
+
+msgid "Long-running"
+msgstr ""
+
+msgid "Request-driven"
+msgstr ""
+
+msgid "Provider job"
+msgstr ""
+
+msgid "Supported"
+msgstr ""
+
+msgid "Unsupported"
+msgstr ""
+
+msgid "Best effort before execution starts"
+msgstr ""
+
+msgid "Attempt nonce and provider OIDC identity"
 msgstr ""
 
 msgid "Running"
@@ -4652,6 +5683,15 @@ msgid "Failed"
 msgstr ""
 
 msgid "Timed Out"
+msgstr ""
+
+msgid "Dispatching"
+msgstr ""
+
+msgid "Provider acceptance unknown"
+msgstr ""
+
+msgid "Timed out"
 msgstr ""
 
 msgid "Pass"
@@ -4693,6 +5733,12 @@ msgstr ""
 msgid "JSON Schema"
 msgstr ""
 
+msgid "XML Schema"
+msgstr ""
+
+msgid "Schematron"
+msgstr ""
+
 msgid "SHACL Shapes"
 msgstr ""
 
@@ -4708,6 +5754,12 @@ msgstr ""
 msgid "THERM"
 msgstr ""
 
+msgid "Tabular"
+msgstr ""
+
+msgid "Building Benchmark Reports"
+msgstr ""
+
 msgid "SHACL (RDF Graph)"
 msgstr ""
 
@@ -4717,13 +5769,24 @@ msgstr ""
 msgid "THERM Thermal Analysis"
 msgstr ""
 
-msgid "Draft"
+msgid "Tabular Validator"
+msgstr ""
+
+msgid "Building Benchmark Report Validator"
 msgstr ""
 
 msgid "Coming Soon"
 msgstr ""
 
 msgid "Published"
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit variable"
+msgid "Available"
+msgstr "Editar variável"
+
+msgid "Missing config"
 msgstr ""
 
 msgid "Low compute"
@@ -4798,6 +5861,9 @@ msgstr ""
 msgid "Draft 4"
 msgstr ""
 
+msgid "Step I/O Definition"
+msgstr ""
+
 msgid "Derivation"
 msgstr ""
 
@@ -4814,6 +5880,59 @@ msgid "Boolean"
 msgstr ""
 
 msgid "Object"
+msgstr ""
+
+msgid "Artifact reference"
+msgstr ""
+
+msgid "Artifact"
+msgstr ""
+
+msgid "Input files"
+msgstr ""
+
+msgid "Resource files"
+msgstr ""
+
+msgid "Output artifacts"
+msgstr ""
+
+#, fuzzy
+#| msgid "Submitter"
+msgid "Submitted file first"
+msgstr "Autor do envio"
+
+msgid "Submitted file then default resource"
+msgstr ""
+
+msgid "Workflow resource default"
+msgstr ""
+
+msgid "Upstream artifact suggestion"
+msgstr ""
+
+msgid "Manual"
+msgstr ""
+
+msgid "None"
+msgstr ""
+
+msgid "Directory"
+msgstr ""
+
+msgid "Archive"
+msgstr ""
+
+msgid "Dataset"
+msgstr ""
+
+msgid "Report"
+msgstr ""
+
+msgid "Log"
+msgstr ""
+
+msgid "Other"
 msgstr ""
 
 msgid "Catalog"
@@ -4834,11 +5953,29 @@ msgstr ""
 msgid "Submission Metadata"
 msgstr ""
 
+#, fuzzy
+#| msgid "Submission"
+msgid "Submission File"
+msgstr "Envio"
+
 msgid "Upstream Step"
+msgstr ""
+
+msgid "Upstream Step Artifact"
 msgstr ""
 
 msgid "Workflow Signal"
 msgstr ""
+
+#, fuzzy
+#| msgid "Workflow Outputs"
+msgid "Workflow Constant"
+msgstr "Saídas do fluxo de trabalho"
+
+#, fuzzy
+#| msgid "Workflow Outputs"
+msgid "Workflow Resource"
+msgstr "Saídas do fluxo de trabalho"
 
 msgid "SHACL"
 msgstr ""
@@ -4847,6 +5984,9 @@ msgid "Basic Assertion"
 msgstr ""
 
 msgid "CEL expression"
+msgstr ""
+
+msgid "SPARQL ASK"
 msgstr ""
 
 msgid "Equals"
@@ -4957,9 +6097,6 @@ msgstr ""
 msgid "Supports Markdown. Plain text also works."
 msgstr ""
 
-msgid "Version label (e.g. '1.0', '2026-05')."
-msgstr ""
-
 msgid "Optional notes shown to other authors in your org."
 msgstr ""
 
@@ -4975,9 +6112,6 @@ msgstr ""
 msgid ""
 "Provide at least one SHACL shape — upload one or more files or paste shapes "
 "inline."
-msgstr ""
-
-msgid "Version label (e.g. '1.0', '2025-01')."
 msgstr ""
 
 msgid "Allow custom data paths in assertions"
@@ -5098,7 +6232,23 @@ msgstr ""
 msgid "e.g. EUI is within acceptable range"
 msgstr ""
 
+msgid ""
+"Internal rationale for this assertion (the standard it enforces, why a "
+"threshold was chosen). Not shown to data submitters."
+msgstr ""
+
+msgid "e.g. ASHRAE 90.1 caps lighting power density at 1.0 W/sqft"
+msgstr ""
+
 msgid "Short label shown on the assertion card and findings."
+msgstr ""
+
+msgid "Example rows per finding"
+msgstr ""
+
+msgid ""
+"Keep the full failure count but include at most this many example row "
+"numbers in each finding."
 msgstr ""
 
 msgid "SHACL graph"
@@ -5144,7 +6294,65 @@ msgstr ""
 msgid "(Select one)"
 msgstr ""
 
+msgid ""
+"Use row.column_name or row[\"column name\"] for values in the current row. "
+"Workflow signals remain available as s.*."
+msgstr ""
+
+msgid ""
+"Use col.<column> aggregates such as null_ratio, distinct_count, min, max, "
+"and sum. Dataset metadata remains available as i.*, and workflow signals as "
+"s.*."
+msgstr ""
+
+msgid ""
+"Use i.* for dataset metadata such as row count and column names. Workflow "
+"signals remain available as s.*."
+msgstr ""
+
 msgid "Select a condition."
+msgstr ""
+
+msgid ""
+"A row assertion must reference at least one value through the row.* "
+"namespace."
+msgstr ""
+
+msgid ""
+"A column assertion must reference at least one aggregate through the col.* "
+"namespace and cannot reference row.* values."
+msgstr ""
+
+msgid ""
+"Dataset assertions cannot reference row.* values or col.* aggregates. Add "
+"the expression from the matching Row or Column assertions section."
+msgstr ""
+
+msgid ""
+"One assertion cannot mix row.* values with col.* aggregates because those "
+"namespaces are bound in different stages."
+msgstr ""
+
+#, python-format
+msgid ""
+"Row assertion references column(s) not declared in the step's schema: "
+"%(unknown)s. Declared columns: %(declared)s."
+msgstr ""
+
+#, python-format
+msgid ""
+"Column assertion references column(s) not declared in the step's schema: "
+"%(unknown)s. Declared columns: %(declared)s."
+msgstr ""
+
+#, python-format
+msgid ""
+"Unknown column aggregate(s): %(metrics)s. Available aggregates are "
+"distinct_count, null_count, non_null_count, null_ratio, min, max, and sum."
+msgstr ""
+
+#, python-format
+msgid "The sum aggregate is available only for numeric columns: %(columns)s."
 msgstr ""
 
 #, python-format
@@ -5184,10 +6392,29 @@ msgstr ""
 
 #, python-format
 msgid ""
+"These Portfolio Manager outputs do not apply to the selected submission "
+"structure: %(outputs)s. Choose an output shown in the current output group."
+msgstr ""
+
+#, python-format
+msgid ""
 "Step inputs live in the i.* namespace, not s.* — at runtime s.* contains "
 "only workflow signal mappings and promoted upstream outputs, never step "
 "inputs. Use i.%(first)s instead of s.%(first)s (the assertion would silently "
 "read null otherwise). Affected: %(names)s"
+msgstr ""
+
+msgid "output"
+msgstr ""
+
+msgid "input"
+msgstr ""
+
+#, python-format
+msgid ""
+"%(name)s is a step %(kind)s — reference it as %(correct)s.%(name)s, not "
+"%(wrong)s.%(name)s. The %(wrong)s.* namespace never holds step %(kind)ss at "
+"run time, so the assertion would silently read null. Use: %(corrected)s"
 msgstr ""
 
 #, python-format
@@ -5203,7 +6430,8 @@ msgstr ""
 
 msgid ""
 "Enter a target path. Use s.<name> for workflow signals, p.<path> for payload "
-"data, or o.<name> for step outputs."
+"data, o.<name> for step outputs, or submission.<field> for submission "
+"metadata."
 msgstr ""
 
 #, python-format
@@ -5213,8 +6441,8 @@ msgstr ""
 
 #, python-format
 msgid ""
-"Unknown signal '%(name)s'. Check the Step Inputs tab or Signal Mappings for "
-"available names."
+"Unknown workflow signal '%(name)s'. Check Signal Mappings for available "
+"names, or use i.%(name)s for a declared step input."
 msgstr ""
 
 #, python-format
@@ -5229,36 +6457,20 @@ msgid ""
 msgstr ""
 
 msgid ""
+"Invalid path syntax. Use dot notation (e.g. submission.metadata.deliverable) "
+"or a quoted key for non-identifier names (e.g. "
+"submission.metadata[\"deliverable-type\"])."
+msgstr ""
+
+msgid ""
+"Use s.<name> for workflow signals, p.<path> for payload data, o.<name> for "
+"step outputs, or submission.<field> for submission metadata."
+msgstr ""
+
+msgid ""
 "Custom targets must use dot notation with optional numeric indexes (e.g. "
 "`data.results[0].value`) or JSONPath filter expressions (e.g. `items[?"
 "@.name=='x'].value`)."
-msgstr ""
-
-#, python-format
-msgid ""
-"i.%(name)s is populated by the validator from the submission payload, not by "
-"a path the BASIC evaluator can walk"
-msgstr ""
-
-#, python-format
-msgid ""
-"i.%(name)s resolves through its StepInputBinding (which may map to a nested "
-"or computed path), but the BASIC evaluator ignores bindings and walks the "
-"raw payload directly"
-msgstr ""
-
-#, python-format
-msgid ""
-"BASIC assertions can't target step inputs (%(reason)s). Use a CEL assertion "
-"instead — for example: i.%(name)s >= 1"
-msgstr ""
-
-#, python-format
-msgid ""
-"BASIC assertions can't target workflow signals (s.%(name)s lives in the CEL "
-"signal namespace, populated from WorkflowSignalMapping and promoted upstream "
-"outputs — not in the raw payload the BASIC evaluator walks). Use a CEL "
-"assertion instead — for example: s.%(name)s >= 1"
 msgstr ""
 
 msgid "Provide a regular expression."
@@ -5289,7 +6501,20 @@ msgstr ""
 msgid "Provide a CEL expression."
 msgstr ""
 
+#, python-format
+msgid ""
+"Your expression contains curly (\"smart\") quote characters: %(found)s. "
+"These usually appear when pasting from a document, email, or chat. CEL only "
+"recognises straight quotes, so the text inside them is read as code rather "
+"than as a string. Replace each one with a straight double (\") or single (') "
+"quote."
+msgstr ""
+
 msgid "Parentheses and brackets must be balanced."
+msgstr ""
+
+#, python-format
+msgid "Not a valid CEL expression: %(error)s"
 msgstr ""
 
 msgid "Assertion type"
@@ -5324,13 +6549,13 @@ msgid ""
 msgstr ""
 
 msgid ""
-"How the signal's value is obtained: from a payload path the author "
-"configures, or internally by the validator."
+"How this step input or output obtains its value: from a payload path the "
+"author configures, or internally by the validator."
 msgstr ""
 
 msgid ""
-"Whether workflow authors can edit the source data path for this signal when "
-"configuring a step."
+"Whether workflow authors can edit the source data path for this step input "
+"when configuring a step."
 msgstr ""
 
 #, python-format
@@ -5361,6 +6586,16 @@ msgstr ""
 
 msgid ""
 "Username or email of the user (defaults to current user or first available)"
+msgstr ""
+
+msgid ""
+"Managed backend slug used by this semantic Validator, such as energyplus. "
+"Empty for validators without a managed backend."
+msgstr ""
+
+msgid ""
+"Runtime contract required from managed deployments. Empty for validators "
+"without a managed backend."
 msgstr ""
 
 msgid "The user who created this ruleset."
@@ -5400,6 +6635,16 @@ msgid ""
 msgstr ""
 
 msgid ""
+"Schematron rulesets must store their rules as inline text, not an uploaded "
+"file."
+msgstr ""
+
+msgid ""
+"This ruleset is referenced by a workflow that has runs (or is locked); it "
+"cannot be deleted in place. Create a new workflow version before removing it."
+msgstr ""
+
+msgid ""
 "This ruleset is referenced by a workflow that has runs (or is locked); its "
 "rules cannot change in place. Create a new ruleset (or a new workflow "
 "version) to modify them."
@@ -5408,7 +6653,8 @@ msgstr ""
 msgid "Structured operator used for BASIC assertions."
 msgstr ""
 
-msgid "Reference to a signal definition when targeting a known signal."
+msgid ""
+"Reference to a step I/O definition when targeting a known input or output."
 msgstr ""
 
 msgid ""
@@ -5433,13 +6679,19 @@ msgstr ""
 msgid "Message rendered when the assertion passes."
 msgstr ""
 
+msgid ""
+"Internal notes on the rationale behind this assertion. Not shown to data "
+"submitters."
+msgstr ""
+
 msgid "Normalized CEL preview generated from the stored payload."
 msgstr ""
 
 msgid "Schema version for `rhs` and `options` payloads."
 msgstr ""
 
-msgid "Provide either a signal target or a custom path (but not both)."
+msgid ""
+"Provide either a step input/output target or a custom path (but not both)."
 msgstr ""
 
 msgid ""
@@ -5569,16 +6821,23 @@ msgstr ""
 msgid "Owning organization for custom validators (null for system validators)."
 msgstr ""
 
-msgid "Version label for this validator (e.g. '2020-12', '1.0')."
+msgid ""
+"Runtime validator type string. Built-in validators use ValidationType "
+"constants, but plugin validators may register additional strings at startup."
 msgstr ""
 
 msgid ""
-"The name of the process that generates output signals from input signals."
+"Positive integer revision for this validator contract. Domain versions such "
+"as EnergyPlus/FMI/JSON Schema versions belong in tags or metadata, not this "
+"field."
+msgstr ""
+
+msgid "The name of the process that generates step outputs from step inputs."
 msgstr ""
 
 msgid ""
 "True when the validator includes an intermediate processor that produces "
-"output signals."
+"step outputs."
 msgstr ""
 
 msgid ""
@@ -5605,7 +6864,23 @@ msgid ""
 "shows it disabled, PUBLISHED makes it fully available."
 msgstr ""
 
-msgid "Allow assertions against data paths not declared as signals."
+msgid ""
+"Whether this validator's runtime config/class is available in the current "
+"deployment. Missing validators remain in the DB for history but cannot "
+"launch."
+msgstr ""
+
+msgid "Operator-facing reason this validator is unavailable, if any."
+msgstr ""
+
+msgid ""
+"Python provider module that last synced this validator from a "
+"ValidatorConfig. Empty means the row is not managed by plugin config "
+"reconciliation."
+msgstr ""
+
+msgid ""
+"Allow assertions against data paths not declared by step I/O definitions."
 msgstr ""
 
 msgid "Data formats this validator can parse (e.g., JSON, EnergyPlus IDF)."
@@ -5637,6 +6912,20 @@ msgid ""
 "validators (no backend) stay at TIER_1 by construction."
 msgstr ""
 
+msgid ""
+"The validator plugin that registered this validator is not available in the "
+"current deployment."
+msgstr ""
+
+msgid "This validator has been retired."
+msgstr ""
+
+msgid "This validator is not available in the current deployment."
+msgstr ""
+
+msgid "Managed backend slug and runtime contract must be declared together."
+msgstr ""
+
 #, python-format
 msgid "'%(value)s' is not a supported submission data format."
 msgstr ""
@@ -5657,6 +6946,17 @@ msgstr ""
 msgid "FMU assets can only be attached to FMU validators."
 msgstr ""
 
+msgid ""
+"Artifacts cannot be promoted to workflow signals. Only CEL/JSON values can "
+"enter the signal namespace."
+msgstr ""
+
+msgid "Artifact ports must use the artifact_ref data type."
+msgstr ""
+
+msgid "Maximum item count cannot be less than minimum count."
+msgstr ""
+
 msgid "Base validation type must match the linked Validator validation_type."
 msgstr ""
 
@@ -5669,6 +6969,11 @@ msgid ""
 msgstr ""
 
 msgid "Optional short description of this validation run."
+msgstr ""
+
+msgid ""
+"When this run stopped reading its live workflow definition. Null means "
+"semantic edits to a Mutable workflow remain fenced."
 msgstr ""
 
 msgid "Classification of why the run failed (TIMEOUT, OOM, etc.)."
@@ -5692,10 +6997,28 @@ msgid ""
 "completion. Covers the stable workflow context and the final run outcome."
 msgstr ""
 
-msgid "Run org must match submission org."
+msgid "Run organization must match workflow."
+msgstr ""
+
+msgid "Project must match run organization."
+msgstr ""
+
+msgid "Submission must match run organization."
+msgstr ""
+
+msgid "Submission must match run workflow."
+msgstr ""
+
+msgid "Run project must match submission project."
 msgstr ""
 
 msgid "Optional metadata for reporting (for example exemplar messages)."
+msgstr ""
+
+msgid "Canonical contract-keyed input values resolved for this step."
+msgstr ""
+
+msgid "Canonical contract-keyed output values produced by this step."
 msgstr ""
 
 msgid "Step must belong to the run's workflow."
@@ -5704,16 +7027,63 @@ msgstr ""
 msgid "Must equal WorkflowStep.order."
 msgstr ""
 
+msgid ""
+"Exact managed-provider deployment selected before dispatch. Empty only for "
+"historical, local, and self-hosted attempts."
+msgstr ""
+
+msgid ""
+"Secret-free immutable route and capability facts selected with this attempt. "
+"Empty only for historical, local, and self-hosted attempts."
+msgstr ""
+
+msgid "Digest verifier for the per-attempt callback secret."
+msgstr ""
+
+msgid ""
+"URI-free strict input identities and source relationships committed with the "
+"attempt. Never contains callback credentials."
+msgstr ""
+
 msgid "Validation run must match the step run's parent run."
 msgstr ""
 
+msgid "Step run that produced this artifact, if step-scoped."
+msgstr ""
+
+msgid "Workflow step that produced this artifact, if step-scoped."
+msgstr ""
+
+msgid "Stable artifact output name used in steps.<step_key>.artifact.*."
+msgstr ""
+
+msgid "Stable item key for collection artifact outputs."
+msgstr ""
+
+msgid "Internal storage URI; never a public signed URL."
+msgstr ""
+
+msgid ""
+"Provider-specific immutable object version recorded by the validator output "
+"envelope."
+msgstr ""
+
 msgid "Artifact org must match run org."
+msgstr ""
+
+msgid "Artifact step run must belong to the same run."
+msgstr ""
+
+msgid "Artifact workflow step must belong to the run workflow."
 msgstr ""
 
 msgid "Unique callback identifier from the input envelope."
 msgstr ""
 
 msgid "The validation run this callback was for."
+msgstr ""
+
+msgid "The concrete execution that produced this callback."
 msgstr ""
 
 msgid "When this callback was first processed."
@@ -5725,10 +7095,10 @@ msgstr ""
 msgid "URI to the output envelope (e.g., gs:// for GCS, s3:// for S3)."
 msgstr ""
 
-msgid "Manifest generated and bytes available"
+msgid "Callback receipt attempt must belong to the same run."
 msgstr ""
 
-msgid "Manifest bytes purged; only hash remains"
+msgid "Manifest generated and bytes available"
 msgstr ""
 
 msgid "Manifest generation failed; row records the gap"
@@ -5738,10 +7108,8 @@ msgid "The validation run this manifest documents."
 msgstr ""
 
 msgid ""
-"The validibot.evidence.vN schema string the manifest was produced under. "
-"Verifiers parse the manifest's schema_version field at read time, but "
-"storing it here lets the auditor query for runs on stale schemas without "
-"fetching the bytes."
+"The published $schema URL for the manifest. Storing it here lets the auditor "
+"query for runs on stale schemas without fetching the bytes."
 msgstr ""
 
 msgid ""
@@ -5751,23 +7119,13 @@ msgstr ""
 
 msgid ""
 "SHA-256 of the manifest's canonical-JSON bytes. Empty when availability is "
-"FAILED. Future signed credentials (Phase 4 Session C) cite this hash, so a "
-"re-fetch + re-hash detects tampering."
+"FAILED. Signed credentials cite this hash, so a re-fetch + re-hash detects "
+"tampering."
 msgstr ""
 
 msgid ""
-"Phase 4 Session C: path to a cached export-bundle tarball (manifest + inputs "
-"+ outputs + signature). Empty until the operator triggers an export."
-msgstr ""
-
-msgid ""
-"Workflow.input_retention at the time the manifest was generated. Mirrored "
-"here so retention-sweep code can filter without joining to Workflow."
-msgstr ""
-
-msgid ""
-"Lifecycle state: GENERATED (bytes in storage), PURGED (only hash remains), "
-"or FAILED (generation aborted)."
+"Generation state: GENERATED (bytes in storage) or FAILED (generation "
+"aborted)."
 msgstr ""
 
 msgid ""
@@ -5824,6 +7182,13 @@ msgid ""
 "File extension '.%(ext)s' is not allowed for %(type)s. Allowed: %(allowed)s."
 msgstr ""
 
+#, python-format
+msgid ""
+"Pattern is not a supported regular expression: %(detail)s. For safety, "
+"patterns are matched with RE2, which does not support backreferences or "
+"lookaround."
+msgstr ""
+
 msgid "Must be valid JSON."
 msgstr ""
 
@@ -5850,6 +7215,14 @@ msgid "Base64 content exceeds size limit."
 msgstr ""
 
 msgid "Inline content exceeds size limit."
+msgstr ""
+
+#, python-format
+msgid "row numbers: %(rows)s (showing first %(shown)s of %(total)s)"
+msgstr ""
+
+#, python-format
+msgid "row numbers: %(rows)s"
 msgstr ""
 
 #, python-format
@@ -5904,16 +7277,16 @@ msgid "Basic Validator"
 msgstr ""
 
 msgid ""
-"The simplest validator. Allows workflow author to add signals and assertions "
-"directly without a validator catalog."
+"The simplest validator. Allows workflow authors to define assertions "
+"directly without a predefined step I/O catalog."
 msgstr ""
 
 msgid ""
 "\n"
 "                <p>Workflow authors can use the 'Basic Validator' as a "
 "starting point\n"
-"                for creating assertions directly. There are no signals\n"
-"                or predefined assertions.\n"
+"                for creating assertions directly. There are no predefined\n"
+"                step inputs, step outputs, or assertions.\n"
 "                Perfect for lightweight checks or ad-hoc rules expressed in "
 "CEL.</p>\n"
 "                "
@@ -5991,13 +7364,13 @@ msgid ""
 "                standard to an\n"
 "                FMU-based simulation running in an isolated runtime. If the\n"
 "                simulation succeeds it\n"
-"                gathers outputs and returns them as output signals for "
+"                gathers outputs and returns them as output values for "
 "further\n"
 "                validation, if defined.\n"
 "                </p>\n"
 "                <p>\n"
 "                The workflow author to write assertions against simulation\n"
-"                output signals.\n"
+"                output values.\n"
 "                </p>\n"
 "                "
 msgstr ""
@@ -6032,7 +7405,7 @@ msgid ""
 "                other certification bodies. Checks geometry closure, "
 "material\n"
 "                property ranges, boundary condition completeness, and\n"
-"                reference integrity. Extracts signals for downstream\n"
+"                reference integrity. Extracts output values for downstream\n"
 "                compliance assertions (e.g. NFRC 100 winter conditions).</"
 "p>\n"
 "                "
@@ -6082,10 +7455,47 @@ msgstr ""
 msgid "Invalid JSON payload"
 msgstr ""
 
+#, python-format
+msgid ""
+"Schema references an external resource, which is not permitted: %(detail)s"
+msgstr ""
+
 msgid "Ruleset must provide schema text via rules_text or rules_file."
 msgstr ""
 
 msgid "Unsupported schema type; expected dict or JSON string."
+msgstr ""
+
+msgid "Grouped property outputs"
+msgstr ""
+
+msgid "Single property outputs"
+msgstr ""
+
+#, python-format
+msgid ""
+"Findings were truncated: %(count)d additional findings were suppressed by "
+"the findings cap. The counts above reflect the full totals."
+msgstr ""
+
+msgid ""
+"The Schematron engine timed out before completing. This says nothing about "
+"whether your document satisfies the rules."
+msgstr ""
+
+msgid ""
+"This step's Schematron rules failed to compile, so the submission was not "
+"checked. The workflow author needs to fix the uploaded rules."
+msgstr ""
+
+msgid ""
+"The Schematron validation backend is not available in this deployment, so "
+"the rules were not run."
+msgstr ""
+
+msgid ""
+"The Schematron engine could not run the rules. This says nothing about "
+"whether your document satisfies the rules."
 msgstr ""
 
 msgid "None (fastest; skips subclass reasoning)"
@@ -6195,10 +7605,85 @@ msgstr ""
 msgid "Inline text could not be parsed: %(err)s"
 msgstr ""
 
-msgid "Failed to parse submission."
+#, fuzzy
+#| msgid "Name of User"
+msgid "Number of rows"
+msgstr "Nome do Usuário"
+
+msgid "Number of columns"
 msgstr ""
 
-msgid "SHACL engine error."
+msgid "Column names"
+msgstr ""
+
+msgid "Header row present"
+msgstr ""
+
+msgid "File size (bytes)"
+msgstr ""
+
+#, fuzzy
+#| msgid "Signal name"
+msgid "Filename"
+msgstr "Nome do sinal"
+
+msgid "Foreign keys are not enforced"
+msgstr ""
+
+msgid ""
+"Your schema declares a foreignKeys relationship. A foreign key asserts that "
+"a column's values exist in another table, but a Tabular step validates one "
+"uploaded file on its own and cannot see other tables — so it cannot be "
+"checked. The keys are kept in your saved schema for portability."
+msgstr ""
+
+msgid "Unnamed field"
+msgstr ""
+
+msgid "Unsupported field types become Text"
+msgstr ""
+
+msgid ""
+"V1 supports Text, Integer, Number, Boolean, Date, and Date-time. These "
+"fields declare a Frictionless type outside that set, so they import as Text: "
+"their values are still checked as text (required, length, pattern, enum), "
+"but not as the original type — e.g. a 'year' is not range-checked as a year."
+msgstr ""
+
+msgid "Locale number options are ignored"
+msgstr ""
+
+msgid ""
+"These number fields set locale options (decimalChar, groupChar, or "
+"bareNumber). V1 parses numbers one fixed, locale-free way — '.' as the "
+"decimal point and no thousands separators — so a file validates identically "
+"on every machine. The options are kept but not applied, so a value like "
+"'1.234,56' will not parse as a number."
+msgstr ""
+
+msgid "Field formats are not enforced"
+msgstr ""
+
+msgid ""
+"These fields declare a Frictionless 'format' (such as email, uuid, or a date "
+"pattern). The V1 editor does not enforce format refinements — to require a "
+"shape, add a regex Pattern on a Text column. Dates and date-times are parsed "
+"as ISO-8601 regardless of any declared format. The keyword is kept in your "
+"saved schema."
+msgstr ""
+
+msgid "Unknown constraints are not enforced"
+msgstr ""
+
+msgid ""
+"V1 enforces these constraints: required, unique, minimum/maximum, minLength/"
+"maxLength, pattern, and enum. The listed keys are something else (a non-"
+"standard or newer keyword), so they are kept in your saved schema but have "
+"no effect on validation."
+msgstr ""
+
+msgid ""
+"Tabular ruleset must provide a Table Schema via rules_text or rules_file."
 msgstr ""
 
 msgid "This validator only accepts XML submissions."
@@ -6229,6 +7714,9 @@ msgid ""
 msgstr ""
 
 msgid "XML validation requires lxml: "
+msgstr ""
+
+msgid "External schema resource resolution is not allowed: "
 msgstr ""
 
 msgid "Unsupported XML schema type: "
@@ -6269,7 +7757,7 @@ msgid "Simulation-based"
 msgstr ""
 
 msgid ""
-"Upload an FMU to auto-discover input and output signals and create default "
+"Upload an FMU to auto-discover input and step outputs and create default "
 "assertions."
 msgstr ""
 
@@ -6295,8 +7783,10 @@ msgstr ""
 msgid "Edit “%(name)s”"
 msgstr ""
 
-msgid "Edit Input Signal"
-msgstr ""
+#, fuzzy
+#| msgid "User Inputs"
+msgid "Edit Step Input"
+msgstr "Entradas do usuário"
 
 msgid "You do not have permission to manage resource files."
 msgstr ""
@@ -6333,16 +7823,25 @@ msgstr ""
 msgid "Run #%(pk)s"
 msgstr ""
 
+msgid "Artifact bytes are no longer retained."
+msgstr ""
+
+msgid "Generated file"
+msgstr ""
+
+msgid "Artifact bytes are not available."
+msgstr ""
+
 msgid "No credential issued for this run."
 msgstr ""
 
-msgid "Signal created."
+msgid "Step input or output created."
 msgstr ""
 
-msgid "Signal updated."
-msgstr "Sinal atualizado."
+msgid "Step input or output updated."
+msgstr ""
 
-msgid "Signal deleted."
+msgid "Step input or output deleted."
 msgstr ""
 
 msgid "Create FMU validator"
@@ -6440,9 +7939,6 @@ msgstr ""
 msgid "Fail fast"
 msgstr ""
 
-msgid "Manual"
-msgstr ""
-
 msgid "Schedule"
 msgstr ""
 
@@ -6450,6 +7946,9 @@ msgid "Author pays (plan quota)"
 msgstr ""
 
 msgid "Agent pays via x402 micropayment"
+msgstr ""
+
+msgid "Private — only you and people you invite"
 msgstr ""
 
 msgid "Workflow has no steps to execute"
@@ -6464,7 +7963,13 @@ msgstr ""
 msgid "Workflow cannot accept the submitted file type"
 msgstr ""
 
+msgid "A workflow validator is unavailable"
+msgstr ""
+
 msgid "You do not have permission to run this workflow"
+msgstr ""
+
+msgid "Your organization can't run this workflow right now"
 msgstr ""
 
 #, python-format
@@ -6700,9 +8205,6 @@ msgstr ""
 msgid "Input contract mode"
 msgstr ""
 
-msgid "None"
-msgstr ""
-
 msgid "Pydantic"
 msgstr ""
 
@@ -6778,9 +8280,9 @@ msgid ""
 msgstr ""
 
 msgid ""
-"Controls how long validation outputs (results, artifacts, findings) are kept "
-"after the run completes. Users need time to review results, so immediate "
-"deletion is not an option."
+"Controls how long validation outputs (results, artifacts, findings, and step "
+"values) are kept after the run completes. The default queues deletion "
+"immediately; the permanent evidence receipt remains."
 msgstr ""
 
 msgid "Workflow active"
@@ -6797,16 +8299,19 @@ msgstr ""
 msgid "Optional image shown on the workflow info page."
 msgstr ""
 
-msgid "History policy"
+msgid ""
+"This workflow is locked, so its editing policy is fixed for this version. "
+"Create a new workflow version to use a different policy."
 msgstr ""
 
 msgid ""
-"Choose how this workflow treats edits after validation runs exist. Versioned "
-"history is recommended: semantic edits create a new workflow version so old "
-"runs remain tied to the definition that produced them. Mutable history "
-"allows in-place edits for faster iteration, but historical run results may "
-"not be reproducible against the current workflow definition. After runs "
-"exist, change history policy by creating a new workflow version."
+"This workflow has validation runs, so its editing policy is fixed for this "
+"version. Create a new workflow version to use a different policy."
+msgstr ""
+
+msgid ""
+"Versioned is recommended. Choose Mutable explicitly only for experiments "
+"where in-place editing matters more than reproducible workflow history."
 msgstr ""
 
 msgid ".json, .jsonld"
@@ -6848,19 +8353,18 @@ msgstr ""
 msgid "e.g. Your model passed all validation checks!"
 msgstr ""
 
-msgid "Agent access enabled"
-msgstr ""
-
-msgid "Expose this workflow for agent access via MCP."
-msgstr ""
-
-msgid "Public discovery (cross-org catalog)"
+msgid "Who can run this workflow"
 msgstr ""
 
 msgid ""
-"List this workflow on the public agent catalog. External agents from any "
-"organization can discover and run it via x402 micropayments. Enabling this "
-"automatically sets billing to 'Agent pays via x402'."
+"Who, by Validibot identity, may run this workflow for free. Limited to your "
+"organization's ceiling. This is independent of paid anonymous (x402) access "
+"below."
+msgstr ""
+
+msgid ""
+"Allow authenticated AI agents to run this workflow via MCP, on behalf of a "
+"user who already has identity access above. Billed to that user's plan quota."
 msgstr ""
 
 msgid "Agent billing mode"
@@ -6899,8 +8403,10 @@ msgid "Submission settings"
 msgstr ""
 
 msgid ""
-"Define which file types the workflow accepts and how submission metadata "
-"should behave."
+"Define which file types the workflow accepts and how long payload data "
+"remains available. Validibot keeps a permanent evidence receipt with hashes "
+"and run provenance, but not the submitted contents or output files "
+"themselves."
 msgstr ""
 
 msgid "Input contract"
@@ -6936,12 +8442,18 @@ msgid ""
 "team."
 msgstr ""
 
-msgid "Agent access"
+msgid ""
+"Enabling paid anonymous access (x402) makes the workflow callable by ANYONE "
+"on the internet who pays the per-call price, regardless of the visibility "
+"setting above."
 msgstr ""
 
 msgid ""
-"Control how AI agents discover and invoke this workflow via MCP. Only "
-"visible to superusers."
+"Choose who can run this workflow by Validibot identity, and whether AI "
+"agents may invoke it. Options are limited by your organization's ceilings."
+msgstr ""
+
+msgid "A workflow must belong to a project."
 msgstr ""
 
 msgid "Select a project from your current organization."
@@ -6963,9 +8475,9 @@ msgstr ""
 
 #, python-format
 msgid ""
-"Shortening %(field)s would purge data sooner than past runs were promised. "
-"You can extend retention in place — to shorten it, create a new version of "
-"the workflow."
+"Extending %(field)s would keep future run data longer than this published "
+"workflow promised. You can shorten retention in place — to extend it, create "
+"a new workflow version."
 msgstr ""
 
 #, python-format
@@ -6975,17 +8487,23 @@ msgid ""
 msgstr ""
 
 msgid ""
-"This workflow already has validation history or is locked. Create a new "
-"workflow version to change its history policy."
+"This workflow gained validation history or was locked while you were "
+"editing. Its editing policy is now fixed for this version. Create a new "
+"workflow version to use a different policy."
 msgstr ""
 
-msgid "Public discovery requires agent access to be enabled first."
+msgid "That visibility exceeds the maximum allowed by your organization."
 msgstr ""
 
 msgid ""
 "Input retention must be 'Do not store' when agents pay via x402 "
 "micropayments — x402 is anonymous per-call access and storing submissions is "
 "incompatible with its privacy model."
+msgstr ""
+
+msgid ""
+"Output retention must be 'Do not retain' when agents pay via x402 "
+"micropayments."
 msgstr ""
 
 msgid "Choose JSON Schema or Pydantic before saving an input contract."
@@ -7051,6 +8569,14 @@ msgstr ""
 msgid "Required file type"
 msgstr ""
 
+#, python-format
+msgid "Upload the %(label)s used by %(step)s."
+msgstr ""
+
+#, python-format
+msgid "Accepted extensions: %(extensions)s."
+msgstr ""
+
 msgid "Provide inline content or upload a file, not both."
 msgstr ""
 
@@ -7063,6 +8589,10 @@ msgstr ""
 #, python-format
 msgid ""
 "File extension '.%(ext)s' is not allowed. Accepted extensions: %(allowed)s"
+msgstr ""
+
+#, python-format
+msgid "%(label)s is required for this workflow."
 msgstr ""
 
 msgid "Metadata must be valid JSON."
@@ -7098,6 +8628,17 @@ msgid ""
 "When enabled, all assertions in this step will return a success message when "
 "they pass. If an assertion has no custom success message, a default message "
 "will be shown."
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit profile"
+msgid "Execution profile"
+msgstr "Editar perfil"
+
+msgid ""
+"Fast response is optimized for short, interactive checks. Long-running "
+"reserves the full validator time budget for large files or simulations. "
+"Validibot chooses the underlying compute."
 msgstr ""
 
 msgid "Note to self..."
@@ -7149,7 +8690,9 @@ msgstr ""
 msgid "Upload schema"
 msgstr ""
 
-msgid "Leave blank to keep the existing schema. Paste new JSON to replace it."
+msgid ""
+"The step's current schema. Edit it or paste new JSON to replace it; leaving "
+"the field blank also keeps the saved schema."
 msgstr ""
 
 msgid "Paste your JSON schema or upload a file below."
@@ -7176,7 +8719,9 @@ msgstr ""
 msgid "Schema type"
 msgstr ""
 
-msgid "Leave blank to keep the existing schema. Paste new XML to replace it."
+msgid ""
+"The step's current schema. Edit it or paste new XML to replace it; leaving "
+"the field blank also keeps the saved schema."
 msgstr ""
 
 msgid "Paste your XML schema or upload a file below."
@@ -7287,8 +8832,27 @@ msgid ""
 "and have submitters supply only the parameter values as JSON."
 msgstr ""
 
+#, fuzzy
+#| msgid "Add file"
+msgid "Model file"
+msgstr "Adicionar arquivo"
+
+msgid "Choose where the EnergyPlus model file comes from."
+msgstr ""
+
+msgid "Earlier step output"
+msgstr ""
+
 msgid "Weather file"
 msgstr ""
+
+msgid "Choose where the EnergyPlus weather file comes from."
+msgstr ""
+
+#, fuzzy
+#| msgid "Workflow Outputs"
+msgid "Workflow resource"
+msgstr "Saídas do fluxo de trabalho"
 
 msgid ""
 "Weather file (EPW) used for EnergyPlus simulations. This determines the "
@@ -7302,6 +8866,32 @@ msgid ""
 "Include EnergyPlus simulation warnings in the results shown to submitters. "
 "Uncheck to show only errors. Warnings can be noisy for submitters who don't "
 "need to debug the model."
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit profile"
+msgid "Review profile"
+msgstr "Editar perfil"
+
+#, fuzzy
+#| msgid "Show EnergyPlus warnings"
+msgid "Standard EnergyPlus review"
+msgstr "Mostrar avisos do EnergyPlus"
+
+msgid "LEED review readiness"
+msgstr ""
+
+msgid ""
+"Selects required evidence and issue severity. It does not change the "
+"EnergyPlus simulation engine or calculate a LEED compliance EUI."
+msgstr ""
+
+msgid "Timesteps per hour"
+msgstr ""
+
+msgid ""
+"Applied to a private working copy of the model; the submitted file is never "
+"modified."
 msgstr ""
 
 msgid "Initial IDF checks"
@@ -7330,6 +8920,26 @@ msgid ""
 msgstr ""
 
 msgid "— Select a weather file —"
+msgstr ""
+
+#, fuzzy
+#| msgid "Submitter"
+msgid "Submitted file"
+msgstr "Autor do envio"
+
+msgid "— Select generated file —"
+msgstr ""
+
+msgid "Choose a weather file for a full EnergyPlus simulation."
+msgstr ""
+
+msgid "Choose an allowed file source."
+msgstr ""
+
+msgid "Choose the workflow resource for this weather file."
+msgstr ""
+
+msgid "Choose the generated file from an earlier step."
 msgstr ""
 
 msgid "Human-readable label"
@@ -7372,6 +8982,409 @@ msgid "Limit selectors to 10 paths."
 msgstr ""
 
 msgid "Add at least one policy rule."
+msgstr ""
+
+msgid "Integer"
+msgstr ""
+
+msgid "Date"
+msgstr ""
+
+msgid "Date and time"
+msgstr ""
+
+msgid "Column name"
+msgstr ""
+
+msgid "For example, decimalLatitude"
+msgstr ""
+
+msgid "Data type"
+msgstr ""
+
+msgid "The column must exist and its cells cannot be empty."
+msgstr ""
+
+#, fuzzy
+#| msgid "Min value"
+msgid "Unique values"
+msgstr "Valor mínimo"
+
+msgid "Repeated non-empty values fail validation."
+msgstr ""
+
+#, fuzzy
+#| msgid "Primary"
+msgid "Primary key"
+msgstr "Primário"
+
+msgid "Select multiple columns to define a composite key."
+msgstr ""
+
+msgid "Required when another column exists"
+msgstr ""
+
+msgid ""
+"Require this column only when the selected companion column is present in "
+"the submitted file."
+msgstr ""
+
+msgid "Never (optional column)"
+msgstr ""
+
+msgid "Minimum"
+msgstr ""
+
+msgid "Maximum"
+msgstr ""
+
+msgid "Minimum length"
+msgstr ""
+
+msgid "Maximum length"
+msgstr ""
+
+msgid "Pattern"
+msgstr ""
+
+msgid "A regular expression matched against non-empty values."
+msgstr ""
+
+#, fuzzy
+#| msgid "Enter one value per line"
+msgid "Enter one allowed value per line."
+msgstr "Insira um valor por linha"
+
+msgid ""
+"present\n"
+"absent"
+msgstr ""
+
+msgid "Numeric limits are only available for number columns."
+msgstr ""
+
+msgid "Maximum must be greater than minimum."
+msgstr ""
+
+msgid "Length and pattern rules are only available for text columns."
+msgstr ""
+
+msgid "Maximum length must be greater than minimum length."
+msgstr ""
+
+msgid ""
+"A column that is always required does not need a conditional requirement."
+msgstr ""
+
+#, python-format
+msgid "Allowed values must be unique. Duplicates: %(values)s"
+msgstr ""
+
+#, python-format
+msgid ""
+"Column names must be unique, including letter case: %(first)s and %(second)s "
+"conflict."
+msgstr ""
+
+msgid "A column cannot make itself conditionally required."
+msgstr ""
+
+msgid "Select a companion column that is declared in this schema."
+msgstr ""
+
+msgid "Leave on auto-detect unless the file uses an unusual separator."
+msgstr ""
+
+msgid "File has a header row"
+msgstr ""
+
+msgid "Table Schema (Frictionless descriptor)"
+msgstr ""
+
+msgid ""
+"Paste a Frictionless Table Schema descriptor to populate the column editor."
+msgstr ""
+
+msgid "Infer from a delimited text sample"
+msgstr ""
+
+msgid ""
+"Upload a small comma-, tab-, semicolon-, or pipe-delimited text file to "
+"infer column names and types. The filename extension does not matter."
+msgstr ""
+
+msgid "Upload a Table Schema descriptor"
+msgstr ""
+
+msgid "Upload a JSON descriptor instead of pasting it."
+msgstr ""
+
+#, python-format
+msgid "“%(label)s” references column(s) no longer in the schema: %(cols)s"
+msgstr ""
+
+#, python-format
+msgid "“%(label)s” uses sum on the now-non-numeric column “%(col)s”."
+msgstr ""
+
+#, python-format
+msgid ""
+"These column changes would break existing assertions — update or remove them "
+"first: %(problems)s"
+msgstr ""
+
+msgid ""
+"Paste a descriptor, upload a descriptor, or upload a sample file; choose one "
+"source."
+msgstr ""
+
+msgid "Sample files must be 5 MB or smaller."
+msgstr ""
+
+msgid "Review the highlighted column settings."
+msgstr ""
+
+#, python-format
+msgid "Invalid column schema: %(err)s"
+msgstr ""
+
+msgid "Paste a Table Schema descriptor or upload a sample to infer one."
+msgstr ""
+
+msgid "The column editor state is invalid. Reload the page and try again."
+msgstr ""
+
+#, python-format
+msgid "Descriptor is not valid JSON: %(err)s"
+msgstr ""
+
+#, python-format
+msgid "Invalid Table Schema: %(err)s"
+msgstr ""
+
+msgid "Descriptor files must be 2 MB or smaller."
+msgstr ""
+
+msgid "Descriptor files must be UTF-8 JSON."
+msgstr ""
+
+#, python-format
+msgid "Could not read the sample: %(err)s"
+msgstr ""
+
+msgid "Schematron rules"
+msgstr ""
+
+msgid "Upload Schematron (.sch)"
+msgstr ""
+
+msgid "Rule documentation URL template"
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Optional. A URL template with {rule_id} for deep-linking findings to "
+"published rule docs, e.g. https://docs.peppol.eu/poacc/billing/3.0/rules/"
+"#{rule_id}"
+msgstr ""
+
+msgid ""
+"The step's current rules. Edit them or paste new rules to replace them; "
+"leaving the field blank also keeps the saved rules."
+msgstr ""
+
+#, python-format
+msgid "Currently assigned: %(name)s. Upload a new .sch file to replace it."
+msgstr ""
+
+msgid "Paste your Schematron rules or upload a .sch file below."
+msgstr ""
+
+#, python-brace-format
+msgid "Use only {rule_id} as the placeholder in the URL template."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"The rule documentation URL must be an absolute http(s) URL, e.g. https://"
+"docs.example.org/rules/#{rule_id}."
+msgstr ""
+
+msgid "Paste Schematron rules or upload a .sch file."
+msgstr ""
+
+msgid "Uploaded Schematron must be UTF-8 encoded."
+msgstr ""
+
+#, fuzzy
+#| msgid "Submission"
+msgid "Submission structure"
+msgstr "Envio"
+
+msgid "Single property report (.xls, .xlsx, or .xml)"
+msgstr ""
+
+msgid "ZIP collection of property reports"
+msgstr ""
+
+msgid ""
+"Each report must represent one property or grouped parent and one reporting "
+"cycle."
+msgstr ""
+
+msgid ""
+"Optional target. In ZIP mode it is the default for every property unless a "
+"matched EBL row provides its own EUIt. The configured value is retained as a "
+"declared, traceable validator input."
+msgstr ""
+
+msgid "Require Weather Normalized Site EUI to meet the resolved EUIt"
+msgstr ""
+
+msgid ""
+"When enabled, a property fails this built-in check when WNEUI is greater "
+"than its EBL or default EUIt. Leave it off to express custom tolerance in "
+"CEL."
+msgstr ""
+
+msgid "Near-target tolerance (%)"
+msgstr ""
+
+msgid ""
+"Defines the informational near_euit output; it does not change pass/fail "
+"unless an assertion uses that output."
+msgstr ""
+
+msgid "Require a complete reporting period"
+msgstr ""
+
+msgid ""
+"Require both period dates and at least the configured number of consecutive "
+"calendar months."
+msgstr ""
+
+msgid "Minimum reporting period (months)"
+msgstr ""
+
+msgid "Maximum reporting-period age (months)"
+msgstr ""
+
+msgid ""
+"Optional freshness check measured from the validation run date. Set this to "
+"the limit required by the program represented by the workflow."
+msgstr ""
+
+msgid "Require benchmark-ready core metrics"
+msgstr ""
+
+msgid "Require Washington Form C-ready metrics"
+msgstr ""
+
+msgid ""
+"Checks the Z6.3 bundle: national median Site EUI; Site Energy and Site EUI; "
+"weather-normalized Site Energy, Site EUI, electricity and natural-gas use/"
+"intensity; onsite renewable and grid electricity metrics; natural-gas use; "
+"renewable percentage; HDD, CDD, weather station name, and weather station "
+"ID. Fuel or renewable fields may explicitly report N/A, but they cannot be "
+"omitted from the export."
+msgstr ""
+
+msgid "Require Weather Normalized Site EUI"
+msgstr ""
+
+msgid "Require the State of Washington Clean Buildings Standard ID"
+msgstr ""
+
+msgid ""
+"Requires the named Portfolio Manager Standard ID to be present; it does not "
+"ask for one program-wide literal ID."
+msgstr ""
+
+msgid "Require an ENERGY STAR score"
+msgstr ""
+
+msgid "Use only for property types eligible for an ENERGY STAR score."
+msgstr ""
+
+msgid "Allow"
+msgstr ""
+
+msgid "Energy meter has less than 12 full calendar months"
+msgstr ""
+
+msgid "Energy meter has gaps"
+msgstr ""
+
+msgid "Energy meter has overlaps"
+msgstr ""
+
+msgid "No energy meters selected for metrics"
+msgstr ""
+
+msgid "Energy meter has a single entry longer than 65 days"
+msgstr ""
+
+msgid "Estimated energy values"
+msgstr ""
+
+msgid "Other included Portfolio Manager Alert Metrics"
+msgstr ""
+
+msgid "Expected Buildings List (JSON)"
+msgstr ""
+
+msgid ""
+"Optional in ZIP mode. Upload the versioned EBL JSON roster used for identity "
+"reconciliation and per-building EUIt overrides."
+msgstr ""
+
+msgid "Remove the currently assigned Expected Buildings List"
+msgstr ""
+
+msgid "Maximum reports in one ZIP"
+msgstr ""
+
+msgid "Maximum size of each report (MB)"
+msgstr ""
+
+msgid "Maximum total uncompressed size (MB)"
+msgstr ""
+
+#, python-format
+msgid ""
+" Identity: %(identity)s; %(entries)s buildings; %(targets)s per-building "
+"EUIt values."
+msgstr ""
+
+#, python-format
+msgid ""
+"Currently assigned: %(name)s.%(summary)s Upload a new JSON file to replace "
+"it."
+msgstr ""
+
+msgid "Expected Buildings List files must use the .json extension."
+msgstr ""
+
+msgid "Expected Buildings List files must be 5 MB or smaller."
+msgstr ""
+
+#, python-format
+msgid "Invalid Expected Buildings List: %(error)s"
+msgstr ""
+
+msgid "An Expected Buildings List is available only in ZIP mode."
+msgstr ""
+
+msgid "Upload a replacement or remove the current EBL, not both."
+msgstr ""
+
+msgid "Single property report"
+msgstr ""
+
+#, python-format
+msgid ""
+"This step cannot switch to %(target)s while existing assertions use "
+"%(group)s: %(outputs)s. Update or remove those assertions first."
 msgstr ""
 
 msgid "Make info page public"
@@ -7423,8 +9436,10 @@ msgstr ""
 msgid "Enter the exact workflow UUID: %(uuid)s"
 msgstr ""
 
-msgid "Human-readable display name for this signal."
-msgstr ""
+#, fuzzy
+#| msgid "Human-readable label shown to submitters."
+msgid "Human-readable display name for this step input."
+msgstr "Rótulo legível exibido para quem envia dados."
 
 msgid "Unit"
 msgstr ""
@@ -7443,17 +9458,17 @@ msgstr ""
 
 msgid ""
 "Fallback value when the source path resolves to nothing. Leave empty to make "
-"the signal required."
+"the step input required."
 msgstr ""
 
 msgid ""
-"If checked, validation fails when this signal is missing. Cannot be used "
+"If checked, validation fails when this step input is missing. Cannot be used "
 "together with a default value."
 msgstr ""
 
 msgid ""
-"A signal cannot be both required and have a default value. Either remove the "
-"default or uncheck Required."
+"A step input cannot be both required and have a default value. Either remove "
+"the default or uncheck Required."
 msgstr ""
 
 msgid "Error — fail the run"
@@ -7486,13 +9501,27 @@ msgstr ""
 msgid "Fallback value as JSON (e.g. 0, \"none\", null)."
 msgstr ""
 
-msgid "Data type"
-msgstr ""
-
 msgid "Expected type. Leave as Auto to infer from data."
 msgstr ""
 
 msgid "Default value must be valid JSON (e.g. 42, \"hello\", null)."
+msgstr ""
+
+msgid "Constant name"
+msgstr ""
+
+msgid "Used in CEL expressions as c.name."
+msgstr ""
+
+msgid "The value's type. List/Object are entered as JSON."
+msgstr ""
+
+msgid ""
+"For Number type \"0.40\"; String takes the text literally; List/Object are "
+"JSON (e.g. [\"EUR\", \"GBP\"])."
+msgstr ""
+
+msgid "Optional note (e.g. 'agreed €/kWh per the 2026 contract')."
 msgstr ""
 
 msgid "Create dummy workflows with random data for demos."
@@ -7513,13 +9542,29 @@ msgstr ""
 msgid "CEL only"
 msgstr ""
 
+msgid "Dataset metadata"
+msgstr ""
+
 msgid "Promoted step input"
 msgstr ""
 
 msgid "Promoted step output"
 msgstr ""
 
-msgid "Assertions"
+msgid "Submission metadata — add your key"
+msgstr ""
+
+#, fuzzy
+#| msgid "Submission"
+msgid "Submission description"
+msgstr "Envio"
+
+#, fuzzy
+#| msgid "Signal name"
+msgid "Original filename"
+msgstr "Nome do sinal"
+
+msgid "Uploaded at"
 msgstr ""
 
 msgid "Workflow version is required. Use a positive integer (e.g., 1)."
@@ -7604,19 +9649,24 @@ msgstr ""
 msgid "Allows non-logged in users to see the workflow's info page."
 msgstr ""
 
-msgid "If true, any authenticated user can launch this workflow."
+msgid ""
+"Who, by Validibot identity, may run this workflow for free: PRIVATE (you and "
+"people you invite — the default), ORG (your organization), or ALL_USERS (any "
+"Validibot user). Capped by the organization ceiling. Independent of x402 "
+"paid access."
 msgstr ""
 
 msgid ""
-"Master switch for all agent access via MCP. When enabled, authenticated "
-"agents in your organization can discover and invoke this workflow. For "
-"public cross-org discovery, also enable 'Public discovery'."
+"Allow authenticated AI agents to run this workflow via MCP, on behalf of a "
+"user who already has identity access through 'workflow_visibility'. Billed "
+"to that user's plan quota. Independent of x402 paid access."
 msgstr ""
 
 msgid ""
-"List this workflow on the cross-org public catalog so agents outside your "
-"organization can discover and run it via x402 micropayments. Requires 'Agent "
-"access enabled' and automatically sets billing to 'Agent pays via x402'."
+"Publish this workflow for PAID, ANONYMOUS access via x402: anyone on the "
+"internet who pays the per-call price can run it, regardless of "
+"'workflow_visibility'. Automatically bills via x402 and requires a price and "
+"'Do not store' retention."
 msgstr ""
 
 msgid ""
@@ -7640,14 +9690,15 @@ msgstr ""
 
 msgid ""
 "How long to keep user-submitted input files after validation completes. "
-"DO_NOT_STORE deletes the submission immediately after successful completion. "
+"DO_NOT_STORE deletes the submission immediately after any terminal outcome. "
 "The submission record is preserved for audit."
 msgstr ""
 
 msgid ""
 "How long to keep validation outputs (results, artifacts, findings) after "
-"validation completes. Users need time to download results, so immediate "
-"deletion is not an option."
+"validation reaches a terminal state. DO_NOT_STORE queues detailed output "
+"deletion immediately while preserving the minimal permanent evidence receipt "
+"and aggregate run record."
 msgstr ""
 
 msgid ""
@@ -7688,6 +9739,15 @@ msgid ""
 msgstr ""
 
 msgid ""
+"Output retention must be 'Do not retain' when agents pay via x402 "
+"micropayments — anonymous per-call access must not leave detailed results "
+"behind."
+msgstr ""
+
+msgid " · plus anyone who pays via x402"
+msgstr ""
+
+msgid ""
 "Optional title to show on the public info page. If blank, the Workflow name "
 "will be used."
 msgstr ""
@@ -7698,7 +9758,7 @@ msgstr ""
 msgid ""
 "Stable identifier for this step within the workflow. Used to reference "
 "output data from this step in downstream assertions (e.g., "
-"steps.simulation.signals.site_eui_kwh_m2). Auto-generated from the step name "
+"steps.simulation.output.site_eui_kwh_m2). Auto-generated from the step name "
 "on creation. Immutable once set."
 msgstr ""
 
@@ -7728,6 +9788,12 @@ msgid ""
 msgstr ""
 
 msgid "The signed credential step must come after all blocking action steps."
+msgstr ""
+
+msgid "Custom validator must belong to the workflow organization."
+msgstr ""
+
+msgid "Ruleset must belong to the workflow organization."
 msgstr ""
 
 msgid "The workflow this grant provides access to."
@@ -7806,6 +9872,35 @@ msgid "guest invite"
 msgstr ""
 
 msgid "guest invites"
+msgstr ""
+
+#, python-format
+msgid ""
+"Cannot add a new %(member)s: this workflow has runs (or is locked), so its "
+"contract is fixed. Clone it to a new version to change %(member)s."
+msgstr ""
+
+#, python-format
+msgid ""
+"Cannot change %(member)s on a workflow that has runs (or is locked): clone "
+"it to a new version to change this."
+msgstr ""
+
+#, python-format
+msgid ""
+"Cannot delete this %(member)s: the workflow has runs (or is locked). Clone "
+"it to a new version to change %(member)s."
+msgstr ""
+
+msgid "A constant type is required."
+msgstr ""
+
+#, python-format
+msgid "length ≥ %(n)s"
+msgstr ""
+
+#, python-format
+msgid "length ≤ %(n)s"
 msgstr ""
 
 #, python-format
@@ -7986,10 +10081,78 @@ msgid ""
 "the validation contract."
 msgstr ""
 
+msgid "Expected a JSON list (e.g. [\"EUR\", \"GBP\"])."
+msgstr ""
+
+msgid "Expected a JSON object (e.g. {\"min\": 1, \"max\": 9})."
+msgstr ""
+
+#, python-format
+msgid "Unknown constant type '%(data_type)s'."
+msgstr ""
+
+msgid "Expected a number, got a boolean."
+msgstr ""
+
+#, fuzzy
+#| msgid "Email address is required."
+msgid "A number value is required."
+msgstr "O endereço de e-mail é obrigatório."
+
+#, python-format
+msgid "'%(value)s' is not a valid number."
+msgstr ""
+
+msgid "Number must be finite (no NaN/Infinity)."
+msgstr ""
+
+msgid "Expected a boolean (true or false)."
+msgstr ""
+
+#, python-format
+msgid "Could not parse JSON %(expected)s: %(error)s"
+msgstr ""
+
+#, python-format
+msgid "Structured constant is too large (max %(kb)d KiB serialized)."
+msgstr ""
+
+#, python-format
+msgid "List constant has too many items (max %(n)d)."
+msgstr ""
+
+#, python-format
+msgid "Object constant has too many keys (max %(n)d)."
+msgstr ""
+
+#, python-format
+msgid "Structured constant is nested too deeply (max depth %(n)d)."
+msgstr ""
+
+#, python-format
+msgid "A constant named '%(name)s' already exists in this workflow."
+msgstr ""
+
+#, python-format
+msgid ""
+"This workflow definition is currently being used by one validation run. Your "
+"changes have not been saved. Try again after that run finishes."
+msgid_plural ""
+"This workflow definition is currently being used by %(count)s validation "
+"runs. Your changes have not been saved. Try again after those runs finish."
+msgstr[0] ""
+msgstr[1] ""
+
 msgid "This workflow is not currently active."
 msgstr ""
 
 msgid "This workflow has no steps defined and cannot be executed."
+msgstr ""
+
+#, python-format
+msgid ""
+"Step %(step)s (%(validator)s) uses a validator that is not available in this "
+"deployment."
 msgstr ""
 
 msgid "no file types"
@@ -8027,7 +10190,29 @@ msgstr ""
 msgid "Previous version. The current version is v%(version)s"
 msgstr ""
 
+msgid "Dataset assertion"
+msgstr ""
+
+msgid "Row assertion"
+msgstr ""
+
+msgid "Column assertion"
+msgstr ""
+
+msgid "Runs once against dataset metadata before native column and row checks."
+msgstr ""
+
+msgid "Runs for each row and is aggregated into a bounded finding."
+msgstr ""
+
+msgid "Runs once after row validation against typed column aggregates."
+msgstr ""
+
 msgid "Add Assertion"
+msgstr ""
+
+#, python-format
+msgid "Add %(stage)s"
 msgstr ""
 
 msgid "Assertion added."
@@ -8045,6 +10230,59 @@ msgstr ""
 msgid "Assertion moved."
 msgstr ""
 
+msgid "Constant added."
+msgstr ""
+
+msgid "Edit Constant"
+msgstr ""
+
+msgid "Save Changes"
+msgstr ""
+
+#, fuzzy
+#| msgid "Signal updated."
+msgid "Constant updated."
+msgstr "Sinal atualizado."
+
+msgid "Unknown step"
+msgstr ""
+
+#, python-format
+msgid ""
+"Cannot delete constant '%(name)s' — it is referenced in: %(refs)s. Remove "
+"the references first."
+msgstr ""
+
+msgid "Constant removed."
+msgstr ""
+
+#, fuzzy
+#| msgid "Workflow Outputs"
+msgid "Workflow file"
+msgstr "Saídas do fluxo de trabalho"
+
+#, python-format
+msgid "That file is larger than the %(limit)s MB import limit."
+msgstr ""
+
+msgid "Import"
+msgstr ""
+
+msgid "Please choose a workflow file to import."
+msgstr ""
+
+msgid "You need an organization before importing workflows."
+msgstr ""
+
+msgid ""
+"Something went wrong importing this workflow. The file may be corrupt or "
+"from an incompatible version."
+msgstr ""
+
+#, python-format
+msgid "Workflow “%(name)s” imported."
+msgstr ""
+
 msgid "Uploaded file is not valid UTF-8 text."
 msgstr ""
 
@@ -8052,6 +10290,9 @@ msgid "Could not run the workflow. Please try again."
 msgstr ""
 
 msgid "Something went wrong while preparing the submission."
+msgstr ""
+
+msgid "This action isn't available for your organization right now."
 msgstr ""
 
 msgid "You do not have permission to run this workflow."
@@ -8096,7 +10337,13 @@ msgstr ""
 msgid "View Validations"
 msgstr ""
 
+msgid "Export this workflow as a .vaf archive"
+msgstr ""
+
 msgid "Configure workflow-level signals (s.name)"
+msgstr ""
+
+msgid "Configure workflow-level constants (c.name)"
 msgstr ""
 
 msgid ""
@@ -8208,10 +10455,9 @@ msgstr ""
 msgid "This invite is no longer valid (status: %(status)s)."
 msgstr ""
 
-#, python-format
 msgid ""
-"You now have access to the workflow '%(name)s'. You can run validations on "
-"this workflow."
+"This invitation is addressed to a different email address, so it was not "
+"applied to your account."
 msgstr ""
 
 #, python-format
@@ -8220,16 +10466,37 @@ msgid ""
 msgstr ""
 
 #, python-format
+msgid ""
+"You now have access to the workflow '%(name)s'. You can run validations on "
+"this workflow."
+msgstr ""
+
+#, python-format
 msgid "This guest invite is no longer valid (status: %(status)s)."
+msgstr ""
+
+msgid ""
+"This guest invitation is addressed to a different email address, so it was "
+"not applied to your account."
+msgstr ""
+
+#, python-format
+msgid "Please sign up or log in to accept your guest invitation to %(org)s."
 msgstr ""
 
 #, python-format
 msgid "You now have guest access to %(org)s."
 msgstr ""
 
-#, python-format
-msgid "Please sign up or log in to accept your guest invitation to %(org)s."
-msgstr ""
+#, fuzzy
+#| msgid "Email address is required."
+msgid "Email address is too long."
+msgstr "O endereço de e-mail é obrigatório."
+
+#, fuzzy
+#| msgid "Email address"
+msgid "Enter a valid email address."
+msgstr "Endereço de e-mail"
 
 msgid "This user already has access to this workflow."
 msgstr ""
@@ -8251,8 +10518,8 @@ msgstr ""
 msgid "Edit Signal"
 msgstr ""
 
-msgid "Save Changes"
-msgstr ""
+msgid "Signal updated."
+msgstr "Sinal atualizado."
 
 #, python-format
 msgid ""
@@ -8348,6 +10615,39 @@ msgstr ""
 msgid "selected types"
 msgstr ""
 
+msgid "A tabular schema can contain at most 1,024 columns."
+msgstr ""
+
+msgid "Paste a descriptor or upload one, not both."
+msgstr ""
+
+msgid "Paste a Table Schema descriptor first."
+msgstr ""
+
+#, python-format
+msgid "Could not import the descriptor: %(error)s"
+msgstr ""
+
+msgid "Inference requests must be 10 MB or smaller."
+msgstr ""
+
+msgid "Choose a delimited text sample first."
+msgstr ""
+
+#, python-format
+msgid "Could not read the sample: %(error)s"
+msgstr ""
+
+#, python-format
+msgid "Could not apply the proposed schema: %(error)s"
+msgstr ""
+
+msgid "Proposed columns applied. Save changes to persist them."
+msgstr ""
+
+msgid "Save a column schema before downloading it."
+msgstr ""
+
 msgid "Workflow step added."
 msgstr ""
 
@@ -8375,10 +10675,21 @@ msgstr ""
 msgid "%(step)s: Edit Step Detail"
 msgstr ""
 
+msgid "Dataset shape, row count, and column presence."
+msgstr ""
+
+msgid "Relationships and conditions within each row."
+msgstr ""
+
+msgid "Cross-row aggregates for one or more columns."
+msgstr ""
+
 msgid "Template variable annotations saved."
 msgstr ""
 
-msgid "Display signals updated."
+#, fuzzy
+#| msgid "Display signals updated."
+msgid "Displayed step outputs updated."
 msgstr "Sinais de exibição atualizados."
 
 #, python-format
@@ -8389,6 +10700,9 @@ msgid "Edit input"
 msgstr ""
 
 msgid "Edit output"
+msgstr ""
+
+msgid "Step I/O definition updated."
 msgstr ""
 
 #, python-format
@@ -8442,6 +10756,16 @@ msgid ""
 "DTD schema before any step assertions run."
 msgstr ""
 
+#, fuzzy
+#| msgid "Recent Validations"
+msgid "Schematron Validation"
+msgstr "Validações recentes"
+
+msgid ""
+"Runs the step's uploaded Schematron rules against the submitted XML document "
+"before any step assertions run, reporting failed rules by their native IDs."
+msgstr ""
+
 msgid "SHACL Validation"
 msgstr ""
 
@@ -8450,7 +10774,14 @@ msgid ""
 "optional ontology files before any step assertions run."
 msgstr ""
 
-msgid "Validation"
+#, fuzzy
+#| msgid "Recent Validations"
+msgid "Tabular Validation"
+msgstr "Validações recentes"
+
+msgid ""
+"Validates the submitted CSV against the configured column schema and row "
+"rules before any step assertions run."
 msgstr ""
 
 msgid "Select a file type before launching the workflow."
@@ -8479,6 +10810,9 @@ msgid ""
 "before activating a template."
 msgstr ""
 
+msgid "Your organization can't run this workflow right now."
+msgstr ""
+
 msgid "Payload too large."
 msgstr ""
 
@@ -8504,3 +10838,15 @@ msgstr ""
 
 msgid "Unsupported request content type."
 msgstr ""
+
+#, python-format
+msgid ""
+"Step %(step)s (%(validator)s) uses a validator that is not available in this "
+"deployment. %(reason)s"
+msgstr ""
+
+#~ msgid "Personal"
+#~ msgstr "Pessoal"
+
+#~ msgid "Add signal"
+#~ msgstr "Adicionar sinal"

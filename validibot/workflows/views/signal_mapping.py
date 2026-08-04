@@ -1165,8 +1165,11 @@ class WorkflowStepPromoteStepIOView(WorkflowObjectMixin, View):
                     json.dumps(
                         {
                             "errors": [
-                                "Artifacts cannot be promoted to workflow signals. "
-                                "Only CEL/JSON values can enter the signal namespace."
+                                (
+                                    "Artifacts cannot be promoted to workflow signals. "
+                                    "Only CEL/JSON values can enter the signal "
+                                    "namespace."
+                                )
                             ]
                         }
                     ),
@@ -1205,24 +1208,29 @@ class WorkflowStepPromoteStepIOView(WorkflowObjectMixin, View):
                     status=400,
                 )
 
-        if owned_by_step:
-            io_definition.promoted_signal_name = new_name
-            io_definition.save(update_fields=["promoted_signal_name"])
-        elif new_name:
-            # Validator-owned: store the workflow-scoped promotion in
-            # the overlay so the catalog row remains shared across
-            # workflows.
-            WorkflowStepIOPromotion.objects.update_or_create(
-                workflow_step=workflow_step,
-                io_definition=io_definition,
-                defaults={"promoted_signal_name": new_name},
-            )
-        else:
-            # Validator-owned + empty name: clear the overlay row.
-            WorkflowStepIOPromotion.objects.filter(
-                workflow_step=workflow_step,
-                io_definition=io_definition,
-            ).delete()
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(workflow.pk):
+            if owned_by_step:
+                io_definition.promoted_signal_name = new_name
+                io_definition.save(update_fields=["promoted_signal_name"])
+            elif new_name:
+                # Validator-owned: store the workflow-scoped promotion in
+                # the overlay so the catalog row remains shared across
+                # workflows.
+                WorkflowStepIOPromotion.objects.update_or_create(
+                    workflow_step=workflow_step,
+                    io_definition=io_definition,
+                    defaults={"promoted_signal_name": new_name},
+                )
+            else:
+                # Validator-owned + empty name: clear the overlay row.
+                WorkflowStepIOPromotion.objects.filter(
+                    workflow_step=workflow_step,
+                    io_definition=io_definition,
+                ).delete()
 
         # Direction-aware success message. "Step input"/"step output"
         # vocabulary per ADR-2026-05-22b.

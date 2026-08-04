@@ -105,6 +105,12 @@ The exact field sets are enumerated once in `workflows/services/io/schema.py`
 the exporter and importer can never disagree about which fields make up the
 definition.
 
+The author-facing **Editing policy** remains serialized under its stable
+internal key, `history_policy`. An explicit `mutable` value round-trips. If an
+older definition omits the key, import defaults to `versioned`; Mutable is never
+inferred. Unknown values are rejected with `vaf.invalid_history_policy` rather
+than silently weakening the imported workflow's guarantees.
+
 ## Architecture: generic graph + per-validator body
 
 The split is the heart of the design, and it's what the phrase "each validator

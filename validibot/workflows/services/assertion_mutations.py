@@ -22,6 +22,10 @@ from validibot.validations.constants import CatalogRunStage
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import StepIODefinition
+from validibot.workflows.services.editing_policy import (
+    guard_workflow_definition_mutation,
+)
+from validibot.workflows.services.editing_policy import workflow_ids_for_ruleset
 
 
 @dataclass(frozen=True)
@@ -56,7 +60,8 @@ class AssertionMutationService:
 
         stage = cls.resolve_stage(cleaned_data)
         payload = cls.payload_from_cleaned_data(cleaned_data)
-        with transaction.atomic():
+        workflow_ids = workflow_ids_for_ruleset(ruleset.pk)
+        with guard_workflow_definition_mutation(workflow_ids):
             max_order = (
                 ruleset.assertions.filter(cls.stage_filter(stage)).aggregate(
                     max_order=models.Max("order"),
@@ -82,26 +87,30 @@ class AssertionMutationService:
         """Update one assertion after model-level contract validation."""
 
         payload = cls.payload_from_cleaned_data(cleaned_data)
-        for field, value in payload.__dict__.items():
-            setattr(assertion, field, value)
-        assertion.full_clean()
-        assertion.save()
+        workflow_ids = workflow_ids_for_ruleset(assertion.ruleset_id)
+        with guard_workflow_definition_mutation(workflow_ids):
+            for field, value in payload.__dict__.items():
+                setattr(assertion, field, value)
+            assertion.full_clean()
+            assertion.save()
         return assertion
 
     @staticmethod
     def delete(*, assertion: RulesetAssertion) -> None:
         """Delete one assertion unless its ruleset is locked in use."""
 
-        if assertion.ruleset.is_used_by_locked_workflow():
-            raise ValidationError(
-                _(
-                    "Cannot delete this assertion: it belongs to a ruleset "
-                    "used by a workflow that has runs (or is locked). "
-                    "Create a new workflow version before changing the "
-                    "validation contract.",
-                ),
-            )
-        assertion.delete()
+        workflow_ids = workflow_ids_for_ruleset(assertion.ruleset_id)
+        with guard_workflow_definition_mutation(workflow_ids):
+            if assertion.ruleset.is_used_by_locked_workflow():
+                raise ValidationError(
+                    _(
+                        "Cannot delete this assertion: it belongs to a ruleset "
+                        "used by a workflow that has runs (or is locked). "
+                        "Create a new workflow version before changing the "
+                        "validation contract.",
+                    ),
+                )
+            assertion.delete()
 
     @classmethod
     def move(

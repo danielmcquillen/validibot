@@ -1094,9 +1094,11 @@ class ValidationCallbackService:
 
         # Retention eligibility starts only after every detailed projection is
         # finalized, preventing a scheduled purge from racing evidence writes.
-        from validibot.validations.signals import validation_run_finalized
+        from validibot.validations.services.run_admission import (
+            emit_validation_run_finalized,
+        )
 
-        validation_run_finalized.send_robust(
+        emit_validation_run_finalized(
             sender=self.__class__,
             validation_run=run,
         )

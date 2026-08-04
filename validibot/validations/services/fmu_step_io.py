@@ -45,6 +45,20 @@ def sync_step_fmu_io_definitions(
     step: WorkflowStep,
     fmu_variables: list[dict[str, Any]],
 ) -> None:
+    """Reconcile all FMU-owned definition rows under one workflow lock."""
+
+    from validibot.workflows.services.editing_policy import (
+        guard_workflow_definition_mutation,
+    )
+
+    with guard_workflow_definition_mutation(step.workflow_id):
+        _sync_step_fmu_io_definitions(step, fmu_variables)
+
+
+def _sync_step_fmu_io_definitions(
+    step: WorkflowStep,
+    fmu_variables: list[dict[str, Any]],
+) -> None:
     """Create or update ``StepIODefinition`` and ``StepInputBinding`` rows
     for every input/output variable in a step-level FMU upload.
 
@@ -242,10 +256,15 @@ def clear_step_fmu_io_definitions(step: WorkflowStep) -> None:
     the same origin_kind — removing the FMU should remove every
     FMU-derived step input, parser facts included.
     """
-    StepIODefinition.objects.filter(
-        workflow_step=step,
-        origin_kind=StepIOOriginKind.FMU,
-    ).delete()
+    from validibot.workflows.services.editing_policy import (
+        guard_workflow_definition_mutation,
+    )
+
+    with guard_workflow_definition_mutation(step.workflow_id):
+        StepIODefinition.objects.filter(
+            workflow_step=step,
+            origin_kind=StepIOOriginKind.FMU,
+        ).delete()
 
 
 def seed_step_parser_fact_io_definitions(

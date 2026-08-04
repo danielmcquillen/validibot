@@ -6,6 +6,11 @@ import { Chart, registerables } from 'chart.js';
 import htmx from 'htmx.org';
 import { initAppFeatures } from './app';
 import { initCopyControls } from './features/copyControls';
+import {
+    disposeRichTooltips,
+    hideRichTooltips,
+    initRichTooltips,
+} from './features/richTooltips';
 import { initAppLeftNavToggle } from './leftNav';
 import { initTableSorting } from './tableSorting';
 
@@ -236,22 +241,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-/**
- * Initialise a Bootstrap tooltip, pulling rich HTML content from a sibling
- * `<template class="cel-tooltip-content">` when present.  This avoids
- * embedding raw HTML inside a `title` attribute (which breaks when the
- * included HTML contains double-quote characters).
- */
-function initTooltipWithTemplate(el: HTMLElement): void {
-    const sibling = el.parentElement?.querySelector<HTMLTemplateElement>(
-        'template.cel-tooltip-content',
-    );
-    if (sibling) {
-        el.setAttribute('title', sibling.innerHTML.trim());
-    }
-    new window.bootstrap.Tooltip(el);
-}
-
 function validibotInitBootstrap() {
     try {
 
@@ -261,12 +250,7 @@ function validibotInitBootstrap() {
         toastList.forEach((toast) => toast.show());
 
         console.log("Enabling bootstrap tooltips...")
-        const tooltipTriggerList = Array.from(
-            document.querySelectorAll<HTMLElement>('[data-bs-toggle="tooltip"]'),
-        );
-        tooltipTriggerList.forEach((tooltipTriggerEl) => {
-            initTooltipWithTemplate(tooltipTriggerEl);
-        });
+        initRichTooltips(document, window.bootstrap.Tooltip);
     } catch (err) {
         console.log("Error initializing bootstrap: ", err)
     }
@@ -345,13 +329,12 @@ document.body.addEventListener('htmx:afterSwap', (event: Event) => {
     }
 });
 
-document.body.addEventListener('htmx:beforeSwap', () => {
-    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
-        const tooltip = bootstrap.Tooltip.getInstance(el);
-        if (tooltip) {
-            tooltip.hide();
-        }
-    });
+document.body.addEventListener('htmx:beforeSwap', (event: Event) => {
+    hideRichTooltips(document, window.bootstrap.Tooltip);
+    const target = (event as CustomEvent).detail?.target;
+    if (target instanceof HTMLElement) {
+        disposeRichTooltips(target, window.bootstrap.Tooltip);
+    }
 });
 
 type QueryableRoot = ParentNode & Node;
@@ -370,9 +353,7 @@ window.htmx.onLoad((content: Node) => {
     initTableSorting(root);
     initRolePickers(root);
 
-    root.querySelectorAll<HTMLElement>('[data-bs-toggle="tooltip"]').forEach((tooltipTriggerEl) => {
-        initTooltipWithTemplate(tooltipTriggerEl);
-    });
+    initRichTooltips(root, window.bootstrap.Tooltip);
 
     root.querySelectorAll<HTMLElement>('[data-bs-toggle="collapse"]').forEach((trigger) => {
         const targetSelector = trigger.getAttribute('data-bs-target');

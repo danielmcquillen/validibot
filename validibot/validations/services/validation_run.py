@@ -316,7 +316,7 @@ class ValidationRunService:
             PermissionError: If user lacks execute permission on workflow.
         """
         from validibot.core.tasks import enqueue_validation_run
-        from validibot.submissions.models import Submission as SubmissionModel
+        from validibot.validations.services.run_admission import admit_validation_run
 
         start_time = time.perf_counter()
         if not request:
@@ -367,37 +367,21 @@ class ValidationRunService:
         elif getattr(request.user, "is_authenticated", False):
             run_user = request.user
 
-        # Snapshot the policy at launch. The actual deadline is computed from
-        # terminal completion, never from launch time, by the shared retention
-        # finalizer. A long-running validator therefore cannot expire its own
-        # active execution bundle.
-        output_retention_policy = workflow.output_retention
-
         run_extra = dict(extra or {})
         with transaction.atomic():
-            # Launch and retention purge share this row lock. If launch wins,
-            # the purge worker observes the new active run and defers. If purge
-            # wins, launch observes the durable tombstone and refuses to create
-            # a run whose input bytes no longer exist.
-            submission = SubmissionModel.objects.select_for_update().get(
-                pk=submission.pk,
-            )
-            if submission.content_purged_at:
-                msg = "Submission content is no longer available for validation"
-                raise ValueError(msg)
-
-            validation_run = ValidationRun.objects.create(
+            # Admission owns the canonical lock order: workflow first, then
+            # submission. The workflow lock serializes this first run with
+            # editing-policy transitions and Mutable semantic mutations; the
+            # submission lock serializes launch with retention purge.
+            validation_run = admit_validation_run(
                 org=org,
                 workflow=workflow,
                 submission=submission,
-                project=getattr(submission, "project", None)
-                or getattr(workflow, "project", None),
                 user=run_user,
-                status=ValidationRunStatus.PENDING,
                 source=source,
-                output_retention_policy=output_retention_policy,
-                **run_extra,
+                extra=run_extra,
             )
+            submission = validation_run.submission
 
             # Run-created hooks fire INSIDE this transaction, under any row
             # locks they take, so a commercial package (cloud) can reserve
@@ -499,9 +483,11 @@ class ValidationRunService:
             # paths, so emit the finalized signal here too — otherwise a launch
             # that reserved a compute-credit hold (cloud) would not release it
             # until the reaper runs. Idempotent with the reaper.
-            from validibot.validations.signals import validation_run_finalized
+            from validibot.validations.services.run_admission import (
+                emit_validation_run_finalized,
+            )
 
-            validation_run_finalized.send_robust(
+            emit_validation_run_finalized(
                 sender=self.__class__,
                 validation_run=validation_run,
             )
@@ -590,9 +576,11 @@ class ValidationRunService:
             extra_data=extra,
         )
 
-        from validibot.validations.signals import validation_run_finalized
+        from validibot.validations.services.run_admission import (
+            emit_validation_run_finalized,
+        )
 
-        validation_run_finalized.send_robust(
+        emit_validation_run_finalized(
             sender=self.__class__,
             validation_run=locked_run,
         )

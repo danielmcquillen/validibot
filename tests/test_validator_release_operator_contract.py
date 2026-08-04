@@ -138,6 +138,30 @@ def test_live_transition_does_not_update_validator_service_definitions():
     assert "desired-min-instances" not in live
 
 
+def test_latest_only_retries_database_finalization_without_provider_deletions():
+    """A retry must finish historical checkpoints after providers are absent.
+
+    Provider deletion and database retirement are separate resumable phases.
+    Once Cloud Run is already clean, latest-only must keep going, use the
+    complete historical deployment projection, and route wholly unaccepted
+    failed candidates through the explicit guarded retirement option.
+    """
+    text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")
+    recipe = _recipe(
+        text,
+        "validator-latest-only stage",
+        "# Retain the exact accepted release record",
+    )
+    no_provider_branch = recipe.split(
+        'echo "  No superseded managed validator providers found."',
+        maxsplit=1,
+    )[1].split("while IFS= read -r name", maxsplit=1)[0]
+
+    assert "exit 0" not in no_provider_branch
+    assert "(.deployment_history // .deployments)[]" in recipe
+    assert "--allow-unaccepted-candidate" in recipe
+
+
 def test_validator_capacity_uses_only_service_level_scaling():
     """Capacity reconciliation must not change revision-level configuration."""
     text = PUBLIC_GCP_RECIPES.read_text(encoding="utf-8")

@@ -104,6 +104,7 @@ CONTRACT_FIELDS = frozenset(
     {
         "allowed_file_types",
         "input_retention",
+        "input_schema",
         "output_retention",
     },
 )

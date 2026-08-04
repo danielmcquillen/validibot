@@ -242,9 +242,11 @@ class Command(BaseCommand):
             # The database decision is committed before provider contact. A
             # cancellation failure is logged by the helper and cannot reopen
             # the terminal run; durable retries arrive with the attempt model.
-            from validibot.validations.signals import validation_run_finalized
+            from validibot.validations.services.run_admission import (
+                emit_validation_run_finalized,
+            )
 
-            validation_run_finalized.send_robust(
+            emit_validation_run_finalized(
                 sender=self.__class__,
                 validation_run=locked,
             )
@@ -595,9 +597,11 @@ class Command(BaseCommand):
             last_error=error_message,
         )
 
-        from validibot.validations.signals import validation_run_finalized
+        from validibot.validations.services.run_admission import (
+            emit_validation_run_finalized,
+        )
 
-        validation_run_finalized.send_robust(
+        emit_validation_run_finalized(
             sender=self.__class__,
             validation_run=locked,
         )

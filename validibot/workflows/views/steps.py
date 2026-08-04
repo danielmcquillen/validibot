@@ -14,7 +14,6 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db import transaction
 from django.http import Http404
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
@@ -1224,6 +1223,29 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             return None
 
     def form_valid(self, form):
+        """Persist one complete step edit under the workflow definition lock."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            workflow_step_form_has_semantic_changes,
+        )
+
+        workflow = self.get_workflow()
+        semantic_change = workflow_step_form_has_semantic_changes(
+            changed_fields=form.changed_data,
+            is_new=self.mode == "create",
+        )
+        with guard_workflow_definition_mutation(
+            workflow.pk,
+            semantic_change=semantic_change,
+        ):
+            return self._form_valid_under_definition_lock(form)
+
+    def _form_valid_under_definition_lock(self, form):
+        """Save the step and its dependent rows while the lock is held."""
+
         workflow = self.get_workflow()
         insert_after_step = (
             self._get_insert_after_step() if self.mode == "create" else None
@@ -2050,9 +2072,21 @@ class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
         return context
 
     def form_valid(self, form):
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
         from validibot.workflows.views_helpers import save_template_variable_annotations
 
-        save_template_variable_annotations(form)
+        semantic_fields = {
+            field_name
+            for field_name in form.changed_data
+            if not field_name.endswith("_description")
+        }
+        with guard_workflow_definition_mutation(
+            self.step.workflow_id,
+            semantic_change=bool(semantic_fields),
+        ):
+            save_template_variable_annotations(form)
 
         if self.request.headers.get("HX-Request"):
             # Re-render the card with updated data and a toast trigger
@@ -2309,6 +2343,9 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
         from validibot.validations.step_io_metadata.metadata import (
             TemplateStepIOMetadata,
         )
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
         from validibot.workflows.views_helpers import _parse_choices
         from validibot.workflows.views_helpers import _parse_optional_float
 
@@ -2328,17 +2365,22 @@ class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
             ),
         ).model_dump()
 
-        StepIODefinition.objects.filter(pk=self._io_definition_pk).update(
-            label=form.cleaned_data.get("description", ""),
-            unit=form.cleaned_data.get("units", ""),
-            metadata=metadata,
-            provider_binding={"variable_type": variable_type},
-        )
-        default_val = form.cleaned_data.get("default", "")
-        StepInputBinding.objects.filter(pk=self._binding_pk).update(
-            default_value=default_val if default_val else None,
-            is_required=not bool(default_val),
-        )
+        semantic_change = bool(set(form.changed_data).difference({"description"}))
+        with guard_workflow_definition_mutation(
+            self.step.workflow_id,
+            semantic_change=semantic_change,
+        ):
+            StepIODefinition.objects.filter(pk=self._io_definition_pk).update(
+                label=form.cleaned_data.get("description", ""),
+                unit=form.cleaned_data.get("units", ""),
+                metadata=metadata,
+                provider_binding={"variable_type": variable_type},
+            )
+            default_val = form.cleaned_data.get("default", "")
+            StepInputBinding.objects.filter(pk=self._binding_pk).update(
+                default_value=default_val if default_val else None,
+                is_required=not bool(default_val),
+            )
 
         response = HttpResponse(status=HTTPStatus.NO_CONTENT)
         response["HX-Trigger"] = json.dumps(
@@ -2411,19 +2453,22 @@ class WorkflowStepIOEditView(WorkflowObjectMixin, FormView):
         return io_definition
 
     def _get_binding(self):
-        """Get or create the per-step binding for this input definition."""
+        """Get a binding, or build an unsaved default without mutating on GET."""
         if hasattr(self, "_binding"):
             return self._binding
         io_definition = self._get_io_definition()
-        self._binding, _ = StepInputBinding.objects.get_or_create(
+        self._binding = StepInputBinding.objects.filter(
             workflow_step=self.step,
             io_definition=io_definition,
-            defaults={
-                "source_scope": BindingSourceScope.SUBMISSION_PAYLOAD,
-                "source_data_path": io_definition.native_name or "",
-                "is_required": True,
-            },
-        )
+        ).first()
+        if self._binding is None:
+            self._binding = StepInputBinding(
+                workflow_step=self.step,
+                io_definition=io_definition,
+                source_scope=BindingSourceScope.SUBMISSION_PAYLOAD,
+                source_data_path=io_definition.native_name or "",
+                is_required=True,
+            )
         return self._binding
 
     def get_form_kwargs(self):
@@ -2475,7 +2520,19 @@ class WorkflowStepIOEditView(WorkflowObjectMixin, FormView):
         return context
 
     def form_valid(self, form):
-        form.save()
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        binding_is_new = bool(form.binding and form.binding._state.adding)
+        semantic_change = binding_is_new or bool(
+            set(form.changed_data).difference({"description", "label"}),
+        )
+        with guard_workflow_definition_mutation(
+            self.step.workflow_id,
+            semantic_change=semantic_change,
+        ):
+            form.save()
         messages.success(self.request, _("Step I/O definition updated."))
         response = HttpResponse(status=200)
         response["HX-Refresh"] = "true"
@@ -2549,19 +2606,24 @@ class WorkflowStepIOAutoLinkView(WorkflowObjectMixin, View):
             response["HX-Refresh"] = "true"
             return response
 
-        binding, created = StepInputBinding.objects.get_or_create(
-            workflow_step=self.step,
-            io_definition=io_definition,
-            defaults={
-                "source_scope": BindingSourceScope.SIGNAL,
-                "source_data_path": mapping.name,
-                "is_required": True,
-            },
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
         )
-        if not created:
-            binding.source_scope = BindingSourceScope.SIGNAL
-            binding.source_data_path = mapping.name
-            binding.save(update_fields=["source_scope", "source_data_path"])
+
+        with guard_workflow_definition_mutation(workflow.pk):
+            binding, created = StepInputBinding.objects.get_or_create(
+                workflow_step=self.step,
+                io_definition=io_definition,
+                defaults={
+                    "source_scope": BindingSourceScope.SIGNAL,
+                    "source_data_path": mapping.name,
+                    "is_required": True,
+                },
+            )
+            if not created:
+                binding.source_scope = BindingSourceScope.SIGNAL
+                binding.source_data_path = mapping.name
+                binding.save(update_fields=["source_scope", "source_data_path"])
 
         messages.success(
             request,
@@ -2663,20 +2725,25 @@ class WorkflowStepDeleteView(WorkflowObjectMixin, View):
             workflow=workflow,
             pk=self.kwargs.get("step_id"),
         )
-        try:
-            step.delete()
-        except models.ProtectedError:
-            messages.warning(
-                request,
-                _(
-                    "This step cannot be deleted because it has "
-                    "existing validation runs. Remove the runs first."
-                ),
-            )
-            response = HttpResponse(status=200)
-            response["HX-Refresh"] = "true"
-            return response
-        resequence_workflow_steps(workflow)
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(workflow.pk):
+            try:
+                step.delete()
+            except models.ProtectedError:
+                messages.warning(
+                    request,
+                    _(
+                        "This step cannot be deleted because it has "
+                        "existing validation runs. Remove the runs first."
+                    ),
+                )
+                response = HttpResponse(status=200)
+                response["HX-Refresh"] = "true"
+                return response
+            resequence_workflow_steps(workflow)
         message = _("Workflow step removed.")
         return hx_trigger_response(message, close_modal=None)
 
@@ -2719,7 +2786,11 @@ class WorkflowStepMoveView(WorkflowObjectMixin, View):
                 level="warning",
             )
 
-        with transaction.atomic():
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(workflow.pk):
             for pos, item in enumerate(steps, start=1):
                 WorkflowStep.objects.filter(pk=item.pk).update(order=1000 + pos)
             resequence_workflow_steps(workflow)

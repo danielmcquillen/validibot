@@ -32,20 +32,35 @@ detail page.
 
 ---
 
-## History Policy
+## Editing Policy
 
-Each workflow has a **history policy** that controls what happens after it has validation runs.
+Each workflow has an **Editing policy** that controls how its definition may
+change after it has validation runs. The information icon beside the field
+explains both choices and when the choice becomes fixed.
 
 | Policy | What it means |
 |--------|---------------|
-| **Versioned history** | Recommended. Once the workflow has runs, changes that would alter what the workflow validates should be made in a new workflow version. Old runs stay tied to the version that produced them. |
-| **Mutable history** | Allows in-place edits after runs. This is useful for experiments and personal drafts, but old run results may no longer match the current workflow definition. |
+| **Versioned** | Recommended. Once the workflow has runs or is locked, changes that would alter what the workflow validates should be made in a new workflow version. Old runs stay tied to the version that produced them. |
+| **Mutable** | Allows in-place semantic edits after completed runs. This is useful for experiments and personal drafts, but old run results may no longer match the current workflow definition. |
 
-Versioned history is the default for new workflows.
+Versioned is selected by default for every new workflow. To use Mutable, the
+author must choose it deliberately.
 
-You can change the history policy before the workflow has runs. After a workflow has runs, change history policy by creating a new workflow version. This keeps one workflow row from mixing versioned-history and mutable-history guarantees.
+You can change the Editing policy in either direction while the workflow has
+no runs and is not locked. After a workflow has runs or is locked, the select
+shows its saved value but is disabled with a reason. Create a new workflow
+version to use a different policy. This keeps one workflow row from mixing
+Versioned and Mutable historical guarantees.
 
-When a versioned workflow already has runs, Validibot still allows safe edits in
+Mutable workflows still cannot be changed underneath a validation that is
+using their definition. If a semantic save is rejected because one or more
+runs are pending, running, or finalizing, none of that save is applied. Retry
+after those runs finish. For a continuously busy workflow, deactivate it to
+stop new launches, wait for current runs to finish, save, and reactivate it.
+Names, descriptions, and lifecycle settings that do not change what the
+workflow validates remain editable during a run.
+
+When a Versioned workflow already has runs, Validibot still allows safe edits in
 place, such as renaming the workflow or adding a new accepted file type. If an
 edit would remove part of the existing validation contract, the form explains
 that a new version is required and offers **Create version and apply**. That

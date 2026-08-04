@@ -513,13 +513,19 @@ def ensure_backend_release_can_retire(
     now=None,
     drain_days: int = DEFAULT_PROVIDER_DRAIN_DAYS,
     allow_immediate: bool = False,
+    allow_unaccepted_candidate: bool = False,
 ) -> None:
-    """Require a complete accepted release to be inactive and fully drained.
+    """Require a complete release to be inactive and fully drained.
 
     The normal production lifecycle keeps a seven-day drain period. The
     explicit ``allow_immediate`` escape hatch is reserved for a no-user
     bootstrap reconciliation that has already proved there are no
     nonterminal attempts; it is never implied by ``drain_days=0`` alone.
+
+    ``allow_unaccepted_candidate`` handles a failed private-acceptance
+    candidate whose providers have already been removed. It accepts only a
+    wholly unaccepted Service/Job pair. A partially accepted pair remains an
+    error because its inconsistent evidence requires operator investigation.
     """
     from validibot.validations.constants import EXECUTION_ATTEMPT_TERMINAL_STATES
     from validibot.validations.models import ExecutionAttempt
@@ -529,6 +535,11 @@ def ensure_backend_release_can_retire(
     if drain_days < DEFAULT_PROVIDER_DRAIN_DAYS and not allow_immediate:
         raise ValueError(
             f"Routine drain period cannot be below {DEFAULT_PROVIDER_DRAIN_DAYS} days."
+        )
+    if allow_unaccepted_candidate and not allow_immediate:
+        raise ValueError(
+            "Unaccepted candidate retirement requires the explicit immediate "
+            "empty-installation path."
         )
     if not deployments:
         raise ExecutionDeploymentResolutionError(
@@ -549,13 +560,21 @@ def ensure_backend_release_can_retire(
         accepted_kinds = {
             row.deployment_kind for row in rows if row.accepted_at is not None
         }
-        if accepted_kinds != {
+        complete_pair = {
             ExecutionDeploymentKind.CLOUD_RUN_SERVICE,
             ExecutionDeploymentKind.CLOUD_RUN_JOB,
-        }:
+        }
+        if accepted_kinds == complete_pair:
+            continue
+        if allow_unaccepted_candidate and not accepted_kinds:
+            continue
+        if accepted_kinds:
             raise ExecutionDeploymentResolutionError(
-                f"Validator {validator_id} has no accepted provider pair."
+                f"Validator {validator_id} has a partially accepted provider pair."
             )
+        raise ExecutionDeploymentResolutionError(
+            f"Validator {validator_id} has no accepted provider pair."
+        )
     deadline = (now or timezone.now()) - timedelta(days=drain_days)
     for deployment in deployments:
         if deployment.routing_role != ExecutionDeploymentRoutingRole.INACTIVE:
@@ -617,12 +636,15 @@ def retire_backend_release_deployments(
     reason: str,
     drain_days: int = DEFAULT_PROVIDER_DRAIN_DAYS,
     allow_immediate: bool = False,
+    allow_unaccepted_candidate: bool = False,
 ) -> tuple[ValidatorExecutionDeployment, ...]:
     """Retire every semantic deployment row after both provider members vanish.
 
     ``allow_immediate`` is intentionally explicit because deleting a provider
     pair without its normal drain period is appropriate only for a confirmed
-    empty installation reset.
+    empty installation reset. ``allow_unaccepted_candidate`` additionally
+    permits a complete, wholly unaccepted pair from a failed acceptance gate;
+    all normal inactivity, attempt, and provider-deletion checks still apply.
     """
     from validibot.validations.models import ValidatorExecutionDeployment
 
@@ -642,6 +664,7 @@ def retire_backend_release_deployments(
         deployments,
         allow_immediate=allow_immediate,
         drain_days=drain_days,
+        allow_unaccepted_candidate=allow_unaccepted_candidate,
     )
     missing_deletion = [
         deployment.pk

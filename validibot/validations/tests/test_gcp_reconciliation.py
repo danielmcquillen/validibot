@@ -275,6 +275,7 @@ class TestReconcileMarksFailed(SimpleTestCase):
 class TestMarkRunFailedFromGCP(SimpleTestCase):
     """Test the _mark_run_failed_from_gcp method."""
 
+    @patch("validibot.validations.services.run_admission.emit_validation_run_finalized")
     @patch(f"{CMD_PATH}.transaction")
     @patch(f"{CMD_PATH}.ValidationRun")
     @patch(
@@ -285,6 +286,7 @@ class TestMarkRunFailedFromGCP(SimpleTestCase):
         mock_transition,
         mock_run_model,
         mock_transaction,
+        mock_finalize,
     ):
         """Should lock the run and set FAILED status with error details."""
         locked_run = MagicMock()
@@ -315,6 +317,10 @@ class TestMarkRunFailedFromGCP(SimpleTestCase):
         assert locked_run.duration_ms is not None
         locked_run.save.assert_called_once()
         mock_transition.assert_called_once()
+        mock_finalize.assert_called_once_with(
+            sender=cmd.__class__,
+            validation_run=locked_run,
+        )
 
     @patch(f"{CMD_PATH}.transaction")
     @patch(f"{CMD_PATH}.ValidationRun")
@@ -770,6 +776,10 @@ class TestCommandHandle(SimpleTestCase):
         with (
             patch.object(cmd, "_get_active_step_run", return_value=step_run),
             patch(f"{CMD_PATH}.fence_active_execution_attempt") as mock_fence,
+            patch(
+                "validibot.validations.services.run_admission."
+                "emit_validation_run_finalized"
+            ) as mock_finalize,
         ):
             cmd.handle(timeout_minutes=30, dry_run=False, batch_size=100)
 
@@ -778,6 +788,10 @@ class TestCommandHandle(SimpleTestCase):
         assert "Marked 1 stuck run(s) as TIMED_OUT" in output
         mock_fence.assert_called_once()
         mock_cancel.assert_called_once_with(locked_run)
+        mock_finalize.assert_called_once_with(
+            sender=cmd.__class__,
+            validation_run=locked_run,
+        )
 
     @patch(f"{CMD_PATH}.ValidationRun")
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=False)
@@ -815,7 +829,13 @@ class TestCommandHandle(SimpleTestCase):
         cmd.style.SUCCESS = lambda x: x
         cmd.style.WARNING = lambda x: x
 
-        with patch(f"{CMD_PATH}.fence_active_execution_attempt") as mock_fence:
+        with (
+            patch(f"{CMD_PATH}.fence_active_execution_attempt") as mock_fence,
+            patch(
+                "validibot.validations.services.run_admission."
+                "emit_validation_run_finalized"
+            ) as mock_finalize,
+        ):
             cmd.handle(timeout_minutes=30, dry_run=False, batch_size=100)
 
         # The locked run should have been updated to TIMED_OUT
@@ -824,6 +844,10 @@ class TestCommandHandle(SimpleTestCase):
         locked_run.save.assert_called_once()
         mock_fence.assert_called_once()
         mock_cancel.assert_called_once_with(locked_run)
+        mock_finalize.assert_called_once_with(
+            sender=cmd.__class__,
+            validation_run=locked_run,
+        )
 
     @patch(f"{CMD_PATH}.ValidationRun")
     @patch(f"{CMD_PATH}.Command._is_gcp_deployment", return_value=False)

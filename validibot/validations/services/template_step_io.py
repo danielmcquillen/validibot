@@ -45,6 +45,20 @@ def sync_step_template_io_definitions(
     step: WorkflowStep,
     template_variables: list[dict[str, Any]],
 ) -> None:
+    """Reconcile all template-owned definition rows under one workflow lock."""
+
+    from validibot.workflows.services.editing_policy import (
+        guard_workflow_definition_mutation,
+    )
+
+    with guard_workflow_definition_mutation(step.workflow_id):
+        _sync_step_template_io_definitions(step, template_variables)
+
+
+def _sync_step_template_io_definitions(
+    step: WorkflowStep,
+    template_variables: list[dict[str, Any]],
+) -> None:
     """Create or update ``StepIODefinition`` and ``StepInputBinding`` rows
     for every template variable in an EnergyPlus step.
 
@@ -172,10 +186,15 @@ def clear_step_template_io_definitions(step: WorkflowStep) -> None:
 
     Called when the author removes the template or switches to direct mode.
     """
-    StepIODefinition.objects.filter(
-        workflow_step=step,
-        origin_kind=StepIOOriginKind.TEMPLATE,
-    ).delete()
+    from validibot.workflows.services.editing_policy import (
+        guard_workflow_definition_mutation,
+    )
+
+    with guard_workflow_definition_mutation(step.workflow_id):
+        StepIODefinition.objects.filter(
+            workflow_step=step,
+            origin_kind=StepIOOriginKind.TEMPLATE,
+        ).delete()
 
 
 # ── Internal helpers ─────────────────────────────────────────────────

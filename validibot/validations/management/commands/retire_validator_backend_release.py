@@ -14,7 +14,7 @@ from validibot.validations.services.execution.deployments import (
 class Command(BaseCommand):
     """Expose final pair retirement after resumable provider deletion."""
 
-    help = "Retire one accepted, drained backend release after both resources vanish."
+    help = "Retire one drained backend release after both resources vanish."
 
     def add_arguments(self, parser):
         """Require exact identity and the auditable retirement reason."""
@@ -33,6 +33,14 @@ class Command(BaseCommand):
                 "after all attempts are proven terminal."
             ),
         )
+        parser.add_argument(
+            "--allow-unaccepted-candidate",
+            action="store_true",
+            help=(
+                "Allow the immediate empty-installation path to retire a complete, "
+                "wholly unaccepted candidate pair after failed private acceptance."
+            ),
+        )
 
     def handle(self, *args, **options):
         """Apply final retirement facts to every compatible semantic row."""
@@ -43,6 +51,7 @@ class Command(BaseCommand):
                 reason=options["reason"],
                 allow_immediate=options["immediate"],
                 drain_days=0 if options["immediate"] else 7,
+                allow_unaccepted_candidate=options["allow_unaccepted_candidate"],
             )
         except (ExecutionDeploymentResolutionError, ValueError) as exc:
             raise CommandError(str(exc)) from exc

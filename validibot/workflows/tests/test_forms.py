@@ -1,3 +1,9 @@
+"""Form regressions for workflow authoring, launch, and validator settings.
+
+The editing-policy cases in this broad suite protect both ordinary disabled
+select behavior and authoritative stale/crafted-request validation.
+"""
+
 from __future__ import annotations
 
 import textwrap
@@ -5,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 
 from validibot.projects.models import Project
 from validibot.projects.tests.factories import ProjectFactory
@@ -79,7 +86,21 @@ def test_workflow_form_renders_allowed_file_type_examples_without_changing_value
     ) in html
 
 
+def test_workflow_form_exposes_exact_editing_policy_choices_and_default():
+    """The author sees the product terms and a conservative Versioned default."""
+    form = WorkflowForm()
+    field = form.fields["history_policy"]
+
+    assert field.label == "Editing policy"
+    assert [(value, str(label)) for value, label in field.choices] == [
+        (WorkflowHistoryPolicy.VERSIONED, "Versioned"),
+        (WorkflowHistoryPolicy.MUTABLE, "Mutable"),
+    ]
+    assert form["history_policy"].value() == WorkflowHistoryPolicy.VERSIONED
+
+
 def test_workflow_form_saves_selected_project():
+    """A create form binds project ownership and defaults policy to Versioned."""
     from validibot.submissions.constants import DataRetention
 
     user, org = create_user_in_org()
@@ -107,6 +128,37 @@ def test_workflow_form_saves_selected_project():
     workflow.save()
 
     assert workflow.project == default_project
+    assert workflow.history_policy == WorkflowHistoryPolicy.VERSIONED
+
+
+def test_workflow_form_creates_mutable_only_when_explicitly_selected():
+    """Mutable creation must represent a deliberate author submission."""
+    from validibot.submissions.constants import DataRetention
+
+    user, org = create_user_in_org()
+    default_project = ensure_default_project(org)
+    form = WorkflowForm(
+        data={
+            "name": "Fast experiment",
+            "slug": "fast-experiment",
+            "project": str(default_project.pk),
+            "allowed_file_types": [SubmissionFileType.JSON],
+            "input_retention": DataRetention.DO_NOT_STORE,
+            "output_retention": DataRetention.DO_NOT_STORE,
+            "version": "1",
+            "history_policy": WorkflowHistoryPolicy.MUTABLE,
+            "is_active": "on",
+        },
+        user=user,
+    )
+
+    assert form.is_valid(), form.errors
+    workflow = form.save(commit=False)
+    workflow.org = org
+    workflow.user = user
+    workflow.save()
+
+    assert workflow.history_policy == WorkflowHistoryPolicy.MUTABLE
 
 
 def test_workflow_form_requires_a_project():
@@ -1015,15 +1067,58 @@ def test_workflow_form_blocks_versioned_to_mutable_with_existing_runs():
         user=workflow.user,
     )
 
-    # The field is disabled on render once runs exist, so Django drops
-    # any submitted change rather than surfacing a form error. The
-    # workflow's history_policy stays VERSIONED.
-    assert form.fields["history_policy"].disabled
+    # A bound form keeps server-side comparison enabled even though the
+    # rendered select remains disabled for ordinary browser interaction.
+    assert form.fields["history_policy"].disabled is False
+    assert form.fields["history_policy"].widget.attrs["disabled"] is True
+    assert not form.is_valid()
+    assert form.errors.as_data()["history_policy"][0].code == "editing_policy_fixed"
+    fixed_reason = str(form.fields["history_policy"].editing_policy_fixed_reason)
+    assert "validation runs" in fixed_reason
+    assert "new workflow version" in fixed_reason
+
+
+def test_workflow_form_accepts_missing_value_from_disabled_policy_select():
+    """A normal disabled-select POST retains policy while saving cosmetic edits."""
+    from validibot.submissions.tests.factories import SubmissionFactory
+    from validibot.validations.tests.factories import ValidationRunFactory
+
+    workflow = WorkflowFactory(history_policy=WorkflowHistoryPolicy.VERSIONED)
+    workflow.user.set_current_org(workflow.org)
+    submission = SubmissionFactory(workflow=workflow)
+    ValidationRunFactory(workflow=workflow, submission=submission)
+    payload = _post_payload_for(workflow, name="Clearer name")
+    payload.pop("history_policy")
+
+    form = WorkflowForm(
+        data=payload,
+        instance=workflow,
+        user=workflow.user,
+    )
+
     assert form.is_valid(), form.errors
     assert form.cleaned_data["history_policy"] == WorkflowHistoryPolicy.VERSIONED
-    help_text = str(form.fields["history_policy"].help_text)
-    assert "validation runs" in help_text
-    assert "new workflow version" in help_text
+    assert form.cleaned_data["name"] == "Clearer name"
+
+
+def test_workflow_form_accepts_unchanged_policy_after_history_boundary():
+    """Submitting the persisted value is a harmless no-op, not a policy error."""
+    from validibot.submissions.tests.factories import SubmissionFactory
+    from validibot.validations.tests.factories import ValidationRunFactory
+
+    workflow = WorkflowFactory(history_policy=WorkflowHistoryPolicy.MUTABLE)
+    workflow.user.set_current_org(workflow.org)
+    submission = SubmissionFactory(workflow=workflow)
+    ValidationRunFactory(workflow=workflow, submission=submission)
+
+    form = WorkflowForm(
+        data=_post_payload_for(workflow),
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["history_policy"] == WorkflowHistoryPolicy.MUTABLE
 
 
 def test_workflow_form_allows_versioned_to_mutable_before_runs():
@@ -1049,9 +1144,8 @@ def test_workflow_form_allows_versioned_to_mutable_before_runs():
 def test_workflow_form_blocks_history_policy_change_on_locked_workflow():
     """An explicit lock is also a definition boundary, even before runs exist.
 
-    A locked workflow renders the field disabled and explains why in the
-    help text. Django drops any value the user tries to submit, so the
-    form validates cleanly with the original ``history_policy`` intact.
+    A locked workflow renders the select disabled while retaining server-side
+    stale-form detection for a crafted or already-open request.
     """
     workflow = WorkflowFactory(
         is_locked=True,
@@ -1069,11 +1163,11 @@ def test_workflow_form_blocks_history_policy_change_on_locked_workflow():
         user=workflow.user,
     )
 
-    assert form.fields["history_policy"].disabled
-    assert form.is_valid(), form.errors
-    assert form.cleaned_data["history_policy"] == WorkflowHistoryPolicy.VERSIONED
-    help_text = str(form.fields["history_policy"].help_text)
-    assert "locked" in help_text.lower()
+    assert form.fields["history_policy"].widget.attrs["disabled"] is True
+    assert not form.is_valid()
+    assert form.errors.as_data()["history_policy"][0].code == "editing_policy_fixed"
+    fixed_reason = str(form.fields["history_policy"].editing_policy_fixed_reason)
+    assert "locked" in fixed_reason.lower()
 
 
 def test_workflow_form_blocks_mutable_to_versioned_with_existing_runs():
@@ -1103,14 +1197,11 @@ def test_workflow_form_blocks_mutable_to_versioned_with_existing_runs():
         user=workflow.user,
     )
 
-    # Field is disabled once runs exist regardless of which direction
-    # the policy would move, so the form ignores the submitted change
-    # and keeps the original MUTABLE policy.
-    assert form.fields["history_policy"].disabled
-    assert form.is_valid(), form.errors
-    assert form.cleaned_data["history_policy"] == WorkflowHistoryPolicy.MUTABLE
-    help_text = str(form.fields["history_policy"].help_text)
-    assert "new workflow version" in help_text
+    assert form.fields["history_policy"].widget.attrs["disabled"] is True
+    assert not form.is_valid()
+    assert form.errors.as_data()["history_policy"][0].code == "editing_policy_fixed"
+    fixed_reason = str(form.fields["history_policy"].editing_policy_fixed_reason)
+    assert "new workflow version" in fixed_reason
 
 
 def test_workflow_form_history_policy_field_stays_enabled_for_superusers():
@@ -1140,7 +1231,7 @@ def test_workflow_form_history_policy_field_stays_enabled_for_superusers():
     assert form.fields["history_policy"].disabled is False
     # The full help text is rendered (not the locked-state variant)
     help_text = str(form.fields["history_policy"].help_text)
-    assert "Versioned history is recommended" in help_text
+    assert "Versioned is recommended" in help_text
 
 
 def test_workflow_form_allows_mutable_contract_edit_with_existing_runs():
@@ -1159,7 +1250,11 @@ def test_workflow_form_allows_mutable_contract_edit_with_existing_runs():
     )
     workflow.user.set_current_org(workflow.org)
     submission = SubmissionFactory(workflow=workflow)
-    ValidationRunFactory(workflow=workflow, submission=submission)
+    ValidationRunFactory(
+        workflow=workflow,
+        submission=submission,
+        definition_released_at=timezone.now(),
+    )
 
     form = WorkflowForm(
         data=_post_payload_for(

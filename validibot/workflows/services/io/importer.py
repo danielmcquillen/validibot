@@ -35,6 +35,7 @@ from django.utils.text import slugify
 
 from validibot.validations.validators.base.step_serializer import WorkflowImportError
 from validibot.validations.validators.base.step_serializer import get_step_serializer
+from validibot.workflows.constants import WorkflowHistoryPolicy
 from validibot.workflows.constants import WorkflowVisibility
 from validibot.workflows.services.io import schema
 from validibot.workflows.services.io import vaf
@@ -162,9 +163,20 @@ def _create_workflow(
     from validibot.users.models import ensure_default_project
     from validibot.workflows.models import Workflow
 
+    history_policy = data.get(
+        "history_policy",
+        WorkflowHistoryPolicy.VERSIONED,
+    )
+    if history_policy not in WorkflowHistoryPolicy.values:
+        raise WorkflowImportError(
+            "The workflow has an invalid editing policy.",
+            code="vaf.invalid_history_policy",
+        )
+
     fields = {
         field_name: data.get(field_name) for field_name in schema.WORKFLOW_SCALAR_FIELDS
     }
+    fields["history_policy"] = history_policy
     name = fields.get("name") or "Imported workflow"
     # Imports don't carry a project reference, but every workflow must belong to
     # one. Bind the imported workflow to the importing org's default project

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Validibot\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-23 01:40+0000\n"
+"POT-Creation-Date: 2026-08-04 00:19+0000\n"
 "PO-Revision-Date: 2026-05-21 22:55+0000\n"
 "Last-Translator: Validibot Team <daniel@mcquilleninteractive.com>\n"
 "Language-Team: Japanese <ja@li.org>\n"
@@ -144,6 +144,52 @@ msgstr "バリデーターが更新されました"
 msgid "Validator Removed"
 msgstr ""
 
+#, fuzzy
+#| msgid "Validator Updated"
+msgid "Validator Deployment Activated"
+msgstr "バリデーターが更新されました"
+
+#, fuzzy
+#| msgid "Validator Updated"
+msgid "Validator Deployment Deactivated"
+msgstr "バリデーターが更新されました"
+
+msgid "Validator Deployment Registered"
+msgstr ""
+
+#, fuzzy
+#| msgid "Validator Updated"
+msgid "Validator Deployment Verified"
+msgstr "バリデーターが更新されました"
+
+#, fuzzy
+#| msgid "Validator Updated"
+msgid "Validator Deployment Capacity Updated"
+msgstr "バリデーターが更新されました"
+
+#, fuzzy
+#| msgid "Validator Updated"
+msgid "Validator Deployment Blocked"
+msgstr "バリデーターが更新されました"
+
+msgid "Validator Deployment Unblocked"
+msgstr ""
+
+#, fuzzy
+#| msgid "Validator Updated"
+msgid "Validator Deployment Retired"
+msgstr "バリデーターが更新されました"
+
+#, fuzzy
+#| msgid "Organization updated."
+msgid "Organization Updated"
+msgstr "組織を更新しました。"
+
+#, fuzzy
+#| msgid "Organization deleted."
+msgid "Organization Deleted"
+msgstr "組織を削除しました。"
+
 msgid "Member Invited"
 msgstr ""
 
@@ -188,6 +234,26 @@ msgstr ""
 
 msgid "Session Revoked"
 msgstr ""
+
+#, fuzzy
+#| msgid "Email Addresses"
+msgid "Email Address Added"
+msgstr "メールアドレス"
+
+#, fuzzy
+#| msgid "Email Addresses"
+msgid "Email Address Changed"
+msgstr "メールアドレス"
+
+#, fuzzy
+#| msgid "Email Addresses"
+msgid "Email Address Verified"
+msgstr "メールアドレス"
+
+#, fuzzy
+#| msgid "Email Addresses"
+msgid "Email Address Removed"
+msgstr "メールアドレス"
 
 msgid "Admin Object Changed"
 msgstr ""
@@ -371,18 +437,6 @@ msgstr ""
 msgid "Audit log"
 msgstr ""
 
-#, python-format
-msgid ""
-"\n"
-"              Append-only record of configuration changes, security\n"
-"              events, and admin actions for %(org_name)s. See\n"
-"              <a href=\"https://docs.validibot.com/self-hosted-editions/"
-"audit-log/\" class=\"text-decoration-underline\" rel=\"noopener\">the audit "
-"log documentation</a>\n"
-"              for the full taxonomy and retention policy.\n"
-"            "
-msgstr ""
-
 msgid "Audit log filters"
 msgstr ""
 
@@ -428,6 +482,16 @@ msgstr "次へ"
 
 msgid "No audit log entries recorded yet."
 msgstr ""
+
+#, fuzzy
+#| msgid "Invalid base64 content."
+msgid "Invalid bearer header."
+msgstr "無効なbase64コンテンツです。"
+
+#, fuzzy
+#| msgid "API key"
+msgid "Invalid API key."
+msgstr "APIキー"
 
 msgid "No renderers configured."
 msgstr "レンダラーが設定されていません。"
@@ -475,6 +539,9 @@ msgid "Signed Credentials"
 msgstr ""
 
 msgid "MCP Server"
+msgstr ""
+
+msgid "x402 Agent Payments"
 msgstr ""
 
 msgid "Multiple Organizations"
@@ -539,11 +606,23 @@ msgid ""
 "redeemed during a disable window."
 msgstr ""
 
+msgid "Stable key identifier published in credential JOSE headers."
+msgstr ""
+
+msgid "Public JSON Web Key used for verification."
+msgstr ""
+
+msgid "Optional provider reference, such as a Google Cloud KMS key version."
+msgstr ""
+
 msgid "Processing"
 msgstr "処理中"
 
 msgid "Completed"
 msgstr "完了"
+
+msgid "Rejected"
+msgstr ""
 
 msgid "User Settings"
 msgstr "ユーザー設定"
@@ -631,6 +710,14 @@ msgstr "GitHubチェックスイートがリクエストされました"
 msgid "GitHub Check Suite Completed"
 msgstr "GitHubチェックスイートが完了しました"
 
+msgid "User Registered"
+msgstr ""
+
+#, fuzzy
+#| msgid "User Email"
+msgid "User Email Verified"
+msgstr "ユーザーのメール"
+
 msgid "User Logged In"
 msgstr "ユーザーがログインしました"
 
@@ -688,6 +775,11 @@ msgstr ""
 msgid "Cancel"
 msgstr "キャンセル"
 
+#, fuzzy, python-format
+#| msgid "Invitation to '%(username)s' to join %(org)s was %(action)s."
+msgid "Invitation to '%(who)s' to join %(org)s was accepted."
+msgstr "%(org)s への '%(username)s' の招待が %(action)s されました。"
+
 msgid "Member added."
 msgstr "メンバーを追加しました。"
 
@@ -696,6 +788,28 @@ msgstr "招待を送信しました。"
 
 msgid "Invitation canceled."
 msgstr "招待をキャンセルしました。"
+
+#, python-format
+msgid "This invitation is no longer valid (status: %(status)s)."
+msgstr ""
+
+#, python-format
+msgid "Please sign up or log in to accept your invitation to join %(org)s."
+msgstr ""
+
+#, fuzzy
+#| msgid "This invite was sent to a different user."
+msgid "This invitation was sent to a different user."
+msgstr "この招待は別のユーザーに送信されました。"
+
+#, fuzzy
+#| msgid "This invite is not addressed to your account."
+msgid "This invitation is not addressed to your account."
+msgstr "この招待はあなたのアカウント宛てではありません。"
+
+#, python-format
+msgid "You're now a member of %(org)s."
+msgstr ""
 
 msgid "Members"
 msgstr "メンバー"
@@ -753,8 +867,9 @@ msgstr ""
 msgid "Your guest access to %(org)s has been removed."
 msgstr "%(org)s へのゲストアクセスが削除されました。"
 
-#, python-format
-msgid "Revoked access to %(count)d workflow(s) for %(email)s."
+#, fuzzy, python-format
+#| msgid "Revoked access to %(count)d workflow(s) for %(email)s."
+msgid "Revoked %(count)d guest access grant(s) for %(email)s."
 msgstr "%(email)s の %(count)d 件のワークフローへのアクセスを取り消しました。"
 
 msgid "Member invite"
@@ -897,6 +1012,11 @@ msgstr "30日間保存"
 msgid "Store permanently"
 msgstr "永続的に保存"
 
+#, fuzzy
+#| msgid "Do not store (delete after validation)"
+msgid "Do not retain (purge after validation)"
+msgstr "保存しない（検証後に削除）"
+
 msgid "Store for 90 days"
 msgstr "90日間保存"
 
@@ -935,6 +1055,12 @@ msgstr "THERM THMX"
 
 msgid "THERM THMZ (Archive)"
 msgstr "THERM THMZ（アーカイブ）"
+
+msgid "CSV (tabular)"
+msgstr ""
+
+msgid "ENERGY STAR® Portfolio Manager® Report"
+msgstr ""
 
 msgid "Binary/archived file not allowed for this content type."
 msgstr "このコンテンツタイプではバイナリ/アーカイブファイルは使用できません。"
@@ -981,6 +1107,29 @@ msgstr "ユーザーは同じ組織に属している必要があります。"
 msgid "Provide exactly one of content or input_file."
 msgstr "contentまたはinput_fileのいずれか1つを指定してください。"
 
+#, fuzzy
+#| msgid "WorkflowStep has no validator configured."
+msgid "Workflow step whose artifact port consumes this file."
+msgstr "ワークフローステップにバリデーターが設定されていません。"
+
+#, fuzzy
+#| msgid "Workflow cannot accept the submitted file type"
+msgid "Artifact input port this submitted file satisfies."
+msgstr "ワークフローは提出されたファイルタイプを受け付けられません"
+
+msgid "Submitted file for a workflow artifact input port."
+msgstr ""
+
+#, fuzzy
+#| msgid "When content was purged (for audit trail)."
+msgid "When this port file was purged for retention."
+msgstr "コンテンツが削除されたタイミング（監査証跡用）。"
+
+#, fuzzy
+#| msgid "Step must belong to the run's workflow."
+msgid "Workflow step must belong to the submission workflow."
+msgstr "ステップは実行のワークフローに属している必要があります。"
+
 msgid "Submission that failed to purge."
 msgstr "削除に失敗した提出物。"
 
@@ -999,8 +1148,8 @@ msgstr "再試行回数。"
 msgid "Error message from the last failed attempt."
 msgstr "最後の失敗した試行からのエラーメッセージ。"
 
-msgid "Server Error"
-msgstr "サーバーエラー"
+msgid "Forbidden"
+msgstr ""
 
 msgid ""
 "\n"
@@ -1011,17 +1160,27 @@ msgstr ""
 "    このページへのアクセス時に403 Forbiddenエラーが発生しました。\n"
 "  "
 
-msgid ""
-"\n"
-"         ERROR 403. Forbidden.\n"
-"      "
+#, fuzzy
+#| msgid ""
+#| "\n"
+#| "         ERROR 403. Forbidden.\n"
+#| "      "
+msgid "ERROR 403. Forbidden."
 msgstr ""
 "\n"
 "         エラー 403。アクセス禁止。\n"
 "      "
 
-msgid "Validibot robot dealing with a big issue."
+#, fuzzy
+#| msgid "Validibot robot dealing with a big issue."
+msgid "Validibot robot standing beside a no-entry door."
 msgstr "大きな問題に対処するValidibotロボット。"
+
+msgid "Access forbidden."
+msgstr ""
+
+msgid "Sorry, you're not allowed to access this page."
+msgstr ""
 
 msgid "Page Not Found"
 msgstr ""
@@ -1031,6 +1190,9 @@ msgstr ""
 
 msgid "Validibot robot holding a map while searching for a missing page."
 msgstr "見つからないページを探しながら地図を持つValidibotロボット。"
+
+msgid "Server Error"
+msgstr "サーバーエラー"
 
 msgid ""
 "\n"
@@ -1047,6 +1209,9 @@ msgstr ""
 
 msgid "ERROR 500. Something went wrong."
 msgstr ""
+
+msgid "Validibot robot dealing with a big issue."
+msgstr "大きな問題に対処するValidibotロボット。"
 
 msgid "Email Addresses"
 msgstr "メールアドレス"
@@ -1274,6 +1439,22 @@ msgstr "閉じる"
 
 msgid "We found a few issues. Please update the highlighted fields below."
 msgstr ""
+
+#, fuzzy
+#| msgid "Save changes"
+msgid "Discard changes?"
+msgstr "変更を保存"
+
+msgid "You have unsaved changes. If you leave now, they will be lost."
+msgstr ""
+
+msgid "Keep editing"
+msgstr ""
+
+#, fuzzy
+#| msgid "Save changes"
+msgid "Discard changes"
+msgstr "変更を保存"
 
 msgid "Terms of Service"
 msgstr "利用規約"
@@ -1543,10 +1724,16 @@ msgstr ""
 msgid "Use"
 msgstr ""
 
-msgid "for payload (raw submission data) and"
+msgid "for payload (raw submission data),"
 msgstr ""
 
-msgid "for signals (author-defined named values)."
+msgid "for signals (author-defined named values), and"
+msgstr ""
+
+msgid "for submission metadata and server facts (e.g."
+msgstr ""
+
+msgid ")."
 msgstr ""
 
 msgid "XML tip:"
@@ -1595,11 +1782,19 @@ msgstr "アカウントを作成"
 msgid "Invite Guest"
 msgstr "ゲストを招待"
 
-#, python-format
+#, fuzzy, python-format
+#| msgid ""
+#| "\n"
+#| "        <strong>About guests:</strong> Guests are existing Validibot "
+#| "users who can access specific workflows you've shared with them.\n"
+#| "        They are not members of your organization.\n"
+#| "        (<a href=\"%(members_url)s\">Members</a>, on the other hand, have "
+#| "full access based on their assigned roles.)\n"
+#| "      "
 msgid ""
 "\n"
 "        <strong>About guests:</strong> Guests are existing Validibot users "
-"who can access specific workflows you've shared with them.\n"
+"who can access selected workflows or every workflow in this organization.\n"
 "        They are not members of your organization.\n"
 "        (<a href=\"%(members_url)s\">Members</a>, on the other hand, have "
 "full access based on their assigned roles.)\n"
@@ -1616,6 +1811,9 @@ msgstr ""
 msgid "Current Guests"
 msgstr "現在のゲスト"
 
+msgid "All workflows"
+msgstr "すべてのワークフロー"
+
 msgid "workflow"
 msgstr "ワークフロー"
 
@@ -1630,9 +1828,6 @@ msgstr "現在この組織のワークフローにアクセスできるゲスト
 
 msgid "Pending Invitations"
 msgstr "保留中の招待"
-
-msgid "All workflows"
-msgstr "すべてのワークフロー"
 
 msgid "selected workflow"
 msgstr "選択したワークフロー"
@@ -1898,6 +2093,73 @@ msgstr ""
 "「%(query)s」に一致するユーザーが見つかりません。代わりにメールで招待できま"
 "す。"
 
+#, fuzzy
+#| msgid "Cancel invitation"
+msgid "Confirm invitation"
+msgstr "招待をキャンセル"
+
+#, fuzzy, python-format
+#| msgid ""
+#| "\n"
+#| "                          %(total)s validation step\n"
+#| "                        "
+#| msgid_plural ""
+#| "\n"
+#| "                          %(total)s validation steps\n"
+#| "                        "
+msgid ""
+"\n"
+"                    Avatar for %(name)s\n"
+"                  "
+msgstr ""
+"\n"
+"                          %(total)s 件の検証ステップ\n"
+"                        "
+
+#, fuzzy, python-format
+#| msgid ""
+#| "\n"
+#| "                Are you sure you want to remove user “%(username)s” from "
+#| "organization “%(org)s”?\n"
+#| "              "
+msgid ""
+"\n"
+"        Are you sure you want to make this user a member of \"%(org)s\" with "
+"the\n"
+"        following permissions?\n"
+"      "
+msgstr ""
+"\n"
+"                ユーザー「%(username)s」を組織「%(org)s」から削除してもよろし"
+"いですか？\n"
+"              "
+
+#, python-format
+msgid ""
+"\n"
+"          An invitation will be sent to <strong>%(email)s</strong>.\n"
+"      "
+msgstr ""
+
+#, python-format
+msgid ""
+"\n"
+"        Are you sure you want to invite %(email)s to become a member of "
+"\"%(org)s\"\n"
+"        with the following permissions? If they don't already have a "
+"Validibot\n"
+"        account, they'll receive an email with a link to sign up and join.\n"
+"      "
+msgstr ""
+
+msgid "No permissions selected."
+msgstr ""
+
+#, fuzzy
+#| msgid "Invited"
+msgid "Invite"
+msgstr "招待済み"
+
 #, python-format
 msgid ""
 "\n"
@@ -1915,6 +2177,9 @@ msgstr "ユーザーまたはメール"
 
 msgid "Type a username or email"
 msgstr "ユーザー名またはメールを入力"
+
+msgid "Continue"
+msgstr "続ける"
 
 msgid "Organization members"
 msgstr "組織メンバー"
@@ -2169,9 +2434,6 @@ msgstr "CEL式のヘルプ（新しいタブで開く）"
 msgid "Your API Key"
 msgstr "APIキー"
 
-msgid "Manage the credentials you use to call the Validibot API."
-msgstr "Validibot APIの呼び出しに使用する認証情報を管理します。"
-
 msgid ""
 "This action cannot be undone. All associated memberships and projects will "
 "be removed."
@@ -2249,11 +2511,11 @@ msgstr "まだどの組織の管理者でもありません。"
 msgid "Edit member roles"
 msgstr "メンバーの役割を編集"
 
-msgid "Personal"
-msgstr "個人"
-
 msgid "Use this key to authenticate API requests with the application API."
 msgstr "このキーを使用してアプリケーションAPIへのAPIリクエストを認証します。"
+
+msgid "Copy this key now. For security, it will not be shown again."
+msgstr ""
 
 msgid "API key"
 msgstr "APIキー"
@@ -2264,12 +2526,35 @@ msgstr "コピーしました"
 msgid "Copy"
 msgstr "コピー"
 
+msgid ""
+"Only part of your key is shown here, for your reference. Validibot will only "
+"show you the whole key when you first create it. Please create a new key if "
+"you need a full one."
+msgstr ""
+
+msgid "No active API key"
+msgstr ""
+
+#, fuzzy
+#| msgid "Severity"
+msgid "Never"
+msgstr "重大度"
+
 msgid "Generate new key"
 msgstr "新しいキーを生成"
 
+#, fuzzy
+#| msgid "Generate new key"
+msgid "Generate key"
+msgstr "新しいキーを生成"
+
+#, fuzzy
+#| msgid ""
+#| "Generating a new key immediately invalidates the previous key. Update any "
+#| "clients that use the API."
 msgid ""
-"Generating a new key immediately invalidates the previous key. Update any "
-"clients that use the API."
+"Generating a new key immediately invalidates previous Validibot API keys. "
+"Update any clients that use the API."
 msgstr ""
 "新しいキーを生成すると、以前のキーはすぐに無効になります。APIを使用しているク"
 "ライアントを更新してください。"
@@ -2366,10 +2651,14 @@ msgstr "プロフィール概要"
 msgid "See the details teammates view across the product."
 msgstr "チームメートが製品全体で閲覧する詳細を確認します。"
 
-#, python-format
+#, fuzzy, python-format
+#| msgid ""
+#| "\n"
+#| "              Public profile information for %(username)s.\n"
+#| "            "
 msgid ""
 "\n"
-"              Public profile information for %(username)s.\n"
+"              Profile information for your teammate %(username)s.\n"
 "            "
 msgstr ""
 "\n"
@@ -2397,20 +2686,80 @@ msgstr "チームメートへの情報表示を調整します。"
 msgid "Update"
 msgstr "更新"
 
+#, fuzzy, python-format
+#| msgid "Add Step · %(name)s · Validibot"
+msgid "%(filename)s · Artifact · Validibot"
+msgstr "ステップを追加 · %(name)s · Validibot"
+
+#, fuzzy
+#| msgid "Generate new key"
+msgid "Generated File"
+msgstr "新しいキーを生成"
+
+#, fuzzy
+#| msgid "Back to launch"
+msgid "Back to run"
+msgstr "実行ページに戻る"
+
+msgid "Label"
+msgstr "ラベル"
+
+#, fuzzy
+#| msgid "Previous step"
+msgid "Producer step"
+msgstr "前のステップ"
+
+msgid "Not specified"
+msgstr ""
+
+msgid "Type"
+msgstr "タイプ"
+
+msgid "Size"
+msgstr ""
+
+msgid "SHA-256"
+msgstr ""
+
+msgid "Not captured"
+msgstr "キャプチャされていません"
+
+#, fuzzy
+#| msgid "File type"
+msgid "Media type"
+msgstr "ファイルタイプ"
+
+#, fuzzy
+#| msgid "Data path"
+msgid "Data format"
+msgstr "データパス"
+
+msgid "Retention class"
+msgstr ""
+
+msgid "Download File"
+msgstr ""
+
+msgid "Direct download is not available for this artifact yet."
+msgstr ""
+
+msgid "Run"
+msgstr "実行"
+
+msgid "Workflow"
+msgstr "ワークフロー"
+
+msgid "Status"
+msgstr "ステータス"
+
 msgid "Validation runs you've submitted on shared workflows"
 msgstr "共有ワークフローで提出した検証実行"
 
 msgid "All organizations"
 msgstr "すべての組織"
 
-msgid "Status"
-msgstr "ステータス"
-
 msgid "All statuses"
 msgstr "すべてのステータス"
-
-msgid "Workflow"
-msgstr "ワークフロー"
 
 msgid "Sort"
 msgstr "並べ替え"
@@ -2507,9 +2856,6 @@ msgstr ""
 "バッキングエンジンまたはインテグレーションに一致するバリデータータイプを選択"
 "してください。"
 
-msgid "Type"
-msgstr "タイプ"
-
 msgid "Create FMU Validator"
 msgstr "FMUバリデーターを作成"
 
@@ -2543,8 +2889,10 @@ msgstr "登録されたシステムバリデーターはありません。"
 msgid "Inputs and Outputs"
 msgstr ""
 
-msgid "No signals registered yet."
-msgstr ""
+#, fuzzy
+#| msgid "No output assertions yet."
+msgid "No step inputs or outputs registered yet."
+msgstr "まだ出力アサーションがありません。"
 
 msgid "Edit which step outputs are shown to users"
 msgstr ""
@@ -2552,11 +2900,13 @@ msgstr ""
 msgid "Filter:"
 msgstr "フィルター："
 
-msgid "Filter by signal name"
+#, fuzzy
+#| msgid "Filter by signal name"
+msgid "Filter by contract key"
 msgstr "シグナル名でフィルター"
 
-msgid "Signal Name"
-msgstr "シグナル名"
+msgid "Contract Key"
+msgstr ""
 
 msgid "Direction"
 msgstr ""
@@ -2582,8 +2932,8 @@ msgstr "エントリをフィルター"
 msgid "No entries."
 msgstr "エントリがありません。"
 
-msgid "Signal name"
-msgstr "シグナル名"
+msgid "Contract key"
+msgstr ""
 
 msgid "Native Name"
 msgstr ""
@@ -2606,14 +2956,18 @@ msgstr "デフォルトアサーションを保存"
 msgid "Edit default assertion"
 msgstr "デフォルトアサーションを編集"
 
-msgid "Add signal"
-msgstr "シグナルを追加"
+#, fuzzy
+#| msgid "Edit step details"
+msgid "Add step input or output"
+msgstr "ステップの詳細を編集"
 
-msgid "Save signal"
-msgstr "シグナルを保存"
+msgid "Save input/output"
+msgstr ""
 
-msgid "Edit signal"
-msgstr "シグナルを編集"
+#, fuzzy
+#| msgid "Edit step details"
+msgid "Edit input/output"
+msgstr "ステップの詳細を編集"
 
 msgid "Create validator"
 msgstr "バリデーターを作成"
@@ -2627,14 +2981,11 @@ msgstr "作成"
 msgid "No validator types are available yet."
 msgstr "利用可能なバリデータータイプがまだありません。"
 
-msgid "Label"
-msgstr "ラベル"
-
 msgid "Data Type"
 msgstr "データタイプ"
 
-msgid "Signal Details"
-msgstr "シグナルの詳細"
+msgid "Input/Output Details"
+msgstr ""
 
 msgid "Order"
 msgstr "順序"
@@ -2642,8 +2993,10 @@ msgstr "順序"
 msgid "Assertion"
 msgstr "アサーション"
 
-msgid "Signal"
-msgstr "シグナル"
+#, fuzzy
+#| msgid "Outputs"
+msgid "Step Input/Output"
+msgstr "出力"
 
 msgid "Default assertion actions"
 msgstr "デフォルトアサーションのアクション"
@@ -2709,43 +3062,75 @@ msgstr "このバリデーターにはリソースファイルがありません
 msgid "View all"
 msgstr "すべて表示"
 
+msgid "Add input or output"
+msgstr ""
+
 msgid "Native name"
 msgstr ""
 
 msgid "Input"
 msgstr "入力"
 
-msgid "Signal actions"
-msgstr "シグナルのアクション"
+#, fuzzy
+#| msgid "Step actions"
+msgid "Step input actions"
+msgstr "ステップのアクション"
 
-#, python-format
-msgid "Delete signal '%(name)s'?"
+#, fuzzy, python-format
+#| msgid "Delete signal '%(name)s'?"
+msgid "Delete step input '%(name)s'?"
 msgstr "シグナル '%(name)s' を削除しますか？"
 
 msgid "Output"
 msgstr "出力"
 
+#, fuzzy
+#| msgid "Step actions"
+msgid "Step output actions"
+msgstr "ステップのアクション"
+
+#, fuzzy, python-format
+#| msgid "Delete signal '%(name)s'?"
+msgid "Delete step output '%(name)s'?"
+msgstr "シグナル '%(name)s' を削除しますか？"
+
+#, fuzzy
+#| msgid ""
+#| "Signals are defined after an FMU is uploaded into this validator within a "
+#| "validation workflow."
 msgid ""
-"Signals are defined after an FMU is uploaded into this validator within a "
-"validation workflow."
+"Step inputs and outputs are defined after an FMU is uploaded into this "
+"validator within a validation workflow."
 msgstr ""
 "シグナルは、検証ワークフロー内でこのバリデーターにFMUがアップロードされた後に"
 "定義されます。"
 
 msgid ""
-"Output signals (parse_ok, shacl_violation_count, namespace detection, etc.) "
+"Step outputs (parse_ok, shacl_violation_count, namespace detection, etc.) "
 "are emitted automatically when this validator runs. Gate on them with CEL "
 "assertions in the step config; there is nothing to configure here."
 msgstr ""
 
-msgid "This system validator does not declare author-editable signals."
+#, fuzzy
+#| msgid "Allow assertions against data paths not declared as signals."
+msgid ""
+"This system validator does not declare author-editable step inputs or "
+"outputs."
 msgstr ""
+"シグナルとして宣言されていないデータパスに対するアサーションを許可します。"
 
-msgid "No signals have been added yet."
+#, fuzzy
+#| msgid "No signals have been added yet."
+msgid "No step inputs or outputs have been added yet."
 msgstr "まだシグナルが追加されていません。"
 
 msgid "Edit Validator Settings"
 msgstr "バリデーター設定を編集"
+
+msgid ""
+"You are viewing an older validator version. It is read-only; the default "
+"library route opens the latest version."
+msgstr ""
 
 msgid "FMU Probe Status"
 msgstr "FMUプローブのステータス"
@@ -2756,8 +3141,10 @@ msgstr "プローブを実行"
 msgid "Refresh Status"
 msgstr "ステータスを更新"
 
-msgid "Signals"
-msgstr "シグナル"
+#, fuzzy
+#| msgid "Outputs"
+msgid "Inputs & Outputs"
+msgstr "出力"
 
 msgid "Default Assertions"
 msgstr "デフォルトアサーション"
@@ -2768,22 +3155,40 @@ msgstr "リソースファイル"
 msgid "Back to Validator Library"
 msgstr "バリデーターライブラリに戻る"
 
-msgid "Add Signal"
-msgstr "シグナルを追加"
+#, fuzzy
+#| msgid "Outputs"
+msgid "Add Step Input or Output"
+msgstr "出力"
 
-#, python-format
-msgid "Signals for \"%(name)s\""
+#, fuzzy, python-format
+#| msgid "Signals for \"%(name)s\""
+msgid "Inputs and outputs for \"%(name)s\""
 msgstr "\"%(name)s\" のシグナル"
 
-msgid "All Signals"
-msgstr "すべてのシグナル"
+msgid "All Inputs & Outputs"
+msgstr ""
 
-msgid "No signals have been defined for this validator."
+#, fuzzy
+#| msgid "No signals have been defined for this validator."
+msgid "No step inputs or outputs have been defined for this validator."
 msgstr "このバリデーターにはシグナルが定義されていません。"
 
 #, python-format
 msgid "Back to \"%(name)s\""
 msgstr "\"%(name)s\" に戻る"
+
+#, fuzzy
+#| msgid "Validations"
+msgid "Validator Versions"
+msgstr "検証"
+
+#, fuzzy, python-format
+#| msgid "Signals for \"%(name)s\""
+msgid "Versions for %(name)s"
+msgstr "\"%(name)s\" のシグナル"
+
+msgid "Latest"
+msgstr ""
 
 msgid "Delete Validation"
 msgstr "検証を削除"
@@ -2877,11 +3282,42 @@ msgid ""
 "historical inspection."
 msgstr ""
 
-msgid "Run"
-msgstr "実行"
-
 msgid "No validation runs yet for this workflow."
 msgstr "このワークフローの検証実行はまだありません。"
+
+#, fuzzy
+#| msgid "About member roles"
+msgid "About editing policies"
+msgstr "メンバーの役割について"
+
+#, fuzzy
+#| msgid "Cancel this invitation?"
+msgid "Accept guest invitation"
+msgstr "この招待をキャンセルしますか？"
+
+#, fuzzy
+#| msgid "Resend invitation"
+msgid "Guest invitation"
+msgstr "招待を再送"
+
+#, python-format
+msgid ""
+"<strong>%(inviter)s</strong> invited you to be a guest of "
+"<strong>%(org_name)s</strong>."
+msgstr ""
+
+msgid ""
+"Accepting grants your account guest access to this organization's shared "
+"workflows."
+msgstr ""
+
+#, fuzzy
+#| msgid "Cancel invitation"
+msgid "Accept invitation"
+msgstr "招待をキャンセル"
+
+msgid "Not now"
+msgstr ""
 
 msgid "Workflows you've been invited to use"
 msgstr "招待されたワークフロー"
@@ -2898,6 +3334,92 @@ msgid ""
 msgstr ""
 "まだ共有ワークフローがありません。招待されると、ここにワークフローが表示され"
 "ます。"
+
+#, fuzzy
+#| msgid "Drag & drop a file"
+msgid "Drag & drop a .vaf or .json file"
+msgstr "ファイルをドラッグ＆ドロップ"
+
+msgid "or click to browse"
+msgstr "またはクリックして参照"
+
+msgid "Browse files"
+msgstr "ファイルを参照"
+
+#, fuzzy
+#| msgid "Manage workflow"
+msgid "Importing workflow"
+msgstr "ワークフローを管理"
+
+msgid "Importing…"
+msgstr ""
+
+#, fuzzy
+#| msgid "Create workflow"
+msgid "Import workflow"
+msgstr "ワークフローを作成"
+
+msgid "The workflow couldn't be imported"
+msgstr ""
+
+msgid "Try again"
+msgstr ""
+
+#, fuzzy
+#| msgid "Back to workflow step"
+msgid "Back to workflow list"
+msgstr "ワークフローステップに戻る"
+
+#, python-format
+msgid "Workflow <strong>%(name)s</strong> was imported."
+msgstr ""
+
+#, fuzzy
+#| msgid ""
+#| "Re-enable the workflow from the settings page before launching new runs."
+msgid "Open the workflow to review its steps before you launch it."
+msgstr ""
+"新しい実行を開始する前に、設定ページからワークフローを再有効化してください。"
+
+#, fuzzy
+#| msgid "Step"
+msgid "Steps"
+msgstr "ステップ"
+
+msgid "Assertions"
+msgstr ""
+
+#, fuzzy
+#| msgid "Signal actions"
+msgid "Signal mappings"
+msgstr "シグナルのアクション"
+
+#, fuzzy, python-format
+#| msgid "Within duration"
+msgid "1 thing needs your attention"
+msgid_plural "%(counter)s things need your attention"
+msgstr[0] "期間内"
+
+#, fuzzy
+#| msgid "Back to workflow"
+msgid "Go to workflow"
+msgstr "ワークフローに戻る"
+
+#, fuzzy
+#| msgid "Edit Workflow"
+msgid "Import Workflow"
+msgstr "ワークフローを編集"
+
+#, fuzzy
+#| msgid "Back to workflow"
+msgid "Back to workflows"
+msgstr "ワークフローに戻る"
+
+msgid ""
+"Upload a Validibot archive (<code>.vaf</code>) or a workflow definition "
+"(<code>.json</code>). The workflow is imported into your current "
+"organization as a new copy."
+msgstr ""
 
 msgid "Run in progress"
 msgstr "実行中"
@@ -2980,11 +3502,10 @@ msgstr "ファイルを参照またはドロップしてアップロード"
 msgid "Drag & drop a file"
 msgstr "ファイルをドラッグ＆ドロップ"
 
-msgid "or click to browse"
-msgstr "またはクリックして参照"
-
-msgid "Browse files"
-msgstr "ファイルを参照"
+#, fuzzy
+#| msgid "Add file"
+msgid "Additional files"
+msgstr "ファイルを追加"
 
 msgid "Constraints"
 msgstr ""
@@ -3055,6 +3576,55 @@ msgstr "ワークフロー実行"
 msgid "Status for workflow:"
 msgstr "ワークフローのステータス："
 
+msgid "We found a few issues:"
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit assertion"
+msgid "Saving assertion…"
+msgstr "アサーションを編集"
+
+#, fuzzy
+#| msgid "Default assertions"
+msgid "Dataset assertions"
+msgstr "デフォルトアサーション"
+
+#, fuzzy
+#| msgid "Add default assertion"
+msgid "Add dataset assertion"
+msgstr "デフォルトアサーションを追加"
+
+msgid "Run once against dataset metadata such as row count and column names."
+msgstr ""
+
+#, fuzzy
+#| msgid "Add assertion"
+msgid "Row assertions"
+msgstr "アサーションを追加"
+
+#, fuzzy
+#| msgid "Add assertion"
+msgid "Add row assertion"
+msgstr "アサーションを追加"
+
+msgid "Run against each row and aggregate failures into bounded findings."
+msgstr ""
+
+#, fuzzy
+#| msgid "Input assertions"
+msgid "Column assertions"
+msgstr "入力アサーション"
+
+#, fuzzy
+#| msgid "Add assertion"
+msgid "Add column assertion"
+msgstr "アサーションを追加"
+
+msgid ""
+"Run once against typed aggregates such as null ratio, distinct count, range, "
+"and sum."
+msgstr ""
+
 msgid "Input assertions"
 msgstr "入力アサーション"
 
@@ -3070,6 +3640,11 @@ msgstr "出力アサーション"
 msgid "No output assertions yet."
 msgstr "まだ出力アサーションがありません。"
 
+msgid ""
+"Graph and expression checks run in separate passes — ordering applies within "
+"each type."
+msgstr ""
+
 msgid "This validator does not support assertions."
 msgstr "このバリデーターはアサーションをサポートしていません。"
 
@@ -3079,11 +3654,14 @@ msgstr "アサーションを追加"
 msgid "No assertions defined yet."
 msgstr "まだアサーションが定義されていません。"
 
-msgid "SPARQL ASK"
+msgid "ASK"
 msgstr ""
 
 msgid "(no description)"
 msgstr ""
+
+msgid "Notes"
+msgstr "メモ"
 
 msgid "Assertion actions"
 msgstr "アサーションのアクション"
@@ -3148,6 +3726,75 @@ msgstr "ワークフローステップ"
 msgid "Show schema"
 msgstr "スキーマを表示"
 
+msgid ""
+"Upload a delimited text file (CSV). Each row is one record, and its columns "
+"must match the definitions below."
+msgstr ""
+
+msgid "Delimiter"
+msgstr ""
+
+#, fuzzy
+#| msgid "Pending"
+msgid "Encoding"
+msgstr "処理中"
+
+#, fuzzy
+#| msgid "Name is required."
+msgid "Header row required"
+msgstr "名前は必須です。"
+
+msgid "No header row"
+msgstr ""
+
+msgid "columns"
+msgstr ""
+
+msgid "required"
+msgstr "必須"
+
+msgid "Column"
+msgstr ""
+
+#, fuzzy
+#| msgid "required"
+msgid "Requirement"
+msgstr "必須"
+
+#, fuzzy
+#| msgid "Allowed values"
+msgid "Allowed values & rules"
+msgstr "許可値"
+
+msgid "Primary key — uniquely identifies each row"
+msgstr ""
+
+#, fuzzy
+#| msgid "API Key"
+msgid "Key"
+msgstr "APIキー"
+
+#, python-format
+msgid "Required if %(field)s present"
+msgstr ""
+
+msgid "Unique"
+msgstr ""
+
+#, fuzzy
+#| msgid "Is one of"
+msgid "One of:"
+msgstr "いずれかである"
+
+msgid "Must match:"
+msgstr ""
+
+#, python-format
+msgid ""
+"Each row is uniquely identified by %(keys)s. Those values must be present "
+"and must not repeat."
+msgstr ""
+
 msgid "Step details"
 msgstr "ステップの詳細"
 
@@ -3166,8 +3813,39 @@ msgstr "送信された EnergyPlus IDF を検証"
 msgid "Step Key"
 msgstr ""
 
-msgid "Notes"
-msgstr "メモ"
+#, fuzzy
+#| msgid "No assertions defined yet."
+msgid "No assertions in this stage yet."
+msgstr "まだアサーションが定義されていません。"
+
+#, fuzzy
+#| msgid "Edit Settings"
+msgid "Edit settings"
+msgstr "設定を編集"
+
+msgid "Reader"
+msgstr ""
+
+msgid "CSV"
+msgstr ""
+
+msgid "Auto-detect"
+msgstr ""
+
+msgid "Header row"
+msgstr ""
+
+msgid "Yes"
+msgstr "はい"
+
+msgid "No"
+msgstr "いいえ"
+
+msgid "Columns"
+msgstr ""
+
+msgid "Required columns"
+msgstr ""
 
 msgid "Unarchive workflow"
 msgstr "ワークフローのアーカイブを解除"
@@ -3192,11 +3870,16 @@ msgstr "%(workflow_name)s を実行"
 msgid "Launch"
 msgstr "実行"
 
-msgid "Executor access required to run this workflow"
-msgstr "このワークフローを実行するには実行者アクセスが必要です"
-
 msgid "This workflow is archived and cannot be launched"
 msgstr "このワークフローはアーカイブされており、実行できません"
+
+#, fuzzy
+#| msgid "This workflow is archived and cannot be launched"
+msgid "This workflow is inactive. Activate it to launch."
+msgstr "このワークフローはアーカイブされており、実行できません"
+
+msgid "Executor access required to run this workflow"
+msgstr "このワークフローを実行するには実行者アクセスが必要です"
 
 msgid "Edit workflow"
 msgstr "ワークフローを編集"
@@ -3245,6 +3928,32 @@ msgstr ""
 msgid "Workflow versions"
 msgstr ""
 
+msgid "Constant"
+msgstr ""
+
+msgid "Value"
+msgstr "値"
+
+#, fuzzy
+#| msgid "Delete this assertion?"
+msgid "Delete this constant?"
+msgstr "このアサーションを削除しますか？"
+
+#, fuzzy
+#| msgid "No signals have been added yet."
+msgid "No constants have been defined yet."
+msgstr "まだシグナルが追加されていません。"
+
+msgid ""
+"Constants are fixed values you name once and reference as c.name in "
+"assertions — e.g. an agreed price or an allowed-currency list."
+msgstr ""
+
+#, fuzzy
+#| msgid "Create the first assertion"
+msgid "Create the first constant"
+msgstr "最初のアサーションを作成"
+
 msgid "Step Outputs to Display"
 msgstr ""
 
@@ -3256,78 +3965,39 @@ msgstr ""
 msgid "No step outputs available for this step."
 msgstr ""
 
-msgid ""
-"Some required step inputs have no source path. Map each required input to a "
-"payload path or signal before running the workflow."
-msgstr ""
+#, fuzzy
+#| msgid "Version"
+msgid "Versioned"
+msgstr "バージョン"
 
 msgid ""
-"The contract key for this step input. Reference it in CEL assertions as i."
-"<name>."
-msgstr ""
-
-msgid "Source Path"
-msgstr ""
-
-msgid ""
-"A payload path (e.g., building.floor_area) or signal reference (e.g., "
-"s.floor_area) that provides the value for this step input. May be empty for "
-"parser-extracted inputs (validator populates the value automatically)."
-msgstr ""
-
-msgid "Copy to Signal"
-msgstr ""
-
-msgid ""
-"Promote this step input to a workflow-wide signal so later steps can "
-"reference it as s.<name>."
-msgstr ""
-
-msgid "Internal — data source managed by the validator"
+"is recommended when historical confidence matters. You can edit freely until "
+"the workflow has validation runs or is locked. After that, semantic changes "
+"require a new workflow version, keeping previous runs tied to the definition "
+"that produced them."
 msgstr ""
 
 #, fuzzy
-#| msgid "Save validator"
-msgid "Provided by validator"
-msgstr "バリデーターを保存"
-
-msgid "Not mapped"
-msgstr ""
-
-msgid "Remove signal"
-msgstr ""
-
-msgid "Copy to signal"
-msgstr ""
-
-msgid "Auto-link to workflow signal"
-msgstr ""
-
-#, fuzzy
-#| msgid "Edit step details"
-msgid "Edit step input"
-msgstr "ステップの詳細を編集"
-
-msgid "Edit variable"
-msgstr "変数を編集"
+#| msgid "Table"
+msgid "Mutable"
+msgstr "テーブル"
 
 msgid ""
-"No step inputs. This validator either doesn't have a process that parses the "
-"payload (schema-only validators like JSON Schema), or its process emits "
-"outputs only (SHACL, THERM). Write your assertions against p.* (payload) and "
-"s.* (workflow signals)."
-msgstr ""
-
-msgid "Adds output values to the final output response shown to users."
+"is useful for experiments and private drafts. It allows semantic changes in "
+"place after completed runs, but older results may no longer match the "
+"current workflow definition. While a run is using the definition, semantic "
+"saves are temporarily rejected; retry after it finishes."
 msgstr ""
 
 msgid ""
-"Copy the output value to a signal so it is easily referenced in later steps."
+"You can change this choice while the workflow has no runs and is not locked. "
+"After that, the editing policy is fixed for this workflow version."
 msgstr ""
 
-msgid ""
-"No step outputs. This validator doesn't emit named output values — its "
-"results emerge as findings rather than values you can assert against."
+msgid "Resize columns"
+msgstr ""
+
+msgid "Drag to resize"
 msgstr ""
 
 msgid "Paste Sample Data"
@@ -3354,6 +4024,9 @@ msgstr ""
 msgid "Select all"
 msgstr ""
 
+msgid "Signal Name"
+msgstr "シグナル名"
+
 msgid "Data Path"
 msgstr ""
 
@@ -3372,36 +4045,10 @@ msgstr ""
 msgid "No input requirements defined."
 msgstr ""
 
-msgid "Edit Validator Input"
-msgstr ""
+msgid "Signal"
+msgstr "シグナル"
 
-msgid ""
-"This signal is defined by the validator library. Label, description, and "
-"unit are read-only."
-msgstr ""
-
-msgid "Definition"
-msgstr ""
-
-msgid "The unique identifier used in CEL assertions and the validation engine."
-msgstr ""
-
-msgid "Contract Key"
-msgstr ""
-
-msgid ""
-"The original variable name in the simulation model (e.g., FMU variable "
-"name). May differ from the contract key."
-msgstr ""
-
-msgid ""
-"How this signal obtains its value: from a path in the submission data "
-"(Payload Path) or via an internal extraction mechanism (Internal)."
-msgstr ""
-
-msgid ""
-"This signal's data source is managed by the validator. The source path "
-"cannot be changed."
+msgid "Source Path"
 msgstr ""
 
 msgid "On Missing"
@@ -3433,6 +4080,97 @@ msgstr ""
 msgid "Create the first signal"
 msgstr ""
 
+msgid ""
+"Some required step inputs have no source path. Map each required input to a "
+"payload path or signal before running the workflow."
+msgstr ""
+
+msgid ""
+"The contract key for this step input. Reference it in CEL assertions as i."
+"<name>."
+msgstr ""
+
+msgid ""
+"A payload path (e.g., building.floor_area) or signal reference (e.g., "
+"s.floor_area) that provides the value for this step input. May be empty for "
+"parser-extracted inputs (validator populates the value automatically)."
+msgstr ""
+
+msgid "Copy to Signal"
+msgstr ""
+
+msgid ""
+"Promote this step input to a workflow-wide signal so later steps can "
+"reference it as s.<name>."
+msgstr ""
+
+msgid "Internal — data source managed by the validator"
+msgstr ""
+
+#, fuzzy
+#| msgid "Save validator"
+msgid "Provided by validator"
+msgstr "バリデーターを保存"
+
+msgid "Not mapped"
+msgstr ""
+
+msgid "Remove signal"
+msgstr ""
+
+msgid "Signal name"
+msgstr "シグナル名"
+
+msgid "Copy to signal"
+msgstr ""
+
+msgid "Auto-link to workflow signal"
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit step details"
+msgid "Edit step input"
+msgstr "ステップの詳細を編集"
+
+msgid "Edit variable"
+msgstr "変数を編集"
+
+msgid ""
+"No step inputs. This validator either doesn't have a process that parses the "
+"payload (schema-only validators like JSON Schema), or its process emits "
+"outputs only (SHACL, THERM). Write your assertions against p.* (payload) and "
+"s.* (workflow signals)."
+msgstr ""
+
+msgid "Edit Validator Input"
+msgstr ""
+
+msgid ""
+"This step input is defined by the validator library. Label, description, and "
+"unit are read-only."
+msgstr ""
+
+msgid "Definition"
+msgstr ""
+
+msgid "The unique identifier used in CEL assertions and the validation engine."
+msgstr ""
+
+msgid ""
+"The original variable name in the simulation model (e.g., FMU variable "
+"name). May differ from the contract key."
+msgstr ""
+
+msgid ""
+"How this step input obtains its value: from a path in the submission data "
+"(Payload Path) or via an internal extraction mechanism (Internal)."
+msgstr ""
+
+msgid ""
+"This step input's data source is managed by the validator. The source path "
+"cannot be changed."
+msgstr ""
+
 msgid "Shown in results"
 msgstr ""
 
@@ -3449,6 +4187,179 @@ msgstr ""
 #| msgid "No output assertions yet."
 msgid "No step outputs registered yet."
 msgstr "まだ出力アサーションがありません。"
+
+msgid "Adds output values to the final output response shown to users."
+msgstr ""
+
+msgid ""
+"Copy the output value to a signal so it is easily referenced in later steps."
+msgstr ""
+
+msgid "No step outputs. This validator doesn't emit named output values."
+msgstr ""
+
+msgid "Add column"
+msgstr ""
+
+msgid "Column Name"
+msgstr ""
+
+msgid "Primary-key columns are always required."
+msgstr ""
+
+#, fuzzy
+#| msgid "Assertion actions"
+msgid "Column actions"
+msgstr "アサーションのアクション"
+
+#, fuzzy
+#| msgid "Move up"
+msgid "Move column up"
+msgstr "上に移動"
+
+#, fuzzy
+#| msgid "Move down"
+msgid "Move column down"
+msgstr "下に移動"
+
+#, fuzzy
+#| msgid "Remove"
+msgid "Remove column"
+msgstr "削除"
+
+#, fuzzy
+#| msgid "Workflow details"
+msgid "Column details"
+msgstr "ワークフローの詳細"
+
+msgid "Import Table Schema"
+msgstr ""
+
+msgid "Paste a Frictionless Table Schema descriptor, or upload one as JSON."
+msgstr ""
+
+#, fuzzy
+#| msgid "Description"
+msgid "Descriptor JSON"
+msgstr "説明"
+
+msgid "Or upload descriptor JSON"
+msgstr ""
+
+msgid "Your current columns are kept until you apply the proposal."
+msgstr ""
+
+#, fuzzy
+#| msgid "Show schema"
+msgid "Import schema"
+msgstr "スキーマを表示"
+
+msgid "Review imported schema"
+msgstr ""
+
+msgid "Apply"
+msgstr ""
+
+msgid "Infer columns from a sample"
+msgstr ""
+
+msgid "Validibot reads the header and proposes a type for each column."
+msgstr ""
+
+msgid "Delimited text sample"
+msgstr ""
+
+msgid ""
+"Comma, tab, semicolon, and pipe delimiters are supported. The filename "
+"extension does not matter. Your current columns are kept until you apply the "
+"proposal."
+msgstr ""
+
+msgid "Infer columns"
+msgstr ""
+
+msgid "Review inferred schema"
+msgstr ""
+
+#, python-format
+msgid ""
+"This proposal contains %(count)s column. Your current columns remain "
+"unchanged until you apply it."
+msgid_plural ""
+"This proposal contains %(count)s columns. Your current columns remain "
+"unchanged until you apply it."
+msgstr[0] ""
+
+msgid "Compatibility report"
+msgstr ""
+
+msgid ""
+"Validibot adopts the Frictionless Table Schema vocabulary but does not "
+"enforce every keyword. Each item below is something in this schema the "
+"editor cannot act on — it is kept in your saved schema for portability, but "
+"it will not affect how files are validated."
+msgstr ""
+
+msgid "Every feature in this schema is fully supported."
+msgstr ""
+
+msgid "Comma"
+msgstr ""
+
+#, fuzzy
+#| msgid "Table"
+msgid "Tab"
+msgstr "テーブル"
+
+msgid "Semicolon"
+msgstr ""
+
+msgid "Pipe"
+msgstr ""
+
+msgid ""
+"Define expected columns, their data types, and the shape each value must "
+"have."
+msgstr ""
+
+msgid "column"
+msgstr ""
+
+#, fuzzy
+#| msgid "Please select at least one workflow."
+msgid "A schema needs at least one column."
+msgstr "少なくとも1つのワークフローを選択してください。"
+
+msgid ""
+"Column order must match headerless files. Headered files use the names above."
+msgstr ""
+
+msgid "Updating schema…"
+msgstr ""
+
+msgid ""
+"Name this check so workflow authors and submitters understand its purpose."
+msgstr ""
+
+#, fuzzy
+#| msgid "File type"
+msgid "File format"
+msgstr "ファイルタイプ"
+
+msgid "CSV · UTF-8"
+msgstr ""
+
+msgid ""
+"CSV is the current reader. UTF-8 is used consistently for reproducible "
+"validation."
+msgstr ""
+
+msgid "Publishing and author notes"
+msgstr ""
+
+msgid ""
+"Control what submitters see and preserve context for future workflow authors."
+msgstr ""
 
 msgid "Human-readable label shown to submitters."
 msgstr "送信者に表示される人間が読めるラベルです。"
@@ -3483,40 +4394,18 @@ msgstr "許可値"
 msgid "Enter one allowed value per line. Values are case-sensitive."
 msgstr ""
 
-msgid "required"
-msgstr "必須"
-
 msgid "optional"
 msgstr "任意"
 
 msgid "Template Variables"
 msgstr ""
 
-msgid "Configure each variable's type, constraints, and default values."
-msgstr ""
-
-#, fuzzy
-#| msgid "User Inputs"
-msgid "Step Inputs"
-msgstr "ユーザー入力"
-
 #, fuzzy
 #| msgid "Outputs"
 msgid "Step Outputs"
 msgstr "出力"
 
-msgid "Available Data"
-msgstr ""
-
-msgid "Edit Signals"
-msgstr ""
-
-msgid "Upstream Step Outputs"
-msgstr ""
-
-msgid ""
-"No signals defined. Configure signals on the workflow's Signals page, or use "
-"p.key to reference raw submission data directly."
+msgid "Configure each variable's type, constraints, and default values."
 msgstr ""
 
 msgid "Delete Workflow"
@@ -3533,6 +4422,39 @@ msgstr ""
 "                ワークフロー「%(name)s」を削除してもよろしいですか？この操作"
 "は取り消せません。\n"
 "              "
+
+#, fuzzy
+#| msgid "User Inputs"
+msgid "Step Inputs"
+msgstr "ユーザー入力"
+
+msgid "Available Data"
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit step details"
+msgid "Edit Constants"
+msgstr "ステップの詳細を編集"
+
+msgid "Edit Signals"
+msgstr ""
+
+msgid "Signals"
+msgstr "シグナル"
+
+msgid "Constants"
+msgstr ""
+
+msgid "Upstream Step Outputs"
+msgstr ""
+
+msgid "Generated Files From Earlier Steps"
+msgstr ""
+
+msgid ""
+"No signals or constants defined. Configure them on the workflow's Signals "
+"and Constants pages, or use p.key to reference raw submission data directly."
+msgstr ""
 
 msgid "Guest Access"
 msgstr "ゲストアクセス"
@@ -3624,17 +4546,8 @@ msgstr "コスト上限"
 msgid "JSON Schema validation"
 msgstr "JSONスキーマ検証"
 
-msgid "XML Schema"
-msgstr "XMLスキーマ"
-
 msgid "Simulation"
 msgstr "シミュレーション"
-
-msgid "Yes"
-msgstr "はい"
-
-msgid "No"
-msgstr "いいえ"
 
 msgid "EUI"
 msgstr "EUI"
@@ -3688,9 +4601,6 @@ msgstr ""
 msgid "Nothing available here yet."
 msgstr ""
 
-msgid "Continue"
-msgstr "続ける"
-
 msgid "Version history"
 msgstr ""
 
@@ -3708,8 +4618,10 @@ msgstr[0] ""
 msgid "Runs"
 msgstr ""
 
-msgid "Policy"
-msgstr ""
+#, fuzzy
+#| msgid "Edit profile"
+msgid "Editing policy"
+msgstr "プロフィールを編集"
 
 msgid "Modified"
 msgstr ""
@@ -3727,27 +4639,82 @@ msgid ""
 "Semantic edits on a versioned/locked workflow require creating a new version."
 msgstr ""
 
+#, fuzzy
+#| msgid "Success"
+msgid "Access"
+msgstr "成功"
+
+msgid "Who can run this?"
+msgstr ""
+
 msgid "Visibility"
 msgstr "公開設定"
+
+msgid ""
+"Choose who, by Validibot identity, may run this workflow for free. Options "
+"are limited by your organization's ceiling."
+msgstr ""
 
 msgid "Current"
 msgstr "現在"
 
-msgid "Only org members and invited guests can launch this workflow."
+#, fuzzy
+#| msgid "Only org members and invited guests can launch this workflow."
+msgid "Only you and people you invite can run this workflow."
 msgstr "組織メンバーと招待されたゲストのみがこのワークフローを実行できます。"
 
-msgid "Public"
-msgstr "公開"
+#, fuzzy
+#| msgid "Only org members and invited guests can launch this workflow."
+msgid "Any member of your organization can run this workflow."
+msgstr "組織メンバーと招待されたゲストのみがこのワークフローを実行できます。"
+
+#, fuzzy
+#| msgid "Only org members and invited guests can launch this workflow."
+msgid "Any logged-in Validibot user can run this workflow."
+msgstr "組織メンバーと招待されたゲストのみがこのワークフローを実行できます。"
+
+#, fuzzy
+#| msgid ""
+#| "The info page is automatically made public when the workflow is public."
+msgid ""
+"The info page is automatically made public when the workflow is visible to "
+"all Validibot users."
+msgstr "ワークフローが公開されると、情報ページも自動的に公開されます。"
+
+msgid "Agent access"
+msgstr ""
 
 msgid ""
-"Any logged-in user can launch this workflow. Usage is billed to your "
-"organization."
+"These channels are independent of the visibility setting above and of each "
+"other."
 msgstr ""
-"ログインしているユーザーは誰でもこのワークフローを実行できます。使用料は組織"
-"に請求されます。"
 
-msgid "The info page is automatically made public when the workflow is public."
-msgstr "ワークフローが公開されると、情報ページも自動的に公開されます。"
+msgid "Allow authenticated agents via MCP"
+msgstr ""
+
+msgid ""
+"Authenticated AI agents may run this workflow on behalf of a user who "
+"already has identity access above. Billed to that user's plan quota."
+msgstr ""
+
+#, fuzzy
+#| msgid "That user is already a member of this organization."
+msgid "MCP access is disabled for this organization."
+msgstr "そのユーザーはすでにこの組織のメンバーです。"
+
+msgid "Publish for paid anonymous access (x402)"
+msgstr ""
+
+#, fuzzy
+#| msgid "That user is already a member of this organization."
+msgid "x402 access is disabled for this organization."
+msgstr "そのユーザーはすでにこの組織のメンバーです。"
+
+msgid ""
+"Enabling this makes the workflow callable by ANYONE on the internet who pays "
+"the per-call price (anonymous x402), regardless of the visibility setting "
+"above."
+msgstr ""
 
 msgid "Workflow access"
 msgstr "ワークフローアクセス"
@@ -3836,6 +4803,9 @@ msgstr "ファイルタイプ"
 msgid "This workflow accepts structured JSON input with the following fields."
 msgstr ""
 
+msgid "This workflow checks submissions against these fixed, named values."
+msgstr ""
+
 msgid "All Workflows"
 msgstr "すべてのワークフロー"
 
@@ -3864,6 +4834,9 @@ msgstr[0] ""
 "\n"
 "                          %(total)s 件の検証ステップ\n"
 "                        "
+
+msgid "Public"
+msgstr "公開"
 
 msgid "Member access"
 msgstr "メンバーアクセス"
@@ -3896,6 +4869,43 @@ msgstr ""
 msgid "No workflows are available yet."
 msgstr "まだワークフローがありません。"
 
+#, fuzzy
+#| msgid "Toggle layout"
+msgid "Report layout"
+msgstr "レイアウトを切り替え"
+
+msgid "Stacked layout"
+msgstr ""
+
+#, fuzzy
+#| msgid "Toggle layout"
+msgid "Two-column layout"
+msgstr "レイアウトを切り替え"
+
+#, fuzzy
+#| msgid "Generate new key"
+msgid "Generated Files"
+msgstr "新しいキーを生成"
+
+#, fuzzy
+#| msgid "File type"
+msgid "File"
+msgstr "ファイルタイプ"
+
+msgid "Producer"
+msgstr ""
+
+msgid "Role / Type"
+msgstr ""
+
+#, fuzzy
+#| msgid "View details"
+msgid "View artifact details"
+msgstr "詳細を表示"
+
+msgid "Download artifact"
+msgstr ""
+
 msgid "Signed Credential"
 msgstr ""
 
@@ -3918,23 +4928,18 @@ msgid "Evidence Manifest"
 msgstr ""
 
 msgid ""
-"A canonical record of the rules and inputs this run was operating under. "
-"Download it for archival, external verification, or audit."
+"A permanent receipt with run, workflow, validator, and payload-hash "
+"information, but no submitted contents or output files. A bundle is "
+"cryptographic proof only when it includes a signed credential."
 msgstr ""
 
 msgid "Schema"
 msgstr ""
 
-msgid "SHA-256"
-msgstr ""
-
-msgid "Retention"
-msgstr ""
-
 msgid "Download manifest.json"
 msgstr ""
 
-msgid "Tarball with manifest, signature (if signed), and README"
+msgid "Archive with manifest and signed credential when one was issued"
 msgstr ""
 
 msgid "Download bundle (.tar.gz)"
@@ -3949,14 +4954,14 @@ msgstr "成功"
 msgid "Validibot reports no errors. Validation successful. "
 msgstr ""
 
+msgid "Detailed outputs are no longer retained for this run."
+msgstr ""
+
 msgid "Workflow Outputs"
 msgstr "ワークフロー出力"
 
 msgid "Metric"
 msgstr ""
-
-msgid "Value"
-msgstr "値"
 
 msgid "Outputs by Step"
 msgstr "ステップ別の出力"
@@ -3967,20 +4972,16 @@ msgstr "重大度"
 msgid "Path"
 msgstr "パス"
 
+#, fuzzy
+#| msgid "Subject"
+msgid "subjects"
+msgstr "件名"
+
 msgid "No errors, warnings, or info for this step."
 msgstr "このステップにエラー、警告、情報はありません。"
 
 msgid "Run Summary"
 msgstr "実行サマリー"
-
-msgid "View JSON"
-msgstr "JSON を表示"
-
-msgid "Submission name"
-msgstr "提出物名"
-
-msgid "Short description"
-msgstr "短い説明"
 
 msgid "Errors"
 msgstr "エラー"
@@ -3994,6 +4995,12 @@ msgstr "情報"
 msgid "Total findings"
 msgstr "結果合計"
 
+msgid "Submission name"
+msgstr "提出物名"
+
+msgid "Short description"
+msgstr "短い説明"
+
 msgid "Submitter"
 msgstr "送信者"
 
@@ -4003,11 +5010,13 @@ msgstr "所要時間"
 msgid "Running…"
 msgstr "実行中…"
 
-msgid "Not captured"
-msgstr "キャプチャされていません"
-
 msgid "Output hash"
 msgstr ""
+
+#, fuzzy
+#| msgid "View JSON"
+msgid "View report as JSON"
+msgstr "JSON を表示"
 
 msgid "User Inputs"
 msgstr "ユーザー入力"
@@ -4028,11 +5037,49 @@ msgstr ""
 msgid "Data hash"
 msgstr ""
 
-msgid "Size"
-msgstr ""
-
 msgid "Submitted data"
 msgstr ""
+
+#, fuzzy, python-format
+#| msgid "Add Step · %(name)s · Validibot"
+msgid "Add tabular step · %(name)s · Validibot"
+msgstr "ステップを追加 · %(name)s · Validibot"
+
+#, fuzzy, python-format
+#| msgid "Step %(step_id)s · %(name)s · Validibot"
+msgid "Tabular settings · Step %(step_id)s · %(name)s · Validibot"
+msgstr "ステップ %(step_id)s · %(name)s · Validibot"
+
+msgid "Back to workflow step"
+msgstr "ワークフローステップに戻る"
+
+#, fuzzy
+#| msgid "Sharing settings"
+msgid "Tabular settings"
+msgstr "共有設定"
+
+#, fuzzy
+#| msgid "XML Schema"
+msgid "Infer Schema"
+msgstr "XMLスキーマ"
+
+#, fuzzy
+#| msgid "XML Schema"
+msgid "Import Schema"
+msgstr "XMLスキーマ"
+
+#, fuzzy
+#| msgid "Show schema"
+msgid "Download schema"
+msgstr "スキーマを表示"
+
+#, fuzzy
+#| msgid "User Settings"
+msgid "Settings"
+msgstr "ユーザー設定"
+
+msgid "Create step"
+msgstr "ステップを作成"
 
 msgid "Break-glass Tombstone Workflow"
 msgstr ""
@@ -4071,6 +5118,14 @@ msgstr ""
 
 msgid "Tombstone workflow"
 msgstr ""
+
+msgid "Back to Workflow"
+msgstr "ワークフローに戻る"
+
+#, fuzzy
+#| msgid "Add step"
+msgid "Add Constant"
+msgstr "ステップを追加"
 
 msgid "This workflow has been tombstoned and is now a historical record."
 msgstr ""
@@ -4183,14 +5238,31 @@ msgid ""
 "stay attached to the current version."
 msgstr ""
 
+msgid "Input requirements preview"
+msgstr ""
+
 msgid "Create workflow"
 msgstr "ワークフローを作成"
 
 msgid "Create version and apply"
 msgstr ""
 
-msgid "Input requirements preview"
+#, fuzzy
+#| msgid "Workflow invite"
+msgid "Workflow invitation"
+msgstr "ワークフロー招待"
+
+#, python-format
+msgid ""
+"<strong>%(inviter)s</strong> invited you to access the workflow "
+"<strong>%(workflow_name)s</strong>."
 msgstr ""
+
+#, fuzzy
+#| msgid "You do not have permission to run this workflow"
+msgid ""
+"Accepting grants your account permission to run validations on this workflow."
+msgstr "このワークフローを実行する権限がありません"
 
 msgid "Workflow JSON"
 msgstr "ワークフローJSON"
@@ -4217,6 +5289,9 @@ msgstr "アーカイブ済みワークフローを非表示"
 
 msgid "Show archived workflows"
 msgstr "アーカイブ済みワークフローを表示"
+
+msgid "Import a workflow from a .vaf or .json file"
+msgstr ""
 
 msgid "No workflows yet"
 msgstr "まだワークフローがありません"
@@ -4248,21 +5323,50 @@ msgstr "公開ページを表示"
 msgid "Sharing"
 msgstr "共有"
 
-msgid "Back to Workflow"
-msgstr "ワークフローに戻る"
+msgid "Visible to all Validibot users"
+msgstr ""
 
-msgid "This workflow is public"
-msgstr "このワークフローは公開されています"
-
+#, fuzzy
+#| msgid ""
+#| "Any authenticated user can launch this workflow. Guest access management "
+#| "is not needed for public workflows."
 msgid ""
-"Any authenticated user can launch this workflow. Guest access management is "
-"not needed for public workflows."
+"Any logged-in user can launch this workflow, so guest access management is "
+"not needed."
 msgstr ""
 "認証済みのユーザーは誰でもこのワークフローを実行できます。公開ワークフローに"
 "はゲストアクセス管理は不要です。"
 
 msgid "About Sharing"
 msgstr "共有について"
+
+#, fuzzy
+#| msgid "Only org members and invited guests can launch this workflow."
+msgid "Only you and people you invite can launch this workflow."
+msgstr "組織メンバーと招待されたゲストのみがこのワークフローを実行できます。"
+
+#, fuzzy
+#| msgid "New organization"
+msgid "Your organization"
+msgstr "新しい組織"
+
+#, fuzzy
+#| msgid "Only org members and invited guests can launch this workflow."
+msgid "Any member of your organization can launch this workflow."
+msgstr "組織メンバーと招待されたゲストのみがこのワークフローを実行できます。"
+
+#, fuzzy
+#| msgid "All statuses"
+msgid "All Validibot users"
+msgstr "すべてのステータス"
+
+#, fuzzy
+#| msgid "Only org members and invited guests can launch this workflow."
+msgid "Any logged-in Validibot user can launch this workflow."
+msgstr "組織メンバーと招待されたゲストのみがこのワークフローを実行できます。"
+
+msgid "Add Signal"
+msgstr "シグナルを追加"
 
 msgid "Signal Mappings"
 msgstr ""
@@ -4279,6 +5383,14 @@ msgstr "ステップアサーション"
 
 msgid "Design the assertions for this step"
 msgstr "このステップのアサーションを設計します"
+
+#, fuzzy
+#| msgid "Edit default assertion"
+msgid "Which kind of assertion?"
+msgstr "デフォルトアサーションを編集"
+
+msgid "Choose when the rule has enough context to run."
+msgstr ""
 
 msgid "Loading"
 msgstr ""
@@ -4300,17 +5412,17 @@ msgid ""
 "can be configured."
 msgstr ""
 
-msgid "Back to workflow step"
-msgstr "ワークフローステップに戻る"
-
 msgid "Previous step"
 msgstr "前のステップ"
 
 msgid "Next step"
 msgstr "次のステップ"
 
-msgid "Create step"
-msgstr "ステップを作成"
+msgid "Default EUIt (kBtu/ft²/year)"
+msgstr ""
+
+msgid "EUIt (kBtu/ft²/year)"
+msgstr ""
 
 msgid "Page View"
 msgstr "ページビュー"
@@ -4355,6 +5467,11 @@ msgid ""
 "created but the invite was not redeemed."
 msgstr ""
 
+msgid ""
+"Your account was created, but this workflow invitation is addressed to a "
+"different email address, so it was not redeemed."
+msgstr ""
+
 #, python-format
 msgid ""
 "Welcome! You now have access to the workflow '%(name)s'. You can run "
@@ -4366,8 +5483,27 @@ msgstr ""
 msgid "The guest invite is no longer valid."
 msgstr ""
 
+msgid ""
+"Your account was created, but this guest invitation is addressed to a "
+"different email address, so it was not redeemed."
+msgstr ""
+
 #, python-format
 msgid "Welcome! You now have guest access to %(org)s."
+msgstr ""
+
+#, fuzzy
+#| msgid "Invite is no longer valid."
+msgid "The invitation is no longer valid."
+msgstr "招待は無効です。"
+
+msgid ""
+"Your account was created, but this invitation is addressed to a different "
+"email address, so it was not redeemed."
+msgstr ""
+
+#, python-format
+msgid "Welcome! You're now a member of %(org)s."
 msgstr ""
 
 msgid "Personal info"
@@ -4437,6 +5573,11 @@ msgstr ""
 
 msgid "Basic Users"
 msgstr ""
+
+#, fuzzy
+#| msgid "No user with that email exists in Validibot."
+msgid "A user with that username already exists."
+msgstr "そのメールアドレスのユーザーはValidibotに存在しません。"
 
 msgid ""
 "ASSIGNED AT SETUP AND CANNOT BE CHANGED HERE. Sole org authority with all "
@@ -4551,12 +5692,17 @@ msgstr "利用規約とプライバシーポリシーに同意します"
 msgid "You must agree to the Terms of Service and Privacy Policy."
 msgstr "利用規約とプライバシーポリシーに同意する必要があります。"
 
-msgid "Company"
-msgstr "会社"
-
 msgid ""
 "Please use a non-disposable email address. If this is your real email, "
 "contact support."
+msgstr ""
+
+msgid ""
+"Django admin requires multi-factor authentication. Set up an authenticator "
+"before returning to admin."
+msgstr ""
+
+msgid "Confirm your multi-factor authentication before entering Django admin."
 msgstr ""
 
 msgid "Default Project"
@@ -4582,6 +5728,28 @@ msgstr ""
 "トライアルの期間（日数）、トライアル有効化時のスナップショット。トライアルな"
 "しの組織はNULL。"
 
+msgid ""
+"Maximum visibility any workflow in this organization may have. Workflows may "
+"be set no wider than this ceiling."
+msgstr ""
+
+msgid ""
+"Whether workflows in this organization may be exposed to authenticated AI "
+"agents via MCP. Off by default; an admin opts in."
+msgstr ""
+
+msgid ""
+"Whether workflows in this organization may be published for paid anonymous "
+"access via x402. Off by default — enabling it permits a workflow to be made "
+"callable by anyone on the internet who pays."
+msgstr ""
+
+msgid ""
+"When off (the default), only admins and superusers can change a workflow's "
+"access settings. When on, workflow authors may also adjust the per-workflow "
+"access controls — never the org-level ceilings above."
+msgstr ""
+
 msgid "This organization name is reserved."
 msgstr "この組織名は予約済みです。"
 
@@ -4593,6 +5761,9 @@ msgstr "正方形の画像がアプリ全体で最適に表示されます。"
 
 msgid "Job title"
 msgstr "役職"
+
+msgid "Company"
+msgstr "会社"
 
 msgid "Location"
 msgstr "場所"
@@ -4622,13 +5793,21 @@ msgid ""
 "available on every paid tier."
 msgstr ""
 
+#, python-format
+msgid ""
+"You have a pending invitation to join %(orgs)s. Open your notifications to "
+"accept it."
+msgstr ""
+
 msgid "Profile updated successfully"
 msgstr "プロフィールを更新しました"
 
 msgid "Overview"
 msgstr "概要"
 
-msgid "Generated a new API key."
+#, fuzzy
+#| msgid "Generated a new API key."
+msgid "Generated a new API key. Copy it now."
 msgstr "新しいAPIキーを生成しました。"
 
 #, python-format
@@ -4699,9 +5878,6 @@ msgstr "文字列比較に失敗しました。"
 
 msgid "Regular expression is missing."
 msgstr "正規表現がありません。"
-
-msgid "Regex evaluation timed out (possible ReDoS pattern)."
-msgstr "正規表現の評価がタイムアウトしました（ReDoSパターンの可能性）。"
 
 #, python-format
 msgid "Invalid regex: %(error)s"
@@ -4824,10 +6000,13 @@ msgstr ""
 "CELが未定義の名前 '%(identifier)s' を参照しています。このデータパスが提出物に"
 "存在することを確認してください。"
 
-#, python-format
+#, fuzzy, python-format
+#| msgid ""
+#| "CEL references undefined name '%(identifier)s'. Ensure a matching "
+#| "validator signal exists."
 msgid ""
-"CEL references undefined name '%(identifier)s'. Ensure a matching validator "
-"signal exists."
+"CEL references undefined name '%(identifier)s'. Ensure a matching step input "
+"or output exists."
 msgstr ""
 "CELが未定義の名前 '%(identifier)s' を参照しています。一致するバリデーターシグ"
 "ナルが存在することを確認してください。"
@@ -4835,33 +6014,147 @@ msgstr ""
 msgid "Returns true when the value is not null/empty."
 msgstr "値がnull/空でない場合にtrueを返します。"
 
-msgid "Returns true when the numeric value is an integer."
-msgstr "数値が整数の場合にtrueを返します。"
-
-msgid "Calculates the q-quantile for the numeric list."
-msgstr "数値リストのq分位数を計算します。"
-
-msgid "Average of a list of numbers (ignores nulls)."
-msgstr "数値リストの平均（nullは無視）。"
-
-msgid "Sum of a list of numbers."
-msgstr "数値リストの合計。"
-
-msgid "Maximum value in a list of numbers."
-msgstr "数値リストの最大値。"
-
-msgid "Minimum value in a list of numbers."
-msgstr "数値リストの最小値。"
-
-msgid "Absolute value of a number."
-msgstr "数値の絶対値。"
-
-msgid "Round the numeric value to a number of decimal places."
-msgstr "数値を指定した小数点以下の桁数に丸めます。"
+msgid ""
+"Returns true when the value is an integral number (2 and 2.0 are integral; "
+"2.5, booleans, NaN, and non-numbers are not)."
+msgstr ""
 
 msgid ""
-"Calculates the duration (in sample count) where predicate(series[i]) is true."
-msgstr "predicate(series[i])がtrueである期間（サンプル数）を計算します。"
+"The q-th percentile (q in 0–100) of a numeric list by linear interpolation; "
+"ignores nulls. Null for an empty list or an out-of-range q. Returns a double."
+msgstr ""
+
+msgid ""
+"Arithmetic mean of a numeric list (ignores nulls); null for an empty list. "
+"Returns a double."
+msgstr ""
+
+msgid ""
+"Sum of a numeric list (ignores nulls); 0 for an empty list. Returns a double."
+msgstr ""
+
+msgid ""
+"Largest value in a numeric list (ignores nulls); null for an empty list. "
+"Returns a double."
+msgstr ""
+
+msgid ""
+"Smallest value in a numeric list (ignores nulls); null for an empty list. "
+"Returns a double."
+msgstr ""
+
+msgid ""
+"Absolute value of a number (preserves int vs. double); null for a non-number."
+msgstr ""
+
+msgid ""
+"Round a number to a number of decimal places (digits defaults to 0) using "
+"round-half-to-even. Returns a double."
+msgstr ""
+
+msgid ""
+"CEL built-in: parse a duration string such as \"3600s\" or \"1h30m\" into a "
+"duration value. (Provided by CEL itself, not a Validibot helper, so it is "
+"not bound in cel_helpers.)"
+msgstr ""
+
+#, fuzzy
+#| msgid "Returns true when the numeric value is an integer."
+msgid "Returns true when the string is a valid ISO 8601 date or datetime."
+msgstr "数値が整数の場合にtrueを返します。"
+
+msgid ""
+"Parses an ISO 8601 string into a timestamp (null if unparseable); for string-"
+"typed columns."
+msgstr ""
+
+#, fuzzy
+#| msgid "Returns true when the value is not null/empty."
+msgid "Returns true when the value is a finite number (not NaN or infinity)."
+msgstr "値がnull/空でない場合にtrueを返します。"
+
+msgid ""
+"The run's pinned evaluation time (run.started_at); deterministic for the "
+"run, never the wall clock."
+msgstr ""
+
+msgid "Google Cloud Platform"
+msgstr ""
+
+msgid "Cloud Run Job"
+msgstr ""
+
+msgid "Cloud Run Service"
+msgstr ""
+
+msgid "Draft"
+msgstr "ドラフト"
+
+#, fuzzy
+#| msgid "Verified"
+msgid "Verifying"
+msgstr "確認済み"
+
+msgid "Ready"
+msgstr ""
+
+#, fuzzy
+#| msgid "Validation Failed"
+msgid "Verification failed"
+msgstr "検証失敗"
+
+#, fuzzy
+#| msgid "required"
+msgid "Retired"
+msgstr "必須"
+
+msgid "Long-running compatibility"
+msgstr ""
+
+msgid "Superseded by an accepted release"
+msgstr ""
+
+msgid "Release rolled back from"
+msgstr ""
+
+msgid "Acceptance failure"
+msgstr ""
+
+msgid "Execution-shape rollback"
+msgstr ""
+
+msgid "Operator deactivation"
+msgstr ""
+
+msgid "Fast response"
+msgstr ""
+
+#, fuzzy
+#| msgid "Running"
+msgid "Long-running"
+msgstr "実行中"
+
+msgid "Request-driven"
+msgstr ""
+
+msgid "Provider job"
+msgstr ""
+
+#, fuzzy
+#| msgid "Support"
+msgid "Supported"
+msgstr "サポート"
+
+#, fuzzy
+#| msgid "Support"
+msgid "Unsupported"
+msgstr "サポート"
+
+msgid "Best effort before execution starts"
+msgstr ""
+
+msgid "Attempt nonce and provider OIDC identity"
+msgstr ""
 
 msgid "Running"
 msgstr "実行中"
@@ -4873,6 +6166,19 @@ msgid "Failed"
 msgstr "失敗"
 
 msgid "Timed Out"
+msgstr "タイムアウト"
+
+msgid "Dispatching"
+msgstr ""
+
+#, fuzzy
+#| msgid "Provide a tolerance value."
+msgid "Provider acceptance unknown"
+msgstr "許容誤差の値を入力してください。"
+
+#, fuzzy
+#| msgid "Timed Out"
+msgid "Timed out"
 msgstr "タイムアウト"
 
 msgid "Pass"
@@ -4914,6 +6220,14 @@ msgstr "基本アサーション"
 msgid "JSON Schema"
 msgstr "JSONスキーマ"
 
+msgid "XML Schema"
+msgstr "XMLスキーマ"
+
+#, fuzzy
+#| msgid "XML Schema"
+msgid "Schematron"
+msgstr "XMLスキーマ"
+
 msgid "SHACL Shapes"
 msgstr ""
 
@@ -4929,6 +6243,12 @@ msgstr "カスタムベーシックバリデーター"
 msgid "THERM"
 msgstr "THERM"
 
+msgid "Tabular"
+msgstr ""
+
+msgid "Building Benchmark Reports"
+msgstr ""
+
 msgid "SHACL (RDF Graph)"
 msgstr ""
 
@@ -4938,14 +6258,27 @@ msgstr "AIアシスト"
 msgid "THERM Thermal Analysis"
 msgstr "THERM熱解析"
 
-msgid "Draft"
-msgstr "ドラフト"
+#, fuzzy
+#| msgid "Validator"
+msgid "Tabular Validator"
+msgstr "バリデーター"
+
+msgid "Building Benchmark Report Validator"
+msgstr ""
 
 msgid "Coming Soon"
 msgstr "近日公開"
 
 msgid "Published"
 msgstr "公開済み"
+
+#, fuzzy
+#| msgid "Edit variable"
+msgid "Available"
+msgstr "変数を編集"
+
+msgid "Missing config"
+msgstr ""
 
 msgid "Low compute"
 msgstr "低演算"
@@ -5019,6 +6352,9 @@ msgstr "ドラフト 6"
 msgid "Draft 4"
 msgstr "ドラフト 4"
 
+msgid "Step I/O Definition"
+msgstr ""
+
 msgid "Derivation"
 msgstr "派生"
 
@@ -5036,6 +6372,73 @@ msgstr "ブール値"
 
 msgid "Object"
 msgstr "オブジェクト"
+
+msgid "Artifact reference"
+msgstr ""
+
+msgid "Artifact"
+msgstr ""
+
+#, fuzzy
+#| msgid "Inputs"
+msgid "Input files"
+msgstr "入力"
+
+#, fuzzy
+#| msgid "Resource Files"
+msgid "Resource files"
+msgstr "リソースファイル"
+
+#, fuzzy
+#| msgid "Output assertions"
+msgid "Output artifacts"
+msgstr "出力アサーション"
+
+#, fuzzy
+#| msgid "Submitter"
+msgid "Submitted file first"
+msgstr "送信者"
+
+msgid "Submitted file then default resource"
+msgstr ""
+
+#, fuzzy
+#| msgid "Workflow Created"
+msgid "Workflow resource default"
+msgstr "ワークフローが作成されました"
+
+msgid "Upstream artifact suggestion"
+msgstr ""
+
+msgid "Manual"
+msgstr "手動"
+
+msgid "None"
+msgstr ""
+
+msgid "Directory"
+msgstr ""
+
+#, fuzzy
+#| msgid "Archived"
+msgid "Archive"
+msgstr "アーカイブ済み"
+
+#, fuzzy
+#| msgid "Data path"
+msgid "Dataset"
+msgstr "データパス"
+
+#, fuzzy
+#| msgid "Support"
+msgid "Report"
+msgstr "サポート"
+
+msgid "Log"
+msgstr ""
+
+msgid "Other"
+msgstr ""
 
 msgid "Catalog"
 msgstr "カタログ"
@@ -5055,11 +6458,29 @@ msgstr ""
 msgid "Submission Metadata"
 msgstr ""
 
+#, fuzzy
+#| msgid "Submission name"
+msgid "Submission File"
+msgstr "提出物名"
+
 msgid "Upstream Step"
+msgstr ""
+
+msgid "Upstream Step Artifact"
 msgstr ""
 
 msgid "Workflow Signal"
 msgstr ""
+
+#, fuzzy
+#| msgid "Workflow step"
+msgid "Workflow Constant"
+msgstr "ワークフローステップ"
+
+#, fuzzy
+#| msgid "Workflow Run"
+msgid "Workflow Resource"
+msgstr "ワークフロー実行"
 
 msgid "SHACL"
 msgstr ""
@@ -5069,6 +6490,9 @@ msgstr "基本アサーション"
 
 msgid "CEL expression"
 msgstr "CEL式"
+
+msgid "SPARQL ASK"
+msgstr ""
 
 msgid "Equals"
 msgstr "等しい"
@@ -5178,9 +6602,6 @@ msgstr "リストとカードに表示されます。"
 msgid "Supports Markdown. Plain text also works."
 msgstr "Markdownをサポートしています。プレーンテキストも使用できます。"
 
-msgid "Version label (e.g. '1.0', '2026-05')."
-msgstr ""
-
 msgid "Optional notes shown to other authors in your org."
 msgstr "組織内の他の作成者に表示される任意のメモ。"
 
@@ -5197,9 +6618,6 @@ msgid ""
 "Provide at least one SHACL shape — upload one or more files or paste shapes "
 "inline."
 msgstr ""
-
-msgid "Version label (e.g. '1.0', '2025-01')."
-msgstr "バージョンラベル（例：'1.0'、'2025-01'）。"
 
 msgid "Allow custom data paths in assertions"
 msgstr "アサーションでカスタムデータパスを許可"
@@ -5326,7 +6744,23 @@ msgstr ""
 msgid "e.g. EUI is within acceptable range"
 msgstr "例：EUIは許容範囲内です"
 
+msgid ""
+"Internal rationale for this assertion (the standard it enforces, why a "
+"threshold was chosen). Not shown to data submitters."
+msgstr ""
+
+msgid "e.g. ASHRAE 90.1 caps lighting power density at 1.0 W/sqft"
+msgstr ""
+
 msgid "Short label shown on the assertion card and findings."
+msgstr ""
+
+msgid "Example rows per finding"
+msgstr ""
+
+msgid ""
+"Keep the full failure count but include at most this many example row "
+"numbers in each finding."
 msgstr ""
 
 msgid "SHACL graph"
@@ -5374,8 +6808,66 @@ msgstr ""
 msgid "(Select one)"
 msgstr "（選択してください）"
 
+msgid ""
+"Use row.column_name or row[\"column name\"] for values in the current row. "
+"Workflow signals remain available as s.*."
+msgstr ""
+
+msgid ""
+"Use col.<column> aggregates such as null_ratio, distinct_count, min, max, "
+"and sum. Dataset metadata remains available as i.*, and workflow signals as "
+"s.*."
+msgstr ""
+
+msgid ""
+"Use i.* for dataset metadata such as row count and column names. Workflow "
+"signals remain available as s.*."
+msgstr ""
+
 msgid "Select a condition."
 msgstr "条件を選択してください。"
+
+msgid ""
+"A row assertion must reference at least one value through the row.* "
+"namespace."
+msgstr ""
+
+msgid ""
+"A column assertion must reference at least one aggregate through the col.* "
+"namespace and cannot reference row.* values."
+msgstr ""
+
+msgid ""
+"Dataset assertions cannot reference row.* values or col.* aggregates. Add "
+"the expression from the matching Row or Column assertions section."
+msgstr ""
+
+msgid ""
+"One assertion cannot mix row.* values with col.* aggregates because those "
+"namespaces are bound in different stages."
+msgstr ""
+
+#, python-format
+msgid ""
+"Row assertion references column(s) not declared in the step's schema: "
+"%(unknown)s. Declared columns: %(declared)s."
+msgstr ""
+
+#, python-format
+msgid ""
+"Column assertion references column(s) not declared in the step's schema: "
+"%(unknown)s. Declared columns: %(declared)s."
+msgstr ""
+
+#, python-format
+msgid ""
+"Unknown column aggregate(s): %(metrics)s. Available aggregates are "
+"distinct_count, null_count, non_null_count, null_ratio, min, max, and sum."
+msgstr ""
+
+#, python-format
+msgid "The sum aggregate is available only for numeric columns: %(columns)s."
+msgstr ""
 
 #, python-format
 msgid ""
@@ -5414,10 +6906,33 @@ msgstr ""
 
 #, python-format
 msgid ""
+"These Portfolio Manager outputs do not apply to the selected submission "
+"structure: %(outputs)s. Choose an output shown in the current output group."
+msgstr ""
+
+#, python-format
+msgid ""
 "Step inputs live in the i.* namespace, not s.* — at runtime s.* contains "
 "only workflow signal mappings and promoted upstream outputs, never step "
 "inputs. Use i.%(first)s instead of s.%(first)s (the assertion would silently "
 "read null otherwise). Affected: %(names)s"
+msgstr ""
+
+#, fuzzy
+#| msgid "Output"
+msgid "output"
+msgstr "出力"
+
+#, fuzzy
+#| msgid "Input"
+msgid "input"
+msgstr "入力"
+
+#, python-format
+msgid ""
+"%(name)s is a step %(kind)s — reference it as %(correct)s.%(name)s, not "
+"%(wrong)s.%(name)s. The %(wrong)s.* namespace never holds step %(kind)ss at "
+"run time, so the assertion would silently read null. Use: %(corrected)s"
 msgstr ""
 
 #, python-format
@@ -5433,7 +6948,8 @@ msgstr ""
 
 msgid ""
 "Enter a target path. Use s.<name> for workflow signals, p.<path> for payload "
-"data, or o.<name> for step outputs."
+"data, o.<name> for step outputs, or submission.<field> for submission "
+"metadata."
 msgstr ""
 
 #, python-format
@@ -5443,8 +6959,8 @@ msgstr ""
 
 #, python-format
 msgid ""
-"Unknown signal '%(name)s'. Check the Step Inputs tab or Signal Mappings for "
-"available names."
+"Unknown workflow signal '%(name)s'. Check Signal Mappings for available "
+"names, or use i.%(name)s for a declared step input."
 msgstr ""
 
 #, python-format
@@ -5459,36 +6975,20 @@ msgid ""
 msgstr ""
 
 msgid ""
+"Invalid path syntax. Use dot notation (e.g. submission.metadata.deliverable) "
+"or a quoted key for non-identifier names (e.g. "
+"submission.metadata[\"deliverable-type\"])."
+msgstr ""
+
+msgid ""
+"Use s.<name> for workflow signals, p.<path> for payload data, o.<name> for "
+"step outputs, or submission.<field> for submission metadata."
+msgstr ""
+
+msgid ""
 "Custom targets must use dot notation with optional numeric indexes (e.g. "
 "`data.results[0].value`) or JSONPath filter expressions (e.g. `items[?"
 "@.name=='x'].value`)."
-msgstr ""
-
-#, python-format
-msgid ""
-"i.%(name)s is populated by the validator from the submission payload, not by "
-"a path the BASIC evaluator can walk"
-msgstr ""
-
-#, python-format
-msgid ""
-"i.%(name)s resolves through its StepInputBinding (which may map to a nested "
-"or computed path), but the BASIC evaluator ignores bindings and walks the "
-"raw payload directly"
-msgstr ""
-
-#, python-format
-msgid ""
-"BASIC assertions can't target step inputs (%(reason)s). Use a CEL assertion "
-"instead — for example: i.%(name)s >= 1"
-msgstr ""
-
-#, python-format
-msgid ""
-"BASIC assertions can't target workflow signals (s.%(name)s lives in the CEL "
-"signal namespace, populated from WorkflowSignalMapping and promoted upstream "
-"outputs — not in the raw payload the BASIC evaluator walks). Use a CEL "
-"assertion instead — for example: s.%(name)s >= 1"
 msgstr ""
 
 msgid "Provide a regular expression."
@@ -5519,8 +7019,22 @@ msgstr "少なくとも1つの値を入力してください（1行に1つ）。
 msgid "Provide a CEL expression."
 msgstr "CEL式を入力してください。"
 
+#, python-format
+msgid ""
+"Your expression contains curly (\"smart\") quote characters: %(found)s. "
+"These usually appear when pasting from a document, email, or chat. CEL only "
+"recognises straight quotes, so the text inside them is read as code rather "
+"than as a string. Replace each one with a straight double (\") or single (') "
+"quote."
+msgstr ""
+
 msgid "Parentheses and brackets must be balanced."
 msgstr "括弧は対応している必要があります。"
+
+#, fuzzy, python-format
+#| msgid "Invalid XML submission: %(error)s"
+msgid "Not a valid CEL expression: %(error)s"
+msgstr "無効なXML提出物：%(error)s"
 
 msgid "Assertion type"
 msgstr "アサーションタイプ"
@@ -5556,13 +7070,13 @@ msgid ""
 msgstr ""
 
 msgid ""
-"How the signal's value is obtained: from a payload path the author "
-"configures, or internally by the validator."
+"How this step input or output obtains its value: from a payload path the "
+"author configures, or internally by the validator."
 msgstr ""
 
 msgid ""
-"Whether workflow authors can edit the source data path for this signal when "
-"configuring a step."
+"Whether workflow authors can edit the source data path for this step input "
+"when configuring a step."
 msgstr ""
 
 #, python-format
@@ -5600,6 +7114,16 @@ msgid ""
 msgstr ""
 "ユーザーのユーザー名またはメール（デフォルトは現在のユーザーまたは最初に利用"
 "可能なユーザー）"
+
+msgid ""
+"Managed backend slug used by this semantic Validator, such as energyplus. "
+"Empty for validators without a managed backend."
+msgstr ""
+
+msgid ""
+"Runtime contract required from managed deployments. Empty for validators "
+"without a managed backend."
+msgstr ""
 
 msgid "The user who created this ruleset."
 msgstr "このルールセットを作成したユーザー。"
@@ -5646,6 +7170,21 @@ msgstr ""
 "スキーマルールセットにはインラインのルールテキストまたはアップロードされた"
 "ファイルのいずれかが含まれている必要があります。"
 
+#, fuzzy
+#| msgid ""
+#| "Schema rulesets must include either inline rules text or an uploaded file."
+msgid ""
+"Schematron rulesets must store their rules as inline text, not an uploaded "
+"file."
+msgstr ""
+"スキーマルールセットにはインラインのルールテキストまたはアップロードされた"
+"ファイルのいずれかが含まれている必要があります。"
+
+msgid ""
+"This ruleset is referenced by a workflow that has runs (or is locked); it "
+"cannot be deleted in place. Create a new workflow version before removing it."
+msgstr ""
+
 msgid ""
 "This ruleset is referenced by a workflow that has runs (or is locked); its "
 "rules cannot change in place. Create a new ruleset (or a new workflow "
@@ -5655,7 +7194,8 @@ msgstr ""
 msgid "Structured operator used for BASIC assertions."
 msgstr "BASIC アサーションに使用される構造化演算子。"
 
-msgid "Reference to a signal definition when targeting a known signal."
+msgid ""
+"Reference to a step I/O definition when targeting a known input or output."
 msgstr ""
 
 msgid ""
@@ -5682,13 +7222,19 @@ msgstr "アサーション失敗時に表示されるメッセージ。"
 msgid "Message rendered when the assertion passes."
 msgstr "アサーション成功時に表示されるメッセージ。"
 
+msgid ""
+"Internal notes on the rationale behind this assertion. Not shown to data "
+"submitters."
+msgstr ""
+
 msgid "Normalized CEL preview generated from the stored payload."
 msgstr "保存されたペイロードから生成された正規化CELプレビュー。"
 
 msgid "Schema version for `rhs` and `options` payloads."
 msgstr "`rhs`および`options`ペイロードのスキーマバージョン。"
 
-msgid "Provide either a signal target or a custom path (but not both)."
+msgid ""
+"Provide either a step input/output target or a custom path (but not both)."
 msgstr ""
 
 msgid ""
@@ -5823,16 +7369,30 @@ msgid "Owning organization for custom validators (null for system validators)."
 msgstr ""
 "カスタムバリデーターを所有する組織（システムバリデーターの場合はnull）。"
 
-msgid "Version label for this validator (e.g. '2020-12', '1.0')."
-msgstr "このバリデーターのバージョンラベル（例：'2020-12'、'1.0'）。"
+msgid ""
+"Runtime validator type string. Built-in validators use ValidationType "
+"constants, but plugin validators may register additional strings at startup."
+msgstr ""
 
 msgid ""
-"The name of the process that generates output signals from input signals."
+"Positive integer revision for this validator contract. Domain versions such "
+"as EnergyPlus/FMI/JSON Schema versions belong in tags or metadata, not this "
+"field."
+msgstr ""
+
+#, fuzzy
+#| msgid ""
+#| "The name of the process that generates output signals from input signals."
+msgid "The name of the process that generates step outputs from step inputs."
 msgstr "入力シグナルから出力シグナルを生成するプロセスの名前。"
 
+#, fuzzy
+#| msgid ""
+#| "True when the validator includes an intermediate processor that produces "
+#| "output signals."
 msgid ""
 "True when the validator includes an intermediate processor that produces "
-"output signals."
+"step outputs."
 msgstr ""
 "バリデーターが出力シグナルを生成する中間プロセッサーを含む場合にtrueです。"
 
@@ -5865,7 +7425,25 @@ msgstr ""
 "システムバリデーターのリリース状態。DRAFTはバリデーターを非表示にし、"
 "COMING_SOONは無効として表示し、PUBLISHEDは完全に利用可能にします。"
 
-msgid "Allow assertions against data paths not declared as signals."
+msgid ""
+"Whether this validator's runtime config/class is available in the current "
+"deployment. Missing validators remain in the DB for history but cannot "
+"launch."
+msgstr ""
+
+msgid "Operator-facing reason this validator is unavailable, if any."
+msgstr ""
+
+msgid ""
+"Python provider module that last synced this validator from a "
+"ValidatorConfig. Empty means the row is not managed by plugin config "
+"reconciliation."
+msgstr ""
+
+#, fuzzy
+#| msgid "Allow assertions against data paths not declared as signals."
+msgid ""
+"Allow assertions against data paths not declared by step I/O definitions."
 msgstr ""
 "シグナルとして宣言されていないデータパスに対するアサーションを許可します。"
 
@@ -5901,6 +7479,24 @@ msgid ""
 "validators (no backend) stay at TIER_1 by construction."
 msgstr ""
 
+msgid ""
+"The validator plugin that registered this validator is not available in the "
+"current deployment."
+msgstr ""
+
+#, fuzzy
+#| msgid "This validator is not yet available."
+msgid "This validator has been retired."
+msgstr "このバリデーターはまだ利用できません。"
+
+#, fuzzy
+#| msgid "This validator is not yet available."
+msgid "This validator is not available in the current deployment."
+msgstr "このバリデーターはまだ利用できません。"
+
+msgid "Managed backend slug and runtime contract must be declared together."
+msgstr ""
+
 #, python-format
 msgid "'%(value)s' is not a supported submission data format."
 msgstr "'%(value)s' はサポートされている提出データ形式ではありません。"
@@ -5921,6 +7517,17 @@ msgstr "FMUバリデーターを保存する前にFMUアセットを割り当て
 msgid "FMU assets can only be attached to FMU validators."
 msgstr "FMUアセットはFMUバリデーターにのみ添付できます。"
 
+msgid ""
+"Artifacts cannot be promoted to workflow signals. Only CEL/JSON values can "
+"enter the signal namespace."
+msgstr ""
+
+msgid "Artifact ports must use the artifact_ref data type."
+msgstr ""
+
+msgid "Maximum item count cannot be less than minimum count."
+msgstr ""
+
 msgid "Base validation type must match the linked Validator validation_type."
 msgstr ""
 "基本検証タイプはリンクされたバリデーターのvalidation_typeと一致する必要があり"
@@ -5938,6 +7545,11 @@ msgstr ""
 
 msgid "Optional short description of this validation run."
 msgstr "この検証実行の短い説明（任意）。"
+
+msgid ""
+"When this run stopped reading its live workflow definition. Null means "
+"semantic edits to a Mutable workflow remain fenced."
+msgstr ""
 
 msgid "Classification of why the run failed (TIMEOUT, OOM, etc.)."
 msgstr "実行が失敗した理由の分類（タイムアウト、メモリ不足など）。"
@@ -5961,11 +7573,39 @@ msgid ""
 "completion. Covers the stable workflow context and the final run outcome."
 msgstr ""
 
-msgid "Run org must match submission org."
+#, fuzzy
+#| msgid "No validation runs yet for this workflow."
+msgid "Run organization must match workflow."
+msgstr "このワークフローの検証実行はまだありません。"
+
+#, fuzzy
+#| msgid "Project must belong to the same organization."
+msgid "Project must match run organization."
+msgstr "プロジェクトは同じ組織に属している必要があります。"
+
+#, fuzzy
+#| msgid "Set up a new organization."
+msgid "Submission must match run organization."
+msgstr "新しい組織を設定します。"
+
+#, fuzzy
+#| msgid "Step must belong to the run's workflow."
+msgid "Submission must match run workflow."
+msgstr "ステップは実行のワークフローに属している必要があります。"
+
+#, fuzzy
+#| msgid "Run org must match submission org."
+msgid "Run project must match submission project."
 msgstr "実行の組織は提出の組織と一致する必要があります。"
 
 msgid "Optional metadata for reporting (for example exemplar messages)."
 msgstr "レポート用のオプションのメタデータ（例：メッセージの例）。"
+
+msgid "Canonical contract-keyed input values resolved for this step."
+msgstr ""
+
+msgid "Canonical contract-keyed output values produced by this step."
+msgstr ""
 
 msgid "Step must belong to the run's workflow."
 msgstr "ステップは実行のワークフローに属している必要があります。"
@@ -5973,17 +7613,68 @@ msgstr "ステップは実行のワークフローに属している必要があ
 msgid "Must equal WorkflowStep.order."
 msgstr "WorkflowStep.orderと等しくなければなりません。"
 
+msgid ""
+"Exact managed-provider deployment selected before dispatch. Empty only for "
+"historical, local, and self-hosted attempts."
+msgstr ""
+
+msgid ""
+"Secret-free immutable route and capability facts selected with this attempt. "
+"Empty only for historical, local, and self-hosted attempts."
+msgstr ""
+
+msgid "Digest verifier for the per-attempt callback secret."
+msgstr ""
+
+msgid ""
+"URI-free strict input identities and source relationships committed with the "
+"attempt. Never contains callback credentials."
+msgstr ""
+
 msgid "Validation run must match the step run's parent run."
 msgstr "検証実行はステップ実行の親実行と一致する必要があります。"
 
+msgid "Step run that produced this artifact, if step-scoped."
+msgstr ""
+
+msgid "Workflow step that produced this artifact, if step-scoped."
+msgstr ""
+
+msgid "Stable artifact output name used in steps.<step_key>.artifact.*."
+msgstr ""
+
+msgid "Stable item key for collection artifact outputs."
+msgstr ""
+
+msgid "Internal storage URI; never a public signed URL."
+msgstr ""
+
+msgid ""
+"Provider-specific immutable object version recorded by the validator output "
+"envelope."
+msgstr ""
+
 msgid "Artifact org must match run org."
 msgstr "アーティファクトの組織は実行の組織と一致する必要があります。"
+
+#, fuzzy
+#| msgid "User must belong to the same organization."
+msgid "Artifact step run must belong to the same run."
+msgstr "ユーザーは同じ組織に属している必要があります。"
+
+#, fuzzy
+#| msgid "Step must belong to the run's workflow."
+msgid "Artifact workflow step must belong to the run workflow."
+msgstr "ステップは実行のワークフローに属している必要があります。"
 
 msgid "Unique callback identifier from the input envelope."
 msgstr "入力エンベロープからの一意のコールバック識別子。"
 
 msgid "The validation run this callback was for."
 msgstr "このコールバックが対象とした検証実行。"
+
+msgid "The concrete execution that produced this callback."
+msgstr ""
 
 msgid "When this callback was first processed."
 msgstr "このコールバックが最初に処理されたタイミング。"
@@ -5994,10 +7685,12 @@ msgstr "このコールバック受信の処理ステータス。"
 msgid "URI to the output envelope (e.g., gs:// for GCS, s3:// for S3)."
 msgstr "出力エンベロープへのURI（例：GCSの場合 gs://、S3の場合 s3://）。"
 
-msgid "Manifest generated and bytes available"
-msgstr ""
+#, fuzzy
+#| msgid "Project must belong to the same organization."
+msgid "Callback receipt attempt must belong to the same run."
+msgstr "プロジェクトは同じ組織に属している必要があります。"
 
-msgid "Manifest bytes purged; only hash remains"
+msgid "Manifest generated and bytes available"
 msgstr ""
 
 msgid "Manifest generation failed; row records the gap"
@@ -6007,10 +7700,8 @@ msgid "The validation run this manifest documents."
 msgstr ""
 
 msgid ""
-"The validibot.evidence.vN schema string the manifest was produced under. "
-"Verifiers parse the manifest's schema_version field at read time, but "
-"storing it here lets the auditor query for runs on stale schemas without "
-"fetching the bytes."
+"The published $schema URL for the manifest. Storing it here lets the auditor "
+"query for runs on stale schemas without fetching the bytes."
 msgstr ""
 
 msgid ""
@@ -6020,23 +7711,13 @@ msgstr ""
 
 msgid ""
 "SHA-256 of the manifest's canonical-JSON bytes. Empty when availability is "
-"FAILED. Future signed credentials (Phase 4 Session C) cite this hash, so a "
-"re-fetch + re-hash detects tampering."
+"FAILED. Signed credentials cite this hash, so a re-fetch + re-hash detects "
+"tampering."
 msgstr ""
 
 msgid ""
-"Phase 4 Session C: path to a cached export-bundle tarball (manifest + inputs "
-"+ outputs + signature). Empty until the operator triggers an export."
-msgstr ""
-
-msgid ""
-"Workflow.input_retention at the time the manifest was generated. Mirrored "
-"here so retention-sweep code can filter without joining to Workflow."
-msgstr ""
-
-msgid ""
-"Lifecycle state: GENERATED (bytes in storage), PURGED (only hash remains), "
-"or FAILED (generation aborted)."
+"Generation state: GENERATED (bytes in storage) or FAILED (generation "
+"aborted)."
 msgstr ""
 
 msgid ""
@@ -6101,6 +7782,13 @@ msgstr ""
 "ファイル拡張子 '.%(ext)s' は %(type)s には許可されていません。許可されている"
 "拡張子：%(allowed)s。"
 
+#, python-format
+msgid ""
+"Pattern is not a supported regular expression: %(detail)s. For safety, "
+"patterns are matched with RE2, which does not support backreferences or "
+"lookaround."
+msgstr ""
+
 msgid "Must be valid JSON."
 msgstr "有効なJSONである必要があります。"
 
@@ -6132,6 +7820,14 @@ msgstr "base64コンテンツがサイズ制限を超えています。"
 
 msgid "Inline content exceeds size limit."
 msgstr "インラインコンテンツがサイズ制限を超えています。"
+
+#, python-format
+msgid "row numbers: %(rows)s (showing first %(shown)s of %(total)s)"
+msgstr ""
+
+#, python-format
+msgid "row numbers: %(rows)s"
+msgstr ""
 
 #, python-format
 msgid "FMU %(name)s exceeds the maximum size of %(limit)s bytes."
@@ -6185,19 +7881,33 @@ msgstr ""
 msgid "Basic Validator"
 msgstr "基本バリデーター"
 
+#, fuzzy
+#| msgid ""
+#| "The simplest validator. Allows workflow author to add signals and "
+#| "assertions directly without a validator catalog."
 msgid ""
-"The simplest validator. Allows workflow author to add signals and assertions "
-"directly without a validator catalog."
+"The simplest validator. Allows workflow authors to define assertions "
+"directly without a predefined step I/O catalog."
 msgstr ""
 "最もシンプルなバリデーターです。ワークフロー作成者はバリデーターカタログなし"
 "でシグナルとアサーションを直接追加できます。"
 
+#, fuzzy
+#| msgid ""
+#| "\n"
+#| "                <p>Workflow authors can use the 'Basic Validator' as a "
+#| "starting point\n"
+#| "                for creating assertions directly. There are no signals\n"
+#| "                or predefined assertions.\n"
+#| "                Perfect for lightweight checks or ad-hoc rules expressed "
+#| "in CEL.</p>\n"
+#| "                "
 msgid ""
 "\n"
 "                <p>Workflow authors can use the 'Basic Validator' as a "
 "starting point\n"
-"                for creating assertions directly. There are no signals\n"
-"                or predefined assertions.\n"
+"                for creating assertions directly. There are no predefined\n"
+"                step inputs, step outputs, or assertions.\n"
 "                Perfect for lightweight checks or ad-hoc rules expressed in "
 "CEL.</p>\n"
 "                "
@@ -6292,6 +8002,34 @@ msgstr ""
 msgid "Run FMUs and assert against inputs and outputs."
 msgstr "FMUを実行し、入出力に対してアサーションを行います。"
 
+#, fuzzy
+#| msgid ""
+#| "\n"
+#| "                <p>\n"
+#| "                This validator allows a workflow author to write "
+#| "assertions\n"
+#| "                against incoming data.\n"
+#| "                It allows a workflow author to validating incoming data "
+#| "as\n"
+#| "                well as simulation outputs.\n"
+#| "                </p>\n"
+#| "                <p>\n"
+#| "                The validator sends inputs using the Functional Mock-up "
+#| "Interface (FMI)\n"
+#| "                standard to an\n"
+#| "                FMU-based simulation running in an isolated runtime. If "
+#| "the\n"
+#| "                simulation succeeds it\n"
+#| "                gathers outputs and returns them as output signals for "
+#| "further\n"
+#| "                validation, if defined.\n"
+#| "                </p>\n"
+#| "                <p>\n"
+#| "                The workflow author to write assertions against "
+#| "simulation\n"
+#| "                output signals.\n"
+#| "                </p>\n"
+#| "                "
 msgid ""
 "\n"
 "                <p>\n"
@@ -6306,13 +8044,13 @@ msgid ""
 "                standard to an\n"
 "                FMU-based simulation running in an isolated runtime. If the\n"
 "                simulation succeeds it\n"
-"                gathers outputs and returns them as output signals for "
+"                gathers outputs and returns them as output values for "
 "further\n"
 "                validation, if defined.\n"
 "                </p>\n"
 "                <p>\n"
 "                The workflow author to write assertions against simulation\n"
-"                output signals.\n"
+"                output values.\n"
 "                </p>\n"
 "                "
 msgstr ""
@@ -6371,13 +8109,25 @@ msgid ""
 msgstr ""
 "形状、材料、境界条件についてTHERM熱解析ファイル（THMX/THMZ）を検証します。"
 
+#, fuzzy
+#| msgid ""
+#| "\n"
+#| "                <p>Validate LBNL THERM files before submission to NFRC "
+#| "or\n"
+#| "                other certification bodies. Checks geometry closure, "
+#| "material\n"
+#| "                property ranges, boundary condition completeness, and\n"
+#| "                reference integrity. Extracts signals for downstream\n"
+#| "                compliance assertions (e.g. NFRC 100 winter conditions).</"
+#| "p>\n"
+#| "                "
 msgid ""
 "\n"
 "                <p>Validate LBNL THERM files before submission to NFRC or\n"
 "                other certification bodies. Checks geometry closure, "
 "material\n"
 "                property ranges, boundary condition completeness, and\n"
-"                reference integrity. Extracts signals for downstream\n"
+"                reference integrity. Extracts output values for downstream\n"
 "                compliance assertions (e.g. NFRC 100 winter conditions).</"
 "p>\n"
 "                "
@@ -6442,6 +8192,11 @@ msgstr ""
 msgid "Invalid JSON payload"
 msgstr "無効なJSONペイロード"
 
+#, python-format
+msgid ""
+"Schema references an external resource, which is not permitted: %(detail)s"
+msgstr ""
+
 msgid "Ruleset must provide schema text via rules_text or rules_file."
 msgstr ""
 "ルールセットはrules_textまたはrules_fileでスキーマテキストを提供する必要があ"
@@ -6450,6 +8205,41 @@ msgstr ""
 msgid "Unsupported schema type; expected dict or JSON string."
 msgstr ""
 "サポートされていないスキーマタイプです。dictまたはJSON文字列が期待されます。"
+
+msgid "Grouped property outputs"
+msgstr ""
+
+msgid "Single property outputs"
+msgstr ""
+
+#, python-format
+msgid ""
+"Findings were truncated: %(count)d additional findings were suppressed by "
+"the findings cap. The counts above reflect the full totals."
+msgstr ""
+
+msgid ""
+"The Schematron engine timed out before completing. This says nothing about "
+"whether your document satisfies the rules."
+msgstr ""
+
+msgid ""
+"This step's Schematron rules failed to compile, so the submission was not "
+"checked. The workflow author needs to fix the uploaded rules."
+msgstr ""
+
+#, fuzzy
+#| msgid ""
+#| "Validation backend is not available. Check your deployment configuration."
+msgid ""
+"The Schematron validation backend is not available in this deployment, so "
+"the rules were not run."
+msgstr "検証バックエンドを利用できません。デプロイ設定を確認してください。"
+
+msgid ""
+"The Schematron engine could not run the rules. This says nothing about "
+"whether your document satisfies the rules."
+msgstr ""
 
 msgid "None (fastest; skips subclass reasoning)"
 msgstr ""
@@ -6558,11 +8348,90 @@ msgstr ""
 msgid "Inline text could not be parsed: %(err)s"
 msgstr ""
 
-msgid "Failed to parse submission."
+#, fuzzy
+#| msgid "Name of User"
+msgid "Number of rows"
+msgstr "ユーザー名"
+
+msgid "Number of columns"
 msgstr ""
 
-msgid "SHACL engine error."
+msgid "Column names"
 msgstr ""
+
+msgid "Header row present"
+msgstr ""
+
+msgid "File size (bytes)"
+msgstr ""
+
+#, fuzzy
+#| msgid "Signal name"
+msgid "Filename"
+msgstr "シグナル名"
+
+msgid "Foreign keys are not enforced"
+msgstr ""
+
+msgid ""
+"Your schema declares a foreignKeys relationship. A foreign key asserts that "
+"a column's values exist in another table, but a Tabular step validates one "
+"uploaded file on its own and cannot see other tables — so it cannot be "
+"checked. The keys are kept in your saved schema for portability."
+msgstr ""
+
+msgid "Unnamed field"
+msgstr ""
+
+msgid "Unsupported field types become Text"
+msgstr ""
+
+msgid ""
+"V1 supports Text, Integer, Number, Boolean, Date, and Date-time. These "
+"fields declare a Frictionless type outside that set, so they import as Text: "
+"their values are still checked as text (required, length, pattern, enum), "
+"but not as the original type — e.g. a 'year' is not range-checked as a year."
+msgstr ""
+
+msgid "Locale number options are ignored"
+msgstr ""
+
+msgid ""
+"These number fields set locale options (decimalChar, groupChar, or "
+"bareNumber). V1 parses numbers one fixed, locale-free way — '.' as the "
+"decimal point and no thousands separators — so a file validates identically "
+"on every machine. The options are kept but not applied, so a value like "
+"'1.234,56' will not parse as a number."
+msgstr ""
+
+msgid "Field formats are not enforced"
+msgstr ""
+
+msgid ""
+"These fields declare a Frictionless 'format' (such as email, uuid, or a date "
+"pattern). The V1 editor does not enforce format refinements — to require a "
+"shape, add a regex Pattern on a Text column. Dates and date-times are parsed "
+"as ISO-8601 regardless of any declared format. The keyword is kept in your "
+"saved schema."
+msgstr ""
+
+msgid "Unknown constraints are not enforced"
+msgstr ""
+
+msgid ""
+"V1 enforces these constraints: required, unique, minimum/maximum, minLength/"
+"maxLength, pattern, and enum. The listed keys are something else (a non-"
+"standard or newer keyword), so they are kept in your saved schema but have "
+"no effect on validation."
+msgstr ""
+
+#, fuzzy
+#| msgid "Ruleset must provide schema text via rules_text or rules_file."
+msgid ""
+"Tabular ruleset must provide a Table Schema via rules_text or rules_file."
+msgstr ""
+"ルールセットはrules_textまたはrules_fileでスキーマテキストを提供する必要があ"
+"ります。"
 
 msgid "This validator only accepts XML submissions."
 msgstr "このバリデーターはXML提出物のみを受け付けます。"
@@ -6595,6 +8464,9 @@ msgstr ""
 
 msgid "XML validation requires lxml: "
 msgstr "XML検証にはlxmlが必要です："
+
+msgid "External schema resource resolution is not allowed: "
+msgstr ""
 
 msgid "Unsupported XML schema type: "
 msgstr "サポートされていないXMLスキーマタイプ："
@@ -6635,8 +8507,12 @@ msgstr "カスタムの入力、出力、アサーションを持つバリデー
 msgid "Simulation-based"
 msgstr "シミュレーションベース"
 
+#, fuzzy
+#| msgid ""
+#| "Upload an FMU to auto-discover input and output signals and create "
+#| "default assertions."
 msgid ""
-"Upload an FMU to auto-discover input and output signals and create default "
+"Upload an FMU to auto-discover input and step outputs and create default "
 "assertions."
 msgstr ""
 "FMUをアップロードして入出力シグナルを自動検出し、デフォルトアサーションを作成"
@@ -6664,8 +8540,10 @@ msgstr "「%(name)s」を表示"
 msgid "Edit “%(name)s”"
 msgstr "「%(name)s」を編集"
 
-msgid "Edit Input Signal"
-msgstr "入力シグナルを編集"
+#, fuzzy
+#| msgid "Edit step details"
+msgid "Edit Step Input"
+msgstr "ステップの詳細を編集"
 
 msgid "You do not have permission to manage resource files."
 msgstr "リソースファイルを管理する権限がありません。"
@@ -6704,17 +8582,30 @@ msgstr "デフォルトアサーションを削除しました。"
 msgid "Run #%(pk)s"
 msgstr "実行 #%(pk)s"
 
+msgid "Artifact bytes are no longer retained."
+msgstr ""
+
+#, fuzzy
+#| msgid "Generate new key"
+msgid "Generated file"
+msgstr "新しいキーを生成"
+
+#, fuzzy
+#| msgid "No validator types are available yet."
+msgid "Artifact bytes are not available."
+msgstr "利用可能なバリデータータイプがまだありません。"
+
 msgid "No credential issued for this run."
 msgstr ""
 
-msgid "Signal created."
-msgstr "シグナルを作成しました。"
+msgid "Step input or output created."
+msgstr ""
 
-msgid "Signal updated."
-msgstr "シグナルを更新しました。"
+msgid "Step input or output updated."
+msgstr ""
 
-msgid "Signal deleted."
-msgstr "シグナルを削除しました。"
+msgid "Step input or output deleted."
+msgstr ""
 
 msgid "Create FMU validator"
 msgstr "FMUバリデーターを作成"
@@ -6814,9 +8705,6 @@ msgstr "失敗時も続行"
 msgid "Fail fast"
 msgstr "即時失敗"
 
-msgid "Manual"
-msgstr "手動"
-
 msgid "Schedule"
 msgstr "スケジュール"
 
@@ -6824,6 +8712,9 @@ msgid "Author pays (plan quota)"
 msgstr ""
 
 msgid "Agent pays via x402 micropayment"
+msgstr ""
+
+msgid "Private — only you and people you invite"
 msgstr ""
 
 msgid "Workflow has no steps to execute"
@@ -6838,7 +8729,17 @@ msgstr "無効なリクエストペイロード"
 msgid "Workflow cannot accept the submitted file type"
 msgstr "ワークフローは提出されたファイルタイプを受け付けられません"
 
+#, fuzzy
+#| msgid "This validator is not yet available."
+msgid "A workflow validator is unavailable"
+msgstr "このバリデーターはまだ利用できません。"
+
 msgid "You do not have permission to run this workflow"
+msgstr "このワークフローを実行する権限がありません"
+
+#, fuzzy
+#| msgid "You do not have permission to run this workflow"
+msgid "Your organization can't run this workflow right now"
 msgstr "このワークフローを実行する権限がありません"
 
 #, python-format
@@ -7182,9 +9083,6 @@ msgstr ""
 msgid "Input contract mode"
 msgstr ""
 
-msgid "None"
-msgstr ""
-
 msgid "Pydantic"
 msgstr ""
 
@@ -7265,9 +9163,9 @@ msgstr ""
 "的で常に保持されます。"
 
 msgid ""
-"Controls how long validation outputs (results, artifacts, findings) are kept "
-"after the run completes. Users need time to review results, so immediate "
-"deletion is not an option."
+"Controls how long validation outputs (results, artifacts, findings, and step "
+"values) are kept after the run completes. The default queues deletion "
+"immediately; the permanent evidence receipt remains."
 msgstr ""
 
 msgid "Workflow active"
@@ -7286,16 +9184,19 @@ msgstr "メインイメージ"
 msgid "Optional image shown on the workflow info page."
 msgstr "ワークフロー情報ページに表示されるオプション画像。"
 
-msgid "History policy"
+msgid ""
+"This workflow is locked, so its editing policy is fixed for this version. "
+"Create a new workflow version to use a different policy."
 msgstr ""
 
 msgid ""
-"Choose how this workflow treats edits after validation runs exist. Versioned "
-"history is recommended: semantic edits create a new workflow version so old "
-"runs remain tied to the definition that produced them. Mutable history "
-"allows in-place edits for faster iteration, but historical run results may "
-"not be reproducible against the current workflow definition. After runs "
-"exist, change history policy by creating a new workflow version."
+"This workflow has validation runs, so its editing policy is fixed for this "
+"version. Create a new workflow version to use a different policy."
+msgstr ""
+
+msgid ""
+"Versioned is recommended. Choose Mutable explicitly only for experiments "
+"where in-place editing matters more than reproducible workflow history."
 msgstr ""
 
 msgid ".json, .jsonld"
@@ -7339,19 +9240,20 @@ msgstr ""
 msgid "e.g. Your model passed all validation checks!"
 msgstr "例：モデルがすべての検証チェックに合格しました！"
 
-msgid "Agent access enabled"
-msgstr ""
+#, fuzzy
+#| msgid "No validation runs yet for this workflow."
+msgid "Who can run this workflow"
+msgstr "このワークフローの検証実行はまだありません。"
 
-msgid "Expose this workflow for agent access via MCP."
-msgstr ""
-
-msgid "Public discovery (cross-org catalog)"
+msgid ""
+"Who, by Validibot identity, may run this workflow for free. Limited to your "
+"organization's ceiling. This is independent of paid anonymous (x402) access "
+"below."
 msgstr ""
 
 msgid ""
-"List this workflow on the public agent catalog. External agents from any "
-"organization can discover and run it via x402 micropayments. Enabling this "
-"automatically sets billing to 'Agent pays via x402'."
+"Allow authenticated AI agents to run this workflow via MCP, on behalf of a "
+"user who already has identity access above. Billed to that user's plan quota."
 msgstr ""
 
 msgid "Agent billing mode"
@@ -7390,8 +9292,10 @@ msgid "Submission settings"
 msgstr ""
 
 msgid ""
-"Define which file types the workflow accepts and how submission metadata "
-"should behave."
+"Define which file types the workflow accepts and how long payload data "
+"remains available. Validibot keeps a permanent evidence receipt with hashes "
+"and run provenance, but not the submitted contents or output files "
+"themselves."
 msgstr ""
 
 msgid "Input contract"
@@ -7427,13 +9331,21 @@ msgid ""
 "team."
 msgstr ""
 
-msgid "Agent access"
+msgid ""
+"Enabling paid anonymous access (x402) makes the workflow callable by ANYONE "
+"on the internet who pays the per-call price, regardless of the visibility "
+"setting above."
 msgstr ""
 
 msgid ""
-"Control how AI agents discover and invoke this workflow via MCP. Only "
-"visible to superusers."
+"Choose who can run this workflow by Validibot identity, and whether AI "
+"agents may invoke it. Options are limited by your organization's ceilings."
 msgstr ""
+
+#, fuzzy
+#| msgid "Workflow must belong to the same organization."
+msgid "A workflow must belong to a project."
+msgstr "ワークフローは同じ組織に属している必要があります。"
 
 msgid "Select a project from your current organization."
 msgstr "現在の組織からプロジェクトを選択してください。"
@@ -7454,9 +9366,9 @@ msgstr ""
 
 #, python-format
 msgid ""
-"Shortening %(field)s would purge data sooner than past runs were promised. "
-"You can extend retention in place — to shorten it, create a new version of "
-"the workflow."
+"Extending %(field)s would keep future run data longer than this published "
+"workflow promised. You can shorten retention in place — to extend it, create "
+"a new workflow version."
 msgstr ""
 
 #, python-format
@@ -7466,17 +9378,23 @@ msgid ""
 msgstr ""
 
 msgid ""
-"This workflow already has validation history or is locked. Create a new "
-"workflow version to change its history policy."
+"This workflow gained validation history or was locked while you were "
+"editing. Its editing policy is now fixed for this version. Create a new "
+"workflow version to use a different policy."
 msgstr ""
 
-msgid "Public discovery requires agent access to be enabled first."
+msgid "That visibility exceeds the maximum allowed by your organization."
 msgstr ""
 
 msgid ""
 "Input retention must be 'Do not store' when agents pay via x402 "
 "micropayments — x402 is anonymous per-call access and storing submissions is "
 "incompatible with its privacy model."
+msgstr ""
+
+msgid ""
+"Output retention must be 'Do not retain' when agents pay via x402 "
+"micropayments."
 msgstr ""
 
 msgid "Choose JSON Schema or Pydantic before saving an input contract."
@@ -7545,6 +9463,14 @@ msgstr ""
 msgid "Required file type"
 msgstr ""
 
+#, python-format
+msgid "Upload the %(label)s used by %(step)s."
+msgstr ""
+
+#, python-format
+msgid "Accepted extensions: %(extensions)s."
+msgstr ""
+
 msgid "Provide inline content or upload a file, not both."
 msgstr ""
 
@@ -7558,6 +9484,11 @@ msgstr ""
 msgid ""
 "File extension '.%(ext)s' is not allowed. Accepted extensions: %(allowed)s"
 msgstr ""
+
+#, fuzzy, python-format
+#| msgid "Executor access required to run this workflow"
+msgid "%(label)s is required for this workflow."
+msgstr "このワークフローを実行するには実行者アクセスが必要です"
 
 msgid "Metadata must be valid JSON."
 msgstr ""
@@ -7592,6 +9523,17 @@ msgid ""
 "When enabled, all assertions in this step will return a success message when "
 "they pass. If an assertion has no custom success message, a default message "
 "will be shown."
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit profile"
+msgid "Execution profile"
+msgstr "プロフィールを編集"
+
+msgid ""
+"Fast response is optimized for short, interactive checks. Long-running "
+"reserves the full validator time budget for large files or simulations. "
+"Validibot chooses the underlying compute."
 msgstr ""
 
 msgid "Note to self..."
@@ -7643,7 +9585,9 @@ msgstr ""
 msgid "Upload schema"
 msgstr ""
 
-msgid "Leave blank to keep the existing schema. Paste new JSON to replace it."
+msgid ""
+"The step's current schema. Edit it or paste new JSON to replace it; leaving "
+"the field blank also keeps the saved schema."
 msgstr ""
 
 msgid "Paste your JSON schema or upload a file below."
@@ -7670,7 +9614,9 @@ msgstr ""
 msgid "Schema type"
 msgstr ""
 
-msgid "Leave blank to keep the existing schema. Paste new XML to replace it."
+msgid ""
+"The step's current schema. Edit it or paste new XML to replace it; leaving "
+"the field blank also keeps the saved schema."
 msgstr ""
 
 msgid "Paste your XML schema or upload a file below."
@@ -7781,8 +9727,29 @@ msgid ""
 "and have submitters supply only the parameter values as JSON."
 msgstr ""
 
+#, fuzzy
+#| msgid "Add file"
+msgid "Model file"
+msgstr "ファイルを追加"
+
+msgid "Choose where the EnergyPlus model file comes from."
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit step details"
+msgid "Earlier step output"
+msgstr "ステップの詳細を編集"
+
 msgid "Weather file"
 msgstr ""
+
+msgid "Choose where the EnergyPlus weather file comes from."
+msgstr ""
+
+#, fuzzy
+#| msgid "Workflow step"
+msgid "Workflow resource"
+msgstr "ワークフローステップ"
 
 msgid ""
 "Weather file (EPW) used for EnergyPlus simulations. This determines the "
@@ -7796,6 +9763,32 @@ msgid ""
 "Include EnergyPlus simulation warnings in the results shown to submitters. "
 "Uncheck to show only errors. Warnings can be noisy for submitters who don't "
 "need to debug the model."
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit profile"
+msgid "Review profile"
+msgstr "プロフィールを編集"
+
+#, fuzzy
+#| msgid "Show EnergyPlus warnings"
+msgid "Standard EnergyPlus review"
+msgstr "EnergyPlus の警告を表示"
+
+msgid "LEED review readiness"
+msgstr ""
+
+msgid ""
+"Selects required evidence and issue severity. It does not change the "
+"EnergyPlus simulation engine or calculate a LEED compliance EUI."
+msgstr ""
+
+msgid "Timesteps per hour"
+msgstr ""
+
+msgid ""
+"Applied to a private working copy of the model; the submitted file is never "
+"modified."
 msgstr ""
 
 msgid "Initial IDF checks"
@@ -7825,6 +9818,30 @@ msgstr ""
 
 msgid "— Select a weather file —"
 msgstr ""
+
+#, fuzzy
+#| msgid "Submitter"
+msgid "Submitted file"
+msgstr "送信者"
+
+msgid "— Select generated file —"
+msgstr ""
+
+msgid "Choose a weather file for a full EnergyPlus simulation."
+msgstr ""
+
+msgid "Choose an allowed file source."
+msgstr ""
+
+#, fuzzy
+#| msgid "Choose specific workflows to share."
+msgid "Choose the workflow resource for this weather file."
+msgstr "共有する特定のワークフローを選択してください。"
+
+#, fuzzy
+#| msgid "Choose the type of operation to run in this step."
+msgid "Choose the generated file from an earlier step."
+msgstr "このステップで実行する操作のタイプを選択してください。"
 
 msgid "Human-readable label"
 msgstr ""
@@ -7866,6 +9883,422 @@ msgid "Limit selectors to 10 paths."
 msgstr ""
 
 msgid "Add at least one policy rule."
+msgstr ""
+
+#, fuzzy
+#| msgid "Integration"
+msgid "Integer"
+msgstr "インテグレーション"
+
+#, fuzzy
+#| msgid "Date/Time"
+msgid "Date"
+msgstr "日付/時刻"
+
+#, fuzzy
+#| msgid "Date/Time"
+msgid "Date and time"
+msgstr "日付/時刻"
+
+#, fuzzy
+#| msgid "Submission name"
+msgid "Column name"
+msgstr "提出物名"
+
+msgid "For example, decimalLatitude"
+msgstr ""
+
+msgid "Data type"
+msgstr ""
+
+msgid "The column must exist and its cells cannot be empty."
+msgstr ""
+
+#, fuzzy
+#| msgid "Min value"
+msgid "Unique values"
+msgstr "最小値"
+
+msgid "Repeated non-empty values fail validation."
+msgstr ""
+
+#, fuzzy
+#| msgid "Primary"
+msgid "Primary key"
+msgstr "プライマリ"
+
+msgid "Select multiple columns to define a composite key."
+msgstr ""
+
+msgid "Required when another column exists"
+msgstr ""
+
+msgid ""
+"Require this column only when the selected companion column is present in "
+"the submitted file."
+msgstr ""
+
+#, fuzzy
+#| msgid "When (optional)"
+msgid "Never (optional column)"
+msgstr "条件（任意）"
+
+msgid "Minimum"
+msgstr ""
+
+msgid "Maximum"
+msgstr ""
+
+msgid "Minimum length"
+msgstr ""
+
+msgid "Maximum length"
+msgstr ""
+
+msgid "Pattern"
+msgstr ""
+
+msgid "A regular expression matched against non-empty values."
+msgstr ""
+
+#, fuzzy
+#| msgid "Enter one value per line"
+msgid "Enter one allowed value per line."
+msgstr "1 行に 1 つずつ値を入力してください"
+
+msgid ""
+"present\n"
+"absent"
+msgstr ""
+
+msgid "Numeric limits are only available for number columns."
+msgstr ""
+
+msgid "Maximum must be greater than minimum."
+msgstr ""
+
+msgid "Length and pattern rules are only available for text columns."
+msgstr ""
+
+msgid "Maximum length must be greater than minimum length."
+msgstr ""
+
+msgid ""
+"A column that is always required does not need a conditional requirement."
+msgstr ""
+
+#, python-format
+msgid "Allowed values must be unique. Duplicates: %(values)s"
+msgstr ""
+
+#, python-format
+msgid ""
+"Column names must be unique, including letter case: %(first)s and %(second)s "
+"conflict."
+msgstr ""
+
+msgid "A column cannot make itself conditionally required."
+msgstr ""
+
+msgid "Select a companion column that is declared in this schema."
+msgstr ""
+
+msgid "Leave on auto-detect unless the file uses an unusual separator."
+msgstr ""
+
+msgid "File has a header row"
+msgstr ""
+
+msgid "Table Schema (Frictionless descriptor)"
+msgstr ""
+
+msgid ""
+"Paste a Frictionless Table Schema descriptor to populate the column editor."
+msgstr ""
+
+msgid "Infer from a delimited text sample"
+msgstr ""
+
+msgid ""
+"Upload a small comma-, tab-, semicolon-, or pipe-delimited text file to "
+"infer column names and types. The filename extension does not matter."
+msgstr ""
+
+msgid "Upload a Table Schema descriptor"
+msgstr ""
+
+msgid "Upload a JSON descriptor instead of pasting it."
+msgstr ""
+
+#, python-format
+msgid "“%(label)s” references column(s) no longer in the schema: %(cols)s"
+msgstr ""
+
+#, python-format
+msgid "“%(label)s” uses sum on the now-non-numeric column “%(col)s”."
+msgstr ""
+
+#, python-format
+msgid ""
+"These column changes would break existing assertions — update or remove them "
+"first: %(problems)s"
+msgstr ""
+
+msgid ""
+"Paste a descriptor, upload a descriptor, or upload a sample file; choose one "
+"source."
+msgstr ""
+
+msgid "Sample files must be 5 MB or smaller."
+msgstr ""
+
+msgid "Review the highlighted column settings."
+msgstr ""
+
+#, fuzzy, python-format
+#| msgid "Invalid regex: %(error)s"
+msgid "Invalid column schema: %(err)s"
+msgstr "無効な正規表現：%(error)s"
+
+msgid "Paste a Table Schema descriptor or upload a sample to infer one."
+msgstr ""
+
+msgid "The column editor state is invalid. Reload the page and try again."
+msgstr ""
+
+#, python-format
+msgid "Descriptor is not valid JSON: %(err)s"
+msgstr ""
+
+#, fuzzy, python-format
+#| msgid "Invalid regex: %(error)s"
+msgid "Invalid Table Schema: %(err)s"
+msgstr "無効な正規表現：%(error)s"
+
+msgid "Descriptor files must be 2 MB or smaller."
+msgstr ""
+
+msgid "Descriptor files must be UTF-8 JSON."
+msgstr ""
+
+#, python-format
+msgid "Could not read the sample: %(err)s"
+msgstr ""
+
+msgid "Schematron rules"
+msgstr ""
+
+msgid "Upload Schematron (.sch)"
+msgstr ""
+
+msgid "Rule documentation URL template"
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"Optional. A URL template with {rule_id} for deep-linking findings to "
+"published rule docs, e.g. https://docs.peppol.eu/poacc/billing/3.0/rules/"
+"#{rule_id}"
+msgstr ""
+
+msgid ""
+"The step's current rules. Edit them or paste new rules to replace them; "
+"leaving the field blank also keeps the saved rules."
+msgstr ""
+
+#, python-format
+msgid "Currently assigned: %(name)s. Upload a new .sch file to replace it."
+msgstr ""
+
+msgid "Paste your Schematron rules or upload a .sch file below."
+msgstr ""
+
+#, python-brace-format
+msgid "Use only {rule_id} as the placeholder in the URL template."
+msgstr ""
+
+#, python-brace-format
+msgid ""
+"The rule documentation URL must be an absolute http(s) URL, e.g. https://"
+"docs.example.org/rules/#{rule_id}."
+msgstr ""
+
+msgid "Paste Schematron rules or upload a .sch file."
+msgstr ""
+
+msgid "Uploaded Schematron must be UTF-8 encoded."
+msgstr ""
+
+#, fuzzy
+#| msgid "Submission Created"
+msgid "Submission structure"
+msgstr "提出物が作成されました"
+
+msgid "Single property report (.xls, .xlsx, or .xml)"
+msgstr ""
+
+msgid "ZIP collection of property reports"
+msgstr ""
+
+msgid ""
+"Each report must represent one property or grouped parent and one reporting "
+"cycle."
+msgstr ""
+
+msgid ""
+"Optional target. In ZIP mode it is the default for every property unless a "
+"matched EBL row provides its own EUIt. The configured value is retained as a "
+"declared, traceable validator input."
+msgstr ""
+
+msgid "Require Weather Normalized Site EUI to meet the resolved EUIt"
+msgstr ""
+
+msgid ""
+"When enabled, a property fails this built-in check when WNEUI is greater "
+"than its EBL or default EUIt. Leave it off to express custom tolerance in "
+"CEL."
+msgstr ""
+
+msgid "Near-target tolerance (%)"
+msgstr ""
+
+msgid ""
+"Defines the informational near_euit output; it does not change pass/fail "
+"unless an assertion uses that output."
+msgstr ""
+
+msgid "Require a complete reporting period"
+msgstr ""
+
+msgid ""
+"Require both period dates and at least the configured number of consecutive "
+"calendar months."
+msgstr ""
+
+msgid "Minimum reporting period (months)"
+msgstr ""
+
+msgid "Maximum reporting-period age (months)"
+msgstr ""
+
+msgid ""
+"Optional freshness check measured from the validation run date. Set this to "
+"the limit required by the program represented by the workflow."
+msgstr ""
+
+msgid "Require benchmark-ready core metrics"
+msgstr ""
+
+msgid "Require Washington Form C-ready metrics"
+msgstr ""
+
+msgid ""
+"Checks the Z6.3 bundle: national median Site EUI; Site Energy and Site EUI; "
+"weather-normalized Site Energy, Site EUI, electricity and natural-gas use/"
+"intensity; onsite renewable and grid electricity metrics; natural-gas use; "
+"renewable percentage; HDD, CDD, weather station name, and weather station "
+"ID. Fuel or renewable fields may explicitly report N/A, but they cannot be "
+"omitted from the export."
+msgstr ""
+
+msgid "Require Weather Normalized Site EUI"
+msgstr ""
+
+msgid "Require the State of Washington Clean Buildings Standard ID"
+msgstr ""
+
+msgid ""
+"Requires the named Portfolio Manager Standard ID to be present; it does not "
+"ask for one program-wide literal ID."
+msgstr ""
+
+msgid "Require an ENERGY STAR score"
+msgstr ""
+
+msgid "Use only for property types eligible for an ENERGY STAR score."
+msgstr ""
+
+msgid "Allow"
+msgstr ""
+
+msgid "Energy meter has less than 12 full calendar months"
+msgstr ""
+
+msgid "Energy meter has gaps"
+msgstr ""
+
+msgid "Energy meter has overlaps"
+msgstr ""
+
+msgid "No energy meters selected for metrics"
+msgstr ""
+
+msgid "Energy meter has a single entry longer than 65 days"
+msgstr ""
+
+msgid "Estimated energy values"
+msgstr ""
+
+msgid "Other included Portfolio Manager Alert Metrics"
+msgstr ""
+
+msgid "Expected Buildings List (JSON)"
+msgstr ""
+
+msgid ""
+"Optional in ZIP mode. Upload the versioned EBL JSON roster used for identity "
+"reconciliation and per-building EUIt overrides."
+msgstr ""
+
+msgid "Remove the currently assigned Expected Buildings List"
+msgstr ""
+
+msgid "Maximum reports in one ZIP"
+msgstr ""
+
+msgid "Maximum size of each report (MB)"
+msgstr ""
+
+msgid "Maximum total uncompressed size (MB)"
+msgstr ""
+
+#, python-format
+msgid ""
+" Identity: %(identity)s; %(entries)s buildings; %(targets)s per-building "
+"EUIt values."
+msgstr ""
+
+#, python-format
+msgid ""
+"Currently assigned: %(name)s.%(summary)s Upload a new JSON file to replace "
+"it."
+msgstr ""
+
+msgid "Expected Buildings List files must use the .json extension."
+msgstr ""
+
+msgid "Expected Buildings List files must be 5 MB or smaller."
+msgstr ""
+
+#, fuzzy, python-format
+#| msgid "Invalid XML submission: %(error)s"
+msgid "Invalid Expected Buildings List: %(error)s"
+msgstr "無効なXML提出物：%(error)s"
+
+msgid "An Expected Buildings List is available only in ZIP mode."
+msgstr ""
+
+msgid "Upload a replacement or remove the current EBL, not both."
+msgstr ""
+
+msgid "Single property report"
+msgstr ""
+
+#, python-format
+msgid ""
+"This step cannot switch to %(target)s while existing assertions use "
+"%(group)s: %(outputs)s. Update or remove those assertions first."
 msgstr ""
 
 msgid "Make info page public"
@@ -7917,8 +10350,10 @@ msgstr ""
 msgid "Enter the exact workflow UUID: %(uuid)s"
 msgstr ""
 
-msgid "Human-readable display name for this signal."
-msgstr ""
+#, fuzzy
+#| msgid "Human-readable label shown to submitters."
+msgid "Human-readable display name for this step input."
+msgstr "送信者に表示される人間が読めるラベルです。"
 
 msgid "Unit"
 msgstr ""
@@ -7937,17 +10372,17 @@ msgstr ""
 
 msgid ""
 "Fallback value when the source path resolves to nothing. Leave empty to make "
-"the signal required."
+"the step input required."
 msgstr ""
 
 msgid ""
-"If checked, validation fails when this signal is missing. Cannot be used "
+"If checked, validation fails when this step input is missing. Cannot be used "
 "together with a default value."
 msgstr ""
 
 msgid ""
-"A signal cannot be both required and have a default value. Either remove the "
-"default or uncheck Required."
+"A step input cannot be both required and have a default value. Either remove "
+"the default or uncheck Required."
 msgstr ""
 
 msgid "Error — fail the run"
@@ -7980,13 +10415,29 @@ msgstr ""
 msgid "Fallback value as JSON (e.g. 0, \"none\", null)."
 msgstr ""
 
-msgid "Data type"
-msgstr ""
-
 msgid "Expected type. Leave as Auto to infer from data."
 msgstr ""
 
 msgid "Default value must be valid JSON (e.g. 42, \"hello\", null)."
+msgstr ""
+
+msgid "Constant name"
+msgstr ""
+
+#, fuzzy
+#| msgid "CEL expression is too long."
+msgid "Used in CEL expressions as c.name."
+msgstr "CEL式が長すぎます。"
+
+msgid "The value's type. List/Object are entered as JSON."
+msgstr ""
+
+msgid ""
+"For Number type \"0.40\"; String takes the text literally; List/Object are "
+"JSON (e.g. [\"EUR\", \"GBP\"])."
+msgstr ""
+
+msgid "Optional note (e.g. 'agreed €/kWh per the 2026 contract')."
 msgstr ""
 
 msgid "Create dummy workflows with random data for demos."
@@ -8009,14 +10460,34 @@ msgstr "ステップのアクション"
 msgid "CEL only"
 msgstr ""
 
+msgid "Dataset metadata"
+msgstr ""
+
 msgid "Promoted step input"
 msgstr ""
 
 msgid "Promoted step output"
 msgstr ""
 
-msgid "Assertions"
-msgstr ""
+#, fuzzy
+#| msgid "Submission that failed to purge."
+msgid "Submission metadata — add your key"
+msgstr "削除に失敗した提出物。"
+
+#, fuzzy
+#| msgid "No description"
+msgid "Submission description"
+msgstr "説明なし"
+
+#, fuzzy
+#| msgid "Signal name"
+msgid "Original filename"
+msgstr "シグナル名"
+
+#, fuzzy
+#| msgid "Upload"
+msgid "Uploaded at"
+msgstr "アップロード"
 
 msgid "Workflow version is required. Use a positive integer (e.g., 1)."
 msgstr ""
@@ -8100,19 +10571,24 @@ msgstr ""
 msgid "Allows non-logged in users to see the workflow's info page."
 msgstr ""
 
-msgid "If true, any authenticated user can launch this workflow."
+msgid ""
+"Who, by Validibot identity, may run this workflow for free: PRIVATE (you and "
+"people you invite — the default), ORG (your organization), or ALL_USERS (any "
+"Validibot user). Capped by the organization ceiling. Independent of x402 "
+"paid access."
 msgstr ""
 
 msgid ""
-"Master switch for all agent access via MCP. When enabled, authenticated "
-"agents in your organization can discover and invoke this workflow. For "
-"public cross-org discovery, also enable 'Public discovery'."
+"Allow authenticated AI agents to run this workflow via MCP, on behalf of a "
+"user who already has identity access through 'workflow_visibility'. Billed "
+"to that user's plan quota. Independent of x402 paid access."
 msgstr ""
 
 msgid ""
-"List this workflow on the cross-org public catalog so agents outside your "
-"organization can discover and run it via x402 micropayments. Requires 'Agent "
-"access enabled' and automatically sets billing to 'Agent pays via x402'."
+"Publish this workflow for PAID, ANONYMOUS access via x402: anyone on the "
+"internet who pays the per-call price can run it, regardless of "
+"'workflow_visibility'. Automatically bills via x402 and requires a price and "
+"'Do not store' retention."
 msgstr ""
 
 msgid ""
@@ -8136,14 +10612,15 @@ msgstr ""
 
 msgid ""
 "How long to keep user-submitted input files after validation completes. "
-"DO_NOT_STORE deletes the submission immediately after successful completion. "
+"DO_NOT_STORE deletes the submission immediately after any terminal outcome. "
 "The submission record is preserved for audit."
 msgstr ""
 
 msgid ""
 "How long to keep validation outputs (results, artifacts, findings) after "
-"validation completes. Users need time to download results, so immediate "
-"deletion is not an option."
+"validation reaches a terminal state. DO_NOT_STORE queues detailed output "
+"deletion immediately while preserving the minimal permanent evidence receipt "
+"and aggregate run record."
 msgstr ""
 
 msgid ""
@@ -8184,6 +10661,15 @@ msgid ""
 msgstr ""
 
 msgid ""
+"Output retention must be 'Do not retain' when agents pay via x402 "
+"micropayments — anonymous per-call access must not leave detailed results "
+"behind."
+msgstr ""
+
+msgid " · plus anyone who pays via x402"
+msgstr ""
+
+msgid ""
 "Optional title to show on the public info page. If blank, the Workflow name "
 "will be used."
 msgstr ""
@@ -8194,7 +10680,7 @@ msgstr ""
 msgid ""
 "Stable identifier for this step within the workflow. Used to reference "
 "output data from this step in downstream assertions (e.g., "
-"steps.simulation.signals.site_eui_kwh_m2). Auto-generated from the step name "
+"steps.simulation.output.site_eui_kwh_m2). Auto-generated from the step name "
 "on creation. Immutable once set."
 msgstr ""
 
@@ -8225,6 +10711,16 @@ msgstr ""
 
 msgid "The signed credential step must come after all blocking action steps."
 msgstr ""
+
+#, fuzzy
+#| msgid "User must belong to the same organization."
+msgid "Custom validator must belong to the workflow organization."
+msgstr "ユーザーは同じ組織に属している必要があります。"
+
+#, fuzzy
+#| msgid "User must belong to the same organization."
+msgid "Ruleset must belong to the workflow organization."
+msgstr "ユーザーは同じ組織に属している必要があります。"
 
 msgid "The workflow this grant provides access to."
 msgstr ""
@@ -8303,6 +10799,39 @@ msgstr ""
 
 msgid "guest invites"
 msgstr ""
+
+#, python-format
+msgid ""
+"Cannot add a new %(member)s: this workflow has runs (or is locked), so its "
+"contract is fixed. Clone it to a new version to change %(member)s."
+msgstr ""
+
+#, python-format
+msgid ""
+"Cannot change %(member)s on a workflow that has runs (or is locked): clone "
+"it to a new version to change this."
+msgstr ""
+
+#, python-format
+msgid ""
+"Cannot delete this %(member)s: the workflow has runs (or is locked). Clone "
+"it to a new version to change %(member)s."
+msgstr ""
+
+#, fuzzy
+#| msgid "content_type is required."
+msgid "A constant type is required."
+msgstr "content_typeは必須です。"
+
+#, fuzzy, python-format
+#| msgid "Length ≥"
+msgid "length ≥ %(n)s"
+msgstr "長さ ≥"
+
+#, fuzzy, python-format
+#| msgid "Length ≤"
+msgid "length ≤ %(n)s"
+msgstr "長さ ≤"
 
 #, python-format
 msgid "Invalid JSON: %(error)s (line %(line)s, column %(col)s)"
@@ -8482,10 +11011,80 @@ msgid ""
 "the validation contract."
 msgstr ""
 
+msgid "Expected a JSON list (e.g. [\"EUR\", \"GBP\"])."
+msgstr ""
+
+msgid "Expected a JSON object (e.g. {\"min\": 1, \"max\": 9})."
+msgstr ""
+
+#, python-format
+msgid "Unknown constant type '%(data_type)s'."
+msgstr ""
+
+msgid "Expected a number, got a boolean."
+msgstr ""
+
+#, fuzzy
+#| msgid "Name is required."
+msgid "A number value is required."
+msgstr "名前は必須です。"
+
+#, fuzzy, python-format
+#| msgid "'%(value)s' is not a supported file type."
+msgid "'%(value)s' is not a valid number."
+msgstr "'%(value)s' はサポートされていないファイルタイプです。"
+
+msgid "Number must be finite (no NaN/Infinity)."
+msgstr ""
+
+#, fuzzy
+#| msgid "Expected a .fmu file."
+msgid "Expected a boolean (true or false)."
+msgstr ".fmuファイルが必要です。"
+
+#, python-format
+msgid "Could not parse JSON %(expected)s: %(error)s"
+msgstr ""
+
+#, python-format
+msgid "Structured constant is too large (max %(kb)d KiB serialized)."
+msgstr ""
+
+#, python-format
+msgid "List constant has too many items (max %(n)d)."
+msgstr ""
+
+#, python-format
+msgid "Object constant has too many keys (max %(n)d)."
+msgstr ""
+
+#, python-format
+msgid "Structured constant is nested too deeply (max depth %(n)d)."
+msgstr ""
+
+#, python-format
+msgid "A constant named '%(name)s' already exists in this workflow."
+msgstr ""
+
+#, python-format
+msgid ""
+"This workflow definition is currently being used by one validation run. Your "
+"changes have not been saved. Try again after that run finishes."
+msgid_plural ""
+"This workflow definition is currently being used by %(count)s validation "
+"runs. Your changes have not been saved. Try again after those runs finish."
+msgstr[0] ""
+
 msgid "This workflow is not currently active."
 msgstr ""
 
 msgid "This workflow has no steps defined and cannot be executed."
+msgstr ""
+
+#, python-format
+msgid ""
+"Step %(step)s (%(validator)s) uses a validator that is not available in this "
+"deployment."
 msgstr ""
 
 msgid "no file types"
@@ -8523,8 +11122,37 @@ msgstr ""
 msgid "Previous version. The current version is v%(version)s"
 msgstr ""
 
+#, fuzzy
+#| msgid "Delete assertion"
+msgid "Dataset assertion"
+msgstr "アサーションを削除"
+
+#, fuzzy
+#| msgid "Add assertion"
+msgid "Row assertion"
+msgstr "アサーションを追加"
+
+#, fuzzy
+#| msgid "Add assertion"
+msgid "Column assertion"
+msgstr "アサーションを追加"
+
+msgid "Runs once against dataset metadata before native column and row checks."
+msgstr ""
+
+msgid "Runs for each row and is aggregated into a bounded finding."
+msgstr ""
+
+msgid "Runs once after row validation against typed column aggregates."
+msgstr ""
+
 msgid "Add Assertion"
 msgstr ""
+
+#, fuzzy, python-format
+#| msgid "Add step"
+msgid "Add %(stage)s"
+msgstr "ステップを追加"
 
 msgid "Assertion added."
 msgstr ""
@@ -8541,6 +11169,73 @@ msgstr ""
 msgid "Assertion moved."
 msgstr ""
 
+msgid "Constant added."
+msgstr ""
+
+#, fuzzy
+#| msgid "Edit step details"
+msgid "Edit Constant"
+msgstr "ステップの詳細を編集"
+
+msgid "Save Changes"
+msgstr ""
+
+#, fuzzy
+#| msgid "Roles updated."
+msgid "Constant updated."
+msgstr "役割を更新しました。"
+
+#, fuzzy
+#| msgid "unknown user"
+msgid "Unknown step"
+msgstr "不明なユーザー"
+
+#, fuzzy, python-format
+#| msgid ""
+#| "Cannot delete '%(name)s' because it is used by active workflow(s): "
+#| "%(workflows)s. Remove it from these workflows first."
+msgid ""
+"Cannot delete constant '%(name)s' — it is referenced in: %(refs)s. Remove "
+"the references first."
+msgstr ""
+"'%(name)s' はアクティブなワークフロー（%(workflows)s）で使用されているため削"
+"除できません。まずこれらのワークフローから削除してください。"
+
+msgid "Constant removed."
+msgstr ""
+
+#, fuzzy
+#| msgid "Workflow invite"
+msgid "Workflow file"
+msgstr "ワークフロー招待"
+
+#, python-format
+msgid "That file is larger than the %(limit)s MB import limit."
+msgstr ""
+
+#, fuzzy
+#| msgid "Support"
+msgid "Import"
+msgstr "サポート"
+
+msgid "Please choose a workflow file to import."
+msgstr ""
+
+#, fuzzy
+#| msgid "Select an organization before modifying validators."
+msgid "You need an organization before importing workflows."
+msgstr "バリデーターを変更する前に組織を選択してください。"
+
+msgid ""
+"Something went wrong importing this workflow. The file may be corrupt or "
+"from an incompatible version."
+msgstr ""
+
+#, fuzzy, python-format
+#| msgid "View “%(name)s”"
+msgid "Workflow “%(name)s” imported."
+msgstr "「%(name)s」を表示"
+
 msgid "Uploaded file is not valid UTF-8 text."
 msgstr ""
 
@@ -8548,6 +11243,9 @@ msgid "Could not run the workflow. Please try again."
 msgstr ""
 
 msgid "Something went wrong while preparing the submission."
+msgstr ""
+
+msgid "This action isn't available for your organization right now."
 msgstr ""
 
 msgid "You do not have permission to run this workflow."
@@ -8592,7 +11290,15 @@ msgstr "JSON表現を表示"
 msgid "View Validations"
 msgstr "検証を表示"
 
+#, fuzzy
+#| msgid "Start this workflow via API"
+msgid "Export this workflow as a .vaf archive"
+msgstr "APIでこのワークフローを開始"
+
 msgid "Configure workflow-level signals (s.name)"
+msgstr ""
+
+msgid "Configure workflow-level constants (c.name)"
 msgstr ""
 
 msgid ""
@@ -8704,11 +11410,12 @@ msgstr ""
 msgid "This invite is no longer valid (status: %(status)s)."
 msgstr ""
 
-#, python-format
+#, fuzzy
+#| msgid "This invite is not addressed to your account."
 msgid ""
-"You now have access to the workflow '%(name)s'. You can run validations on "
-"this workflow."
-msgstr ""
+"This invitation is addressed to a different email address, so it was not "
+"applied to your account."
+msgstr "この招待はあなたのアカウント宛てではありません。"
 
 #, python-format
 msgid ""
@@ -8716,16 +11423,37 @@ msgid ""
 msgstr ""
 
 #, python-format
+msgid ""
+"You now have access to the workflow '%(name)s'. You can run validations on "
+"this workflow."
+msgstr ""
+
+#, python-format
 msgid "This guest invite is no longer valid (status: %(status)s)."
+msgstr ""
+
+msgid ""
+"This guest invitation is addressed to a different email address, so it was "
+"not applied to your account."
+msgstr ""
+
+#, python-format
+msgid "Please sign up or log in to accept your guest invitation to %(org)s."
 msgstr ""
 
 #, python-format
 msgid "You now have guest access to %(org)s."
 msgstr ""
 
-#, python-format
-msgid "Please sign up or log in to accept your guest invitation to %(org)s."
-msgstr ""
+#, fuzzy
+#| msgid "CEL expression is too long."
+msgid "Email address is too long."
+msgstr "CEL式が長すぎます。"
+
+#, fuzzy
+#| msgid "Email address"
+msgid "Enter a valid email address."
+msgstr "メールアドレス"
 
 msgid "This user already has access to this workflow."
 msgstr ""
@@ -8747,8 +11475,8 @@ msgstr ""
 msgid "Edit Signal"
 msgstr ""
 
-msgid "Save Changes"
-msgstr ""
+msgid "Signal updated."
+msgstr "シグナルを更新しました。"
 
 #, python-format
 msgid ""
@@ -8844,6 +11572,39 @@ msgstr ""
 msgid "selected types"
 msgstr ""
 
+msgid "A tabular schema can contain at most 1,024 columns."
+msgstr ""
+
+msgid "Paste a descriptor or upload one, not both."
+msgstr ""
+
+msgid "Paste a Table Schema descriptor first."
+msgstr ""
+
+#, python-format
+msgid "Could not import the descriptor: %(error)s"
+msgstr ""
+
+msgid "Inference requests must be 10 MB or smaller."
+msgstr ""
+
+msgid "Choose a delimited text sample first."
+msgstr ""
+
+#, python-format
+msgid "Could not read the sample: %(error)s"
+msgstr ""
+
+#, python-format
+msgid "Could not apply the proposed schema: %(error)s"
+msgstr ""
+
+msgid "Proposed columns applied. Save changes to persist them."
+msgstr ""
+
+msgid "Save a column schema before downloading it."
+msgstr ""
+
 msgid "Workflow step added."
 msgstr ""
 
@@ -8871,10 +11632,21 @@ msgstr ""
 msgid "%(step)s: Edit Step Detail"
 msgstr ""
 
+msgid "Dataset shape, row count, and column presence."
+msgstr ""
+
+msgid "Relationships and conditions within each row."
+msgstr ""
+
+msgid "Cross-row aggregates for one or more columns."
+msgstr ""
+
 msgid "Template variable annotations saved."
 msgstr ""
 
-msgid "Display signals updated."
+#, fuzzy
+#| msgid "Display signals updated."
+msgid "Displayed step outputs updated."
 msgstr "表示シグナルを更新しました。"
 
 #, python-format
@@ -8886,6 +11658,11 @@ msgstr ""
 
 msgid "Edit output"
 msgstr ""
+
+#, fuzzy
+#| msgid "Organization updated."
+msgid "Step I/O definition updated."
+msgstr "組織を更新しました。"
 
 #, python-format
 msgid ""
@@ -8938,6 +11715,16 @@ msgid ""
 "DTD schema before any step assertions run."
 msgstr ""
 
+#, fuzzy
+#| msgid "JSON Schema validation"
+msgid "Schematron Validation"
+msgstr "JSONスキーマ検証"
+
+msgid ""
+"Runs the step's uploaded Schematron rules against the submitted XML document "
+"before any step assertions run, reporting failed rules by their native IDs."
+msgstr ""
+
 msgid "SHACL Validation"
 msgstr ""
 
@@ -8946,7 +11733,14 @@ msgid ""
 "optional ontology files before any step assertions run."
 msgstr ""
 
-msgid "Validation"
+#, fuzzy
+#| msgid "Launch Validation"
+msgid "Tabular Validation"
+msgstr "検証を実行"
+
+msgid ""
+"Validates the submitted CSV against the configured column schema and row "
+"rules before any step assertions run."
 msgstr ""
 
 msgid "Select a file type before launching the workflow."
@@ -8975,6 +11769,11 @@ msgid ""
 "before activating a template."
 msgstr ""
 
+#, fuzzy
+#| msgid "No validation runs yet for this workflow."
+msgid "Your organization can't run this workflow right now."
+msgstr "このワークフローの検証実行はまだありません。"
+
 msgid "Payload too large."
 msgstr ""
 
@@ -9000,3 +11799,84 @@ msgstr ""
 
 msgid "Unsupported request content type."
 msgstr ""
+
+#, python-format
+msgid ""
+"Step %(step)s (%(validator)s) uses a validator that is not available in this "
+"deployment. %(reason)s"
+msgstr ""
+
+#~ msgid "Manage the credentials you use to call the Validibot API."
+#~ msgstr "Validibot APIの呼び出しに使用する認証情報を管理します。"
+
+#~ msgid "Personal"
+#~ msgstr "個人"
+
+#~ msgid "Add signal"
+#~ msgstr "シグナルを追加"
+
+#~ msgid "Save signal"
+#~ msgstr "シグナルを保存"
+
+#~ msgid "Edit signal"
+#~ msgstr "シグナルを編集"
+
+#~ msgid "Signal Details"
+#~ msgstr "シグナルの詳細"
+
+#~ msgid "All Signals"
+#~ msgstr "すべてのシグナル"
+
+#~ msgid ""
+#~ "Any logged-in user can launch this workflow. Usage is billed to your "
+#~ "organization."
+#~ msgstr ""
+#~ "ログインしているユーザーは誰でもこのワークフローを実行できます。使用料は組"
+#~ "織に請求されます。"
+
+#~ msgid "This workflow is public"
+#~ msgstr "このワークフローは公開されています"
+
+#~ msgid "Regex evaluation timed out (possible ReDoS pattern)."
+#~ msgstr "正規表現の評価がタイムアウトしました（ReDoSパターンの可能性）。"
+
+#~ msgid "Calculates the q-quantile for the numeric list."
+#~ msgstr "数値リストのq分位数を計算します。"
+
+#~ msgid "Average of a list of numbers (ignores nulls)."
+#~ msgstr "数値リストの平均（nullは無視）。"
+
+#~ msgid "Sum of a list of numbers."
+#~ msgstr "数値リストの合計。"
+
+#~ msgid "Maximum value in a list of numbers."
+#~ msgstr "数値リストの最大値。"
+
+#~ msgid "Minimum value in a list of numbers."
+#~ msgstr "数値リストの最小値。"
+
+#~ msgid "Absolute value of a number."
+#~ msgstr "数値の絶対値。"
+
+#~ msgid "Round the numeric value to a number of decimal places."
+#~ msgstr "数値を指定した小数点以下の桁数に丸めます。"
+
+#~ msgid ""
+#~ "Calculates the duration (in sample count) where predicate(series[i]) is "
+#~ "true."
+#~ msgstr "predicate(series[i])がtrueである期間（サンプル数）を計算します。"
+
+#~ msgid "Version label (e.g. '1.0', '2025-01')."
+#~ msgstr "バージョンラベル（例：'1.0'、'2025-01'）。"
+
+#~ msgid "Version label for this validator (e.g. '2020-12', '1.0')."
+#~ msgstr "このバリデーターのバージョンラベル（例：'2020-12'、'1.0'）。"
+
+#~ msgid "Edit Input Signal"
+#~ msgstr "入力シグナルを編集"
+
+#~ msgid "Signal created."
+#~ msgstr "シグナルを作成しました。"
+
+#~ msgid "Signal deleted."
+#~ msgstr "シグナルを削除しました。"

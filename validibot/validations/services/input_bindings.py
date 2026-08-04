@@ -33,6 +33,17 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_step_input_bindings(step: WorkflowStep) -> int:
+    """Create missing bindings under the owning workflow's definition lock."""
+
+    from validibot.workflows.services.editing_policy import (
+        guard_workflow_definition_mutation,
+    )
+
+    with guard_workflow_definition_mutation(step.workflow_id):
+        return _ensure_step_input_bindings(step)
+
+
+def _ensure_step_input_bindings(step: WorkflowStep) -> int:
     """Create default StepInputBinding rows for validator-owned input definitions.
 
     For each input StepIODefinition owned by the step's validator that

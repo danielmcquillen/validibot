@@ -4841,9 +4841,7 @@ validator-latest-only stage: _require-gcp-config
     fi
     if [ ! -s "$WORK_DIR/delete-services" ] && [ ! -s "$WORK_DIR/delete-jobs" ]; then
         echo "  No superseded managed validator providers found."
-        exit 0
-    fi
-    if [ "${VALIDATOR_LATEST_ONLY_AUTOMATIC:-0}" != "1" ]; then
+    elif [ "${VALIDATOR_LATEST_ONLY_AUTOMATIC:-0}" != "1" ]; then
         read -r -p "Type DELETE SUPERSEDED VALIDATOR PROVIDERS to continue: " REPLY
         if [ "$REPLY" != "DELETE SUPERSEDED VALIDATOR PROVIDERS" ]; then
             echo "Cancelled."
@@ -4886,18 +4884,20 @@ validator-latest-only stage: _require-gcp-config
         grep -Fqx "$basename" "$WORK_DIR/expected-jobs" && continue
         just gcp management-cmd {{stage}} \
             "record_validator_provider_deletion --resource=$resource"
-    done < <(jq -r '.deployments[] | [.backend, .version, .provider_resource_name, .routing_role, (.provider_deleted_at // "")] | @tsv' "$WORK_DIR/database.json")
+    done < <(jq -r '(.deployment_history // .deployments)[] | [.backend, .version, .provider_resource_name, .routing_role, (.provider_deleted_at // "")] | @tsv' "$WORK_DIR/database.json")
 
-    # Complete the immediate retirement checkpoint for old release pairs. The
-    # management command still refuses active routes, incomplete pairs, and
-    # nonterminal attempts; only the seven-day clock is bypassed here.
-    jq -r '.deployments[] | select(.routing_role == "INACTIVE" and .retired_at == null) | [.backend, .version] | @tsv' "$WORK_DIR/database.json" \
+    # Complete the immediate retirement checkpoint for old release pairs and
+    # wholly unaccepted failed candidates. The management command still refuses
+    # active routes, incomplete or partially accepted pairs, missing provider
+    # deletion checkpoints, and nonterminal attempts; only the seven-day clock
+    # and the accepted-pair requirement are bypassed for this empty installation.
+    jq -r '(.deployment_history // .deployments)[] | select(.routing_role == "INACTIVE" and .retired_at == null) | [.backend, .version] | @tsv' "$WORK_DIR/database.json" \
         | sort -u \
         | while IFS=$'\t' read -r backend version; do
             active_version=$(jq -r --arg backend "$backend" '.backends[] | select(.backend == $backend) | .active_version' "$WORK_DIR/status.json")
             [ "$version" != "$active_version" ] || continue
             just gcp management-cmd {{stage}} \
-                "retire_validator_backend_release --backend=$backend --release-version=$version --reason='Latest-only no-user reconciliation.' --immediate"
+                "retire_validator_backend_release --backend=$backend --release-version=$version --reason='Latest-only no-user reconciliation.' --immediate --allow-unaccepted-candidate"
         done
     echo "Latest-only validator reconciliation completed for {{stage}}."
 
@@ -4974,7 +4974,7 @@ _validator-release-require-idle stage: _require-gcp-config
     inspect_queue "$PROVIDER_QUEUE_NAME" provider
     just gcp _validator-state-export {{stage}} "$WORK_DIR/database.json"
     UNFINISHED_ATTEMPTS=$(jq -r \
-        '[.deployments[]? | (.unfinished_attempts // 0)] | add // 0' \
+        '[(.deployment_history // .deployments)[]? | (.unfinished_attempts // 0)] | add // 0' \
         "$WORK_DIR/database.json")
     if ! [[ "$UNFINISHED_ATTEMPTS" =~ ^[0-9]+$ ]]; then
         echo "Error: database release state returned an invalid unfinished-attempt count." >&2
@@ -4985,7 +4985,7 @@ _validator-release-require-idle stage: _require-gcp-config
         if [ "$UNFINISHED_ATTEMPTS" -ne 0 ]; then
             echo "  Unfinished managed execution attempts: $UNFINISHED_ATTEMPTS" >&2
             jq -r '
-              .deployments[]
+              (.deployment_history // .deployments)[]
               | select((.unfinished_attempts // 0) > 0)
               | "    \(.backend) \(.version) \(.kind): \(.unfinished_attempts)"
             ' "$WORK_DIR/database.json" >&2

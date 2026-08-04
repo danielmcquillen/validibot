@@ -500,6 +500,49 @@ class Ruleset(TimeStampedModel):
         "ruleset_type",
     )
 
+    def save(self, *args, **kwargs):
+        """Fence semantic changes for every Mutable workflow using this ruleset."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            model_instance_has_semantic_changes,
+        )
+        from validibot.workflows.services.editing_policy import workflow_ids_for_ruleset
+
+        semantic_change = model_instance_has_semantic_changes(
+            self,
+            semantic_fields=self.IMMUTABLE_RULESET_FIELDS,
+            update_fields=kwargs.get("update_fields"),
+        )
+        workflow_ids = workflow_ids_for_ruleset(self.pk)
+        with guard_workflow_definition_mutation(
+            workflow_ids,
+            semantic_change=semantic_change,
+        ):
+            super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Fence deletion for every workflow that currently uses this ruleset."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import workflow_ids_for_ruleset
+
+        workflow_ids = workflow_ids_for_ruleset(self.pk)
+        with guard_workflow_definition_mutation(workflow_ids):
+            if self.is_used_by_locked_workflow():
+                raise ValidationError(
+                    _(
+                        "This ruleset is referenced by a workflow that has runs "
+                        "(or is locked); it cannot be deleted in place. Create a "
+                        "new workflow version before removing it.",
+                    ),
+                )
+            return super().delete(*args, **kwargs)
+
     def is_used_by_locked_workflow(self) -> bool:
         """Return True if a versioned locked/run-having workflow uses this ruleset.
 
@@ -2661,6 +2704,32 @@ class StepIODefinition(TimeStampedModel):
         ]
         ordering = ["order", "pk"]
 
+    SEMANTIC_DEFINITION_FIELDS = (
+        "accepted_data_formats",
+        "accepted_media_types",
+        "allowed_source_scopes",
+        "contract_key",
+        "data_type",
+        "default_source_strategy",
+        "direction",
+        "envelope_channel",
+        "io_medium",
+        "is_collection",
+        "is_path_editable",
+        "max_items",
+        "metadata",
+        "min_items",
+        "native_name",
+        "on_missing",
+        "origin_kind",
+        "promoted_signal_name",
+        "provider_binding",
+        "resource_type",
+        "role",
+        "source_kind",
+        "unit",
+    )
+
     # ── Typed metadata accessors ─────────────────────────────
 
     @property
@@ -2724,6 +2793,41 @@ class StepIODefinition(TimeStampedModel):
                         ),
                     },
                 )
+
+    def save(self, *args, **kwargs):
+        """Fence semantic writes when this definition is step-owned."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            model_instance_has_semantic_changes,
+        )
+
+        workflow_id = None
+        if self.workflow_step_id:
+            workflow_id = self.workflow_step.workflow_id
+        semantic_change = model_instance_has_semantic_changes(
+            self,
+            semantic_fields=self.SEMANTIC_DEFINITION_FIELDS,
+            update_fields=kwargs.get("update_fields"),
+        )
+        with guard_workflow_definition_mutation(
+            workflow_id or [],
+            semantic_change=semantic_change,
+        ):
+            super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Fence deletion when this definition is step-owned."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        workflow_id = self.workflow_step.workflow_id if self.workflow_step_id else None
+        with guard_workflow_definition_mutation(workflow_id or []):
+            return super().delete(*args, **kwargs)
 
     def __str__(self):
         owner = self.validator or self.workflow_step
@@ -2818,6 +2922,46 @@ class StepInputBinding(TimeStampedModel):
                 name="uq_step_input_binding_definition",
             ),
         ]
+
+    SEMANTIC_DEFINITION_FIELDS = (
+        "default_value",
+        "io_definition_id",
+        "is_required",
+        "source_data_path",
+        "source_scope",
+        "workflow_step_id",
+    )
+
+    def save(self, *args, **kwargs):
+        """Fence binding changes while a Mutable run uses the workflow."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            model_instance_has_semantic_changes,
+        )
+
+        semantic_change = model_instance_has_semantic_changes(
+            self,
+            semantic_fields=self.SEMANTIC_DEFINITION_FIELDS,
+            update_fields=kwargs.get("update_fields"),
+        )
+        with guard_workflow_definition_mutation(
+            self.workflow_step.workflow_id,
+            semantic_change=semantic_change,
+        ):
+            super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Fence binding deletion while a Mutable run uses the workflow."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(self.workflow_step.workflow_id):
+            return super().delete(*args, **kwargs)
 
     def __str__(self):
         return (
@@ -3019,8 +3163,23 @@ class WorkflowStepIOPromotion(TimeStampedModel):
         # Run clean() before save so the validator-owned-only rule is
         # enforced for ORM writes that don't go through a Form's
         # full_clean() (e.g. service-layer code and migrations).
-        self.full_clean()
-        super().save(*args, **kwargs)
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(self.workflow_step.workflow_id):
+            self.full_clean()
+            super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Fence promotion deletion while a Mutable run uses the workflow."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(self.workflow_step.workflow_id):
+            return super().delete(*args, **kwargs)
 
     def __str__(self):
         return (
@@ -3152,6 +3311,50 @@ class Derivation(TimeStampedModel):
             ),
         ]
         ordering = ["order", "pk"]
+
+    SEMANTIC_DEFINITION_FIELDS = (
+        "contract_key",
+        "data_type",
+        "expression",
+        "metadata",
+        "unit",
+        "workflow_step_id",
+    )
+
+    def save(self, *args, **kwargs):
+        """Fence semantic writes when this derivation is step-owned."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            model_instance_has_semantic_changes,
+        )
+
+        workflow_id = None
+        if self.workflow_step_id:
+            workflow_id = self.workflow_step.workflow_id
+        semantic_change = model_instance_has_semantic_changes(
+            self,
+            semantic_fields=self.SEMANTIC_DEFINITION_FIELDS,
+            update_fields=kwargs.get("update_fields"),
+        )
+        with guard_workflow_definition_mutation(
+            workflow_id or [],
+            semantic_change=semantic_change,
+        ):
+            super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Fence deletion when this derivation is step-owned."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        workflow_id = self.workflow_step.workflow_id if self.workflow_step_id else None
+        with guard_workflow_definition_mutation(workflow_id or []):
+            return super().delete(*args, **kwargs)
 
     def __str__(self):
         owner = self.validator or self.workflow_step
@@ -3416,6 +3619,11 @@ class ValidationRun(TimeStampedModel):
         indexes = [
             models.Index(fields=["org", "project", "workflow", "created"]),
             models.Index(fields=["status", "created"]),
+            models.Index(
+                fields=["workflow"],
+                name="run_unreleased_workflow_idx",
+                condition=Q(definition_released_at__isnull=True),
+            ),
         ]
         constraints = [
             # ended_at cannot be before started_at (allow nulls)
@@ -3485,6 +3693,15 @@ class ValidationRun(TimeStampedModel):
     started_at = models.DateTimeField(null=True, blank=True)
 
     ended_at = models.DateTimeField(null=True, blank=True)
+
+    definition_released_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "When this run stopped reading its live workflow definition. "
+            "Null means semantic edits to a Mutable workflow remain fenced."
+        ),
+    )
 
     duration_ms = models.BigIntegerField(default=0)
 
@@ -4775,11 +4992,42 @@ class ValidatorResourceFile(TimeStampedModel):
         handlers have settled.
         """
         from validibot.core.filesafety import sha256_field_file
+        from validibot.workflows.models import WorkflowStepResource
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            model_instance_has_semantic_changes,
+        )
 
         new_hash = sha256_field_file(self.file)
-        self._check_content_drift_or_raise(new_hash)
-        self.content_hash = new_hash
-        super().save(*args, **kwargs)
+        semantic_change = (
+            new_hash != self.content_hash
+            or model_instance_has_semantic_changes(
+                self,
+                semantic_fields=(
+                    "file",
+                    "filename",
+                    "metadata",
+                    "resource_type",
+                    "validator_id",
+                ),
+                update_fields=kwargs.get("update_fields"),
+            )
+        )
+        workflow_ids = list(
+            WorkflowStepResource.objects.filter(validator_resource_file_id=self.pk)
+            .order_by("step__workflow_id")
+            .values_list("step__workflow_id", flat=True)
+            .distinct(),
+        )
+        with guard_workflow_definition_mutation(
+            workflow_ids,
+            semantic_change=semantic_change,
+        ):
+            self._check_content_drift_or_raise(new_hash)
+            self.content_hash = new_hash
+            super().save(*args, **kwargs)
 
     def clean(self):
         from validibot.validations.constants import get_resource_type_config

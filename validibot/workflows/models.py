@@ -1169,6 +1169,20 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         """
         return self.validation_runs.exists()
 
+    def editing_policy_is_fixed(self) -> bool:
+        """Return whether ordinary authors may still change editing policy."""
+
+        from validibot.workflows.services.editing_policy import editing_policy_is_fixed
+
+        return editing_policy_is_fixed(self)
+
+    def has_unreleased_definition_users(self) -> bool:
+        """Return whether any run may still read this live definition."""
+
+        return self.validation_runs.filter(
+            definition_released_at__isnull=True,
+        ).exists()
+
     def requires_new_version_for_contract_edits(self) -> bool:
         """Return True if contract-field edits require a new version.
 
@@ -1557,6 +1571,14 @@ class WorkflowStep(TimeStampedModel):
     config = models.JSONField(default=dict, blank=True)
     display_settings = models.JSONField(default=dict, blank=True)
 
+    SEMANTIC_DEFINITION_FIELDS = (
+        "action_id",
+        "config",
+        "order",
+        "ruleset_id",
+        "validator_id",
+    )
+
     @property
     def typed_config(self):
         """Return this step's config as a typed Pydantic model.
@@ -1657,7 +1679,32 @@ class WorkflowStep(TimeStampedModel):
             if existing and self.step_key != existing:
                 self.step_key = existing
 
-        super().save(*args, **kwargs)
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            model_instance_has_semantic_changes,
+        )
+
+        semantic_change = model_instance_has_semantic_changes(
+            self,
+            semantic_fields=self.SEMANTIC_DEFINITION_FIELDS,
+        )
+        with guard_workflow_definition_mutation(
+            self.workflow_id,
+            semantic_change=semantic_change,
+        ):
+            super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Delete a step only while no Mutable run uses its definition."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(self.workflow_id):
+            return super().delete(*args, **kwargs)
 
     def clean(self):
         super().clean()
@@ -1990,7 +2037,39 @@ class WorkflowStepResource(models.Model):
         else:
             # Catalog reference: leave hash blank, the source row owns it.
             self.content_hash = ""
-        super().save(*args, **kwargs)
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            model_instance_has_semantic_changes,
+        )
+
+        semantic_change = model_instance_has_semantic_changes(
+            self,
+            semantic_fields=(
+                "content_hash",
+                "filename",
+                "resource_type",
+                "role",
+                "step_resource_file",
+                "validator_resource_file_id",
+            ),
+        )
+        with guard_workflow_definition_mutation(
+            self.step.workflow_id,
+            semantic_change=semantic_change,
+        ):
+            super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Delete a resource only while no Mutable run uses its workflow."""
+
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(self.step.workflow_id):
+            return super().delete(*args, **kwargs)
 
     @property
     def is_catalog_reference(self) -> bool:
@@ -3004,8 +3083,24 @@ class WorkflowSignalMapping(TimeStampedModel):
         reserved-name and cross-table uniqueness checks.  This override
         ensures those guards always fire.
         """
-        self.full_clean()
-        super().save(*args, **kwargs)
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            model_instance_has_semantic_changes,
+        )
+
+        semantic_change = model_instance_has_semantic_changes(
+            self,
+            semantic_fields=self.IMMUTABLE_SIGNAL_FIELDS,
+            update_fields=kwargs.get("update_fields"),
+        )
+        with guard_workflow_definition_mutation(
+            self.workflow_id,
+            semantic_change=semantic_change,
+        ):
+            self.full_clean()
+            super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         """Block deletion once the workflow's contract is locked by runs.
@@ -3013,8 +3108,13 @@ class WorkflowSignalMapping(TimeStampedModel):
         Removing a mapping changes the contract just as editing one does
         (ADR-2026-06-18), so it is gated the same way.
         """
-        _guard_contract_member_delete(self, member_label="signal mapping")
-        return super().delete(*args, **kwargs)
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(self.workflow_id):
+            _guard_contract_member_delete(self, member_label="signal mapping")
+            return super().delete(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"s.{self.name} → {self.source_path}"
@@ -3151,8 +3251,24 @@ class WorkflowConstant(TimeStampedModel):
         ``clean()``, so ORM-level creates would otherwise bypass the
         reserved-name, uniqueness, and value-coercion guards.
         """
-        self.full_clean()
-        super().save(*args, **kwargs)
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+        from validibot.workflows.services.editing_policy import (
+            model_instance_has_semantic_changes,
+        )
+
+        semantic_change = model_instance_has_semantic_changes(
+            self,
+            semantic_fields=self.IMMUTABLE_CONSTANT_FIELDS,
+            update_fields=kwargs.get("update_fields"),
+        )
+        with guard_workflow_definition_mutation(
+            self.workflow_id,
+            semantic_change=semantic_change,
+        ):
+            self.full_clean()
+            super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         """Block deletion once the workflow's contract is locked by runs.
@@ -3160,8 +3276,13 @@ class WorkflowConstant(TimeStampedModel):
         Removing a constant changes the workflow contract and digest just as
         editing one does (ADR-2026-06-18).
         """
-        _guard_contract_member_delete(self, member_label="constant")
-        return super().delete(*args, **kwargs)
+        from validibot.workflows.services.editing_policy import (
+            guard_workflow_definition_mutation,
+        )
+
+        with guard_workflow_definition_mutation(self.workflow_id):
+            _guard_contract_member_delete(self, member_label="constant")
+            return super().delete(*args, **kwargs)
 
     @property
     def display_value(self) -> str:

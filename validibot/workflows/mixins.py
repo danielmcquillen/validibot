@@ -269,6 +269,33 @@ class WorkflowObjectMixin(WorkflowAccessMixin):
 
     workflow_url_kwarg = "pk"
 
+    def dispatch(self, request, *args, **kwargs):
+        """Translate a live-definition fence into a stable author response."""
+
+        from validibot.workflows.services.editing_policy import (
+            WorkflowDefinitionInUseError,
+        )
+
+        try:
+            return super().dispatch(request, *args, **kwargs)
+        except WorkflowDefinitionInUseError as exc:
+            if request.headers.get("HX-Request"):
+                from validibot.core.view_helpers import hx_trigger_response
+
+                return hx_trigger_response(
+                    exc.message,
+                    level="warning",
+                    status_code=409,
+                )
+            messages.warning(request, exc.message)
+            return HttpResponseRedirect(
+                reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=request,
+                    kwargs={"pk": self.get_workflow().pk},
+                ),
+            )
+
     def get_workflow(self) -> Workflow:
         """
         Get a single workflow by ID, checking all access paths.
@@ -415,8 +442,10 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
                     choices.append(
                         (
                             f"o.{io_definition.contract_key}",
-                            f"{io_definition.label or io_definition.contract_key}"
-                            f" · {output_label}",
+                            (
+                                f"{io_definition.label or io_definition.contract_key}"
+                                f" · {output_label}"
+                            ),
                         ),
                     )
                 elif (

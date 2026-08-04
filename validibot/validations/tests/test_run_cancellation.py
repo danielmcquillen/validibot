@@ -58,6 +58,7 @@ class TestValidationRunCancellation:
         updated_run.refresh_from_db()
         attempt.refresh_from_db()
         assert updated_run.status == ValidationRunStatus.CANCELED
+        assert updated_run.definition_released_at is not None
         assert updated_run.output_expires_at == updated_run.ended_at
         assert attempt.state == "CANCELED"
         assert PurgeRetry.objects.filter(
@@ -96,5 +97,6 @@ class TestValidationRunCancellation:
         run.refresh_from_db()
         attempt.refresh_from_db()
         assert run.status == ValidationRunStatus.CANCELED
+        assert run.definition_released_at is not None
         assert attempt.state == "CANCELED"
         runner.cancel.assert_called_once_with("execution-123")

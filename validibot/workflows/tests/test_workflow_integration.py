@@ -10,6 +10,7 @@ from http import HTTPStatus
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -83,6 +84,30 @@ def _login_user_for_org(client, user, org):
     session = client.session
     session["active_org_id"] = org.pk
     session.save()
+
+
+def _workflow_settings_payload(workflow, **overrides):
+    """Build a complete settings POST while allowing one concern to vary."""
+
+    payload = {
+        "name": workflow.name,
+        "description": workflow.description,
+        "slug": workflow.slug,
+        "project": str(workflow.project_id),
+        "allowed_file_types": list(workflow.allowed_file_types),
+        "input_schema_source_mode": workflow.input_schema_source_mode,
+        "input_schema_source_text": workflow.input_schema_source_text,
+        "input_retention": workflow.input_retention,
+        "output_retention": workflow.output_retention,
+        "success_message": workflow.success_message,
+        "allow_submission_name": "on",
+        "allow_submission_meta_data": "on",
+        "allow_submission_short_description": "on",
+        "version": workflow.version,
+        "is_active": "on",
+    }
+    payload.update(overrides)
+    return payload
 
 
 def test_create_workflow_with_custom_step_and_assertion(client):
@@ -219,6 +244,151 @@ def test_workflow_update_header_uses_shared_version_badge(client):
     assert 'class="card app-card editor-card"' in body
     assert 'class="card-body editor-card__scroll"' in body
     assert "card-footer" in body
+
+
+def test_workflow_settings_explains_editing_policy_accessibly(client):
+    """The select, information icon, and detailed copy form one discoverable UI."""
+
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(org=org, user=user)
+
+    response = client.get(
+        reverse("workflows:workflow_update", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Editing policy" in body
+    assert 'aria-label="About editing policies"' in body
+    assert 'id="id_history_policy-details"' in body
+    assert "Versioned" in body
+    assert "is recommended when historical confidence matters" in body
+    assert "semantic saves are temporarily rejected" in body
+    assert 'value="versioned" selected' in body
+
+
+def test_used_workflow_renders_fixed_editing_policy_reason(client):
+    """Authors should understand why the consistent select is currently disabled."""
+
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(org=org, user=user)
+    ValidationRunFactory(workflow=workflow)
+
+    response = client.get(
+        reverse("workflows:workflow_update", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert 'name="history_policy"' in body
+    assert "disabled" in body
+    assert "editing policy is fixed for this version" in body
+    assert 'id="id_history_policy-fixed-reason"' in body
+
+
+def test_mutable_semantic_settings_save_retries_after_definition_release(client):
+    """A busy Mutable workflow rejects atomically, then accepts the same later save."""
+
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        history_policy=WorkflowHistoryPolicy.MUTABLE,
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    run = ValidationRunFactory(workflow=workflow, status=ValidationRunStatus.RUNNING)
+    update_url = reverse("workflows:workflow_update", kwargs={"pk": workflow.pk})
+    payload = _workflow_settings_payload(
+        workflow,
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    )
+
+    blocked_response = client.post(update_url, data=payload)
+
+    assert blocked_response.status_code == HTTPStatus.OK
+    assert "currently being used by one validation run" in (
+        blocked_response.content.decode()
+    )
+    workflow.refresh_from_db()
+    assert workflow.allowed_file_types == [SubmissionFileType.JSON]
+
+    run.definition_released_at = timezone.now()
+    run.save(update_fields=["definition_released_at"])
+    retry_response = client.post(update_url, data=payload)
+
+    assert retry_response.status_code == HTTPStatus.FOUND
+    workflow.refresh_from_db()
+    assert workflow.allowed_file_types == [
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
+    ]
+
+
+def test_mutable_cosmetic_settings_save_succeeds_during_run(client):
+    """The safety fence should not prevent copy corrections or deactivation."""
+
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        history_policy=WorkflowHistoryPolicy.MUTABLE,
+    )
+    ValidationRunFactory(workflow=workflow, status=ValidationRunStatus.RUNNING)
+    update_url = reverse("workflows:workflow_update", kwargs={"pk": workflow.pk})
+
+    response = client.post(
+        update_url,
+        data=_workflow_settings_payload(
+            workflow,
+            name="Clearer workflow name",
+            is_active="",
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    workflow.refresh_from_db()
+    assert workflow.name == "Clearer workflow name"
+    assert workflow.is_active is False
+
+
+def test_superuser_semantic_repair_is_rejected_during_versioned_run(client):
+    """Break-glass history repair cannot change semantics beneath a live run."""
+
+    user = UserFactory(is_superuser=True, is_staff=True)
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        history_policy=WorkflowHistoryPolicy.VERSIONED,
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    )
+    ValidationRunFactory(workflow=workflow, status=ValidationRunStatus.RUNNING)
+
+    response = client.post(
+        reverse("workflows:workflow_update", kwargs={"pk": workflow.pk}),
+        data=_workflow_settings_payload(
+            workflow,
+            allowed_file_types=[SubmissionFileType.JSON],
+            history_policy=WorkflowHistoryPolicy.VERSIONED,
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert "currently being used by one validation run" in response.content.decode()
+    workflow.refresh_from_db()
+    assert workflow.allowed_file_types == [
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
+    ]
 
 
 def test_workflow_breadcrumb_places_version_badge_before_truncated_name(client):

@@ -14,7 +14,8 @@ Outputs.
   so collapsing one never affects the other (no shared ``data-bs-parent``).
   Outputs defaults open; User Inputs defaults collapsed. They are included
   with ``bare=True`` so they emit only their inner content — the accordion
-  supplies the chrome, avoiding a duplicated section title.
+  supplies the chrome, avoiding a duplicated section title. Generated Files
+  is an independent, white-header accordion nested inside Outputs.
 
 Selected by ``validation_detail.html`` by default. The original two-column
 design lives in ``layout_validation_run_classic.html`` for a future toggle.
@@ -71,16 +72,16 @@ view).
         <div id="reportOutputsBody" class="accordion-collapse collapse show">
           <div class="accordion-body">
             {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_outputs=step_outputs step_params=step_params step_template_warnings=step_template_warnings bare=True %}
+            {% include "workflows/results/partials/block_validation_run_artifacts.html" with artifact_items=artifact_items %}
           </div>
         </div>
       </div>
     </div>
     {% comment %}
-      Auxiliary audit cards. Each renders only when its data exists
-      (generated files / signed credential / evidence manifest), so they are
-      silent on runs that have none of them.
+      Auxiliary audit cards. Each renders only when its data exists (signed
+      credential / evidence manifest), so they are silent on runs that have
+      neither. Generated files live inside Outputs above.
     {% endcomment %}
-    {% include "workflows/results/partials/block_validation_run_artifacts.html" with artifact_items=artifact_items %}
     {% include "workflows/results/partials/block_validation_run_credential.html" with issued_credential=issued_credential credential_download_url=credential_download_url %}
     {% include "workflows/results/partials/block_validation_run_evidence.html" with run=run evidence_artifact=evidence_artifact %}
   </div>

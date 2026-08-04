@@ -103,6 +103,19 @@
   border-bottom: 0;
 }
 
+// Proof metadata labels should size to their content instead of claiming a
+// fraction of the full-width card. The fixed gutter leaves the values clearly
+// separated while keeping them close enough to scan as label/value pairs.
+.validation-proof-metadata {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 5rem;
+
+  @media (max-width: 575.98px) {
+    column-gap: 1.5rem;
+  }
+}
+
 .organization-role-list {
   .organization-role-option {
     margin-bottom: 0.75rem;

@@ -19,6 +19,7 @@ from django.core.files.base import ContentFile
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from lxml import html as lxml_html
 
 from validibot.submissions.constants import OutputRetention
 from validibot.submissions.tests.factories import SubmissionFactory
@@ -101,7 +102,7 @@ class ArtifactReportPanelTests(TestCase):
     """Verify run report surfaces show artifacts without leaking storage URIs."""
 
     def test_validation_detail_lists_artifacts_without_raw_storage_uri(self):
-        """Standalone run detail shows the shared artifact panel safely."""
+        """Standalone detail nests the safe artifact UI under run outputs."""
 
         user, run = _setup_run_with_owner_access()
         artifact = _create_artifact(run)
@@ -118,6 +119,29 @@ class ArtifactReportPanelTests(TestCase):
         self.assertContains(response, "Role")
         self.assertContains(response, "Kind")
         assert b"Role / Type" not in response.content
+        document = lxml_html.fromstring(response.content)
+        outputs_body = document.get_element_by_id("reportOutputsBody")
+        generated_buttons = outputs_body.xpath(
+            ".//button[@data-bs-target='#reportGeneratedFilesBody']",
+        )
+        assert len(generated_buttons) == 1
+        generated_button = generated_buttons[0]
+        generated_button_classes = set(generated_button.get("class", "").split())
+        assert {"bg-white", "text-body", "fw-semibold"}.issubset(
+            generated_button_classes,
+        )
+        assert (
+            generated_button.xpath("normalize-space(.//span/span[1])")
+            == "Generated Files"
+        )
+        assert generated_button.xpath("normalize-space(.//span/span[2])") == "1"
+        generated_bodies = outputs_body.xpath(
+            ".//*[@id='reportGeneratedFilesBody']",
+        )
+        assert len(generated_bodies) == 1
+        assert generated_bodies[0].xpath(
+            ".//table[contains(normalize-space(.), 'energy-report.html')]",
+        )
         assert (
             reverse(
                 "validations:artifact_detail",

@@ -28,17 +28,17 @@
           cryptographic proof only when it includes a signed credential.
         {% endblocktrans %}
       </p>
-      <dl class="row small mb-3">
-        <dt class="col-5 col-lg-4">
+      <dl class="validation-proof-metadata small mb-3">
+        <dt>
           {% trans "Schema" %}
         </dt>
-        <dd class="col-7 col-lg-8 font-monospace">
+        <dd class="font-monospace">
           {{ evidence_artifact.schema_version }}
         </dd>
-        <dt class="col-5 col-lg-4">
+        <dt>
           {% trans "SHA-256" %}
         </dt>
-        <dd class="col-7 col-lg-8 font-monospace text-truncate"
+        <dd class="font-monospace text-truncate"
             title="{{ evidence_artifact.manifest_hash }}">
           {{ evidence_artifact.manifest_hash|slice:":16" }}…
         </dd>

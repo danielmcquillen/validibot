@@ -7,9 +7,10 @@ Left column: User Inputs + Outputs, with Generated Files nested inside Outputs.
 Right column (sidebar, moves above on narrow viewports): Run Summary + Signed
 Credential + Evidence Manifest.
 
-Preserved as a standalone partial so a future user-facing layout toggle can
-switch between this and ``layout_validation_run_stacked.html``. Selected by
-``validation_detail.html`` when ``report_layout == "classic"``.
+The four detail sections use the same independent, session-remembered
+accordions as the stacked layout so changing layouts does not change the
+user's open/closed preferences. Selected by ``validation_detail.html`` when
+``report_layout == "classic"``.
 
 Context variables: run, step_runs, step_outputs, step_params,
 step_template_warnings, artifact_items, issued_credential,
@@ -18,14 +19,55 @@ view).
 {% endcomment %}
 <div class="row">
   <div class="col-12 col-xl-7 mb-3">
-    {% include "workflows/results/partials/block_validation_run_user_inputs.html" with run=run %}
-    <div class="card validation-info-card">
-      <div class="card-header">
-        {% trans "Outputs" %}
+    {% if run.submission %}
+      <div class="accordion mb-3"
+           id="reportUserInputs"
+           data-validation-run-section="user-inputs">
+        <div class="accordion-item">
+          <h2 class="accordion-header">
+            <button class="accordion-button collapsed"
+                    type="button"
+                    data-validation-run-section-toggle
+                    data-bs-toggle="collapse"
+                    data-bs-target="#reportUserInputsBody"
+                    aria-expanded="false"
+                    aria-controls="reportUserInputsBody">
+              {% trans "User Inputs" %}
+            </button>
+          </h2>
+          <div id="reportUserInputsBody"
+               class="accordion-collapse collapse"
+               data-validation-run-section-body>
+            <div class="accordion-body">
+              {% include "workflows/results/partials/block_validation_run_user_inputs.html" with run=run bare=True %}
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="card-body" id="reportOutputsBody">
-        {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_outputs=step_outputs step_params=step_params step_template_warnings=step_template_warnings bare=True %}
-        {% include "workflows/results/partials/block_validation_run_artifacts.html" with artifact_items=artifact_items %}
+    {% endif %}
+    <div class="accordion mb-3"
+         id="reportOutputs"
+         data-validation-run-section="outputs">
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed"
+                  type="button"
+                  data-validation-run-section-toggle
+                  data-bs-toggle="collapse"
+                  data-bs-target="#reportOutputsBody"
+                  aria-expanded="false"
+                  aria-controls="reportOutputsBody">
+            {% trans "Outputs" %}
+          </button>
+        </h2>
+        <div id="reportOutputsBody"
+             class="accordion-collapse collapse"
+             data-validation-run-section-body>
+          <div class="accordion-body">
+            {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_outputs=step_outputs step_params=step_params step_template_warnings=step_template_warnings bare=True %}
+            {% include "workflows/results/partials/block_validation_run_artifacts.html" with artifact_items=artifact_items %}
+          </div>
+        </div>
       </div>
     </div>
   </div>

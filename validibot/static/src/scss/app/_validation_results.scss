@@ -116,6 +116,15 @@
   }
 }
 
+// The custom medal replaces Bootstrap's monochrome award glyph while keeping
+// the same one-em footprint and baseline alignment as the surrounding icons.
+.validation-credential-icon {
+  flex: 0 0 auto;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
+
 .organization-role-list {
   .organization-role-option {
     margin-bottom: 0.75rem;

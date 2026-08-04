@@ -121,6 +121,9 @@ class ArtifactReportPanelTests(TestCase):
         assert b"Role / Type" not in response.content
         document = lxml_html.fromstring(response.content)
         outputs_body = document.get_element_by_id("reportOutputsBody")
+        outputs_section = document.get_element_by_id("reportOutputs")
+        assert outputs_section.get("data-validation-run-section") == "outputs"
+        assert "show" not in outputs_body.get("class", "").split()
         generated_buttons = outputs_body.xpath(
             ".//button[@data-bs-target='#reportGeneratedFilesBody']",
         )
@@ -166,6 +169,9 @@ class ArtifactReportPanelTests(TestCase):
         assert response.status_code == HTTPStatus.OK
         document = lxml_html.fromstring(response.content)
         outputs_body = document.get_element_by_id("reportOutputsBody")
+        outputs_section = document.get_element_by_id("reportOutputs")
+        assert outputs_section.get("data-validation-run-section") == "outputs"
+        assert "show" not in outputs_body.get("class", "").split()
         generated_buttons = outputs_body.xpath(
             ".//button[@data-bs-target='#reportGeneratedFilesBody']",
         )

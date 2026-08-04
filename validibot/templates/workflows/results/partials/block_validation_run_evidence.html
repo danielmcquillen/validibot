@@ -1,7 +1,7 @@
 {% load i18n %}
 
 {% comment %}
-  Evidence-manifest card for the run detail sidebar.
+  Evidence-manifest accordion for validation-run reports.
 
   ADR-2026-04-27 Phase 4 Session C/1: when the run has a GENERATED
   RunEvidenceArtifact, show the manifest hash + a download link.
@@ -14,45 +14,59 @@
     evidence_artifact  — the GENERATED RunEvidenceArtifact, or None
 {% endcomment %}
 {% if evidence_artifact %}
-  <div class="card validation-info-card mt-3">
-    <div class="card-header">
-      <div class="card-title">
-        <i class="bi-file-earmark-check me-1"></i>{% trans "Evidence Manifest" %}
-      </div>
-    </div>
-    <div class="card-body">
-      <p class="small text-muted mb-2">
-        {% blocktrans trimmed %}
-          A permanent receipt with run, workflow, validator, and payload-hash
-          information, but no submitted contents or output files. A bundle is
-          cryptographic proof only when it includes a signed credential.
-        {% endblocktrans %}
-      </p>
-      <dl class="validation-proof-metadata small mb-3">
-        <dt>
-          {% trans "Schema" %}
-        </dt>
-        <dd class="font-monospace">
-          {{ evidence_artifact.schema_version }}
-        </dd>
-        <dt>
-          {% trans "SHA-256" %}
-        </dt>
-        <dd class="font-monospace text-truncate"
-            title="{{ evidence_artifact.manifest_hash }}">
-          {{ evidence_artifact.manifest_hash|slice:":16" }}…
-        </dd>
-      </dl>
-      <div class="d-flex gap-2 flex-wrap">
-        <a href="{% url 'validations:evidence_manifest_download' pk=run.id %}"
-           class="btn btn-sm btn-outline-primary">
-          <i class="bi-download me-1"></i>{% trans "Download manifest.json" %}
-        </a>
-        <a href="{% url 'validations:evidence_bundle_download' pk=run.id %}"
-           class="btn btn-sm btn-outline-primary"
-           title="{% trans 'Archive with manifest and signed credential when one was issued' %}">
-          <i class="bi-file-earmark-zip me-1"></i>{% trans "Download bundle (.tar.gz)" %}
-        </a>
+  <div class="accordion mb-3"
+       id="reportEvidenceManifest"
+       data-validation-run-section="evidence-manifest">
+    <div class="accordion-item">
+      <h2 class="accordion-header">
+        <button class="accordion-button collapsed"
+                type="button"
+                data-validation-run-section-toggle
+                data-bs-toggle="collapse"
+                data-bs-target="#reportEvidenceManifestBody"
+                aria-expanded="false"
+                aria-controls="reportEvidenceManifestBody">
+          <i class="bi-file-earmark-check me-1"></i>{% trans "Evidence Manifest" %}
+        </button>
+      </h2>
+      <div id="reportEvidenceManifestBody"
+           class="accordion-collapse collapse"
+           data-validation-run-section-body>
+        <div class="accordion-body">
+          <p class="small text-muted mb-2">
+            {% blocktrans trimmed %}
+              A permanent receipt with run, workflow, validator, and payload-hash
+              information, but no submitted contents or output files. A bundle is
+              cryptographic proof only when it includes a signed credential.
+            {% endblocktrans %}
+          </p>
+          <dl class="validation-proof-metadata small mb-3">
+            <dt>
+              {% trans "Schema" %}
+            </dt>
+            <dd class="font-monospace">
+              {{ evidence_artifact.schema_version }}
+            </dd>
+            <dt>
+              {% trans "SHA-256" %}
+            </dt>
+            <dd class="font-monospace text-truncate"
+                title="{{ evidence_artifact.manifest_hash }}">
+              {{ evidence_artifact.manifest_hash|slice:":16" }}…
+            </dd>
+          </dl>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'validations:evidence_manifest_download' pk=run.id %}"
+               class="btn btn-sm btn-outline-primary">
+              <i class="bi-download me-1"></i>{% trans "Download manifest.json" %}
+            </a>
+            <a href="{% url 'validations:evidence_bundle_download' pk=run.id %}"
+               class="btn btn-sm btn-outline-primary"
+               title="{% trans 'Archive with manifest and signed credential when one was issued' %}">
+              <i class="bi-file-earmark-zip me-1"></i>{% trans "Download bundle (.tar.gz)" %}
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   </div>

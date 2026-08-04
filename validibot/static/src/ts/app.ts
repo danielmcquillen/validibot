@@ -8,6 +8,7 @@ import { initTabularSchemas } from './tabularSchema';
 import { initRecaptcha } from './recaptcha';
 import { initResizableColumns } from './resizableColumns';
 import { initUnsavedChanges } from './unsavedChanges';
+import { initValidationRunSections } from './validationRunSections';
 
 export function initAppFeatures(root: ParentNode | Document = document): void {
   initCatalogFilters(root);
@@ -19,5 +20,6 @@ export function initAppFeatures(root: ParentNode | Document = document): void {
   initTabularSchemas(root);
   initResizableColumns(root);
   initUnsavedChanges(root);
+  initValidationRunSections(root);
   initRecaptcha();
 }

@@ -1,15 +1,15 @@
 // Vitest global setup for the front-end suite.
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-// jsdom does not reliably expose window.localStorage across versions (storage
-// is origin-partitioned and the headless environment may not provide it). Our
-// modules use localStorage for UI preferences, so we install a small in-memory
-// implementation here. It behaves like the real Storage API closely enough for
-// our tests (getItem/setItem/removeItem/clear) and is fully deterministic.
+// jsdom does not reliably expose Web Storage across versions (storage is
+// origin-partitioned and the headless environment may not provide it). Our
+// modules use localStorage and sessionStorage for UI preferences, so we install
+// small in-memory implementations. They behave like the real Storage API
+// closely enough for our tests and are fully deterministic.
 //
-// Tests that want to simulate "localStorage throws" (privacy mode) spy on these
-// methods with vi.spyOn — the stub exists as a real object on window, so the spy
-// has something to replace.
+// Tests that want to simulate storage throwing (privacy mode) spy on these
+// methods with vi.spyOn — the stubs are real objects on window, so the spies
+// have something to replace.
 
 class MemoryStorage implements Storage {
     private store = new Map<string, string>();
@@ -39,8 +39,14 @@ class MemoryStorage implements Storage {
     }
 }
 
-// Install on window so `window.localStorage` and bare `localStorage` both work.
+// Install on window so both qualified and bare Web Storage globals work.
 Object.defineProperty(window, 'localStorage', {
+    value: new MemoryStorage(),
+    writable: true,
+    configurable: true,
+});
+
+Object.defineProperty(window, 'sessionStorage', {
     value: new MemoryStorage(),
     writable: true,
     configurable: true,

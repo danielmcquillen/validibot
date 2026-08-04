@@ -29,6 +29,7 @@ from http import HTTPStatus
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from lxml import html as lxml_html
 from validibot_shared.evidence import SCHEMA_VERSION
 
 from validibot.submissions.constants import OutputRetention
@@ -222,7 +223,7 @@ class EvidenceCardOnRunDetailTests(TestCase):
     """The run-detail page surfaces the evidence card when an artifact exists."""
 
     def test_detail_page_shows_evidence_block_when_artifact_present(self):
-        """Page rendering: the partial appears with the download URL."""
+        """The manifest renders as a collapsed, state-aware report panel."""
         user, run = _setup_run_with_owner_access()
         stamp_evidence_manifest(run)
 
@@ -237,6 +238,16 @@ class EvidenceCardOnRunDetailTests(TestCase):
             args=[run.id],
         )
         assert download_url.encode() in response.content
+        document = lxml_html.fromstring(response.content)
+        section = document.get_element_by_id("reportEvidenceManifest")
+        assert section.get("data-validation-run-section") == "evidence-manifest"
+        button = section.xpath(
+            ".//button[@aria-controls='reportEvidenceManifestBody']",
+        )[0]
+        body = document.get_element_by_id("reportEvidenceManifestBody")
+        assert button.get("aria-expanded") == "false"
+        assert "collapsed" in button.get("class", "").split()
+        assert "show" not in body.get("class", "").split()
 
     def test_detail_page_omits_evidence_block_when_no_artifact(self):
         """Without an artifact, the partial renders nothing."""

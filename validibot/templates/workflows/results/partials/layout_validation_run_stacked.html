@@ -3,19 +3,19 @@
 {% comment %}
 Stacked, full-width report layout (the default).
 
-Three full-width (``col-12``) sections, in order: Run Summary, User Inputs,
-Outputs.
+Five full-width (``col-12``) sections, in order: Run Summary, User Inputs,
+Outputs, Signed Credential, and Evidence Manifest. The last two render only
+when the run has their corresponding proof artifact.
 
 - Run Summary is a plain card (header + two-column body + footer). Its
   metadata is laid out in two equal columns that stack on mobile
   (``split=True``), and the "View report as JSON" action lives in the card
   footer.
-- User Inputs and Outputs are each their own independent Bootstrap accordion
-  so collapsing one never affects the other (no shared ``data-bs-parent``).
-  Outputs defaults open; User Inputs defaults collapsed. They are included
-  with ``bare=True`` so they emit only their inner content — the accordion
-  supplies the chrome, avoiding a duplicated section title. Generated Files
-  is an independent, white-header accordion nested inside Outputs.
+- The four detail sections are independent Bootstrap accordions (no shared
+  ``data-bs-parent``). They default closed, then the front-end restores each
+  section's most recent open/closed state from session storage. User Inputs
+  and Outputs use ``bare=True`` so the accordion supplies their chrome.
+  Generated Files remains an independent nested accordion inside Outputs.
 
 Selected by ``validation_detail.html`` by default. The original two-column
 design lives in ``layout_validation_run_classic.html`` for a future toggle.
@@ -36,12 +36,15 @@ view).
     <div class="mb-3">
       {% include "workflows/results/partials/block_validation_run_summary.html" with run=run step_runs=step_runs split=True %}
     </div>
-    {% comment %} ── User Inputs (default collapsed) ── {% endcomment %}
-    <div class="accordion mb-3" id="reportUserInputs">
+    {% comment %} ── User Inputs ── {% endcomment %}
+    <div class="accordion mb-3"
+         id="reportUserInputs"
+         data-validation-run-section="user-inputs">
       <div class="accordion-item">
         <h2 class="accordion-header">
           <button class="accordion-button collapsed"
                   type="button"
+                  data-validation-run-section-toggle
                   data-bs-toggle="collapse"
                   data-bs-target="#reportUserInputsBody"
                   aria-expanded="false"
@@ -49,27 +52,34 @@ view).
             {% trans "User Inputs" %}
           </button>
         </h2>
-        <div id="reportUserInputsBody" class="accordion-collapse collapse">
+        <div id="reportUserInputsBody"
+             class="accordion-collapse collapse"
+             data-validation-run-section-body>
           <div class="accordion-body">
             {% include "workflows/results/partials/block_validation_run_user_inputs.html" with run=run bare=True %}
           </div>
         </div>
       </div>
     </div>
-    {% comment %} ── Outputs (default open) ── {% endcomment %}
-    <div class="accordion mb-3" id="reportOutputs">
+    {% comment %} ── Outputs ── {% endcomment %}
+    <div class="accordion mb-3"
+         id="reportOutputs"
+         data-validation-run-section="outputs">
       <div class="accordion-item">
         <h2 class="accordion-header">
-          <button class="accordion-button"
+          <button class="accordion-button collapsed"
                   type="button"
+                  data-validation-run-section-toggle
                   data-bs-toggle="collapse"
                   data-bs-target="#reportOutputsBody"
-                  aria-expanded="true"
+                  aria-expanded="false"
                   aria-controls="reportOutputsBody">
             {% trans "Outputs" %}
           </button>
         </h2>
-        <div id="reportOutputsBody" class="accordion-collapse collapse show">
+        <div id="reportOutputsBody"
+             class="accordion-collapse collapse"
+             data-validation-run-section-body>
           <div class="accordion-body">
             {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_outputs=step_outputs step_params=step_params step_template_warnings=step_template_warnings bare=True %}
             {% include "workflows/results/partials/block_validation_run_artifacts.html" with artifact_items=artifact_items %}

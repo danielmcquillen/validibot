@@ -9,6 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from lxml import html as lxml_html
 
 from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionFileType
@@ -26,6 +27,46 @@ from validibot.validations.tests.factories import ValidationStepRunFactory
 
 class ValidationRunDetailViewTests(TestCase):
     """Exercise small but important run-detail presentation details."""
+
+    def test_stacked_detail_sections_start_collapsed(self):
+        """A new browser session should show a compact run report by default."""
+        org = OrganizationFactory()
+        user = UserFactory(orgs=[org], username="daniel")
+        grant_role(user, org, RoleCode.VALIDATION_RESULTS_VIEWER)
+        user.memberships.get(org=org).set_roles(
+            {RoleCode.VALIDATION_RESULTS_VIEWER},
+        )
+        user.set_current_org(org)
+        submission = SubmissionFactory(org=org, user=user, project__org=org)
+        run = ValidationRunFactory(
+            submission=submission,
+            org=org,
+            workflow=submission.workflow,
+            project=submission.project,
+            user=user,
+        )
+
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("validations:validation_detail", kwargs={"pk": run.pk}),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        document = lxml_html.fromstring(response.content)
+        for section_id, body_id, state_key in (
+            ("reportUserInputs", "reportUserInputsBody", "user-inputs"),
+            ("reportOutputs", "reportOutputsBody", "outputs"),
+        ):
+            section = document.get_element_by_id(section_id)
+            assert section.get("data-validation-run-section") == state_key
+            button = section.xpath(
+                ".//button[@aria-controls=$body_id]",
+                body_id=body_id,
+            )[0]
+            body = document.get_element_by_id(body_id)
+            assert button.get("aria-expanded") == "false"
+            assert "collapsed" in button.get("class", "").split()
+            assert "show" not in body.get("class", "").split()
 
     def test_retained_file_submission_shows_filename_and_view_button(self):
         """Stored uploaded files should remain inspectable from run results."""
@@ -389,7 +430,7 @@ class ValidationRunDetailViewTests(TestCase):
         self.assertEqual(breadcrumbs[-1]["name"], "JSON")
 
     def test_detail_shows_signed_resource_label_in_credential_card(self):
-        """The credential card should show the signed submission label."""
+        """The collapsed credential panel shows its label and custom medal."""
         org = OrganizationFactory()
         user = UserFactory(orgs=[org], username="daniel")
         grant_role(user, org, RoleCode.VALIDATION_RESULTS_VIEWER)
@@ -436,6 +477,19 @@ class ValidationRunDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Signed Credential")
         self.assertContains(response, "Product 1")
+        document = lxml_html.fromstring(response.content)
+        section = document.get_element_by_id("reportSignedCredential")
+        assert section.get("data-validation-run-section") == "signed-credential"
+        button = section.xpath(
+            ".//button[@aria-controls='reportSignedCredentialBody']",
+        )[0]
+        body = document.get_element_by_id("reportSignedCredentialBody")
+        medal = button.xpath(".//img[contains(@src, 'credential-medal.svg')]")
+        assert button.get("aria-expanded") == "false"
+        assert "collapsed" in button.get("class", "").split()
+        assert "show" not in body.get("class", "").split()
+        assert len(medal) == 1
+        assert medal[0].get("alt") == ""
 
 
 def _fake_pro_modules(credential):

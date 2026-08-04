@@ -424,9 +424,10 @@ class AcceptanceFixtureBuilder:
         step_config: dict[str, Any] | None = None,
     ) -> tuple[Workflow, WorkflowStep]:
         """Create the common one-step workflow structure."""
+        workflow_slug = self._workflow_slug(spec, validator)
         workflow = Workflow.objects.create(
             org=self.org,
-            slug=self._workflow_slug(spec, validator),
+            slug=workflow_slug,
             version="1",
             name=f"Validator acceptance: {spec.key}",
             user=self.user,
@@ -434,14 +435,11 @@ class AcceptanceFixtureBuilder:
             is_active=True,
             allowed_file_types=allowed_file_types,
         )
-        ruleset = Ruleset.objects.create(
-            org=self.org,
-            user=self.user,
-            name=f"{workflow.slug}-rules",
-            ruleset_type=spec.ruleset_type,
+        ruleset = self._ensure_ruleset(
+            spec,
+            workflow_slug=workflow_slug,
             rules_text=rules_text,
-            metadata=rules_metadata or {},
-            version="1",
+            rules_metadata=rules_metadata,
         )
         step = WorkflowStep.objects.create(
             workflow=workflow,
@@ -452,6 +450,48 @@ class AcceptanceFixtureBuilder:
             config=step_config or {},
         )
         return workflow, step
+
+    def _ensure_ruleset(
+        self,
+        spec: BackendSpec,
+        *,
+        workflow_slug: str,
+        rules_text: str,
+        rules_metadata: dict[str, Any] | None,
+    ) -> Ruleset:
+        """Create the deterministic ruleset or reclaim its orphaned record.
+
+        Workflows are operational data and may be removed independently of
+        their reusable rulesets. A later acceptance run must therefore reclaim
+        the unreferenced deterministic ruleset instead of violating its unique
+        identity constraint. An attached ruleset indicates genuine fixture
+        drift and fails closed so acceptance never mutates another workflow.
+        """
+        expected_values = {
+            "user": self.user,
+            "rules_text": rules_text,
+            "metadata": rules_metadata or {},
+        }
+        ruleset, created = Ruleset.objects.get_or_create(
+            org=self.org,
+            name=f"{workflow_slug}-rules",
+            ruleset_type=spec.ruleset_type,
+            version="1",
+            defaults=expected_values,
+        )
+        if created:
+            return ruleset
+        if WorkflowStep.objects.filter(ruleset=ruleset).exists():
+            raise ValueError(
+                f"Existing {spec.key} acceptance ruleset is attached to "
+                "another workflow"
+            )
+        ruleset.user = self.user
+        ruleset.rules_file = ""
+        ruleset.rules_text = rules_text
+        ruleset.metadata = rules_metadata or {}
+        ruleset.save()
+        return ruleset
 
     def _create_energyplus(
         self,

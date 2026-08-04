@@ -36,6 +36,7 @@ from validibot.validations.constants import ExecutionDeploymentKind
 from validibot.validations.constants import ExecutionDeploymentReadiness
 from validibot.validations.constants import ExecutionDeploymentRoutingRole
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.models import Ruleset
 from validibot.validations.models import Validator
 from validibot.validations.services.execution.deployments import (
     ExecutionDeploymentResolutionError,
@@ -733,6 +734,38 @@ def test_fixture_builder_creates_and_reuses_one_selected_backend_workflow():
     assert first.workflow.pk == second.workflow.pk
     assert first.workflow.steps.count() == 1
     assert len(first.fixture_sha256) == SHA256_HEX_LENGTH
+
+
+@pytest.mark.django_db
+def test_fixture_builder_reclaims_orphaned_deterministic_ruleset():
+    """A system reset must not make the next backend acceptance setup fail.
+
+    Resetting operational data removes acceptance workflows while preserving
+    their organization-owned rulesets. Reusing that unreferenced identity is
+    required for setup to remain repeatable without weakening the uniqueness
+    constraint shared by ordinary user rulesets.
+    """
+    call_command("sync_validators", stdout=StringIO(), stderr=StringIO())
+    spec = BACKENDS[2]
+    builder = AcceptanceFixtureBuilder()
+    validator = builder._current_validator(spec)
+    workflow_slug = builder._workflow_slug(spec, validator)
+    orphaned = Ruleset.objects.create(
+        org=builder.org,
+        name=f"{workflow_slug}-rules",
+        ruleset_type=spec.ruleset_type,
+        version="1",
+        rules_text="stale acceptance fixture",
+        metadata={"stale": True},
+    )
+
+    scenario = builder.build(spec)
+
+    orphaned.refresh_from_db()
+    step = scenario.workflow.steps.get()
+    assert step.ruleset_id == orphaned.pk
+    assert "stale acceptance fixture" not in orphaned.rules_text
+    assert orphaned.metadata == {"submission_format": "turtle"}
 
 
 @pytest.mark.django_db

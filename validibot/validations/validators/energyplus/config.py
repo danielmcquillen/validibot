@@ -115,27 +115,6 @@ config = ValidatorConfig(
         "validibot_shared.energyplus.envelopes.EnergyPlusOutputEnvelope"
     ),
     image_name="validibot-validator-backend-energyplus",
-    # Revision 3 began with ADR-2026-05-22 Phase 2 parser facts
-    # expansion: nine additional step inputs (building_name,
-    # terrain, solar_distribution, timestep_per_hour, surface_count,
-    # window_count, construction_count, run_period_count, has_hvac)
-    # extracted from the (resolved) IDF by extract_input_values().
-    # The earlier 1.1 cleanup is rolled into this changelog entry:
-    #
-    # - Removed three misconceived "expectation" inputs
-    #   (expected_floor_area_m2, target_eui_kwh_m2, max_unmet_hours).
-    # - Added three parser-extracted step inputs (idf_version,
-    #   zone_count, north_axis_deg).
-    # - Removed the redundant output zone_count — parsed-from-IDF
-    #   facts are step inputs, never step outputs.
-    # - Renamed the simulation-derived floor-area output from
-    #   ``floor_area_m2`` to ``simulated_conditioned_area_m2`` for
-    #   provenance clarity.
-    #
-    # v2: ADR-2026-07-06 declares the concrete EnergyPlus output files uploaded
-    # by the backend as first-class output artifact ports. This is semantic
-    # catalog-contract drift, so it must create a new validator version instead
-    # of mutating v1.
     version=3,
     order=10,
     has_processor=True,
@@ -298,20 +277,13 @@ config = ValidatorConfig(
         # ==================================================================
         # STEP INPUTS \u2014 parser-extracted facts from the (resolved) IDF.
         #
-        # Per ADR-2026-05-22, EnergyPlus is a Position 3 validator (process
-        # has discrete input and output stages). These three step inputs are
-        # the proof-of-concept set scaling to ~12 in Phase 2:
-        #   - idf_version    (string,  always present, on_missing=error)
-        #   - zone_count     (int,     always \u22651,     on_missing=error)
-        #   - north_axis_deg (number,  defaults 0.0,  on_missing=null)
-        #
         # Populated by EnergyPlusValidator.extract_input_values() running
         # after preprocess_submission() \u2014 works for both direct-IDF and
         # template-mode submissions because preprocessing has resolved any
         # template variables into a concrete IDF by then.
         #
-        # Authors reference these as i.idf_version, i.zone_count,
-        # i.north_axis_deg in input-stage CEL assertions.
+        # Authors reference these values through ``i.<contract_key>`` in
+        # input-stage CEL assertions.
         # ==================================================================
         CatalogEntrySpec(
             entry_type=CatalogEntryType.IO_DEFINITION,
@@ -370,7 +342,7 @@ config = ValidatorConfig(
             source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
-        # ── Phase 2 (validator revision 3) facts — Building characteristics ──
+        # ── Building characteristics ──────────────────────────────────────
         CatalogEntrySpec(
             entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
@@ -434,7 +406,7 @@ config = ValidatorConfig(
             source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
-        # ── Phase 2 (validator revision 3) facts — Simulation configuration ──
+        # ── Simulation configuration ──────────────────────────────────────
         CatalogEntrySpec(
             entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
@@ -477,7 +449,7 @@ config = ValidatorConfig(
             source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
-        # ── Phase 2 (validator revision 3) facts — Geometry counts ──
+        # ── Geometry counts ───────────────────────────────────────────────
         CatalogEntrySpec(
             entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
@@ -505,8 +477,8 @@ config = ValidatorConfig(
             data_type=CatalogValueType.NUMBER,
             description=(
                 "Count of Window + FenestrationSurface:Detailed "
-                "objects in the IDF. Both legacy ``Window,`` and "
-                "modern fenestration declarations contribute. "
+                "objects in the IDF. Both ``Window,`` and "
+                "``FenestrationSurface:Detailed`` declarations contribute. "
                 "Useful for catching daylight/solar-gain models "
                 "with no glazing."
             ),
@@ -539,7 +511,7 @@ config = ValidatorConfig(
             source_kind=StepIOSourceKind.INTERNAL,
             is_path_editable=False,
         ),
-        # ── Phase 2 (validator revision 3) facts — Capability flag ──
+        # ── Capability flag ───────────────────────────────────────────────
         CatalogEntrySpec(
             entry_type=CatalogEntryType.IO_DEFINITION,
             run_stage=CatalogRunStage.INPUT,
@@ -941,11 +913,8 @@ config = ValidatorConfig(
         # ==================================================================
         # STEP OUTPUTS - Building Characteristics (simulation-derived)
         #
-        # Per ADR-2026-05-22's provenance rule: anything derived from the
-        # IDF text is a step input (i.*); anything derived from EnergyPlus
-        # simulation output is a step output (o.*). The output zone_count
-        # has been removed \u2014 i.zone_count is the single source going
-        # forward.
+        # Values parsed from the IDF are step inputs (i.*); values derived
+        # from EnergyPlus simulation results are step outputs (o.*).
         #
         # The simulation-derived conditioned area is named
         # ``simulated_conditioned_area_m2`` (not ``floor_area_m2``) to

@@ -7,7 +7,6 @@ across different deployment targets:
 
 - Docker Compose: Docker containers via local socket (synchronous)
 - GCP: Cloud Run Jobs (async with callbacks)
-- AWS: AWS Batch (future)
 
 ## Preprocessing
 
@@ -80,10 +79,10 @@ class EnergyPlusValidator(AdvancedValidator):
         """Check whether simulation warnings should be suppressed.
 
         Reads ``show_energyplus_warnings`` from the step's ``display_settings``.
-        It is cosmetic (it filters which non-blocking warnings are *shown*, never
-        pass/fail), so it lives in the display bucket (ADR-2026-06-18). When
-        False, non-ERROR issues from the EnergyPlus ``.err`` file should be
-        stripped before they are persisted as findings.
+        The setting is cosmetic: it filters which non-blocking warnings are
+        shown but never affects pass/fail. When False, non-ERROR issues from the
+        EnergyPlus ``.err`` file are stripped before they are persisted as
+        findings.
         """
         step = run_context.step if run_context else None
         if not step:
@@ -193,25 +192,15 @@ class EnergyPlusValidator(AdvancedValidator):
         Pydantic model. Fields include site_eui_kwh_m2, site_electricity_kwh,
         etc.
 
-        Per ADR-2026-05-22 and the May 2026 code review's P2 finding:
-        the catalog is the authoritative contract for which step outputs
-        belong in ``o.*``. The Pydantic model may carry additional
-        fields (left over from older shared-package versions or
-        future fields added before the catalog catches up) — we
-        filter to the catalog's declared OUTPUT-direction
-        ``contract_key`` values so a shared-package version mismatch
-        can't silently leak fields like ``zone_count`` back into
-        ``o.*`` after the catalog removed them.
+        The validator catalog is the authoritative contract for which step
+        outputs belong in ``o.*``. The Pydantic envelope may contain fields
+        that are not part of that public contract, so extraction is limited to
+        catalog entries whose direction is OUTPUT.
 
-        This is an instance method (not a classmethod) so it can reach
-        ``self.run_context.step.validator`` for catalog scoping. The
-        May 2026 review showed that the old classmethod implementation
-        used ``Validator.objects.filter(...).first()`` which can pick
-        the wrong row when EnergyPlus revisions 1 and 2 co-exist in
-        the database — silently dropping legitimate newer outputs or
-        admitting retired older ones. By scoping the catalog
-        lookup to the validator bound to this step's run, we always
-        use the catalog version that produced this run's contract.
+        Catalog lookup is scoped to ``self.run_context.step.validator`` so the
+        output keys always come from the exact validator version that produced
+        the run. This matters when multiple EnergyPlus validator versions
+        coexist in the database.
 
         Args:
             output_envelope: EnergyPlusOutputEnvelope from the validator container.
@@ -279,33 +268,25 @@ class EnergyPlusValidator(AdvancedValidator):
     ) -> dict[str, Any]:
         """Restrict raw metric dict to keys declared as OUTPUT in the catalog.
 
-        Per ADR-2026-05-22: the catalog is the public contract for
-        which step outputs live in ``o.*``. Anything in the shared
-        Pydantic envelope that the catalog doesn't declare as an
-        OUTPUT-direction entry must not appear in ``o.*`` — otherwise
-        a shared-package version drift (e.g., the shared package
-        ships a ``zone_count`` field that the catalog removed) would
-        silently leak the field into authors' CEL contexts.
+        The catalog is the public contract for which step outputs live in
+        ``o.*``. Fields in the shared Pydantic envelope that are not declared
+        as OUTPUT entries must not appear in authors' CEL contexts.
 
         Catalog scoping order (most specific first):
 
         1. ``self.run_context.step.validator`` — the exact validator
            row bound to this step's WorkflowStep. This is the only
            lookup that is guaranteed correct when multiple catalog
-           versions (e.g. v1 and v2) co-exist in the database,
+           versions coexist in the database,
            because the FK on WorkflowStep points at the specific row
            that produced this step's contract.
-        2. Newest system EnergyPlus validator by ``-version`` —
-           defensive fallback for the rare case where extraction is
-           called without a run context (tests, sync_validators). The
-           ordering picks the highest integer version, matching what
-           ``sync_validators`` writes as the current catalog.
+        2. Newest system EnergyPlus validator by ``-version`` — a defensive
+           fallback when extraction is called without a run context, such as
+           from tests or ``sync_validators``.
 
-        Returns the input dict unchanged if catalog lookup fails for
-        any reason (defensive: prefer wrong-but-old behaviour over
-        breaking output extraction entirely). The catalog reference
-        for EnergyPlus is centralised in ``config.py`` and synced via
-        ``sync_validators``.
+        Returns the input dict unchanged if catalog lookup fails, preserving
+        output extraction in degraded environments. The EnergyPlus catalog is
+        defined in ``config.py`` and persisted by ``sync_validators``.
         """
         try:
             from validibot.validations.constants import StepIODirection
@@ -315,11 +296,9 @@ class EnergyPlusValidator(AdvancedValidator):
 
             validator = self._resolve_catalog_validator()
             if validator is None:
-                # Last-resort fallback: pick the newest system EnergyPlus
-                # validator. Sorting by ``-version`` matches the catalog
-                # writer's notion of "current". If even this lookup
-                # fails, fall through to the unfiltered dict — better
-                # than dropping all outputs.
+                # Last-resort fallback for callers without a run context. If
+                # the lookup fails, preserve the raw metrics rather than drop
+                # every output.
                 validator = (
                     Validator.objects.filter(
                         validation_type=ValidationType.ENERGYPLUS,
@@ -337,8 +316,8 @@ class EnergyPlusValidator(AdvancedValidator):
                 ).values_list("contract_key", flat=True)
             )
             if not allowed_keys:
-                # No catalog entries means we can't filter; preserve
-                # existing behaviour rather than producing an empty dict.
+                # No catalog entries means there is no safe allowlist, so
+                # preserve the raw metrics rather than produce an empty dict.
                 return metrics
             return {k: v for k, v in metrics.items() if k in allowed_keys}
         except Exception:
@@ -372,15 +351,9 @@ class EnergyPlusValidator(AdvancedValidator):
         """
         Parse the (resolved) IDF or epJSON and extract declared step inputs.
 
-        Per ADR-2026-05-22, this returns the three POC step inputs:
-            - ``idf_version`` (string)
-            - ``zone_count`` (int)
-            - ``north_axis_deg`` (number)
-
-        Phase 2 will extend this to ~12 entries
-        (building_name, terrain, solar_distribution, timestep_per_hour,
-        surface_count, window_count, construction_count, run_period_count,
-        has_hvac, ...).
+        Returns the catalog-backed model facts exposed through the ``i.*``
+        namespace, including building characteristics, simulation settings,
+        geometry counts, and the HVAC capability flag.
 
         Called by ``_build_cel_context()`` at input stage. Failures during
         extraction are logged but do not abort assertion evaluation — the

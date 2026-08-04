@@ -3,8 +3,8 @@ Workflow detail toolbar.
 
 The view supplies already-authorized action groups through
 ``workflow_detail_toolbar``. This partial only controls visual order:
-Launch, then grey actions after a 3rem gap, then destructive/lifecycle actions
-after another 3rem gap.
+Launch, then grey actions after a 3rem gap, then trailing actions after another
+3rem gap.
 {% endcomment %}
 {% with toolbar=workflow_detail_toolbar %}
   <div class="d-flex flex-wrap gap-2 justify-content-end align-items-center">
@@ -60,7 +60,7 @@ after another 3rem gap.
         {% endfor %}
       </div>
     {% endif %}
-    {% if toolbar.destructive_actions %}
+    {% if toolbar.trailing_actions %}
       {% comment %}
       Single-line class string — see the comment on the grey-actions
       block above for why we don't span the if across multiple lines here.
@@ -69,7 +69,7 @@ after another 3rem gap.
                   {% if toolbar.launch_action or toolbar.grey_actions %}
                     ms-5
                   {% endif %}">
-        {% for action in toolbar.destructive_actions %}
+        {% for action in toolbar.trailing_actions %}
           {% if action.kind == "form" %}
             <form method="post"
                   class="d-inline-flex"

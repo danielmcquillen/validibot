@@ -64,8 +64,10 @@ The **Step Assertions** panel always shows a **Default assertions** card at the 
 - The selected schema type is persisted on the ruleset metadata (`metadata['schema_type']`).
 
 ### EnergyPlus™
-- Decide whether the step **runs a simulation** or only performs static IDF checks.
-- Pick initial IDF checks (duplicate names, autosizing, schedule coverage, etc.).
+- Decide whether the step runs a full simulation or an EnergyPlus
+  conversion-only IDF preflight.
+- Optionally add modelling-review checks for HVAC autosizing or weekly schedule
+  coverage. EnergyPlus itself applies the IDD validation rules in both modes.
 - Choose post-simulation checks (EUI range, peak load) and define optional EUI minimum/maximum values.
 - Add notes to capture any context for the run.
 

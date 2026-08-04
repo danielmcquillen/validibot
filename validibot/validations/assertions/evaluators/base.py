@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from validibot.validations.models import RulesetAssertion
+    from validibot.validations.models import StepIODefinition
     from validibot.validations.models import Validator
     from validibot.validations.validators.base import BaseValidator
     from validibot.validations.validators.base import ValidationIssue
@@ -45,6 +46,7 @@ class AssertionContext:
     stage: str = "input"
     cel_context: dict[str, Any] | None = field(default=None)
     enriched_payload: Any = field(default=None)
+    io_definitions: list[StepIODefinition] | None = field(default=None)
     now: datetime | None = field(default=None)
 
     def get_cel_context(self, payload: Any) -> dict[str, Any]:
@@ -86,6 +88,41 @@ class AssertionContext:
                 payload, stage=self.stage
             )
         return self.enriched_payload
+
+    def get_io_definition(
+        self,
+        *,
+        direction: str,
+        contract_key: str,
+    ) -> StepIODefinition | None:
+        """Resolve step I/O display metadata once per evaluation stage.
+
+        Step-owned definitions take priority over validator-owned catalog
+        definitions, matching the output-display contract used by run results.
+        The combined list is cached because one step may evaluate several CEL
+        assertions against the same output set.
+        """
+
+        if self.io_definitions is None:
+            definitions: list[StepIODefinition] = []
+            run_context = getattr(self.engine, "run_context", None)
+            workflow_step = getattr(run_context, "step", None)
+            step_manager = getattr(workflow_step, "step_io_definitions", None)
+            if step_manager is not None:
+                definitions.extend(step_manager.all())
+
+            validator_manager = getattr(self.validator, "step_io_definitions", None)
+            if validator_manager is not None:
+                definitions.extend(validator_manager.all())
+            self.io_definitions = definitions
+
+        for io_definition in self.io_definitions:
+            if (
+                io_definition.direction == direction
+                and io_definition.contract_key == contract_key
+            ):
+                return io_definition
+        return None
 
 
 class AssertionEvaluator(Protocol):

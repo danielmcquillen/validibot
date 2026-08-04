@@ -348,6 +348,14 @@ class TestBuildConfigValidationMode:
     stores template variables, case sensitivity, and displayed step outputs.
     """
 
+    def test_duplicate_name_check_is_not_offered(self):
+        """IDD-governed duplicate validation should be delegated to EnergyPlus."""
+
+        choices = dict(EnergyPlusStepConfigForm.base_fields["idf_checks"].choices)
+
+        assert "duplicate-names" not in choices
+        assert set(choices) == {"hvac-sizing", "schedule-coverage"}
+
     def test_direct_mode_stores_idf_settings(self):
         """Direct mode populates ``idf_checks`` and ``run_simulation``.
 
@@ -359,7 +367,7 @@ class TestBuildConfigValidationMode:
             validator=validator,
             data={
                 "validation_mode": EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
-                "idf_checks": ["duplicate-names"],
+                "idf_checks": ["hvac-sizing"],
                 "run_simulation": True,
             },
         )
@@ -367,7 +375,7 @@ class TestBuildConfigValidationMode:
         config, _template_vars = build_energyplus_config(form)
 
         assert config["validation_mode"] == "direct"
-        assert config["idf_checks"] == ["duplicate-names"]
+        assert config["idf_checks"] == ["hvac-sizing"]
         assert config["run_simulation"] is True
 
     def test_direct_mode_clears_template_metadata(self):
@@ -509,7 +517,7 @@ class TestBuildConfigWithTemplateRemoval:
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(
             validator=validator,
-            config={"idf_checks": ["duplicate-names"], "run_simulation": True},
+            config={"idf_checks": ["hvac-sizing"], "run_simulation": True},
         )
         form = _make_form(
             validator=validator,
@@ -517,14 +525,14 @@ class TestBuildConfigWithTemplateRemoval:
             data={
                 "validation_mode": EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
                 "remove_template": True,
-                "idf_checks": ["duplicate-names"],
+                "idf_checks": ["hvac-sizing"],
                 "run_simulation": True,
             },
         )
         assert form.is_valid(), form.errors
         config, _template_vars = build_energyplus_config(form, step)
 
-        assert config["idf_checks"] == ["duplicate-names"]
+        assert config["idf_checks"] == ["hvac-sizing"]
         assert config["run_simulation"] is True
 
 

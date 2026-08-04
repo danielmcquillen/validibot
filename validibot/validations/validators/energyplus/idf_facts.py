@@ -4,7 +4,7 @@ Extracts a set of facts from the (resolved) IDF and exposes them in
 the ``i.*`` CEL namespace for input-stage assertions. The catalog
 spec lives in ``config.py``; this module is the parser side.
 
-Facts produced (validator revision 3, ADR-2026-05-22 Phase 2):
+Facts produced:
 
     Building characteristics
     - ``idf_version``         — string from the IDF ``Version`` object
@@ -29,10 +29,9 @@ Facts produced (validator revision 3, ADR-2026-05-22 Phase 2):
     - ``has_hvac``            — True when any of HVACTemplate:*, AirLoopHVAC,
                                 ZoneHVAC:* are declared
 
-The extractor handles both legacy IDF text format and the JSON-shaped
-epJSON variant. For IDF text we use regex-based parsing (lightweight,
-no external dependencies). For epJSON we walk the parsed JSON
-structure.
+The extractor handles both traditional IDF text and the JSON-shaped epJSON
+variant. For IDF text we use regex-based parsing (lightweight, no external
+dependencies). For epJSON we walk the parsed JSON structure.
 
 Each fact is extracted independently — failure to parse one doesn't
 block the others. The catalog's ``on_missing`` policy on each entry
@@ -177,9 +176,7 @@ def extract_facts(payload: Any) -> dict[str, Any] | None:
     return None
 
 
-# Back-compat alias — the original POC name. Several callers and
-# tests still reference it; the new name reflects the post-Phase-2
-# expanded scope.
+# Compatibility alias for callers that use the established parser entry point.
 extract_poc_facts = extract_facts
 
 

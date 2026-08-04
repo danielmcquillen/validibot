@@ -15,12 +15,15 @@ weather file, runs the annual simulation, extracts SQL-backed metrics, and
 retains the standard EnergyPlus artifacts.
 
 With that option disabled, it runs conversion-only preflight without requiring
-weather. Preflight still reports model, binary, and IDD version evidence and
-runs any selected Validibot checks, but SQL-backed simulation metrics are
-`null`.
+weather. EnergyPlus still parses the model against its selected IDD and reports
+native input diagnostics. Preflight also reports model, binary, and IDD version
+evidence and runs any selected optional modelling-review checks, but SQL-backed
+simulation metrics are `null`.
 
-The selected timesteps per hour are applied to a private working copy. The
-submitted IDF or epJSON file is never modified.
+The selected timesteps per hour are applied to a private working copy. For a
+full simulation, that copy is also normalized to request tabular SQLite output
+and the summary reports required by Validibot's post-processing. The submitted
+IDF or epJSON file is never modified.
 
 ## Model facts (`i.*`)
 
@@ -60,11 +63,13 @@ The validator reports:
 - `o.has_sql_output`, `o.has_err_output`, `o.has_csv_output`,
   `o.has_eso_output`
 
-Individual EnergyPlus messages are also preserved. Common version, reference,
+Individual EnergyPlus messages from `eplusout.err`, standard output, and
+standard error are also preserved. Common version, duplicate-name, reference,
 schedule, sizing, weather, comfort, output, deprecation, and convergence
-problems receive stable review codes and tags. Hiding EnergyPlus warnings only
-changes their presentation; it does not change these counts or the run
-evidence.
+problems receive stable review codes and tags. If EnergyPlus exits unsuccessfully
+without producing a specific diagnostic, Validibot adds an explicit execution-
+failure finding. Hiding EnergyPlus warnings only changes their presentation; it
+does not change these counts or the run evidence.
 
 ## Simulation metrics (`o.*`)
 
@@ -97,9 +102,12 @@ The derived outputs are:
 
 The optional Validibot checks are:
 
-- duplicate object names;
 - HVAC sizing configuration; and
 - seven-day schedule coverage.
+
+These are modelling-quality review checks, not an IDF validator. EnergyPlus
+itself applies the IDD rules, including object naming and reference rules, in
+both conversion-only and full-simulation modes.
 
 The `standard` profile reports missing or mismatched review evidence as
 warnings. The opt-in `leed_review` profile promotes required evidence problems

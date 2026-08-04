@@ -230,14 +230,14 @@ class EnergyPlusStepConfig(ContainerExecutionStepConfig):
     """
 
     validation_mode: str = ""
-    """"direct" (IDF checks / simulation) or "template" (parameterized IDF)."""
+    """"direct" (native preflight/simulation) or "template" (parameterized IDF)."""
 
     idf_checks: list[str] = Field(default_factory=list)
-    """Author-selected IDF compliance checks to run before simulation.
+    """Author-selected modelling-review checks to run before EnergyPlus.
     """
 
     run_simulation: bool = False
-    """Whether to run the full simulation or just IDF syntax checks.
+    """Whether to run a full simulation or native conversion-only preflight.
     """
 
     timestep_per_hour: int = Field(default=4, ge=1, le=60)

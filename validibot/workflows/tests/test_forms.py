@@ -79,7 +79,8 @@ def test_workflow_form_renders_allowed_file_type_examples_without_changing_value
     assert 'value="text"' in html
     assert 'value="name"' not in html
     assert (
-        'class="workflow-file-type-option__examples">.txt, .csv, .ttl, .nt, .nq</span>'
+        'class="workflow-file-type-option__examples">'
+        ".txt, .csv, .idf, .ttl, .nt, .nq</span>"
     ) in html
     assert (
         'class="workflow-file-type-option__examples">.xls, .xlsx, .fmu, .zip</span>'
@@ -97,6 +98,20 @@ def test_workflow_form_exposes_exact_editing_policy_choices_and_default():
         (WorkflowHistoryPolicy.MUTABLE, "Mutable"),
     ]
     assert form["history_policy"].value() == WorkflowHistoryPolicy.VERSIONED
+
+
+def test_workflow_form_explains_transient_storage_for_no_retention_choices():
+    """Authors must not mistake no retention for memory-only processing."""
+    form = WorkflowForm()
+
+    input_help = str(form.fields["input_retention"].help_text)
+    output_help = str(form.fields["output_retention"].help_text)
+
+    assert "'Do not store' still uses transient storage" in input_help
+    assert "purges the submitted data shortly after validation" in input_help
+    assert "'Do not retain' keeps detailed results briefly" in output_help
+    assert "access-controlled transient storage" in output_help
+    assert "purges them shortly after validation" in output_help
 
 
 def test_workflow_form_saves_selected_project():

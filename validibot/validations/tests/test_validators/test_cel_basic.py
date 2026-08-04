@@ -130,6 +130,115 @@ class CelBasicValidatorTests(TestCase):
         self.assertEqual(len(result.issues), 1)
         self.assertIn("Peak too high", result.issues[0].message)
 
+    # ── Quantity-aware finding messages ─────────────────────────────
+    # Direct comparisons preserve enough dimensional meaning to format both
+    # operands; arithmetic and compound CEL expressions deliberately do not.
+
+    def test_simple_output_comparison_formats_template_values_with_units(self):
+        """A direct output comparison should format both message operands.
+
+        EnergyPlus EUI findings motivated this behavior: the output catalog
+        already declares ``kWh/m²``, so showing a raw float and unitless target
+        would discard useful contract metadata at the final presentation step.
+        """
+
+        StepIODefinitionFactory(
+            validator=self.validator,
+            contract_key="eui",
+            label="Modeled Site EUI (kWh/m²)",
+            direction="output",
+            unit="kWh/m²",
+        )
+        RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={"expr": "o.eui < 0.5"},
+            message_template="EUI was {{ o.eui }} which is greater than target of 0.5",
+        )
+        engine = BasicValidator()
+
+        result = engine.evaluate_assertions_for_stage(
+            validator=self.validator,
+            ruleset=self.ruleset,
+            payload={"eui": 452.2485348642507},
+            stage="output",
+        )
+
+        self.assertEqual(len(result.issues), 1)
+        self.assertEqual(
+            result.issues[0].message,
+            "EUI was 452.25 kWh/m² which is greater than target of 0.50 kWh/m²",
+        )
+
+    def test_simple_output_comparison_generates_unit_aware_default_message(self):
+        """A missing custom message should still identify both values and units."""
+
+        StepIODefinitionFactory(
+            validator=self.validator,
+            contract_key="eui",
+            label="Modeled Site EUI (kWh/m²)",
+            direction="output",
+            unit="kWh/m²",
+        )
+        RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={"expr": "o.eui < 0.5"},
+            message_template="",
+        )
+        engine = BasicValidator()
+
+        result = engine.evaluate_assertions_for_stage(
+            validator=self.validator,
+            ruleset=self.ruleset,
+            payload={"eui": 452.2485348642507},
+            stage="output",
+        )
+
+        self.assertEqual(len(result.issues), 1)
+        self.assertEqual(
+            result.issues[0].message,
+            "Modeled Site EUI was 452.25 kWh/m²; expected < 0.50 kWh/m².",
+        )
+
+    def test_arithmetic_expression_does_not_infer_quantity_units(self):
+        """CEL arithmetic must not inherit a source value's unit automatically.
+
+        Dividing or converting a declared output can change its dimension.  The
+        conservative parser therefore leaves complex templates exactly as the
+        author wrote them instead of attaching potentially false units.
+        """
+
+        StepIODefinitionFactory(
+            validator=self.validator,
+            contract_key="eui",
+            direction="output",
+            unit="kWh/m²",
+        )
+        RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={"expr": "o.eui / 2.0 < 0.5"},
+            message_template="Adjusted EUI was {{ o.eui }}",
+        )
+        engine = BasicValidator()
+
+        result = engine.evaluate_assertions_for_stage(
+            validator=self.validator,
+            ruleset=self.ruleset,
+            payload={"eui": 452.2485348642507},
+            stage="output",
+        )
+
+        self.assertEqual(len(result.issues), 1)
+        self.assertEqual(
+            result.issues[0].message,
+            "Adjusted EUI was 452.2485348642507",
+        )
+
     def test_when_guard_skips_expression(self):
         RulesetAssertionFactory(
             ruleset=self.ruleset,

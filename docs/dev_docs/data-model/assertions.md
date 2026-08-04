@@ -269,6 +269,20 @@ Once a validation run reaches a step with assertions:
 This flow ensures findings remain reproducible: rerunning the same submission with the same ruleset +
 validator version yields identical catalogs, helper allowlists, and assertion logic.
 
+## Quantity-aware finding messages
+
+When a BASIC assertion targets a declared step input/output with a unit, message
+placeholders such as `{{ actual }}`, `{{ expected }}`, `{{ value }}`, `{{ min }}`,
+and `{{ max }}` are formatted using that unit and the catalog's optional
+`metadata.precision` (two decimal places by default). Direct CEL comparisons of
+one declared `i.*` or `o.*` value with a numeric literal receive the same
+formatting; `{{ actual }}`, `{{ expected }}`, `{{ value }}`, and `{{ units }}` are
+available in addition to the original namespace path.
+
+Unit inference is deliberately conservative. Arithmetic, helper calls, compound
+expressions, signals, and cross-step references retain their authored messages
+because those operations may change dimensions or combine different unit systems.
+
 ## Success messages
 
 By default, passed assertions are silent—they don't generate any findings. However, Validibot

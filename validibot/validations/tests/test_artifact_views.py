@@ -115,6 +115,9 @@ class ArtifactReportPanelTests(TestCase):
         self.assertContains(response, "Generated Files")
         self.assertContains(response, "energy-report.html")
         self.assertContains(response, "annual_report")
+        self.assertContains(response, "Role")
+        self.assertContains(response, "Kind")
+        assert b"Role / Type" not in response.content
         assert (
             reverse(
                 "validations:artifact_detail",

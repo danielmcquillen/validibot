@@ -1035,6 +1035,7 @@ class BaseValidator(ABC):
         assertion,
         *,
         template_context: dict[str, Any] | None = None,
+        value_displays: dict[str, Any] | None = None,
     ) -> ValidationIssue | None:
         """
         Create a success issue if the assertion has a success_message or
@@ -1061,6 +1062,7 @@ class BaseValidator(ABC):
                     rendered = render_assertion_message_template(
                         message,
                         template_context,
+                        value_displays=value_displays,
                     )
                 except MessageTemplateRenderError:
                     rendered = ""

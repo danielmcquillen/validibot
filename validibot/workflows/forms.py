@@ -143,9 +143,8 @@ AI_MODES = (
 )
 
 ENERGYPLUS_IDF_CHECK_CHOICES = (
-    ("duplicate-names", _("Detect duplicate object names")),
-    ("hvac-sizing", _("Ensure HVAC autosizing is enabled")),
-    ("schedule-coverage", _("Check schedules cover 7 days")),
+    ("hvac-sizing", _("Review HVAC autosizing settings")),
+    ("schedule-coverage", _("Review weekly schedule coverage")),
 )
 
 TEMPLATE_VARIABLE_TYPE_CHOICES = (
@@ -487,14 +486,17 @@ class WorkflowForm(forms.ModelForm):
             ),
             "input_retention": _(
                 "Controls how long the user's submission data is kept after "
-                "validation. The submission record is always preserved for "
-                "audit purposes."
+                "validation. 'Do not store' still uses transient storage while "
+                "validation runs, then purges the submitted data shortly after "
+                "validation. The submission record is always preserved for audit "
+                "purposes."
             ),
             "output_retention": _(
                 "Controls how long validation outputs (results, artifacts, "
                 "findings, and step values) are kept after the run completes. "
-                "The default queues deletion immediately; the permanent "
-                "evidence receipt remains."
+                "'Do not retain' keeps detailed results briefly in access-controlled "
+                "transient storage so they can be delivered, then purges them "
+                "shortly after validation. The permanent evidence receipt remains."
             ),
         }
 
@@ -610,7 +612,7 @@ class WorkflowForm(forms.ModelForm):
                 SubmissionFileType.TEXT.value,
                 FileTypeChoiceLabel(
                     _("Plain Text"),
-                    _(".txt, .csv, .ttl, .nt, .nq"),
+                    _(".txt, .csv, .idf, .ttl, .nt, .nq"),
                 ),
             ),
             (
@@ -2984,15 +2986,20 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 
     # ── Direct-mode fields ────────────────────────────────────────
     idf_checks = forms.MultipleChoiceField(
-        label=_("Initial IDF checks"),
+        label=_("Optional model review checks"),
         required=False,
         choices=ENERGYPLUS_IDF_CHECK_CHOICES,
         widget=forms.CheckboxSelectMultiple,
+        help_text=_(
+            "EnergyPlus performs IDF validation itself. These optional checks "
+            "add modelling-quality guidance rather than reimplementing IDD rules."
+        ),
     )
     run_simulation = forms.BooleanField(
         label=_("Run EnergyPlus simulation"),
         help_text=_(
-            "If this option is unchecked, only IDF syntax checks will be performed.",
+            "If unchecked, EnergyPlus performs a conversion-only IDF preflight "
+            "without running the simulation.",
         ),
         required=False,
     )

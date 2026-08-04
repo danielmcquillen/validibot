@@ -915,7 +915,7 @@ def build_energyplus_config(
     The ``validation_mode`` field determines which config keys are
     populated:
 
-    - **direct**: ``idf_checks`` and ``run_simulation`` are stored.
+    - **direct**: Optional model-review checks and ``run_simulation`` are stored.
       Template metadata is cleared.
     - **template**: Case sensitivity and displayed step outputs are stored.
       IDF-check and simulation flags are omitted (the template pipeline
@@ -954,7 +954,7 @@ def build_energyplus_config(
     }
 
     if validation_mode == EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT:
-        # Direct IDF mode — store IDF check/simulation settings,
+        # Direct IDF mode — store review-check/simulation settings,
         # clear any template metadata.
         config["idf_checks"] = form.cleaned_data.get("idf_checks", [])
         config["run_simulation"] = form.cleaned_data.get("run_simulation", False)

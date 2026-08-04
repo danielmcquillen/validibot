@@ -5,17 +5,13 @@ uploads a JSON dict of variable values instead of a complete IDF file.
 This module resolves that JSON into a full IDF **before** the submission
 reaches any execution backend (Cloud Run, Docker Compose, etc.).
 
-After preprocessing, the submission looks identical to a direct-IDF
-upload — backends never need to know templates exist.  This is the key
-design principle from the Parameterized Templates ADR (Section 7):
-*"All template intelligence lives in Django.  The container stays
-simple — it receives a fully resolved IDF."*
+After preprocessing, the submission looks identical to a direct-IDF upload.
+Template resolution stays in Django, and every execution backend receives a
+fully resolved IDF.
 
-**Step-input resolution (Phase 4b):** When the step has
-``StepInputBinding`` rows for template input definitions, the resolution engine
-resolves values via ``resolve_step_input()`` which supports nested
-JSON payloads and ``source_data_path`` expressions. The legacy flat-JSON
-path is used as a fallback for steps without input bindings.
+Template values are resolved from ``StepInputBinding`` rows via
+``resolve_step_input()``. Bindings support nested JSON payloads and
+``source_data_path`` expressions.
 
 The preprocessing is invoked by ``EnergyPlusValidator.preprocess_submission()``
 which is called by ``AdvancedValidator.validate()`` before building the
@@ -86,14 +82,14 @@ def preprocess_energyplus_submission(
     treated as a JSON dict of variable values.  The function:
 
     1. Reads the template IDF from the step-owned resource file.
-    2. Parses and validates the JSON submission as flat parameters.
-    3. Merges submitter values with author defaults and validates
-       constraints via ``merge_and_validate_template_parameters()``.
-    4. Substitutes ``$VARIABLE`` placeholders via
+    2. Resolves bound values from the JSON submission and validates them
+       against each input definition's constraints.
+    3. Substitutes ``$VARIABLE`` placeholders via
        ``substitute_template_parameters()``.
-    5. Overwrites ``submission.content`` with the resolved IDF so that
+    4. Overwrites ``submission.content`` with the resolved IDF so that
        all downstream consumers (backends, envelope builders) see a
        normal IDF file.
+    5. Returns the resolved parameters and validation warnings as metadata.
 
     If the step has no template resource, this is a direct-IDF
     submission and the function returns immediately (no-op).
@@ -142,14 +138,14 @@ def preprocess_energyplus_submission(
         case_sensitive=typed_config.case_sensitive,
     )
 
-    # ── 5. Substitute placeholders ──────────────────────────────
+    # ── 4. Substitute placeholders ──────────────────────────────
     resolved_idf = substitute_template_parameters(
         idf_text=template_content,
         parameters=merge_result.parameters,
         case_sensitive=typed_config.case_sensitive,
     )
 
-    # ── 6. Overwrite the submission in memory ───────────────────
+    # ── 5. Overwrite the submission in memory ───────────────────
     # Submission.get_content() checks self.content before self.input_file,
     # so setting .content swaps in the resolved IDF for all downstream
     # consumers without touching the persisted file (which stays as the
@@ -163,7 +159,7 @@ def preprocess_energyplus_submission(
         len(merge_result.warnings),
     )
 
-    # ── 7. Return metadata ──────────────────────────────────────
+    # ── 6. Return metadata ──────────────────────────────────────
     template_metadata: dict[str, object] = {
         "template_parameters_used": merge_result.parameters,
         "template_warnings": merge_result.warnings,
@@ -235,9 +231,8 @@ def _parse_submission_params(submission) -> dict[str, Any]:
             f"Received {type(parsed).__name__} instead."
         )
 
-    # Reject nested objects/arrays — parameters must be flat key-value pairs.
-    # This check only applies to the legacy path; the input-binding path
-    # allows nesting because source_data_path can navigate nested structures.
+    # This helper accepts only flat key-value pairs. Binding-based resolution
+    # uses ``_parse_submission_data()`` when nested structures are allowed.
     nested_keys = [k for k, v in parsed.items() if isinstance(v, (dict, list))]
     if nested_keys:
         raise ValidationError(
@@ -251,9 +246,8 @@ def _parse_submission_params(submission) -> dict[str, Any]:
 def _parse_submission_data(submission) -> dict[str, Any]:
     """Parse submission content as a JSON dict, allowing nested structures.
 
-    Unlike ``_parse_submission_params()`` (legacy, flat-only), this parser
-    accepts nested objects and arrays — the step input resolution engine
-    navigates them via ``source_data_path`` expressions.
+    Nested objects and arrays are accepted because the step input resolution
+    engine navigates them via ``source_data_path`` expressions.
 
     Raises:
         ValidationError: If the content is not valid JSON or not a dict.
@@ -292,8 +286,7 @@ def _resolve_via_input_bindings(
 ) -> MergeResult:
     """Resolve template parameters via StepInputBinding + validate.
 
-    This is the Phase 4b replacement for the legacy
-    ``merge_and_validate_template_parameters()`` path. It:
+    Resolution proceeds as follows:
 
     1. Parses the submission as a JSON dict (nesting allowed).
     2. Queries ``StepInputBinding`` rows for template input definitions.

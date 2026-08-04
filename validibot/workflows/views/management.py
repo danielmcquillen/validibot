@@ -203,6 +203,7 @@ def _workflow_detail_toolbar_context(
                 ),
             },
         )
+    settings_action = None
     if can_manage_workflow:
         grey_actions.extend(
             [
@@ -255,24 +256,24 @@ def _workflow_detail_toolbar_context(
                         kwargs={"pk": workflow.pk},
                     ),
                 },
-                {
-                    "kind": "link",
-                    "button_class": "btn btn-light text-dark",
-                    "icon_class": "bi-pencil-square",
-                    "title": _("Workflow settings"),
-                    "url": reverse_with_org(
-                        "workflows:workflow_update",
-                        request=request,
-                        kwargs={"pk": workflow.pk},
-                    ),
-                },
             ],
         )
+        settings_action = {
+            "kind": "link",
+            "button_class": "btn btn-light text-dark",
+            "icon_class": "bi-pencil-square",
+            "title": _("Workflow settings"),
+            "url": reverse_with_org(
+                "workflows:workflow_update",
+                request=request,
+                kwargs={"pk": workflow.pk},
+            ),
+        }
 
-    destructive_actions = []
+    trailing_actions = []
     if can_manage_workflow:
         if workflow_has_runs:
-            destructive_actions.append(
+            grey_actions.append(
                 {
                     "kind": "form",
                     "button_class": "btn btn-light text-dark",
@@ -303,8 +304,9 @@ def _workflow_detail_toolbar_context(
                     ),
                 },
             )
+            trailing_actions.append(settings_action)
             if workflow_has_issued_credentials and can_break_glass_delete_workflow:
-                destructive_actions.append(
+                trailing_actions.append(
                     {
                         "kind": "link",
                         "button_class": "btn btn-light",
@@ -320,7 +322,8 @@ def _workflow_detail_toolbar_context(
                     },
                 )
         else:
-            destructive_actions.append(
+            grey_actions.append(settings_action)
+            trailing_actions.append(
                 {
                     "kind": "hx_delete",
                     "button_class": "btn btn-danger",
@@ -338,7 +341,7 @@ def _workflow_detail_toolbar_context(
     return {
         "launch_action": launch_action,
         "grey_actions": grey_actions,
-        "destructive_actions": destructive_actions,
+        "trailing_actions": trailing_actions,
     }
 
 

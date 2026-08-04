@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from django.test import SimpleTestCase
 
+from validibot.validations.assertions.message_templates import MessageValueDisplay
 from validibot.validations.assertions.message_templates import (
     render_assertion_message_template,
 )
@@ -44,3 +45,32 @@ class AssertionMessageTemplateRenderingTests(SimpleTestCase):
         )
 
         self.assertEqual(rendered, "Price 25.0 exceeds 20")
+
+    def test_known_quantity_uses_catalog_precision_and_unit(self):
+        """Measured values should carry their declared unit into findings.
+
+        Keeping this at the rendering boundary lets the evaluator continue to
+        compare raw numbers while submitters see an unambiguous, rounded value.
+        """
+
+        display = MessageValueDisplay(unit="kWh/m²", precision=2)
+        rendered = render_assertion_message_template(
+            "EUI was {{ actual }}; target {{ expected }}",
+            {"actual": 452.2485348642507, "expected": 0.5},
+            value_displays={"actual": display, "expected": display},
+        )
+
+        self.assertEqual(rendered, "EUI was 452.25 kWh/m²; target 0.50 kWh/m²")
+
+    def test_round_filter_keeps_unit_and_controls_precision(self):
+        """An author's explicit round filter must not discard quantity units."""
+
+        rendered = render_assertion_message_template(
+            "EUI was {{ actual | round(1) }}",
+            {"actual": 452.2485348642507},
+            value_displays={
+                "actual": MessageValueDisplay(unit="kWh/m²", precision=2),
+            },
+        )
+
+        self.assertEqual(rendered, "EUI was 452.2 kWh/m²")

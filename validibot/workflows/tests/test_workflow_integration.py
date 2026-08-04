@@ -6,6 +6,7 @@ the product-level behavior authors rely on rather than only model/service
 units.
 """
 
+import re
 from http import HTTPStatus
 
 import pytest
@@ -534,8 +535,6 @@ def test_workflow_detail_toolbar_orders_launch_actions_and_delete(client):
     # the contiguous class string the layout actually produces. The
     # normalization collapses runs of whitespace to single spaces,
     # which is what the browser would do at render time anyway.
-    import re
-
     body_normalized = re.sub(r"\s+", " ", body)
     expected_toolbar_gaps = 2
     assert body_normalized.count("d-flex flex-wrap gap-2 ms-5") >= expected_toolbar_gaps
@@ -546,6 +545,37 @@ def test_workflow_detail_toolbar_orders_launch_actions_and_delete(client):
         settings_index,
     )
     assert settings_anchor_start != -1
+
+
+def test_workflow_detail_toolbar_places_archive_before_settings(client):
+    """Keep the lifecycle/settings swap stable when run history adds Archive.
+
+    This branch needs its own ordering guard because unused workflows show
+    Delete instead of Archive and intentionally retain the existing layout.
+    """
+    user = UserFactory()
+    org = OrganizationFactory()
+    _login_user_for_org(client, user, org)
+    workflow = WorkflowFactory(org=org, user=user, is_active=True)
+    ValidationRunFactory(workflow=workflow)
+
+    response = client.get(
+        reverse("workflows:workflow_detail", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    constants_url = reverse("workflows:workflow_constants", kwargs={"pk": workflow.pk})
+    archive_url = reverse("workflows:workflow_archive", kwargs={"pk": workflow.pk})
+    settings_url = reverse("workflows:workflow_update", kwargs={"pk": workflow.pk})
+    constants_index = body.find(f'href="{constants_url}"')
+    archive_index = body.find(f'action="{archive_url}"')
+    settings_index = body.find(f'href="{settings_url}"')
+
+    assert -1 not in {constants_index, archive_index, settings_index}
+    assert constants_index < archive_index < settings_index
+    actions_between = re.sub(r"\s+", " ", body[archive_index:settings_index])
+    assert "d-flex flex-wrap gap-2 ms-5" in actions_between
 
 
 def test_workflow_detail_toolbar_hides_manage_actions_for_executor(client):

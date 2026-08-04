@@ -68,6 +68,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             contract_key="site_eui_kwh_m2",
             label="Site EUI (kWh/m²)",
             direction="output",
+            unit="kWh/m²",
         )
 
         # Create ruleset with CEL assertion
@@ -246,7 +247,9 @@ class CallbackAssertionEvaluationTests(TestCase):
             target_io_definition=self.output_definition,
             target_data_path="",  # Must be empty when using step I/O definition
             rhs={"expr": "output.site_eui_kwh_m2 < 50"},
-            message_template="Site EUI is too high!",
+            message_template=(
+                "Site EUI was {{ output.site_eui_kwh_m2 }}; expected < {{ expected }}"
+            ),
         )
 
         mock_download.return_value = self._make_mock_envelope(
@@ -275,7 +278,10 @@ class CallbackAssertionEvaluationTests(TestCase):
         )
         self.assertEqual(error_findings.count(), 1)
         finding = error_findings.first()
-        self.assertEqual(finding.message, "Site EUI is too high!")
+        self.assertEqual(
+            finding.message,
+            "Site EUI was 75 kWh/m²; expected < 50 kWh/m²",
+        )
         self.assertEqual(finding.ruleset_assertion_id, assertion.id)
 
         # Step should be marked failed when an output-stage assertion fails

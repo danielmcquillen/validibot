@@ -18,6 +18,10 @@ from validibot.validations.assertions.evaluators.registry import register_evalua
 from validibot.validations.assertions.message_templates import (
     MessageTemplateRenderError,
 )
+from validibot.validations.assertions.message_templates import MessageValueDisplay
+from validibot.validations.assertions.message_templates import (
+    format_assertion_message_value,
+)
 from validibot.validations.assertions.message_templates import (
     render_assertion_message_template,
 )
@@ -94,6 +98,7 @@ class BasicAssertionEvaluator:
             options=options,
             enriched_payload=enriched_payload,
         )
+        value_displays = self._build_value_displays(assertion, options)
 
         if not passed:
             message = self._render_message(
@@ -101,6 +106,7 @@ class BasicAssertionEvaluator:
                 template_context,
                 failure_message,
                 actual,
+                value_displays,
             )
             return [
                 self._issue_from_assertion(
@@ -114,6 +120,7 @@ class BasicAssertionEvaluator:
         success_issue = context.engine._maybe_success_issue(
             assertion,
             template_context=template_context,
+            value_displays=value_displays,
         )
         if success_issue:
             return [success_issue]
@@ -588,21 +595,135 @@ class BasicAssertionEvaluator:
         context: dict[str, Any],
         fallback_message: str | None,
         actual: Any,
+        value_displays: dict[str, MessageValueDisplay],
     ) -> str:
         """Render the assertion message using template or fallback."""
         template = (assertion.message_template or "").strip()
         message: str | None = None
         if template:
             try:
-                rendered = render_assertion_message_template(template, context)
+                rendered = render_assertion_message_template(
+                    template,
+                    context,
+                    value_displays=value_displays,
+                )
             except MessageTemplateRenderError:
                 message = _("Message template error - falling back to default output.")
             else:
                 if rendered:
                     message = rendered
         if message is None:
-            message = fallback_message or self._default_message(assertion, actual)
+            message = self._unit_aware_fallback(
+                assertion=assertion,
+                actual=actual,
+                value_displays=value_displays,
+            )
+            if message is None:
+                message = fallback_message or self._default_message(assertion, actual)
         return strip_tags(str(message))
+
+    def _build_value_displays(
+        self,
+        assertion: RulesetAssertion,
+        options: dict[str, Any],
+    ) -> dict[str, MessageValueDisplay]:
+        """Build display metadata for a catalog-backed BASIC quantity."""
+
+        io_definition = (
+            assertion.target_io_definition
+            if assertion.target_io_definition_id
+            else None
+        )
+        unit = (
+            getattr(io_definition, "unit", "") or options.get("units") or ""
+        ).strip()
+        if not unit:
+            return {}
+        metadata = getattr(io_definition, "metadata", {}) or {}
+        display = MessageValueDisplay(
+            unit=unit,
+            precision=metadata.get("precision"),
+        )
+        return {
+            "actual": display,
+            "value": display,
+            "expected": display,
+            "min": display,
+            "max": display,
+        }
+
+    def _unit_aware_fallback(
+        self,
+        *,
+        assertion: RulesetAssertion,
+        actual: Any,
+        value_displays: dict[str, MessageValueDisplay],
+    ) -> str | None:
+        """Generate a concise default for measured numeric comparisons."""
+
+        display = value_displays.get("actual")
+        if display is None:
+            return None
+
+        rhs = assertion.rhs or {}
+        operator_symbols = {
+            AssertionOperator.EQ: "=",
+            AssertionOperator.NE: "≠",
+            AssertionOperator.LT: "<",
+            AssertionOperator.LE: "≤",
+            AssertionOperator.GT: ">",
+            AssertionOperator.GE: "≥",
+        }
+        try:
+            operator = AssertionOperator(assertion.operator)
+        except ValueError:
+            return None
+
+        label = self._quantity_label(assertion, display.unit)
+        formatted_actual = format_assertion_message_value(actual, display)
+        if operator in operator_symbols and "value" in rhs:
+            return _(
+                "%(label)s was %(actual)s; expected %(operator)s %(expected)s."
+            ) % {
+                "label": label,
+                "actual": formatted_actual,
+                "operator": operator_symbols[operator],
+                "expected": format_assertion_message_value(rhs["value"], display),
+            }
+        if operator in {AssertionOperator.BETWEEN, AssertionOperator.COUNT_BETWEEN}:
+            if "min" not in rhs or "max" not in rhs:
+                return None
+            return _(
+                "%(label)s was %(actual)s; expected between %(minimum)s and "
+                "%(maximum)s."
+            ) % {
+                "label": label,
+                "actual": formatted_actual,
+                "minimum": format_assertion_message_value(rhs["min"], display),
+                "maximum": format_assertion_message_value(rhs["max"], display),
+            }
+        return None
+
+    @staticmethod
+    def _quantity_label(assertion: RulesetAssertion, unit: str) -> str:
+        """Return the declared target label without a duplicate unit suffix."""
+
+        io_definition = (
+            assertion.target_io_definition
+            if assertion.target_io_definition_id
+            else None
+        )
+        if io_definition is None:
+            return assertion.target_display or assertion.target_data_path or _("Value")
+        label = (
+            io_definition.label
+            or io_definition.contract_key.replace(
+                "_",
+                " ",
+            ).title()
+        )
+        suffix = f" ({unit})"
+        return label[: -len(suffix)] if label.endswith(suffix) else label
 
     def _build_template_context(
         self,
@@ -622,6 +743,14 @@ class BasicAssertionEvaluator:
             constants = enriched_payload.get("c") or {}
             payload_context = enriched_payload
             submission_context = enriched_payload.get("submission") or {}
+        io_definition = (
+            assertion.target_io_definition
+            if assertion.target_io_definition_id
+            else None
+        )
+        units = (
+            getattr(io_definition, "unit", "") or options.get("units") or ""
+        ).strip()
         context: dict[str, Any] = {
             "field": assertion.target_display or path or "",
             "target": assertion.target_display or path or "",
@@ -635,7 +764,7 @@ class BasicAssertionEvaluator:
             "min": rhs.get("min"),
             "max": rhs.get("max"),
             "tolerance": rhs.get("tolerance") or options.get("tolerance"),
-            "units": options.get("units"),
+            "units": units,
             "severity": assertion.severity,
             "operator": assertion.get_operator_display(),
             "when": assertion.when_expression,

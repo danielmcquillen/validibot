@@ -771,7 +771,9 @@ def test_create_ai_policy_requires_rules(client):
     assert "Create step" in html
 
 
-def test_create_energyplus_step_with_idf_checks(client):
+def test_create_energyplus_step_with_optional_model_review_checks(client):
+    """Authors should only be offered review checks beyond native IDF validation."""
+
     from validibot.validations.constants import ResourceFileType
     from validibot.validations.models import ValidatorResourceFile
 
@@ -797,14 +799,14 @@ def test_create_energyplus_step_with_idf_checks(client):
             "validation_mode": "direct",
             "weather_file": str(weather_resource.id),
             "run_simulation": "on",
-            "idf_checks": ["duplicate-names", "hvac-sizing"],
+            "idf_checks": ["hvac-sizing", "schedule-coverage"],
         },
     )
     # 302 redirect to assertions page on success
     assert response.status_code == HTTPStatus.FOUND
     step = workflow.steps.first()
     assert step is not None
-    assert step.config["idf_checks"] == ["duplicate-names", "hvac-sizing"]
+    assert step.config["idf_checks"] == ["hvac-sizing", "schedule-coverage"]
     assert step.config["run_simulation"] is True
     # Weather file is stored relationally via WorkflowStepResource, not in config
     from validibot.workflows.models import WorkflowStepResource

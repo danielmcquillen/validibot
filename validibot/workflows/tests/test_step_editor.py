@@ -1701,6 +1701,43 @@ def test_step_list_places_type_badge_before_step_name(client):
     ) < action_card.index("Notify Slack")
 
 
+def test_step_list_keeps_energyplus_card_to_header_fields(client):
+    """EnergyPlus cards should not repeat simulation configuration.
+
+    The workflow builder already identifies an EnergyPlus step through its type
+    badge. Keeping the card to its step number, validator type, and authored
+    name avoids a redundant ``Simulation: Yes`` detail row.
+    """
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(
+        ValidationType.ENERGYPLUS,
+        "energyplus-card-summary",
+        "EnergyPlus",
+    )
+    WorkflowStep.objects.create(
+        workflow=workflow,
+        validator=validator,
+        order=10,
+        name="Test Energy plus validation",
+        config={"run_simulation": True},
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_list", args=[workflow.pk]),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    html = response.content.decode()
+    normalized_html = re.sub(r"\s+", " ", html)
+    assert "Step 1" in normalized_html
+    assert validator.get_validation_type_display() in normalized_html
+    assert "Test Energy plus validation" in normalized_html
+    assert "Simulation" not in html
+    assert "Yes" not in html
+
+
 def test_step_list_keeps_actions_in_right_column(client):
     """Long step summaries must not wrap the action buttons below the content.
 

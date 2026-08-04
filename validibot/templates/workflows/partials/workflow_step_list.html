@@ -82,35 +82,6 @@
                             · {{ config.schema_type_label }}
                           {% endif %}
                         </p>
-                      {% elif validator.validation_type == 'ENERGYPLUS' %}
-                        <dl class="row small text-muted mb-0">
-                          <dt class="col-sm-4">
-                            {% trans "Simulation" %}
-                          </dt>
-                          <dd class="col-sm-8">
-                            {% if config.run_simulation %}
-                              {% trans "Yes" %}
-                            {% else %}
-                              {% trans "No" %}
-                            {% endif %}
-                          </dd>
-                          {% if config.eui_band.min or config.eui_band.max %}
-                            <dt class="col-sm-4">
-                              {% trans "EUI" %}
-                            </dt>
-                            <dd class="col-sm-8">
-                              {% if config.eui_band.min %}
-                                ≥ {{ config.eui_band.min }}
-                              {% endif %}
-                              {% if config.eui_band.min and config.eui_band.max %}
-                                ·
-                              {% endif %}
-                              {% if config.eui_band.max %}
-                                ≤ {{ config.eui_band.max }}
-                              {% endif %}
-                            </dd>
-                          {% endif %}
-                        </dl>
                       {% endif %}
                     {% elif action %}
                       {% with summary=step.action_summary %}

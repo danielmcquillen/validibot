@@ -3,8 +3,9 @@
 {% comment %}
 Classic two-column report layout (the original design).
 
-Left column: User Inputs + Outputs. Right column (sidebar, moves above on
-narrow viewports): Run Summary + Signed Credential + Evidence Manifest.
+Left column: User Inputs + Outputs, with Generated Files nested inside Outputs.
+Right column (sidebar, moves above on narrow viewports): Run Summary + Signed
+Credential + Evidence Manifest.
 
 Preserved as a standalone partial so a future user-facing layout toggle can
 switch between this and ``layout_validation_run_stacked.html``. Selected by
@@ -18,8 +19,15 @@ view).
 <div class="row">
   <div class="col-12 col-xl-7 mb-3">
     {% include "workflows/results/partials/block_validation_run_user_inputs.html" with run=run %}
-    {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_outputs=step_outputs step_params=step_params step_template_warnings=step_template_warnings %}
-    {% include "workflows/results/partials/block_validation_run_artifacts.html" with artifact_items=artifact_items %}
+    <div class="card validation-info-card">
+      <div class="card-header">
+        {% trans "Outputs" %}
+      </div>
+      <div class="card-body" id="reportOutputsBody">
+        {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs step_outputs=step_outputs step_params=step_params step_template_warnings=step_template_warnings bare=True %}
+        {% include "workflows/results/partials/block_validation_run_artifacts.html" with artifact_items=artifact_items %}
+      </div>
+    </div>
   </div>
   <div class="col-12 col-xl-5 order-first order-xl-last mb-3">
     {% include "workflows/results/partials/block_validation_run_summary.html" with run=run step_runs=step_runs %}

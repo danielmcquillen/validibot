@@ -151,6 +151,30 @@ class ArtifactReportPanelTests(TestCase):
         )
         assert b"gs://private-validibot-artifacts" not in response.content
 
+    def test_classic_validation_detail_nests_artifacts_under_run_outputs(self):
+        """The two-column report must keep Generated Files inside Outputs."""
+
+        user, run = _setup_run_with_owner_access()
+        _create_artifact(run)
+
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("validations:validation_detail", kwargs={"pk": run.pk}),
+            {"layout": "classic"},
+        )
+
+        assert response.status_code == HTTPStatus.OK
+        document = lxml_html.fromstring(response.content)
+        outputs_body = document.get_element_by_id("reportOutputsBody")
+        generated_buttons = outputs_body.xpath(
+            ".//button[@data-bs-target='#reportGeneratedFilesBody']",
+        )
+        assert len(generated_buttons) == 1
+        assert (
+            generated_buttons[0].xpath("normalize-space(.//span/span[1])")
+            == "Generated Files"
+        )
+
     def test_launch_run_detail_uses_same_artifact_panel(self):
         """Workflow launch reports render artifacts through the shared layout."""
 

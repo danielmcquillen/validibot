@@ -26,7 +26,7 @@ Context variables (passed via ``{% include ... with %}``):
                            launch-page status card.
 {% endcomment %}
 {% if not run.are_outputs_viewable %}
-  <div class="alert alert-secondary mb-0" role="status">
+  <div class="alert alert-light mb-0" role="status">
     {% trans "Detailed outputs are no longer retained for this run." %}
   </div>
 {% else %}

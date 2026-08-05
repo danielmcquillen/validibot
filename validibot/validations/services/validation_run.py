@@ -381,7 +381,11 @@ class ValidationRunService:
                 source=source,
                 extra=run_extra,
             )
-            submission = validation_run.submission
+            admitted_submission = validation_run.submission
+            if admitted_submission is None:
+                msg = "An admitted validation run must retain its submission"
+                raise RuntimeError(msg)
+            submission = admitted_submission
 
             # Run-created hooks fire INSIDE this transaction, under any row
             # locks they take, so a commercial package (cloud) can reserve

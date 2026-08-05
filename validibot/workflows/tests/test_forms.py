@@ -1088,7 +1088,7 @@ def test_workflow_form_blocks_versioned_to_mutable_with_existing_runs():
     assert form.fields["history_policy"].widget.attrs["disabled"] is True
     assert not form.is_valid()
     assert form.errors.as_data()["history_policy"][0].code == "editing_policy_fixed"
-    fixed_reason = str(form.fields["history_policy"].editing_policy_fixed_reason)
+    fixed_reason = str(form.editing_policy_fixed_reason)
     assert "validation runs" in fixed_reason
     assert "new workflow version" in fixed_reason
 
@@ -1181,7 +1181,7 @@ def test_workflow_form_blocks_history_policy_change_on_locked_workflow():
     assert form.fields["history_policy"].widget.attrs["disabled"] is True
     assert not form.is_valid()
     assert form.errors.as_data()["history_policy"][0].code == "editing_policy_fixed"
-    fixed_reason = str(form.fields["history_policy"].editing_policy_fixed_reason)
+    fixed_reason = str(form.editing_policy_fixed_reason)
     assert "locked" in fixed_reason.lower()
 
 
@@ -1215,7 +1215,7 @@ def test_workflow_form_blocks_mutable_to_versioned_with_existing_runs():
     assert form.fields["history_policy"].widget.attrs["disabled"] is True
     assert not form.is_valid()
     assert form.errors.as_data()["history_policy"][0].code == "editing_policy_fixed"
-    fixed_reason = str(form.fields["history_policy"].editing_policy_fixed_reason)
+    fixed_reason = str(form.editing_policy_fixed_reason)
     assert "new workflow version" in fixed_reason
 
 

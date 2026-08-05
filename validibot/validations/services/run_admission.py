@@ -18,6 +18,8 @@ from django.utils import timezone
 from validibot.validations.models import ValidationRun
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from validibot.submissions.models import Submission
     from validibot.users.models import Organization
     from validibot.users.models import User
@@ -123,7 +125,7 @@ def emit_validation_run_finalized(
     *,
     sender: object,
     validation_run: ValidationRun,
-) -> list[tuple[object, object]]:
+) -> list[tuple[Callable[..., Any], Any]]:
     """Notify finalizers, then release the run's workflow-definition fence.
 
     Django's ``send_robust`` invokes receivers synchronously. Releasing only

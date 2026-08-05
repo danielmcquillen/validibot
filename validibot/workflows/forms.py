@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import HTML
@@ -75,6 +76,8 @@ from validibot.workflows.services.submitted_file_ports import (
 from validibot.workflows.services.submitted_file_ports import uploaded_file_extension
 
 if TYPE_CHECKING:
+    from django.utils.functional import Promise
+
     from validibot.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -336,6 +339,8 @@ class WorkflowForm(forms.ModelForm):
     (JSON Schema or restricted Pydantic text) for round-trip editing.
     """
 
+    editing_policy_fixed_reason: str | Promise = ""
+
     description_md = forms.CharField(
         label=_("Public info page description (Markdown)"),
         required=False,
@@ -525,7 +530,7 @@ class WorkflowForm(forms.ModelForm):
         self.fields["featured_image"].help_text = _(
             "Optional image shown on the workflow info page.",
         )
-        history_field = self.fields["history_policy"]
+        history_field = cast("forms.ChoiceField", self.fields["history_policy"])
         history_field.label = _("Editing policy")
         history_field.required = False
         history_field.choices = (
@@ -574,10 +579,10 @@ class WorkflowForm(forms.ModelForm):
                     "is fixed for this version. Create a new workflow version "
                     "to use a different policy."
                 )
-            history_field.editing_policy_fixed_reason = lock_reason
+            self.editing_policy_fixed_reason = lock_reason
             editing_policy_describedby.append("id_history_policy-fixed-reason")
         else:
-            history_field.editing_policy_fixed_reason = ""
+            self.editing_policy_fixed_reason = ""
         history_field.widget.attrs["aria-describedby"] = " ".join(
             editing_policy_describedby,
         )
@@ -3339,7 +3344,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         return choices
 
     def clean(self):
-        cleaned = super().clean()
+        cleaned = super().clean() or {}
         run_simulation = cleaned.get(
             "validation_mode"
         ) == self.VALIDATION_MODE_TEMPLATE or cleaned.get("run_simulation", False)

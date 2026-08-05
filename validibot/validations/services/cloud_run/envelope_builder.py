@@ -15,6 +15,8 @@ from typing import Protocol
 from urllib.parse import unquote
 from urllib.parse import urlparse
 
+from validibot_shared.energyplus import EnergyPlusIdfCheck
+from validibot_shared.energyplus import EnergyPlusReviewProfile
 from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 from validibot_shared.energyplus.envelopes import EnergyPlusInputs
 from validibot_shared.fmu.envelopes import FMUInputEnvelope
@@ -76,9 +78,9 @@ def build_energyplus_input_envelope(
     step_run_id: str,
     expected_output_uri: str,
     timestep_per_hour: int = 4,
-    idf_checks: list[str] | None = None,
+    idf_checks: list[EnergyPlusIdfCheck] | None = None,
     run_simulation: bool = True,
-    review_profile: str = "standard",
+    review_profile: EnergyPlusReviewProfile = "standard",
     skip_callback: bool = False,
     input_files: list[InputFileItem] | None = None,
     callback_nonce: str | None = None,

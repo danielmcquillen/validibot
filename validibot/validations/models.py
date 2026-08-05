@@ -2804,9 +2804,8 @@ class StepIODefinition(TimeStampedModel):
             model_instance_has_semantic_changes,
         )
 
-        workflow_id = None
-        if self.workflow_step_id:
-            workflow_id = self.workflow_step.workflow_id
+        workflow_step = self.workflow_step
+        workflow_id = workflow_step.workflow_id if workflow_step is not None else None
         semantic_change = model_instance_has_semantic_changes(
             self,
             semantic_fields=self.SEMANTIC_DEFINITION_FIELDS,
@@ -2825,7 +2824,8 @@ class StepIODefinition(TimeStampedModel):
             guard_workflow_definition_mutation,
         )
 
-        workflow_id = self.workflow_step.workflow_id if self.workflow_step_id else None
+        workflow_step = self.workflow_step
+        workflow_id = workflow_step.workflow_id if workflow_step is not None else None
         with guard_workflow_definition_mutation(workflow_id or []):
             return super().delete(*args, **kwargs)
 
@@ -3331,9 +3331,8 @@ class Derivation(TimeStampedModel):
             model_instance_has_semantic_changes,
         )
 
-        workflow_id = None
-        if self.workflow_step_id:
-            workflow_id = self.workflow_step.workflow_id
+        workflow_step = self.workflow_step
+        workflow_id = workflow_step.workflow_id if workflow_step is not None else None
         semantic_change = model_instance_has_semantic_changes(
             self,
             semantic_fields=self.SEMANTIC_DEFINITION_FIELDS,
@@ -3352,7 +3351,8 @@ class Derivation(TimeStampedModel):
             guard_workflow_definition_mutation,
         )
 
-        workflow_id = self.workflow_step.workflow_id if self.workflow_step_id else None
+        workflow_step = self.workflow_step
+        workflow_id = workflow_step.workflow_id if workflow_step is not None else None
         with guard_workflow_definition_mutation(workflow_id or []):
             return super().delete(*args, **kwargs)
 

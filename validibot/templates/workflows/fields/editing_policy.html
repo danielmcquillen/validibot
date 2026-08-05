@@ -56,10 +56,10 @@
     <div id="{{ field.auto_id }}-details" class="visually-hidden">
       {% include "workflows/partials/editing_policy_help.html" %}
     </div>
-    {% if field.field.editing_policy_fixed_reason %}
+    {% if form.editing_policy_fixed_reason %}
       <div id="{{ field.auto_id }}-fixed-reason"
            class="form-text text-warning-emphasis">
-        {{ field.field.editing_policy_fixed_reason }}
+        {{ form.editing_policy_fixed_reason }}
       </div>
     {% endif %}
   </div>

@@ -316,6 +316,7 @@ class ContractFieldsTests(TestCase):
         expected = {
             "allowed_file_types",
             "input_retention",
+            "input_schema",
             "output_retention",
         }
         assert expected == set(CONTRACT_FIELDS)

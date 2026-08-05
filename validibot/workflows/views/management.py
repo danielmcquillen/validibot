@@ -8,6 +8,8 @@ used across multiple workflow view modules.
 import json
 import logging
 from http import HTTPStatus
+from typing import TYPE_CHECKING
+from typing import cast
 
 from django.apps import apps
 from django.contrib import messages
@@ -54,6 +56,9 @@ from validibot.workflows.services.version_context import build_workflow_version_
 from validibot.workflows.services.versioning import WorkflowVersioningService
 from validibot.workflows.version_utils import get_latest_workflow_ids
 from validibot.workflows.views_helpers import public_info_card_context
+
+if TYPE_CHECKING:
+    from validibot.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -304,7 +309,8 @@ def _workflow_detail_toolbar_context(
                     ),
                 },
             )
-            trailing_actions.append(settings_action)
+            if settings_action is not None:
+                trailing_actions.append(settings_action)
             if workflow_has_issued_credentials and can_break_glass_delete_workflow:
                 trailing_actions.append(
                     {
@@ -322,7 +328,8 @@ def _workflow_detail_toolbar_context(
                     },
                 )
         else:
-            grey_actions.append(settings_action)
+            if settings_action is not None:
+                grey_actions.append(settings_action)
             trailing_actions.append(
                 {
                     "kind": "hx_delete",
@@ -943,7 +950,7 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
                     validate_editing_policy_transition(
                         workflow=locked_workflow,
                         proposed_policy=proposed_policy,
-                        actor=self.request.user,
+                        actor=cast("User", self.request.user),
                     )
                 except EditingPolicyFixedError as exc:
                     locked_form.add_error(
